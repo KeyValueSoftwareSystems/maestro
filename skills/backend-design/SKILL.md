@@ -1,6 +1,6 @@
 ---
 name: backend-design
-description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in: component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes docs/technical/<slug>/lld/backend.md; never edits app code. Runs in the design phase (parallel with the frontend). Front door for /backend-design.
+description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in — component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes docs/technical/<slug>/lld/backend.md; never edits app code. Runs in the design phase (parallel with the frontend). Front door for /backend-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
 ---
 
