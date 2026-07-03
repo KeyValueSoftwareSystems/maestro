@@ -6,7 +6,7 @@
 # Composed by main.yaml as the design step.
 #
 # Flow:
-#   author_hld (/plan)  -> assert hld.md -> HUMAN approve
+#   assert_prd (PRD exists?) -> author_hld (/plan) -> assert hld.md -> HUMAN approve
 #     -> backend_design ∥ frontend_design   (parallel — author per-stack LLDs)
 #        -> contract (/api-contract: reconcile the LLDs into the cross-repo OpenAPI
 #           contract + acceptance criteria)
@@ -26,7 +26,7 @@
 workflow:
   name: sdlc-design
   description: HLD -> human approval -> per-stack LLDs (parallel) -> cross-repo contract.
-  entry_point: author_hld
+  entry_point: assert_prd
 
   instructions:
     - >-
@@ -68,6 +68,23 @@ parallel:
       - to: contract
 
 agents:
+  # ---- 0. ASSERT the PRD exists (fail fast, before /plan) ------------------
+  - name: assert_prd
+    type: script
+    description: Verify the PRD exists before designing, so a missing PRD fails clearly.
+    command: bash
+    args:
+      - "-c"
+      - |
+        set -uo pipefail
+        f="{{ workflow.input.prd_path }}"
+        if [ -s "$f" ]; then echo "[prd] OK: $f"; exit 0
+        else echo "[prd] NOT FOUND (or empty): $f — create the PRD before running the design phase." >&2; exit 1; fi
+    routes:
+      - to: author_hld
+        when: "exit_code == 0"
+      - to: abort
+
   # ---- 1. PLAN — author the HLD (/plan) -----------------------------------
   - name: author_hld
     description: Produce the high-level design (HLD) via the plan skill.
@@ -180,15 +197,20 @@ agents:
   - name: abort
     type: terminate
     status: failed
-    reason: "Design aborted (HLD rejected or missing artifact)."
+    reason: "Design aborted (missing PRD or HLD artifact, or HLD rejected)."
 
+# The output block is rendered on EVERY termination — including `abort` before the
+# later steps run. So paths are literal (deterministic, per skills.config.yaml
+# artifacts.*) and every step-output reference is guarded with `is defined`, so an
+# early abort terminates cleanly instead of raising a TemplateError. (Same defensive
+# pattern as main.yaml's `{% if implement is defined %}` outputs.)
 output:
-  hld_path: "{{ author_hld.output.hld_path }}"
-  hld_summary: "{{ author_hld.output.hld_summary }}"
-  open_questions: "{{ author_hld.output.open_questions }}"
-  backend_lld_path:  "{{ author_llds.outputs.backend_design.lld_path }}"
-  frontend_lld_path: "{{ author_llds.outputs.frontend_design.lld_path }}"
-  contract_path: "{{ contract.output.contract_path }}"
-  contract_summary: "{{ contract.output.contract_summary }}"
-  affected_repos: "{{ contract.output.affected_repos }}"
-  acceptance_criteria: "{{ contract.output.acceptance_criteria }}"
+  hld_path:  "docs/technical/{{ workflow.input.feature_slug }}/hld.md"
+  hld_summary:    "{% if author_hld is defined %}{{ author_hld.output.hld_summary }}{% endif %}"
+  open_questions: "{% if author_hld is defined %}{{ author_hld.output.open_questions }}{% endif %}"
+  backend_lld_path:  "docs/technical/{{ workflow.input.feature_slug }}/lld/backend.md"
+  frontend_lld_path: "docs/technical/{{ workflow.input.feature_slug }}/lld/frontend.md"
+  contract_path: "contracts/{{ workflow.input.feature_slug }}/openapi.yaml"
+  contract_summary:    "{% if contract is defined %}{{ contract.output.contract_summary }}{% endif %}"
+  affected_repos:      "{% if contract is defined %}{{ contract.output.affected_repos | json }}{% endif %}"
+  acceptance_criteria: "{% if contract is defined %}{{ contract.output.acceptance_criteria }}{% endif %}"
