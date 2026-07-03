@@ -63,7 +63,7 @@ echo "==> Installing skills for:$AFLAGS"
 
 # 1) our skills
 echo "--> $REPO (our skills)"
-npx skills add "$REPO" --skill '*' $AFLAGS </dev/null \
+npx skills add "$REPO" --skill '*' $AFLAGS -y </dev/null \
   || echo "WARN: could not install $REPO (published? set KV_SKILLS_REPO)"
 
 # 2) external skills the default flow uses (Superpowers pack, MIT — installed from source)
@@ -77,7 +77,7 @@ using-git-worktrees
 "
 for s in $EXTERNAL_SKILLS; do
   echo "--> obra/superpowers --skill $s"
-  npx skills add obra/superpowers --skill "$s" $AFLAGS </dev/null \
+  npx skills add obra/superpowers --skill "$s" $AFLAGS -y </dev/null \
     || echo "WARN: failed to install external skill: $s"
 done
 
