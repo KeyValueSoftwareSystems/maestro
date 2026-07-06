@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "stack": "backend",
+  "feature_slug": "saved-search",
+  "context_manifest": {
+    "read_once": ["src/searches/router.py", "src/searches/service.py", "src/db/models.py"],
+    "reference": ["docs/technical/saved-search/lld/backend.md", "contracts/saved-search/openapi.yaml", "CLAUDE.md"]
+  },
+  "slices": [
+    { "group_id": "g1", "task_ids": ["t1", "t2"] },
+    { "group_id": "g2", "task_ids": ["t3"] }
+  ],
+  "tasks": [
+    { "id": "t1", "group_id": "g1", "title": "SavedSearch schema + migration", "depends_on": [], "reads": [], "writes": ["src/db/models.py", "migrations/0007_saved_search.py"], "test": "tests/db/test_saved_search_model.py", "standards": ["migrations", "backward-compat"], "needs_human_gate": true },
+    { "id": "t2", "group_id": "g1", "title": "Service create/list", "depends_on": ["t1"], "reads": ["src/searches/repository.py"], "writes": ["src/searches/service.py"], "test": "tests/searches/test_service.py", "standards": ["validation", "idempotency"], "needs_human_gate": false },
+    { "id": "t3", "group_id": "g2", "title": "Audit-log endpoint", "depends_on": [], "reads": ["src/audit/router.py"], "writes": ["src/audit/handlers.py"], "test": "tests/audit/test_handlers.py", "standards": ["security", "observability"], "needs_human_gate": false }
+  ]
+}

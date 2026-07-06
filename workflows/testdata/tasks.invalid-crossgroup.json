@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "stack": "backend",
+  "feature_slug": "saved-search",
+  "context_manifest": { "read_once": ["src/db/models.py"], "reference": ["CLAUDE.md"] },
+  "slices": [
+    { "group_id": "g1", "task_ids": ["t1"] },
+    { "group_id": "g2", "task_ids": ["t3"] }
+  ],
+  "tasks": [
+    { "id": "t1", "group_id": "g1", "title": "Model", "depends_on": [], "reads": [], "writes": ["src/db/models.py"], "test": "tests/db/test_model.py", "standards": ["migrations"], "needs_human_gate": false },
+    { "id": "t3", "group_id": "g2", "title": "Bad", "depends_on": ["t1"], "reads": [], "writes": ["src/db/models.py"], "test": "tests/x.py", "standards": [], "needs_human_gate": false }
+  ]
+}
