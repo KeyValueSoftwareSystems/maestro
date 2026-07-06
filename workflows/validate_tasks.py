@@ -7,13 +7,14 @@ Exit 0 = OK; exit 1 = FAIL (reason on stderr).
 import json
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 import jsonschema
 
 SCHEMA_PATH = Path(__file__).with_name("tasks.schema.json")
 
 
-def fail(msg: str) -> "NoReturn":
+def fail(msg: str) -> NoReturn:
     print(f"FAIL: {msg}", file=sys.stderr)
     sys.exit(1)
 
@@ -39,6 +40,8 @@ def main() -> None:
     # slice <-> task consistency
     slice_ids = set()
     for sl in doc["slices"]:
+        if len(set(sl["task_ids"])) != len(sl["task_ids"]):
+            fail(f"slice {sl['group_id']} lists a duplicate task_id")
         for tid in sl["task_ids"]:
             if tid not in tasks:
                 fail(f"slice {sl['group_id']} references unknown task {tid}")
