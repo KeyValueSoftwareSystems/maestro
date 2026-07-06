@@ -50,6 +50,9 @@ workflow:
 # ----------------------------------------------------------------------------
 # Fan-out: author each critical-journey spec in parallel (scenarios are independent).
 # ----------------------------------------------------------------------------
+# NOTE: this for_each uses a prompt-only inline agent (unlike main.yaml's type:workflow shape).
+# Provisional pending Conductor validation — if the runtime rejects it, wrap the slice/scenario
+# build in a one-step sub-workflow (the prompt is unchanged).
 for_each:
   - name: author_specs
     type: for_each
