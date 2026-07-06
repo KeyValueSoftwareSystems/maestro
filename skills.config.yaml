@@ -95,3 +95,4 @@ artifacts:
   contract:    contracts/<slug>/openapi.yaml
   acceptance:  docs/functional/<slug>/acceptance-criteria.md
   work_dir:    .sdlc/<slug>/                          # tasks, verify, reviews, review-pack
+  tasks:       .sdlc/<slug>/<stack>/tasks.json        # machine-readable task DAG (<stack> = backend|frontend|qa)
