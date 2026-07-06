@@ -7,8 +7,8 @@
 # Composed by main.yaml (via dispatch.yaml). Also `/frontend-impl`.
 #
 # Flow (guide: task split -> execute UI states -> tests -> verify a11y -> reviewer):
-#   tasks (/frontend-tasks-equivalent via frontend-implement plan)
-#     -> implementer (/frontend-impl, consumes contract, all UI states)
+#   tasks (load-or-author tasks.json) -> implement (for_each over independent slices,
+#   parallel) -> merge_slices -> tests -> verify -> review
 #       -> component tests -> Playwright E2E -> a11y gate  (deterministic)
 #         -> the frontend-review skill
 # Loops: failed check -> implementer (max 3); reviewer changes -> implementer (max 3).
@@ -56,6 +56,9 @@ workflow:
 # ----------------------------------------------------------------------------
 # Fan-out: one isolated build per INDEPENDENT slice, concurrently (disjoint writes).
 # ----------------------------------------------------------------------------
+# NOTE: this for_each uses a prompt-only inline agent (unlike main.yaml's type:workflow shape).
+# Provisional pending Conductor validation — if the runtime rejects it, wrap the slice/scenario
+# build in a one-step sub-workflow (the prompt is unchanged).
 for_each:
   - name: implement
     type: for_each
@@ -74,7 +77,7 @@ for_each:
         - feature_slug:     {{ workflow.input.feature_slug }}
         - group_id:         {{ slice.group_id }}
         - tasks_path:       {{ tasks.output.tasks_path }}
-        - branch:           feature/{{ workflow.input.feature_slug }}-frontend/{{ slice.group_id }}
+        - branch:           feature/{{ workflow.input.feature_slug }}-frontend-{{ slice.group_id }}
         - contract_summary (frontend CONSUMES this exactly): {{ workflow.input.contract_summary }}
         Batch-load the context manifest in one call; run the slice's tasks in dependency order,
         test-first, wiring every required UI state, in an isolated worktree. Return: worktree, tasks_done.

@@ -7,7 +7,8 @@
 # Composed by main.yaml (via dispatch.yaml) per affected stack. Also `/backend-impl`.
 #
 # Flow (matches the guide: task split -> execute -> tests -> verify -> reviewer):
-#   tasks (/backend-tasks) -> implementer (/backend-impl, test-first)
+#   tasks (load-or-author tasks.json) -> implement (for_each over independent slices,
+#   parallel) -> merge_slices -> tests -> verify -> review
 #     -> unit+integration -> contract verification   (deterministic gates)
 #       -> backend review (/backend-review)          ==> reviews/summary.md
 # A failed check routes to the `fix` step (/fix), which fixes + re-verifies in one
@@ -59,6 +60,9 @@ workflow:
 # tasks are dependency-ordered inside the item (the skill runs them in order);
 # groups are mutually independent (disjoint writes — validated), so parallel is safe.
 # ----------------------------------------------------------------------------
+# NOTE: this for_each uses a prompt-only inline agent (unlike main.yaml's type:workflow shape).
+# Provisional pending Conductor validation — if the runtime rejects it, wrap the slice/scenario
+# build in a one-step sub-workflow (the prompt is unchanged).
 for_each:
   - name: implement
     type: for_each
@@ -77,7 +81,7 @@ for_each:
         - feature_slug:     {{ workflow.input.feature_slug }}
         - group_id:         {{ slice.group_id }}
         - tasks_path:       {{ tasks.output.tasks_path }}
-        - branch:           feature/{{ workflow.input.feature_slug }}-backend/{{ slice.group_id }}
+        - branch:           feature/{{ workflow.input.feature_slug }}-backend-{{ slice.group_id }}
         - contract_summary (backend OWNS this — implement it exactly): {{ workflow.input.contract_summary }}
         Batch-load the context manifest in one call; run the slice's tasks in dependency order,
         test-first, in an isolated git worktree on the branch above. Return: worktree, tasks_done.
