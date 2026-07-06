@@ -47,6 +47,33 @@ workflow:
       required: false
       default: ""
 
+# ----------------------------------------------------------------------------
+# Fan-out: author each critical-journey spec in parallel (scenarios are independent).
+# ----------------------------------------------------------------------------
+for_each:
+  - name: author_specs
+    type: for_each
+    description: Author each E2E scenario spec in parallel (one group per scenario).
+    source: author_tests.output.slices
+    as: slice
+    key_by: slice.group_id
+    max_concurrent: 3
+    failure_mode: all_or_nothing
+    agent:
+      name: author_scenario
+      prompt: |
+        Run the **/qa** skill in SCENARIO mode — author ONLY this scenario's spec. Inputs:
+        - feature:      {{ workflow.input.feature }}
+        - feature_slug: {{ workflow.input.feature_slug }}
+        - group_id:     {{ slice.group_id }}
+        - tasks_path:   {{ author_tests.output.tasks_path }}
+        Batch-load the fixture manifest in one call; write the scenario's spec file(s) with
+        stable selectors and real assertions. Return: spec_path.
+      output:
+        spec_path: { type: string }
+    routes:
+      - to: run_e2e
+
 agents:
   - name: author_tests
     description: Author critical-journey E2E from acceptance criteria via the qa-automation skill.
@@ -60,11 +87,13 @@ agents:
       - previous_failure (this is a fix pass — the /qa skill owns the freeze-assertions rule):
       {{ run_e2e.output.stdout }}{{ run_e2e.output.stderr }}
       {% endif %}
-      Return: suite_path.
+      Return: suite_path, tasks_path, slices.
     output:
       suite_path: { type: string }
+      tasks_path: { type: string }
+      slices: { type: array }
     routes:
-      - to: run_e2e
+      - to: author_specs
 
   - name: run_e2e
     type: script

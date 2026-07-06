@@ -69,6 +69,9 @@ Write `.sdlc/<slug>/qa/tasks.json` conforming to `workflows/tasks.schema.json`, 
 - **Validate before returning:** `python3 workflows/validate_tasks.py .sdlc/<slug>/qa/tasks.json`
   must print `OK`.
 
+**Scenario mode:** when invoked with a `group_id` and `tasks_path`, author only that one
+scenario's spec file (batch-load the fixture manifest once) and return `spec_path`.
+
 ## Output
 Write a coverage note to `.sdlc/<slug>/qa/suite.md` (journeys covered, negatives covered,
 out-of-scope, data strategy). Also write `.sdlc/<slug>/qa/tasks.json`. Return `suite_path`,
