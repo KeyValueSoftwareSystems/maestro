@@ -21,6 +21,21 @@ Implement the approved backend scope so it satisfies the contract exactly. The b
 4. **Stop and ask a human** before DB migrations, auth/permission, payment logic, prod
    config, or dependency upgrades.
 
+## Slice execution (one invocation per slice, from the impl `for_each`)
+When called with a `group_id` and `tasks_path`, implement **only that slice**:
+1. **Batch-load context once** — `cat` every path in `context_manifest.read_once` +
+   `context_manifest.reference` in a SINGLE call, delimited by `=== <path> ===`. Do not use
+   one `Read` per file. This is how the run stays under ~50 SDK calls.
+2. **Run the slice in order** — for each `task_id` in the slice's `task_ids` (already
+   dependency-ordered), batch-read that task's `reads` delta, then TDD it (write the failing
+   `test` → minimal code → refactor) before moving to the next task.
+3. **Human gates** — stop and ask before any task with `needs_human_gate: true`.
+4. **Stay in scope** — edit only files in the slice's tasks' `writes`. Work in the worktree
+   the `for_each` item provides; commit the slice on its worktree branch.
+
+If no `tasks.json` exists (standalone run), author it first via `/backend-tasks`, then proceed
+over its slices sequentially in this one session.
+
 ## Steps (per task, test-first)
 1. **Write the failing test first** from the contract/acceptance criteria (RED).
 2. **Implement the minimum** to pass it (GREEN), in dependency order: types/schema →
@@ -80,4 +95,4 @@ contract validation). On failure invoke `/fix` (bounded to 3; delegates to
 Tests ran and pass; every standards item addressed or explicitly noted; edge-case tests
 exist; changed files summarized; remaining risks listed; contract honored exactly. Passing
 checks are the proof — not a message that says "done". Outputs: `branch`, `summary`,
-`tests_passed`.
+`tests_passed`. In slice mode, also return `worktree` and `tasks_done` (the ids implemented).
