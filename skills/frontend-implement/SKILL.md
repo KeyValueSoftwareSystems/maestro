@@ -20,6 +20,21 @@ never invent API shapes. Start only after the contract is stable.
 2. List pages affected, components to reuse/add, API hooks, form schema/validation,
    analytics, and tests. List files to change.
 
+## Slice execution (one invocation per slice, from the impl `for_each`)
+When called with a `group_id` and `tasks_path`, implement **only that slice**:
+1. **Batch-load context once** — `cat` every path in `context_manifest.read_once` +
+   `context_manifest.reference` in a SINGLE call, delimited by `=== <path> ===` (not one
+   `Read` per file). Keeps the run under ~50 SDK calls.
+2. **Run the slice in order** — for each `task_id` in the slice's `task_ids`, batch-read its
+   `reads` delta, then build test-first, wiring every required UI state for that task.
+3. **Human gates** — stop and ask before any task with `needs_human_gate: true`.
+4. **Stay in scope** — edit only files in the slice's tasks' `writes`, in the worktree the
+   `for_each` item provides; commit the slice on its worktree branch.
+
+This is distinct from **Plan mode** (produce the task/UI-state list and stop). If no
+`tasks.json` exists (standalone run), author it first (plan mode), then proceed over its
+slices sequentially in this one session.
+
 ## Steps
 1. **Types/API client** from the contract (generate or hand-write; single source of truth).
 2. **State & data-fetching** via the existing layer; define cache keys & invalidation.
@@ -76,4 +91,4 @@ failure invoke `/fix` (max 3).
 ## Definition of done
 All required UI states built and tested; standards addressed; edge cases handled; no
 TypeScript errors; reuses existing components; contract consumed exactly. Outputs: `branch`,
-`summary`, `tests_passed`.
+`summary`, `tests_passed`. In slice mode, also return `worktree` and `tasks_done`.
