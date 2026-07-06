@@ -134,8 +134,11 @@ protocol:
 
 1. **Locate or author.** If `.sdlc/<slug>/<stack>/tasks.json` exists (from the design phase),
    use it. Otherwise author it via the fallback (`backend-tasks`), then continue.
-2. **Load once.** Read `context_manifest.read_once` in a **single batched call** — one `Bash`
-   `cat` over all paths with `=== <path> ===` delimiters — instead of N `Read` calls.
+2. **Load once.** Read `context_manifest.read_once` **and** `context_manifest.reference` in a
+   **single batched call** — one `Bash` `cat` over all paths (both lists concatenated) with
+   `=== <path> ===` delimiters — instead of N `Read` calls. (`read_once` = code the tasks
+   edit against; `reference` = the LLD, contract, and repo conventions the tasks must honor.
+   Both are loaded together in the one batched read.)
 3. **Topological waves.** Sort tasks by `depends_on` into waves (wave = all tasks whose
    prerequisites are already complete).
 4. **Dispatch a wave.** Run the wave's tasks as **parallel subagents** via the
