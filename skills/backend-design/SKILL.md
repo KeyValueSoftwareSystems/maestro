@@ -44,6 +44,8 @@ rely on; don't guess.
    **performance** considerations.
 6. **Test plan** — unit + integration coverage, including the contract's negative paths.
 7. **Write** the backend LLD; flag every breaking change in plain language.
+8. **Emit the task DAG** — write `.sdlc/<slug>/backend/tasks.json` (see section below),
+   reusing the code you already read. No re-reading.
 
 ## What the backend LLD must cover (write all)
 Context & constraints (grounded in the code, cited) · component/sequence design · data model
@@ -66,10 +68,27 @@ Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-
 `none`). If set, use it to research unfamiliar libraries, protocols, or compliance — it must
 return sourced findings you can cite in the LLD. If `none`, design from the code + HLD.
 
+## Emit tasks.json (the parallel task DAG)
+Write `.sdlc/<slug>/backend/tasks.json` conforming to `workflows/tasks.schema.json`. It is
+the plan the backend impl phase fans out over — build it from the LLD you just wrote, reusing
+the files you already read (do not re-read the codebase):
+- `context_manifest.read_once` = the code files the tasks edit against; `reference` = this LLD
+  path, the (pending) contract path, and `CLAUDE.md`/`AGENTS.md`.
+- One `tasks[]` entry per ≤1-commit slice, each with `id`, `group_id`, `title`, `depends_on`
+  (**intra-group only**), `reads` (files needed beyond the manifest), `writes` (exact files),
+  `test` (the failing test to write first), `standards`, `needs_human_gate` (true for DB
+  migration, auth/permission, payment, prod config, or dependency changes).
+- **Grouping into independent slices:** two tasks share a `group_id` **iff** one depends on
+  the other OR they write a common file; otherwise put them in different groups. Then fill
+  `slices[]` — one entry per group, `task_ids` in dependency order.
+- **Validate before returning:** run
+  `python3 workflows/validate_tasks.py .sdlc/<slug>/backend/tasks.json` — it must print `OK`.
+  Fix any `FAIL` (cross-group edge, shared write, mis-ordered slice) before finishing.
+
 ## Output
 Write `docs/technical/<slug>/lld/backend.md` with the sections above, each constraint citing
-`file:line`. Return `lld_path` and a short list of the **decisions/constraints that shape the
-contract** (e.g. "auth is centralized in X — new endpoints must use it"; "exposes `GET
+`file:line`. Return `lld_path`, `tasks_path` (`.sdlc/<slug>/backend/tasks.json`), and a short
+list of the **decisions/constraints that shape the contract** (e.g. "auth is centralized in X — new endpoints must use it"; "exposes `GET
 /searches` with cursor pagination"). The API/events section feeds `/api-contract`.
 
 ## Definition of done
