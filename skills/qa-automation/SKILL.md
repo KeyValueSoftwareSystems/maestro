@@ -26,9 +26,11 @@ not every path.
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
 4. **Author tests** with stable selectors (roles/test-ids), explicit waits on conditions,
    and assertions that verify observable behavior + the contract's outcomes.
-5. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
+5. **Emit the scenario DAG** — write `.sdlc/<slug>/qa/tasks.json` (see section below) so the
+   suite can be authored in parallel.
+6. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
    always runs).
-6. **On failure**, apply the fix-loop rule (selectors/flakes/waits only), bounded to 3.
+7. **On failure**, apply the fix-loop rule (selectors/flakes/waits only), bounded to 3.
 
 ## Standards every suite must satisfy
 - **Risk-tiered** — critical journeys + key negatives; explicit out-of-scope note.
@@ -55,9 +57,22 @@ Read `skills.config.yaml` → `qa.external.generator` (e.g. `anthropics:webapp-t
 `none`). If set, use it to generate tests — the output must still meet the standards above
 (isolation, determinism, real assertions, risk-tiering). If `none`, author in-pack.
 
+## Emit tasks.json (parallel scenario authoring)
+Write `.sdlc/<slug>/qa/tasks.json` conforming to `workflows/tasks.schema.json`, with
+`"stack": "qa"`. Scenarios are independent, so each scenario is its **own single-task group**:
+- `context_manifest.read_once` = shared fixtures / page objects / test helpers the specs use;
+  `reference` = the acceptance-criteria path and the contract summary.
+- One `tasks[]` entry per scenario: `id`, its own `group_id`, `title` (the journey), empty
+  `depends_on`, `reads` (extra fixtures), `writes` (the spec file it creates), `test` (the
+  scenario id), `standards` (e.g. `["risk-tiered","determinism","isolation"]`),
+  `needs_human_gate: false`. `slices[]` = one group per scenario.
+- **Validate before returning:** `python3 workflows/validate_tasks.py .sdlc/<slug>/qa/tasks.json`
+  must print `OK`.
+
 ## Output
 Write a coverage note to `.sdlc/<slug>/qa/suite.md` (journeys covered, negatives covered,
-out-of-scope, data strategy). Return `suite_path` and `tests_passed`.
+out-of-scope, data strategy). Also write `.sdlc/<slug>/qa/tasks.json`. Return `suite_path`,
+`tasks_path`, `slices` (the `slices` array from tasks.json), and `tests_passed`.
 
 ## Definition of done
 Critical journeys + key negatives automated and green in a clean env; tests isolated and
