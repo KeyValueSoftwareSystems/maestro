@@ -42,6 +42,8 @@ code — never edit app code. Prefer reuse over reinvention; cite `file:line` fo
    optimistic UI + rollback).
 6. **Test plan** — component + E2E coverage, including the negative UI states.
 7. **Write** the frontend LLD; flag anything that forces a backend/contract change.
+8. **Emit the task DAG** — write `.sdlc/<slug>/frontend/tasks.json` (see section below),
+   reusing the code you already read. No re-reading.
 
 ## What the frontend LLD must cover (write all)
 Context & constraints (grounded in the code, cited) · component & state design · routing ·
@@ -62,10 +64,23 @@ Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-
 `none`). If set, use it to research unfamiliar libraries or patterns — it must return sourced
 findings you can cite in the LLD. If `none`, design from the code + HLD.
 
+## Emit tasks.json (the parallel task DAG)
+Write `.sdlc/<slug>/frontend/tasks.json` conforming to `workflows/tasks.schema.json`. Build it
+from the LLD you just wrote, reusing files you already read (do not re-read the codebase):
+- `context_manifest.read_once` = the component/state/hook files the tasks edit against;
+  `reference` = this LLD path, the (pending) contract path, and `CLAUDE.md`.
+- One `tasks[]` entry per ≤1-commit slice (e.g. types/API-client, a component + its UI states,
+  form+validation, a route), each with `id`, `group_id`, `title`, `depends_on`
+  (**intra-group only**), `reads`, `writes` (exact files), `test`, `standards`,
+  `needs_human_gate` (true for auth/permission, prod config, or dependency changes).
+- **Grouping:** two tasks share a `group_id` **iff** one depends on the other OR they write a
+  common file; otherwise different groups. Fill `slices[]`, `task_ids` in dependency order.
+- **Validate before returning:** `python3 workflows/validate_tasks.py .sdlc/<slug>/frontend/tasks.json`
+  must print `OK`.
+
 ## Output
-Write `docs/technical/<slug>/lld/frontend.md` with the sections above, each constraint citing
-`file:line`. Return `lld_path` and a short list of the **decisions/constraints that shape the
-contract** (e.g. "data-fetching goes through hook X — reuse it"; "needs `GET /searches`
+`file:line`. Return `lld_path`, `tasks_path` (`.sdlc/<slug>/frontend/tasks.json`), and a short
+list of the **decisions/constraints that shape the contract** (e.g. "data-fetching goes through hook X — reuse it"; "needs `GET /searches`
 returning `{items, nextCursor}`"). The API-consumed section feeds `/api-contract`.
 
 ## Definition of done
