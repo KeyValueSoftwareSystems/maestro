@@ -120,8 +120,9 @@ agents:
 
   # ---- 1. DESIGN: HLD -> approve -> per-stack LLDs -> contract -------------
   # The design sub-workflow owns the whole design phase: it authors the HLD,
-  # gates it for HUMAN approval, then authors the per-stack LLDs (backend ∥
-  # frontend) and reconciles them into the cross-repo contract via /api-contract.
+  # runs the open-question loop (ask one at a time -> refine -> repeat until
+  # resolved), gates it for HUMAN approval, then authors the per-stack LLDs
+  # (backend ∥ frontend) and reconciles them into the cross-repo contract via /api-contract.
   # Outputs come from design.yaml's own `output:` block (design.output.*); a
   # `type: workflow` step must NOT redeclare output (schema rejects it).
   - name: design

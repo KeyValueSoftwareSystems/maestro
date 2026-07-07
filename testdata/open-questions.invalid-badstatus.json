@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "feature_slug": "saved-search",
+  "questions": [
+    {
+      "id": "q1",
+      "question": "Should saved searches be per-user or shareable across a team?",
+      "why": "Drives the data model and authz — blocks the LLD.",
+      "options": ["Per-user only", "Team-shareable"],
+      "status": "pending",
+      "resolution": null
+    }
+  ]
+}
