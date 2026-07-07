@@ -1,4 +1,4 @@
-# KeyValue AI-SDLC
+# Maestro
 
 A ready-to-install pack of **AI skills** and a **Conductor workflow** that runs a feature
 through the KeyValue software-development lifecycle: high-level design → detailed design →
@@ -152,40 +152,56 @@ This is the basic workflow — a starting point you can adjust to make your own.
 
 ## Customisable flow
 
-```mermaid
-flowchart TD
-    PRD([feature + PRD]) --> HLD["HLD — /plan"]
-    HLD --> OQ{{open-questions loop}}
-    OQ -->|refine| HLD
-    OQ --> G1{approve}
-    G1 --> BD[backend-design]
-    G1 --> FD[frontend-design]
-    BD --> CON["/api-contract"]
-    FD --> CON
-    CON --> G2{approve}
-    G2 --> AR[architecture-review]
-    AR --> G3{approve}
-    G3 --> BI["backend-impl<br/>DAG → slices → merge → tests → verify → review"]
-    G3 --> FI["frontend-impl<br/>DAG → slices → merge → tests → a11y → review"]
-    BI --> INT[integrate]
-    FI --> INT
-    INT --> QA[QA — /qa]
-    QA --> RP["review pack — /review-pack"]
-    RP --> G4{approve}
-    G4 --> REL([release])
-
-    classDef gate fill:#fde68a,stroke:#b45309,color:#000;
-    class G1,G2,G3,G4 gate;
-```
-
-The same flow in text (backend ∥ frontend run in parallel; `[approve]` = human gate):
-
-```
-feature → design phase ─ HLD → [approve]
-                         → per-stack LLDs (backend ∥ frontend) → /api-contract
-        → architecture-review → [approve]
-        → implement (backend ∥ frontend: task DAG → parallel slices → merge → tests → verify → review)
-        → integrate → QA → review pack → [approve → release]
+```text
+                          feature + PRD
+                                │
+                                ▼
+                     ┌──────────────────────┐
+                     │       HLD  /plan      │  ⟲ open-questions loop
+                     └──────────┬───────────┘     (refine until resolved)
+                                ▼
+                          — ✋ approve —
+                                │
+                 ┌──────────────┴──────────────┐
+                 ▼                              ▼
+       ┌──────────────────┐          ┌───────────────────┐
+       │  backend-design  │          │  frontend-design  │
+       └─────────┬────────┘          └─────────┬─────────┘
+                 └──────────────┬──────────────┘
+                                ▼
+                          /api-contract
+                                │
+                                ▼
+                          — ✋ approve —
+                                │
+                                ▼
+                      architecture-review
+                                │
+                                ▼
+                          — ✋ approve —
+                                │
+                 ┌──────────────┴──────────────┐
+                 ▼                              ▼
+   ┌──────────────────────────┐   ┌──────────────────────────┐
+   │  backend-impl            │   │  frontend-impl           │
+   │  DAG→slices→merge→tests  │   │  DAG→slices→merge→tests  │
+   │  →verify→review          │   │  →a11y→review            │
+   └─────────────┬────────────┘   └─────────────┬────────────┘
+                 └──────────────┬───────────────┘
+                                ▼
+                            integrate
+                                │
+                                ▼
+                                QA
+                                │
+                                ▼
+                            review-pack
+                                │
+                                ▼
+                          — ✋ approve —
+                                │
+                                ▼
+                             release
 ```
 
 The whole design phase is one workflow ([workflows/design.yaml](workflows/design.yaml)): it
