@@ -78,6 +78,25 @@ Any workflow below also runs on its own — useful for re-running just one phase
 > this up when `uv` is present. The per-stack parallel fan-out (`for_each` over task-DAG
 > slices) is new — validate it against your Conductor runtime before relying on it.
 
+### Resuming a partially-run workflow
+
+Conductor only checkpoints the top-level run; a sub-workflow (`design.yaml`, `qa.yaml`, …)
+otherwise re-runs from its first step. To make sub-workflows re-entrant, each expensive step
+records itself in a per-feature ledger at `.sdlc/<slug>/state.json` (via
+[`workflows/state.py`](workflows/state.py)). On a re-run, a step whose artifact is already
+recorded and present on disk is skipped; the workflow lands on the first unfinished step.
+Human approval gates are never skipped — they always re-ask.
+
+- Re-run the same command; completed steps skip automatically.
+- Force a rebuild of one step: `python3 workflows/state.py reset --slug <slug> --step hld`
+  (or just delete its artifact).
+- Force a full rebuild: `python3 workflows/state.py reset --slug <slug> --all`
+  (or delete `.sdlc/<slug>/state.json`).
+
+**Known limits:** the ledger tracks completion, not content — hand-editing an upstream artifact
+does not auto-invalidate downstream steps (use `reset`). Skip granularity for the parallel LLD
+group is the whole group, not per-stack.
+
 ### As skills (you orchestrate manually)
 
 Run the slash commands yourself, in order, in any IDE (Claude Code, Cursor, Copilot) — you

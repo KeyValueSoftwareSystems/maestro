@@ -28,12 +28,20 @@ def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: oq_serve.py <path-to-open-questions.json>")
     path = Path(sys.argv[1])
+    # Fail-soft (matches the ledger's corrupt-file handling): a missing or
+    # unparseable file means "no open questions" -> approve. This keeps resume
+    # working when g_hld routes a done HLD into serve, and stays safe for HLDs
+    # authored before open-questions.json existed.
     if not path.is_file():
-        fail(f"not found: {path}")
+        print(f"[oq] no open-questions file at {path}; treating as resolved", file=sys.stderr)
+        print(json.dumps({"state": "approve"}))
+        return
     try:
         doc = json.loads(path.read_text())
     except json.JSONDecodeError as e:
-        fail(f"invalid JSON: {e}")
+        print(f"[oq] WARNING: unparseable {path} ({e}); treating as resolved", file=sys.stderr)
+        print(json.dumps({"state": "approve"}))
+        return
 
     questions = doc.get("questions", [])
 

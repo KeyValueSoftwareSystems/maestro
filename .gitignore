@@ -11,3 +11,7 @@
 # these dirs are populated by install.sh (npx skills). Regenerable — never the source.
 .claude/skills/
 .cursor/skills/
+
+# Python bytecode (from workflows/*.py helpers + their tests)
+__pycache__/
+*.pyc
