@@ -57,7 +57,6 @@ workflow:
 
 # ----------------------------------------------------------------------------
 # Parallel LLD authoring: backend + frontend, concurrent (after HLD approval).
-# (parallel groups allow only agent steps — the design agents qualify.)
 # ----------------------------------------------------------------------------
 parallel:
   - name: author_llds
@@ -65,7 +64,7 @@ parallel:
     failure_mode: all_or_nothing
     agents: [backend_design, frontend_design]
     routes:
-      - to: contract
+      - to: m_llds
 
 agents:
   # ---- 0. ASSERT the PRD exists (fail fast, before /plan) ------------------
@@ -81,14 +80,28 @@ agents:
         if [ -s "$f" ]; then echo "[prd] OK: $f"; exit 0
         else echo "[prd] NOT FOUND (or empty): $f — create the PRD before running the design phase." >&2; exit 1; fi
     routes:
-      - to: author_hld
+      - to: g_hld
         when: "exit_code == 0"
       - to: abort
+
+  # ---- GUARD: skip HLD authoring if already done (gate still runs) --------
+  - name: g_hld
+    type: script
+    description: Skip /plan if hld.md is already marked done and present.
+    command: bash
+    args:
+      - "-c"
+      - |
+        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step hld
+    routes:
+      - to: hld_approval            # done -> skip authoring, still gate
+        when: "exit_code == 0"
+      - to: author_hld              # not done -> author it
 
   # ---- 1. PLAN — author the HLD (/plan) -----------------------------------
   - name: author_hld
     description: Produce the high-level design (HLD) via the plan skill.
-    model: claude-opus-4-8            # design judgement (per-step override; SoT for the model)
+    model: claude-opus-4-8
     prompt: |
       Run the **/plan** skill. Inputs:
       - feature:      {{ workflow.input.feature }}
@@ -100,26 +113,24 @@ agents:
       hld_path: { type: string }
       hld_summary: { type: string }
     routes:
-      - to: assert_hld
+      - to: m_hld
 
-  # ---- 1b. ASSERT the HLD artifact exists ---------------------------------
-  - name: assert_hld
+  # ---- MARK: record hld done (subsumes the old assert_hld) ----------------
+  - name: m_hld
     type: script
-    description: Verify the HLD artifact was created (deterministic proof).
+    description: Assert + record hld.md done in the ledger.
     command: bash
     args:
       - "-c"
       - |
-        set -uo pipefail
-        f="docs/technical/{{ workflow.input.feature_slug }}/hld.md"
-        if [ -s "$f" ]; then echo "[artifact] OK: $f ($(wc -l < "$f" | tr -d ' ') lines)"; exit 0
-        else echo "[artifact] MISSING/EMPTY: $f" >&2; exit 1; fi
+        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
+          --step hld --artifact "docs/technical/{{ workflow.input.feature_slug }}/hld.md"
     routes:
       - to: hld_approval
         when: "exit_code == 0"
       - to: abort
 
-  # ---- 2. HUMAN APPROVAL: HLD ---------------------------------------------
+  # ---- 2. HUMAN APPROVAL: HLD (never skipped) -----------------------------
   - name: hld_approval
     type: human_gate
     description: Review the high-level design before detailed design.
@@ -128,7 +139,7 @@ agents:
 
       Artifact: `docs/technical/{{ workflow.input.feature_slug }}/hld.md`
 
-      **Summary:** {{ author_hld.output.hld_summary }}
+      **Summary:** {{ author_hld.output.hld_summary if author_hld is defined else "(loaded from a prior run — see the HLD file)" }}
 
       **Open questions:** see the "Open questions" section of the HLD above.
 
@@ -136,14 +147,42 @@ agents:
     options:
       - label: "Approve — proceed to LLD"
         value: approve
-        route: author_llds
+        route: g_llds
       - label: "Request HLD revisions"
         value: revise
-        route: author_hld
+        route: reset_hld_cascade
         prompt_for: feedback
       - label: "Reject — abort"
         value: reject
         route: abort
+
+  # ---- RESET: revise HLD invalidates HLD + everything downstream ----------
+  - name: reset_hld_cascade
+    type: script
+    description: Clear hld + derived LLD/contract flags so a revision regenerates them.
+    command: bash
+    args:
+      - "-c"
+      - |
+        python3 workflows/state.py reset --slug "{{ workflow.input.feature_slug }}" \
+          --step hld --step backend_lld --step frontend_lld --step api_contract
+    routes:
+      - to: author_hld
+
+  # ---- GUARD: skip LLD authoring only if BOTH LLDs are done ---------------
+  - name: g_llds
+    type: script
+    description: Skip the parallel LLD group only when both LLDs are already done.
+    command: bash
+    args:
+      - "-c"
+      - |
+        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step backend_lld \
+          && python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step frontend_lld
+    routes:
+      - to: g_contract              # both done -> skip group
+        when: "exit_code == 0"
+      - to: author_llds             # either missing -> run group
 
   # ---- 3. PER-STACK LLDs (parallel) ---------------------------------------
   - name: backend_design
@@ -152,7 +191,7 @@ agents:
       Run the **/backend-design** skill. Inputs:
       - feature:      {{ workflow.input.feature }}
       - feature_slug: {{ workflow.input.feature_slug }}
-      - hld_path:     {{ author_hld.output.hld_path }}
+      - hld_path:     docs/technical/{{ workflow.input.feature_slug }}/hld.md
       Return: lld_path, tasks_path.
     output:
       lld_path: { type: string }
@@ -164,24 +203,55 @@ agents:
       Run the **/frontend-design** skill. Inputs:
       - feature:      {{ workflow.input.feature }}
       - feature_slug: {{ workflow.input.feature_slug }}
-      - hld_path:     {{ author_hld.output.hld_path }}
+      - hld_path:     docs/technical/{{ workflow.input.feature_slug }}/hld.md
       Return: lld_path, tasks_path.
     output:
       lld_path: { type: string }
       tasks_path: { type: string }
 
+  # ---- MARK: record both LLDs done (subsumes main.yaml's assert_lld) -------
+  - name: m_llds
+    type: script
+    description: Assert + record both per-stack LLDs done.
+    command: bash
+    args:
+      - "-c"
+      - |
+        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
+          --step backend_lld --artifact "docs/technical/{{ workflow.input.feature_slug }}/lld/backend.md" \
+        && python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
+          --step frontend_lld --artifact "docs/technical/{{ workflow.input.feature_slug }}/lld/frontend.md"
+    routes:
+      - to: g_contract
+        when: "exit_code == 0"
+      - to: abort
+
+  # ---- GUARD: skip contract if already done -------------------------------
+  - name: g_contract
+    type: script
+    description: Skip /api-contract if the OpenAPI contract is already done.
+    command: bash
+    args:
+      - "-c"
+      - |
+        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step api_contract
+    routes:
+      - to: $end                    # done -> whole design phase complete
+        when: "exit_code == 0"
+      - to: contract
+
   # ---- 4. CONTRACT (/api-contract) ----------------------------------------
   - name: contract
     description: Reconcile the per-stack LLDs into the cross-repo contract via the api-contract skill.
-    model: claude-opus-4-8            # contract reconciliation (per-step override; SoT for the model)
+    model: claude-opus-4-8
     prompt: |
       Run the **/api-contract** skill (the per-stack LLDs have already been written — pass them).
       Inputs:
       - feature:      {{ workflow.input.feature }}
       - feature_slug: {{ workflow.input.feature_slug }}
-      - hld_path:     {{ author_hld.output.hld_path }}
-      - backend_lld:  {{ author_llds.outputs.backend_design.lld_path }}
-      - frontend_lld: {{ author_llds.outputs.frontend_design.lld_path }}
+      - hld_path:     docs/technical/{{ workflow.input.feature_slug }}/hld.md
+      - backend_lld:  docs/technical/{{ workflow.input.feature_slug }}/lld/backend.md
+      - frontend_lld: docs/technical/{{ workflow.input.feature_slug }}/lld/frontend.md
       Return: contract_path, contract_summary, affected_repos, acceptance_criteria.
     output:
       contract_path: { type: string }
@@ -194,7 +264,22 @@ agents:
       acceptance_criteria:
         type: string
     routes:
+      - to: m_contract
+
+  # ---- MARK: record contract done -----------------------------------------
+  - name: m_contract
+    type: script
+    description: Assert + record the OpenAPI contract done.
+    command: bash
+    args:
+      - "-c"
+      - |
+        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
+          --step api_contract --artifact "contracts/{{ workflow.input.feature_slug }}/openapi.yaml"
+    routes:
       - to: $end
+        when: "exit_code == 0"
+      - to: abort
 
   - name: abort
     type: terminate
