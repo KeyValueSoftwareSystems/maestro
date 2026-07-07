@@ -12,8 +12,11 @@ Usage:
 Exit codes: check -> 0 done / 1 not-done; mark -> 0 marked / 1 artifact missing;
 reset -> 0. See docs/superpowers/specs/2026-07-07-subworkflow-step-ledger-resume-design.md
 """
+import contextlib
+import fcntl
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 DEFAULT_ROOT = Path(".sdlc")
@@ -50,3 +53,72 @@ def save_ledger(slug: str, data: dict, root: Path = DEFAULT_ROOT) -> None:
     with tmp.open("w") as f:
         json.dump(data, f, indent=2, sort_keys=True)
     os.replace(tmp, p)
+
+
+def _artifact_ok(artifact: str | None) -> bool:
+    if not artifact:
+        return False
+    p = Path(artifact)
+    return p.is_file() and p.stat().st_size > 0
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+@contextlib.contextmanager
+def _lock(slug: str, root: Path = DEFAULT_ROOT):
+    lp = lock_path(slug, root)
+    lp.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lp), os.O_CREAT | os.O_RDWR)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
+def is_done(slug: str, step: str, key: str | None = None, root: Path = DEFAULT_ROOT) -> bool:
+    entry = load_ledger(slug, root)["steps"].get(step_key(step, key))
+    if not entry or not entry.get("done"):
+        return False
+    return _artifact_ok(entry.get("artifact"))
+
+
+def mark_done(
+    slug: str,
+    step: str,
+    artifact: str,
+    key: str | None = None,
+    root: Path = DEFAULT_ROOT,
+    now: str | None = None,
+) -> bool:
+    if not _artifact_ok(artifact):
+        return False
+    with _lock(slug, root):
+        data = load_ledger(slug, root)
+        data["steps"][step_key(step, key)] = {
+            "done": True,
+            "at": now or _utcnow(),
+            "artifact": artifact,
+        }
+        save_ledger(slug, data, root)
+    return True
+
+
+def reset(
+    slug: str,
+    steps: list[str] | None = None,
+    all_: bool = False,
+    key: str | None = None,
+    root: Path = DEFAULT_ROOT,
+) -> None:
+    with _lock(slug, root):
+        data = load_ledger(slug, root)
+        if all_:
+            data["steps"] = {}
+        else:
+            for s in steps or []:
+                data["steps"].pop(step_key(s, key), None)
+        save_ledger(slug, data, root)
