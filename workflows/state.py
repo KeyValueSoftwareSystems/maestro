@@ -45,7 +45,11 @@ def load_ledger(slug: str, root: Path = DEFAULT_ROOT) -> dict:
     if not p.is_file():
         return _empty_ledger(slug)
     with p.open() as f:
-        return json.load(f)
+        try:
+            return json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"[state] WARNING: corrupt ledger at {p}, treating as empty: {e}", file=sys.stderr)
+            return _empty_ledger(slug)
 
 
 def save_ledger(slug: str, data: dict, root: Path = DEFAULT_ROOT) -> None:
@@ -150,7 +154,10 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.cmd == "check":
-        return 0 if is_done(args.slug, args.step, args.key) else 1
+        if is_done(args.slug, args.step, args.key):
+            return 0
+        print(f"[state] not done: {step_key(args.step, args.key)}", file=sys.stderr)
+        return 1
 
     if args.cmd == "mark":
         if mark_done(args.slug, args.step, args.artifact, args.key):

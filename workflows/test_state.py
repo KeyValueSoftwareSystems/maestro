@@ -110,6 +110,37 @@ class StateOpsTest(unittest.TestCase):
         self.assertEqual(sorted(recorded), sorted(steps))
 
 
+class CorruptLedgerTest(unittest.TestCase):
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+        self.artifact = self.root / "hld.md"
+        self.artifact.write_text("# HLD\n")
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def _write_corrupt(self, slug):
+        p = state.ledger_path(slug, self.root)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("{ this is not json")
+
+    def test_load_corrupt_ledger_returns_empty_skeleton(self):
+        self._write_corrupt("s")
+        data = state.load_ledger("s", self.root)
+        self.assertEqual(data, {"version": 1, "slug": "s", "steps": {}})
+
+    def test_mark_done_self_heals_corrupt_ledger(self):
+        self._write_corrupt("s")
+        ok = state.mark_done("s", "hld", str(self.artifact), root=self.root)
+        self.assertTrue(ok)
+        self.assertTrue(state.is_done("s", "hld", root=self.root))
+
+    def test_reset_does_not_raise_on_corrupt_ledger(self):
+        self._write_corrupt("s")
+        state.reset("s", steps=["hld"], root=self.root)
+
+
 class CliTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()

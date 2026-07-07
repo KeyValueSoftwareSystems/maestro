@@ -168,6 +168,8 @@ agents:
           --step hld --step backend_lld --step frontend_lld --step api_contract
     routes:
       - to: author_hld
+        when: "exit_code == 0"
+      - to: abort
 
   # ---- GUARD: skip LLD authoring only if BOTH LLDs are done ---------------
   - name: g_llds
@@ -210,6 +212,8 @@ agents:
       tasks_path: { type: string }
 
   # ---- MARK: record both LLDs done (subsumes main.yaml's assert_lld) -------
+  # NOTE: backend_lld may be marked done before the chained frontend mark fails
+  # (-> abort); the next resume re-runs the whole group (group-level granularity).
   - name: m_llds
     type: script
     description: Assert + record both per-stack LLDs done.
