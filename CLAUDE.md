@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 Guidance for working in this repo (`kv-skills` — KeyValue AI-SDLC).
 
 ## What this repo is
@@ -15,8 +17,22 @@ A **distributable pack**, not an application. It ships:
   external helper skill) backs each SDLC slot. Read by **both** slash commands and Conductor.
 - **`install.sh`** — installs the pack + external Superpowers skills + Conductor into a user's repo.
 
-There is **no build, no test suite, no app to run.** The "code" is prompts and YAML. The only
-executable is `workflows/validate_tasks.py`.
+There is **no build and no app to run.** The "code" is prompts and YAML; the only executables
+are the Python helpers under `workflows/` (`validate_tasks.py`, `validate_open_questions.py`,
+`state.py`, `oq_serve.py`, `oq_record.py`) — all stdlib-only, no dependencies to install.
+
+## Running checks
+
+```bash
+python3 testdata/test_state.py        # 25 unittest cases for the step ledger (state.py)
+bash   testdata/test_design_wiring.sh # end-to-end check of design.yaml guard/mark wiring vs state.py
+python3 workflows/validate_tasks.py          testdata/tasks.valid.json
+python3 workflows/validate_open_questions.py testdata/open-questions.valid.json
+```
+
+Run a single unittest case: `python3 testdata/test_state.py CliTest.<method>`. The `invalid-*`
+fixtures in `testdata/` exist to prove the validators *reject* the hard cases — a validator that
+accepts one is a regression.
 
 ## The two-config model — keep it straight
 
@@ -30,7 +46,7 @@ executable is `workflows/validate_tasks.py`.
 ## The SDLC flow (what the pack produces)
 
 ```
-feature → HLD (/plan) → [approve] → per-stack LLDs (backend ∥ frontend) → /api-contract
+feature → HLD (/plan) → [open-questions loop → approve] → per-stack LLDs (backend ∥ frontend) → /api-contract
         → architecture-review → [approve]
         → implement (task DAG → parallel slices → merge → tests → verify → review)
         → QA → review pack → [approve → release]
@@ -59,6 +75,37 @@ shared write). Validate with:
 ```bash
 python3 workflows/validate_tasks.py testdata/tasks.valid.json
 ```
+
+## The HLD open-questions loop
+
+The HLD phase surfaces unresolved decisions as a machine-readable loop, mirrored by the HLD's
+prose "Open questions" section. State lives at `.sdlc/<slug>/open-questions.json` (schema
+`workflows/open-questions.schema.json`, validator `validate_open_questions.py`). `design.yaml`
+drives it with two helpers — never re-implement their logic in the YAML:
+
+- `oq_serve.py <path>` — prints the next action as JSON: `{"state":"ask",…}` (a question is open),
+  `"refine"` (answers await folding back into the HLD), or `"approve"` (nothing left). The workflow
+  routes on `state`; exit 1 (missing/unparseable file) routes to abort.
+- `oq_record.py <path> <qid> <choice> [answer]` — folds a gate answer in, then re-validates.
+  Choices: `answer` (resolved; a bare integer `N` picks `options[N-1]`, else stored verbatim),
+  `you-decide` (resolved; refine step chooses a default), `skip` (deferred).
+
+## Sub-workflow resume — the step ledger
+
+Conductor only checkpoints the top-level run, so a sub-workflow (`design.yaml`, `qa.yaml`, …)
+would otherwise re-run from step one. `state.py` makes them re-entrant via a per-feature ledger
+at `.sdlc/<slug>/state.json` (fcntl-locked). **Only script steps call it — never an LLM/agent
+step.** A step whose artifact is recorded *and still present on disk* is skipped; the run lands
+on the first unfinished step. Approval gates are never skipped.
+
+```bash
+python3 workflows/state.py check --slug S --step ID [--key K]   # exit 0 done / 1 not-done
+python3 workflows/state.py mark  --slug S --step ID --artifact PATH   # exit 1 if artifact missing
+python3 workflows/state.py reset --slug S (--step ID … | --all)       # force rebuild
+```
+
+The ledger tracks completion, not content: hand-editing an upstream artifact does **not**
+invalidate downstream steps — `reset` the step (or delete its artifact) to force a rebuild.
 
 ## Conventions when editing
 
