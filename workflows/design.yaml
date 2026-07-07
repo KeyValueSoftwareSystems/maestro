@@ -31,7 +31,7 @@
 workflow:
   name: sdlc-design
   description: HLD -> human approval -> per-stack LLDs (parallel) -> cross-repo contract.
-  entry_point: assert_prd
+  entry_point: resolve_prd
 
   instructions:
     - >-
@@ -41,7 +41,7 @@ workflow:
 
   runtime:
     provider: claude-agent-sdk
-    default_model: claude-haiku-4-5
+    default_model: ${KV_MODEL_DEFAULT:-claude-haiku-4-5}   # global default; see workflows/workflow.config.yaml `models:`
 
   limits:
     max_iterations: 128            # headroom for the open-question loop (serve/ask/record/refine per question)
@@ -57,8 +57,10 @@ workflow:
     prd_path:
       type: string
       required: false
-      default: "./docs/business/prd.md"
-      description: Path to the PRD artifact (assumed to exist).
+      default: ""
+      description: >
+        Path to the PRD artifact (assumed to exist). If empty, resolved by the
+        `resolve_prd` step to `features/<slug>/prd.md` (the per-feature drop folder).
 
 # ----------------------------------------------------------------------------
 # Parallel LLD authoring: backend + frontend, concurrent (after HLD approval).
@@ -72,7 +74,18 @@ parallel:
       - to: m_llds
 
 agents:
-  # ---- 0. ASSERT the PRD exists (fail fast, before /plan) ------------------
+  # ---- 0. RESOLVE the PRD path -------------------------------------------
+  # Slug-only runs (maestro <slug>) drop the PRD at features/<slug>/prd.md and
+  # pass no prd_path. Resolve it here so every downstream ref uses one value.
+  - name: resolve_prd
+    type: set
+    value: >-
+      {{ workflow.input.prd_path or ('features/' ~ workflow.input.feature_slug ~ '/prd.md') }}
+    output_type: string
+    routes:
+      - to: assert_prd
+
+  # ---- 0b. ASSERT the PRD exists (fail fast, before /plan) ----------------
   - name: assert_prd
     type: script
     description: Verify the PRD exists before designing, so a missing PRD fails clearly.
@@ -81,7 +94,7 @@ agents:
       - "-c"
       - |
         set -uo pipefail
-        f="{{ workflow.input.prd_path }}"
+        f="{{ resolve_prd.output }}"
         if [ -s "$f" ]; then echo "[prd] OK: $f"; exit 0
         else echo "[prd] NOT FOUND (or empty): $f — create the PRD before running the design phase." >&2; exit 1; fi
     routes:
@@ -106,12 +119,11 @@ agents:
   # ---- 1. PLAN — author the HLD (/plan) -----------------------------------
   - name: author_hld
     description: Produce the high-level design (HLD) via the plan skill.
-    model: claude-opus-4-8
     prompt: |
       Run the **/plan** skill. Inputs:
       - feature:      {{ workflow.input.feature }}
       - feature_slug: {{ workflow.input.feature_slug }}
-      - prd_path:     {{ workflow.input.prd_path }}
+      - prd_path:     {{ resolve_prd.output }}
       Return: hld_path, hld_summary. Write open questions to BOTH the HLD's
       "Open questions" section AND `.sdlc/{{ workflow.input.feature_slug }}/open-questions.json`
       (per workflows/open-questions.schema.json — each question with `why` and
@@ -208,7 +220,6 @@ agents:
 
   - name: refine_hld
     description: Fold answered questions into the HLD, then re-derive open questions.
-    model: claude-opus-4-8            # design judgement (per-step override; SoT for the model)
     prompt: |
       Refine the HLD at `docs/technical/{{ workflow.input.feature_slug }}/hld.md`
       using the answers in `.sdlc/{{ workflow.input.feature_slug }}/open-questions.json`.
@@ -298,6 +309,7 @@ agents:
   # ---- 3. PER-STACK LLDs (parallel) ---------------------------------------
   - name: backend_design
     description: Author the backend LLD via the backend-design skill.
+    max_agent_iterations: 100
     prompt: |
       Run the **/backend-design** skill. Inputs:
       - feature:      {{ workflow.input.feature }}
@@ -310,6 +322,7 @@ agents:
 
   - name: frontend_design
     description: Author the frontend LLD via the frontend-design skill.
+    max_agent_iterations: 100
     prompt: |
       Run the **/frontend-design** skill. Inputs:
       - feature:      {{ workflow.input.feature }}
@@ -356,7 +369,6 @@ agents:
   # ---- 4. CONTRACT (/api-contract) ----------------------------------------
   - name: contract
     description: Reconcile the per-stack LLDs into the cross-repo contract via the api-contract skill.
-    model: claude-opus-4-8
     prompt: |
       Run the **/api-contract** skill (the per-stack LLDs have already been written — pass them).
       Inputs:

@@ -5,8 +5,8 @@
 #   • skills.config.yaml (repo root) — WHICH skill (and external skill) backs
 #     each slot. Read by BOTH slash commands and Conductor. Owns `tdd` etc.
 #   • workflow.config.yaml (this file) — HOW Conductor orchestrates and ENFORCES:
-#     fix-loop caps, gates, env/isolation. Not needed when a developer runs a
-#     skill via a slash command standalone.
+#     fix-loop caps, gates, env/isolation, the default model, web port. Not needed
+#     when a developer runs a skill via a slash command standalone.
 #
 # Anything that MUST hold is enforced by a script/CI step, not by a prompt.
 #
@@ -31,3 +31,30 @@ env:
 
 # QA tiering (guidance consumed by the qa-automation skill).
 e2e_tier: critical-journeys-only
+
+# =============================================================================
+# Model — the single default every workflow step runs on.
+# =============================================================================
+# Every workflow's `default_model:` is written `${KV_MODEL_DEFAULT:-claude-haiku-4-5}`
+# and no step pins a model of its own, so they ALL inherit this one value.
+#   • Change it GLOBALLY here: edit `models.default` below. The `maestro` wrapper
+#     reads it and exports KV_MODEL_DEFAULT before running Conductor (which resolves
+#     `${VAR:-…}` at load).
+#   • Or for a one-off run, export the var yourself:
+#       KV_MODEL_DEFAULT=claude-sonnet-5 maestro saved-search
+#     (an explicit env var wins over this file; a plain `conductor run` without the
+#     wrapper falls back to the baked `:-claude-haiku-4-5` default.)
+#   • Need a different model for ONE step? Set `model: <id>` directly on that step
+#     in its workflow YAML — a literal there wins over the global default.
+models:
+  default: claude-haiku-4-5   # KV_MODEL_DEFAULT — the model every step runs on
+
+# =============================================================================
+# Web dashboard — deterministic port for the Conductor `--web` UI.
+# =============================================================================
+# The port is a Conductor CLI flag (`--web-port`), NOT a workflow-YAML key
+# (the schema rejects unknown keys), so it can't live in main.yaml. The
+# `maestro` wrapper passes `--web-port ${KV_WEB_PORT:-8080}` so the dashboard is
+# reachable at a stable http://127.0.0.1:8080 every run. Override with KV_WEB_PORT.
+web:
+  port: 8080                  # KV_WEB_PORT — applied by the maestro wrapper

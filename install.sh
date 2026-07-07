@@ -6,6 +6,7 @@
 #   1. installs OUR skills          (npx skills add KeyValueSoftwareSystems/kv-skills)
 #   2. installs the external skills the flow uses, one by one (npx skills add ...)
 #   3. copies the Conductor workflows + config into your repo
+#      (+ installs the `maestro <slug>` run wrapper on PATH)
 #   4. installs Conductor (optional — needs `uv`; skip with --no-conductor)
 #
 # Two ways to run — no clone required either way:
@@ -92,6 +93,20 @@ if [ -f "$DEST/.gitignore" ] && ! grep -q '^\.sdlc/' "$DEST/.gitignore" 2>/dev/n
   printf '\n# KeyValue AI-SDLC run output (regenerable)\n.sdlc/\n.kv/\n' >> "$DEST/.gitignore"
 fi
 
+# 3b) install the slug-only run wrapper (maestro <slug>) on PATH — same dir uv
+#     uses for `conductor`, so it's already on PATH when Conductor is installed.
+BIN_DIR="${KV_BIN_DIR:-$HOME/.local/bin}"
+if [ -f "$SRC/bin/maestro" ]; then
+  mkdir -p "$BIN_DIR"
+  cp "$SRC/bin/maestro" "$BIN_DIR/maestro" && chmod +x "$BIN_DIR/maestro" \
+    && echo "==> Installed maestro -> $BIN_DIR/maestro" \
+    || echo "WARN: could not install maestro wrapper into $BIN_DIR"
+  case ":$PATH:" in
+    *":$BIN_DIR:"*) : ;;
+    *) echo "    NOTE: $BIN_DIR is not on your PATH — add it to use \`maestro\`." ;;
+  esac
+fi
+
 # 4) Conductor (optional)
 if [ "$INSTALL_CONDUCTOR" = 1 ]; then
   if command -v uv >/dev/null 2>&1; then
@@ -111,9 +126,14 @@ cat <<EOF
 
 Done. Next:
   • Slash commands (any IDE):  /hld  /design  /backend-impl  /qa  ...
-  • Full pipeline (Conductor):
+  • Full pipeline, the easy way (from your repo root):
+      mkdir -p features/saved-search && \$EDITOR features/saved-search/prd.md
+      maestro saved-search                              # default pipeline (dashboard on :8080)
+      maestro saved-search --path=workflows/design.yaml # or any individual/custom workflow
+  • Full pipeline, explicit (Conductor):
       cd workflows && conductor validate main.yaml
       conductor run main.yaml --web \\
         --input feature="Add saved-search" --input feature_slug="saved-search"
   • Swap any behavior by editing skills.config.yaml (one file, everywhere).
+  • Set the default model / web port in workflows/workflow.config.yaml (KV_MODEL_DEFAULT / KV_WEB_PORT).
 EOF

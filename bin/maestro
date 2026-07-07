@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+# =============================================================================
+# maestro — run the KeyValue AI-SDLC pipeline by feature slug
+# =============================================================================
+# Drop your PRD at features/<slug>/prd.md, then from your repo root:
+#
+#   maestro <slug>                              # default pipeline (workflows/main.yaml)
+#   maestro <slug> --path=workflows/design.yaml # run any individual/custom workflow
+#   maestro <slug> --path=wf/custom.yaml -- --dry-run   # extra flags pass to conductor
+#
+# The default workflow is workflows/main.yaml; override it with --path=<file>
+# (must come right after the slug). Anything after `--` is forwarded verbatim to
+# `conductor run`.
+#
+# Deterministic dashboard: http://127.0.0.1:${KV_WEB_PORT:-8080} every run.
+# Model: one global default, set in workflows/workflow.config.yaml `models.default`
+#   (this wrapper exports it as KV_MODEL_DEFAULT); set `model:` on a step to override.
+# =============================================================================
+set -uo pipefail
+
+slug="${1:?usage: maestro <slug> [--path=<workflow.yaml>] [-- conductor-args]}"; shift
+
+# Default workflow; override with --path (as the first arg after the slug).
+wf="workflows/main.yaml"
+case "${1:-}" in
+  --path=*) wf="${1#--path=}"; shift ;;
+  --path)   wf="${2:?maestro: --path needs a value}"; shift 2 ;;
+esac
+[ "${1:-}" = "--" ] && shift   # optional separator before conductor pass-through flags
+
+if [ ! -f "$wf" ]; then
+  echo "maestro: workflow not found: $wf" >&2
+  echo "         run from your repo root, or pass --path=<valid workflow file>." >&2
+  exit 1
+fi
+
+# Global default model: workflow.config.yaml `models.default` is the single knob.
+# Export it as KV_MODEL_DEFAULT, which every workflow's default_model reads via
+# ${KV_MODEL_DEFAULT:-…}. An explicit env var already set by the user wins.
+if [ -z "${KV_MODEL_DEFAULT:-}" ]; then
+  cfg="$(dirname "$wf")/workflow.config.yaml"; [ -f "$cfg" ] || cfg="workflows/workflow.config.yaml"
+  if [ -f "$cfg" ]; then
+    m=$(sed -n 's/^[[:space:]]*default:[[:space:]]*\([A-Za-z0-9._-]*\).*/\1/p' "$cfg" | head -1)
+    [ -n "$m" ] && export KV_MODEL_DEFAULT="$m"
+  fi
+fi
+
+prd="features/${slug}/prd.md"
+[ -s "$prd" ] || echo "maestro: WARN — $prd is missing or empty. Create it, or pass --input prd_path=... after --." >&2
+
+exec conductor run "$wf" \
+  --web --web-port "${KV_WEB_PORT:-8080}" \
+  --input feature_slug="$slug" \
+  --input feature="$slug" \
+  --input prd_path="$prd" \
+  "$@"

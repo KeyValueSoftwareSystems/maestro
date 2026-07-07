@@ -25,7 +25,7 @@ workflow:
 
   runtime:
     provider: claude-agent-sdk
-    default_model: claude-haiku-4-5
+    default_model: ${KV_MODEL_DEFAULT:-claude-haiku-4-5}   # global default; see workflows/workflow.config.yaml `models:`
 
   limits:
     max_iterations: 18

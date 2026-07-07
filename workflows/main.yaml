@@ -38,7 +38,7 @@ workflow:
 
   runtime:
     provider: claude-agent-sdk
-    default_model: claude-haiku-4-5
+    default_model: ${KV_MODEL_DEFAULT:-claude-haiku-4-5}   # global default; see workflows/workflow.config.yaml `models:`
 
   metadata:
     tracker: sdlc-poc
@@ -51,8 +51,12 @@ workflow:
   input:
     feature:
       type: string
-      required: true
-      description: One-line description of the feature to build.
+      required: false
+      default: ""
+      description: >
+        One-line description of the feature to build. Optional — a slug-only run
+        (maestro <slug>) falls back to the slug as the label; skills read the real
+        description from the PRD.
     feature_slug:
       type: string
       required: false
@@ -63,8 +67,10 @@ workflow:
     prd_path:
       type: string
       required: false
-      default: "./docs/business/prd.md"
-      description: Path to the PRD artifact (assumed to exist).
+      default: ""
+      description: >
+        Path to the PRD artifact (assumed to exist). If empty, the design phase
+        resolves it to `features/<slug>/prd.md` (the per-feature drop folder).
     stacks:
       type: array
       required: false
@@ -93,7 +99,7 @@ for_each:
       workflow: ./dispatch.yaml
       input_mapping:
         stack: "{{ stack.name }}"
-        feature: "{{ workflow.input.feature }}"
+        feature: "{{ workflow.input.feature or derive_slug.output }}"
         feature_slug: "{{ derive_slug.output }}"
         contract_summary: "{{ design.output.contract_summary }}"
         contract_path: "{{ design.output.contract_path }}"
@@ -130,7 +136,7 @@ agents:
     description: HLD -> approve -> per-stack LLDs + contract (via design.yaml).
     workflow: ./design.yaml
     input_mapping:
-      feature: "{{ workflow.input.feature }}"
+      feature: "{{ workflow.input.feature or derive_slug.output }}"
       feature_slug: "{{ derive_slug.output }}"
       prd_path: "{{ workflow.input.prd_path }}"
     # Outputs come from design.yaml's own `output:` block (design.output.*).

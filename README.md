@@ -50,12 +50,30 @@ The installer:
 ### As an orchestrator (Conductor)
 
 Conductor runs the skills for you, end to end, with automatic approval gates. Same skills,
-same artifacts — it just drives the sequence:
+same artifacts — it just drives the sequence.
+
+**The easy way — by feature slug.** Drop your PRD in a per-feature folder and run one command
+from your repo root:
+
+```bash
+mkdir -p features/saved-search
+$EDITOR features/saved-search/prd.md                       # write the PRD here
+maestro saved-search                                       # default pipeline (workflows/main.yaml)
+maestro saved-search --path=workflows/design.yaml         # run any individual/custom workflow
+```
+
+`maestro` (installed by the installer) resolves the PRD at `features/<slug>/prd.md`, opens the
+dashboard at a **stable `http://127.0.0.1:8080`** (override with `KV_WEB_PORT`), and passes the
+slug through. It defaults to `workflows/main.yaml`; point it at any other workflow — a shipped
+phase or your own customised file — with **`--path=<file>`**. Extra Conductor flags go after
+`--`, e.g. `maestro saved-search -- --dry-run`.
+
+**The explicit way.** The same run, spelled out:
 
 ```bash
 cd workflows
 conductor validate main.yaml
-conductor run main.yaml --web \
+conductor run main.yaml --web --web-port 8080 \
   --input feature="Add saved-search" --input feature_slug="saved-search"
 ```
 
@@ -130,7 +148,37 @@ compatibility, migrations, accessibility, performance, …) and a **Safety** sec
 not write secrets or production config, and it stops to ask a human before anything
 destructive.
 
-## The flow
+This is the basic workflow — a starting point you can adjust to make your own.
+
+## Customisable flow
+
+```mermaid
+flowchart TD
+    PRD([feature + PRD]) --> HLD["HLD — /plan"]
+    HLD --> OQ{{open-questions loop}}
+    OQ -->|refine| HLD
+    OQ --> G1{approve}
+    G1 --> BD[backend-design]
+    G1 --> FD[frontend-design]
+    BD --> CON["/api-contract"]
+    FD --> CON
+    CON --> G2{approve}
+    G2 --> AR[architecture-review]
+    AR --> G3{approve}
+    G3 --> BI["backend-impl<br/>DAG → slices → merge → tests → verify → review"]
+    G3 --> FI["frontend-impl<br/>DAG → slices → merge → tests → a11y → review"]
+    BI --> INT[integrate]
+    FI --> INT
+    INT --> QA[QA — /qa]
+    QA --> RP["review pack — /review-pack"]
+    RP --> G4{approve}
+    G4 --> REL([release])
+
+    classDef gate fill:#fde68a,stroke:#b45309,color:#000;
+    class G1,G2,G3,G4 gate;
+```
+
+The same flow in text (backend ∥ frontend run in parallel; `[approve]` = human gate):
 
 ```
 feature → design phase ─ HLD → [approve]
@@ -173,6 +221,20 @@ The default flow needs exactly one external pack (Superpowers, installed by the 
 other helper slot ships as `none`. **Review any third-party skill before wiring it in** — treat
 marketplace skills as untrusted code.
 
-Conductor-only knobs (fix-loop cap, coverage gate, environment lifecycle) live in
-[`workflows/workflow.config.yaml`](workflows/workflow.config.yaml). Per-step model choices are
-set directly on each workflow step (`model:` field).
+Conductor-only knobs (fix-loop cap, coverage gate, environment lifecycle, the **default model**,
+and the **web port**) live in [`workflows/workflow.config.yaml`](workflows/workflow.config.yaml).
+
+**Model — one default, everywhere.** Every step runs on a single model, set once in
+`workflow.config.yaml` under `models.default` (ships as `claude-haiku-4-5`). Change it there and
+`maestro` applies it to the whole pipeline; or set `KV_MODEL_DEFAULT` in your environment for a
+one-off:
+
+```bash
+KV_MODEL_DEFAULT=claude-sonnet-5 maestro saved-search   # bump every step for this run
+```
+
+Need a stronger model for a **single step**? Add `model: <id>` to that step in its workflow YAML
+— a literal there wins over the global default.
+
+The **web dashboard port** defaults to `8080` (Conductor otherwise picks a random port). The
+`maestro` wrapper sets it; override with `KV_WEB_PORT`.

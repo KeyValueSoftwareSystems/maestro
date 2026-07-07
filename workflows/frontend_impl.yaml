@@ -27,7 +27,7 @@ workflow:
 
   runtime:
     provider: claude-agent-sdk
-    default_model: claude-haiku-4-5
+    default_model: ${KV_MODEL_DEFAULT:-claude-haiku-4-5}   # global default; see workflows/workflow.config.yaml `models:`
 
   limits:
     max_iterations: 32
@@ -70,7 +70,7 @@ for_each:
     failure_mode: all_or_nothing
     agent:
       name: build_slice
-      model: claude-sonnet-5
+      max_agent_iterations: 100
       prompt: |
         Run the **/frontend-impl** skill in SLICE mode — implement ONLY this slice. Inputs:
         - feature:          {{ workflow.input.feature }}
@@ -200,7 +200,6 @@ agents:
   # lives INSIDE the fix-loop skill. This step fixes AND re-verifies in one turn.
   - name: fix
     description: Bounded fix + re-verify via the fix-loop skill (cap enforced in the skill).
-    model: claude-sonnet-5
     prompt: |
       Run the **/fix** skill (bounded root-cause loop; cap enforced in the skill). After
       fixing, re-run the failed checks (component + E2E + a11y) and return `resolved: true`
