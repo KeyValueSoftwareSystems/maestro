@@ -6,7 +6,10 @@
 # Composed by main.yaml as the design step.
 #
 # Flow:
-#   assert_prd (PRD exists?) -> author_hld (/plan) -> assert hld.md -> HUMAN approve
+#   assert_prd (PRD exists?) -> author_hld (/plan) -> assert hld.md
+#     -> open-question loop:  serve -> ask_question -> record_answer -> serve
+#                             serve -> refine_hld -> serve   (until resolved)
+#     -> HUMAN approve
 #     -> backend_design ∥ frontend_design   (parallel — author per-stack LLDs)
 #        -> contract (/api-contract: reconcile the LLDs into the cross-repo OpenAPI
 #           contract + acceptance criteria)
@@ -39,7 +42,7 @@ workflow:
     default_model: claude-haiku-4-5
 
   limits:
-    max_iterations: 32
+    max_iterations: 128            # headroom for the open-question loop (serve/ask/record/refine per question)
     timeout_seconds: 4200
 
   input:
@@ -94,8 +97,11 @@ agents:
       - feature:      {{ workflow.input.feature }}
       - feature_slug: {{ workflow.input.feature_slug }}
       - prd_path:     {{ workflow.input.prd_path }}
-      Return: hld_path, hld_summary. (Capture any open questions in the HLD's
-      "Open questions" section — do NOT return them as a separate structured field.)
+      Return: hld_path, hld_summary. Write open questions to BOTH the HLD's
+      "Open questions" section AND `.sdlc/{{ workflow.input.feature_slug }}/open-questions.json`
+      (per workflows/open-questions.schema.json — each question with `why` and
+      2–4 suggested `options`, `status: open`, `resolution: null`). Do NOT return
+      open questions as a structured output field.
     output:
       hld_path: { type: string }
       hld_summary: { type: string }
@@ -115,9 +121,106 @@ agents:
         if [ -s "$f" ]; then echo "[artifact] OK: $f ($(wc -l < "$f" | tr -d ' ') lines)"; exit 0
         else echo "[artifact] MISSING/EMPTY: $f" >&2; exit 1; fi
     routes:
-      - to: hld_approval
+      - to: serve
         when: "exit_code == 0"
       - to: abort
+
+  # ---- 1c. OPEN-QUESTION LOOP: serve -> ask -> record -> refine -----------
+  # A script-driven state machine that resolves the HLD's open questions one at
+  # a time (Claude AskUserQuestion-style), then loops until none remain:
+  #   serve --(open)--> ask_question --> record_answer --> serve
+  #   serve --(resolved-unfolded)--> refine_hld --> serve
+  #   serve --(none)--> hld_approval
+  # Questions live in .sdlc/<slug>/open-questions.json (never an agent output
+  # field — that shape failed schema validation before).
+  - name: serve
+    type: script
+    description: Decide the next open-question loop state (ask / refine / approve).
+    command: python3
+    args:
+      - "workflows/oq_serve.py"
+      - ".sdlc/{{ workflow.input.feature_slug }}/open-questions.json"
+    routes:
+      - to: ask_question
+        when: "exit_code == 0 and state == 'ask'"
+      - to: refine_hld
+        when: "exit_code == 0 and state == 'refine'"
+      - to: hld_approval
+        when: "exit_code == 0 and state == 'approve'"
+      - to: abort
+
+  - name: ask_question
+    type: human_gate
+    description: Answer one open question — pick a suggestion, decide, or defer.
+    prompt: |
+      ## Open question — {{ workflow.input.feature }}
+
+      **{{ serve.output.question }}**
+
+      _Why this matters:_ {{ serve.output.why }}
+
+      Suggested answers:
+
+      {{ serve.output.options_md }}
+
+      Choose **Answer** and type a suggestion number (or your own wording),
+      **You decide** to let the plan pick a sensible default (recorded as a stated
+      assumption), or **Skip / defer** to carry this question forward to the LLD.
+    options:
+      - label: "Answer"
+        value: answer
+        route: record_answer
+        prompt_for: answer
+      - label: "You decide"
+        value: you-decide
+        route: record_answer
+      - label: "Skip / defer"
+        value: skip
+        route: record_answer
+
+  - name: record_answer
+    type: script
+    description: Record the gate answer into open-questions.json, then loop back to serve.
+    command: python3
+    args:
+      - "workflows/oq_record.py"
+      - ".sdlc/{{ workflow.input.feature_slug }}/open-questions.json"
+      - "{{ serve.output.qid }}"
+      - "{{ ask_question.output.selected }}"
+      - "{{ ask_question.output.additional_input.answer | default('') }}"
+    routes:
+      - to: serve
+        when: "exit_code == 0"
+      - to: abort
+
+  - name: refine_hld
+    description: Fold answered questions into the HLD, then re-derive open questions.
+    model: claude-opus-4-8            # design judgement (per-step override; SoT for the model)
+    prompt: |
+      Refine the HLD at `docs/technical/{{ workflow.input.feature_slug }}/hld.md`
+      using the answers in `.sdlc/{{ workflow.input.feature_slug }}/open-questions.json`.
+
+      For every question with `"status": "resolved"`:
+      - Fold its `resolution.answer` into the relevant HLD section(s). For kind
+        `you-decide`, choose a sensible default and record it explicitly as a
+        **stated assumption** in the HLD.
+      - Set that question's `"status"` to `"folded"`.
+      Leave `deferred` questions untouched — they stay in the HLD "Open questions"
+      section and do not block approval.
+
+      Then re-examine the refined HLD and append any GENUINELY NEW, blocking open
+      questions as new entries (unique `id`, `status: open`, `resolution: null`,
+      2–4 suggested `options`, a `why`). Do NOT re-add answered or deferred
+      questions. If nothing new is blocking, add none.
+
+      Keep `open-questions.json` valid (validate with
+      `python3 workflows/validate_open_questions.py .sdlc/{{ workflow.input.feature_slug }}/open-questions.json`)
+      and update the HLD's "Open questions" prose section to match.
+      Return hld_summary (2–3 sentences).
+    output:
+      hld_summary: { type: string }
+    routes:
+      - to: serve
 
   # ---- 2. HUMAN APPROVAL: HLD ---------------------------------------------
   - name: hld_approval
@@ -130,17 +233,15 @@ agents:
 
       **Summary:** {{ author_hld.output.hld_summary }}
 
-      **Open questions:** see the "Open questions" section of the HLD above.
+      **Open questions:** all blocking questions were resolved in the open-question
+      loop above. Any that remain in the HLD "Open questions" section were
+      explicitly deferred to the LLD.
 
-      Approve to proceed to detailed design (per-stack LLDs), request revisions, or reject.
+      Approve to proceed to detailed design (per-stack LLDs), or reject.
     options:
       - label: "Approve — proceed to LLD"
         value: approve
         route: author_llds
-      - label: "Request HLD revisions"
-        value: revise
-        route: author_hld
-        prompt_for: feedback
       - label: "Reject — abort"
         value: reject
         route: abort
@@ -208,7 +309,8 @@ agents:
 # pattern as main.yaml's `{% if implement is defined %}` outputs.)
 output:
   hld_path:  "docs/technical/{{ workflow.input.feature_slug }}/hld.md"
-  hld_summary:    "{% if author_hld is defined %}{{ author_hld.output.hld_summary }}{% endif %}"
+  open_questions_path: ".sdlc/{{ workflow.input.feature_slug }}/open-questions.json"
+  hld_summary:    "{% if refine_hld is defined %}{{ refine_hld.output.hld_summary }}{% elif author_hld is defined %}{{ author_hld.output.hld_summary }}{% endif %}"
   backend_lld_path:  "docs/technical/{{ workflow.input.feature_slug }}/lld/backend.md"
   frontend_lld_path: "docs/technical/{{ workflow.input.feature_slug }}/lld/frontend.md"
   backend_tasks_path:  ".sdlc/{{ workflow.input.feature_slug }}/backend/tasks.json"

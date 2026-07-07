@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Produce a high-level design (HLD) for a feature — frame the problem, weigh options with trade-offs, choose an approach, define non-functional requirements and risks, and write a standardized hld.md. Read-only (writes only the HLD doc). Use first, before detailed design. Front door for /plan.
-allowed-tools: Read, Grep, Glob, Bash, Write
+allowed-tools: Read, Grep, Glob, Bash, Write, AskUserQuestion
 ---
 
 # plan — high-level design
@@ -35,7 +35,8 @@ options considered, the chosen approach, and the risks — enough for a human to
    Recommend one; say *why it wins* and what you're trading away.
 5. **Sketch** — components, data flow, and the cross-repo boundary (which stacks change).
 6. **Nail the NFRs and risks** — sections below.
-7. **Write** the artifact and summarize open questions for the reviewer.
+7. **Write** the artifact (HLD + `open-questions.json`) and, if running
+   interactively, resolve the open questions in a loop — see "Open-question loop".
 
 ## What to cover (standard HLD sections — write all)
 1. **Context & problem** — what, why, who; link the PRD.
@@ -69,10 +70,44 @@ responsible** for the coverage above. Whatever the external skill does, ensure i
 alternatives with trade-offs, surfaced assumptions, and a pre-mortem. If `none`, do this
 yourself.
 ## Output
-Write `docs/technical/<slug>/hld.md` with the sections above, including an
-"Open questions" section. Return `hld_path` and `hld_summary` (2–3 sentences).
-Keep open questions in the HLD's "Open questions" section — do not return them as a
-separate structured output field.
+Write two artifacts:
+- `docs/technical/<slug>/hld.md` — the HLD with all sections above, including an
+  "Open questions" section (human-readable prose).
+- `.sdlc/<slug>/open-questions.json` — the machine-readable mirror of that
+  section (`artifacts.open_questions`), conforming to
+  `workflows/open-questions.schema.json`. Each question carries `why` it matters
+  and 2–4 suggested `options`. Validate it with
+  `python3 workflows/validate_open_questions.py .sdlc/<slug>/open-questions.json`.
+
+Return `hld_path` and `hld_summary` (2–3 sentences). Do **not** return open
+questions as a separate structured output field — they live in the file (a prior
+attempt to return them as an agent output failed schema validation). The file is
+the single source of truth; the HLD prose section is its human mirror.
+
+## Open-question loop (interactive only)
+When `AskUserQuestion` is available (a developer running `/plan` in Claude Code)
+**and** `open-questions.json` has any `open` questions, resolve them in a loop —
+this is the same experience the Conductor `design.yaml` gate provides
+non-interactively:
+
+1. For each `open` question, ask via `AskUserQuestion` — offer its suggested
+   `options` (the tool auto-adds **Other** for a custom answer), plus explicit
+   **"You decide"** and **"Skip / defer"** choices.
+2. Record the answer into `open-questions.json`:
+   - a suggestion or Other → `status: resolved`, `resolution.kind`
+     `picked`/`other`;
+   - **You decide** → `status: resolved`, `resolution.kind: you-decide` (you pick
+     a sensible default and record it in the HLD as a **stated assumption**);
+   - **Skip / defer** → `status: deferred`, `resolution.kind: skip` (the question
+     stays in the HLD "Open questions" section and does not block).
+3. Fold every `resolved` answer into the HLD prose (mark it `folded`), then
+   **re-derive** open questions — refinement often surfaces new ones; append them
+   as new `open` entries.
+4. Repeat from step 1 until no `open` questions remain (deferred ones may stay).
+
+Keep `open-questions.json` valid at every step. When `AskUserQuestion` is not
+available (headless / Conductor), just write the artifacts and stop — the
+workflow drives the loop through its gate.
 
 ## Definition of done
 Every section present; ≥2 options with trade-offs; NFRs and risks concrete (not "TBD");

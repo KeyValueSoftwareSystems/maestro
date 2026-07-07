@@ -122,7 +122,16 @@ feature → design phase ─ HLD → [approve]
 ```
 
 The whole design phase is one workflow ([workflows/design.yaml](workflows/design.yaml)): it
-authors the HLD, pauses for human approval, then `backend-design` and `frontend-design` each
+authors the HLD, then runs an **open-question loop** — each open question is presented one at
+a time (Claude `AskUserQuestion`-style: suggested answers + Other, plus "You decide" and
+"Skip / defer"), the HLD is refined from the answers, and the loop repeats until no blocking
+questions remain. Questions live in a machine-readable
+`.sdlc/<slug>/open-questions.json` (validated against
+[`workflows/open-questions.schema.json`](workflows/open-questions.schema.json) by
+[`workflows/validate_open_questions.py`](workflows/validate_open_questions.py)); the HLD's
+"Open questions" section is its human mirror. Run standalone via `/plan`, the same loop is
+driven by Claude Code's native `AskUserQuestion`. After the loop it pauses for human approval,
+then `backend-design` and `frontend-design` each
 author one LLD for their stack (`docs/technical/<slug>/lld/`), and `/api-contract` reconciles
 them into the cross-repo contract (`contracts/<slug>/`). A human reviews the LLDs + contract
 at the next gate. The design skills also emit a machine-readable **task DAG**

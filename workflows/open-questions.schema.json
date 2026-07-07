@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://keyvalue.systems/sdlc/open-questions.schema.json",
+  "title": "SDLC open-questions.json — HLD open-question loop state",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "feature_slug", "questions"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "feature_slug": { "type": "string", "minLength": 1 },
+    "questions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "why", "options", "status", "resolution"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "question": { "type": "string", "minLength": 1 },
+          "why": { "type": "string", "minLength": 1 },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 4,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "status": { "enum": ["open", "resolved", "deferred", "folded"] },
+          "resolution": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["kind", "answer"],
+                "properties": {
+                  "kind": { "enum": ["picked", "other", "you-decide", "skip"] },
+                  "answer": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  }
+}

@@ -91,6 +91,7 @@ shared:
 # file exists and is non-empty (a `test -s` gate) before advancing.
 artifacts:
   hld:         docs/technical/<slug>/hld.md
+  open_questions: .sdlc/<slug>/open-questions.json    # machine-readable HLD open-question loop state (mirrors the HLD "Open questions" prose)
   lld:         docs/technical/<slug>/lld/              # backend.md, frontend.md (one per stack)
   contract:    contracts/<slug>/openapi.yaml
   acceptance:  docs/functional/<slug>/acceptance-criteria.md
