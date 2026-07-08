@@ -12,8 +12,13 @@
 #     -> unit+integration -> contract verification   (deterministic gates)
 #       -> backend review (/backend-review)          ==> reviews/summary.md
 # A failed check routes to the `fix` step (/fix), which fixes + re-verifies in one
-# turn (bound of 3 lives INSIDE the skill; the graph stays acyclic). A blocking
-# review or an unresolved fix escalates to a human. Behavior lives in the skills.
+# turn (bound of 3 lives INSIDE the skill; the graph stays acyclic). When `fix` is
+# exhausted OR the review is blocking, we DON'T just fail — we escalate to a human:
+#   (fix unresolved | reviewers blocking) -> impl_analyze -> impl_human_gate
+#     -> "retry" (+ human feedback) -> fix   (resumes from the CURRENT branch/changes)
+#     -> "give up"                   -> give_up (terminate, hand to a human)
+# The retry loops back into `fix` carrying the human's feedback — it builds on the
+# existing branch, never re-implements from scratch. Behavior lives in the skills.
 # =============================================================================
 
 workflow:
@@ -32,7 +37,7 @@ workflow:
     default_model: claude-haiku-4-5   # backstop for any agent without an explicit model:
 
   limits:
-    max_iterations: 30
+    max_iterations: 44             # headroom for the analyze -> human-gate -> fix retry cycle
     timeout_seconds: 3000
 
   input:
@@ -196,7 +201,7 @@ agents:
       review_path: { type: string }
       blocking: { type: boolean }
     routes:
-      - to: give_up                   # blocking findings -> escalate to a human (no silent auto-fix of review findings)
+      - to: impl_analyze              # blocking findings -> analyze + escalate (human-gated; still no silent auto-fix)
         when: "{{ output.blocking }}"
       - to: done
 
@@ -215,13 +220,19 @@ agents:
       - feature_slug:     {{ workflow.input.feature_slug }}
       - branch:           feature/{{ workflow.input.feature_slug }}-backend
       - contract_summary: {{ workflow.input.contract_summary }}
+      {% if impl_human_gate is defined %}
+      A human reviewed the block and gave guidance. RESUME from the CURRENT branch
+      and changes — do NOT re-implement from scratch. Apply this feedback, address
+      any blocking review findings, then re-verify:
+      {{ impl_human_gate.output.additional_input.feedback | default('') }}
+      {% endif %}
     output:
       resolved: { type: boolean }
       summary: { type: string }
     routes:
       - to: reviewers
         when: "{{ output.resolved }}"
-      - to: give_up
+      - to: impl_analyze              # still failing -> analyze + escalate to a human (was: give_up)
 
   - name: done
     type: terminate
@@ -233,10 +244,73 @@ agents:
       tests_passed: "true"
       review_path: "{{ reviewers.output.review_path }}"
 
+  # ---- ANALYZE: fix exhausted OR review blocking -> diagnose for a human ----
+  # Read-only: no code/test edits here. Turns a stuck build (failing checks or a
+  # blocking review) into a plain summary + the specific open questions blocking
+  # green, for the gate below.
+  - name: impl_analyze
+    description: Diagnose the stuck backend build (failing checks or blocking review) for a human.
+    model: "{{ workflow.input.model.impl_analyze if workflow.input.model.impl_analyze is defined else 'claude-haiku-4-5' }}"
+    prompt: |
+      The backend build is stuck: either the bounded fix loop is exhausted with
+      checks still red, or the review is blocking. ANALYZE only — do NOT edit code
+      or tests in this step.
+
+      Inputs:
+      - feature:      {{ workflow.input.feature }}
+      - feature_slug: {{ workflow.input.feature_slug }}
+      - branch:       feature/{{ workflow.input.feature_slug }}-backend
+      {% if reviewers is defined and reviewers.output.blocking %}- blocking review findings: {{ reviewers.output.review_path }}{% endif %}
+      {% if fix is defined %}- last fix result: resolved={{ fix.output.resolved }} — {{ fix.output.summary }}{% endif %}
+
+      Inspect the failing checks and/or the blocking review findings and the changes
+      made so far, then produce:
+      - summary: 3–6 sentences a teammate can follow — what is blocking (failing
+        unit/integration/contract tests vs. a blocking review finding), the likely
+        root cause, and what was already tried.
+      - open_questions: a short markdown list of the SPECIFIC decisions or missing
+        information you need from the human to unblock (e.g. an ambiguous contract
+        detail, intended behavior, a risk to accept). Make each one actionable.
+      Return: summary, open_questions.
+    output:
+      summary: { type: string }
+      open_questions: { type: string }
+    routes:
+      - to: impl_human_gate
+
+  # ---- HUMAN GATE: hand the analysis over; feedback loops back into fix ----
+  - name: impl_human_gate
+    type: human_gate
+    description: Review the stuck-backend analysis; give feedback to retry, or give up.
+    prompt: |
+      ## Backend still blocked — needs your input — {{ workflow.input.feature }}
+
+      The backend couldn't reach green on its own (failing checks or a blocking review).
+
+      **Analysis:** {{ impl_analyze.output.summary }}
+
+      **Open questions / decisions needed:**
+
+      {{ impl_analyze.output.open_questions }}
+
+      Branch: `feature/{{ workflow.input.feature_slug }}-backend`
+
+      Choose **Provide feedback & retry** and type your guidance — the fix step
+      resumes from the CURRENT branch and changes (it does not start over), applies
+      your feedback, re-verifies, and re-reviews. Or **Give up** for manual handling.
+    options:
+      - label: "Provide feedback & retry"
+        value: retry
+        route: fix
+        prompt_for: feedback
+      - label: "Give up — needs manual handling"
+        value: give-up
+        route: give_up
+
   - name: give_up
     type: terminate
     status: failed
-    reason: "Backend still failing after 3 fix attempts — needs a human."
+    reason: "Backend still failing — human chose to stop the retry loop; needs manual handling."
 
 output:
   branch: "feature/{{ workflow.input.feature_slug }}-backend"

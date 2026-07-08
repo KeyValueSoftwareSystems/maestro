@@ -9,6 +9,13 @@
 # framework (playwright/maestro) and any external generator per skills.config.yaml
 # (`qa.*`). Route-backs follow the fix-loop skill (selectors/flakes only).
 #
+# When the bounded fix loop is exhausted and E2E is still red, we DON'T just fail:
+#   run_e2e (fail) -> qa_fix -> (still red) -> qa_analyze -> qa_human_gate
+#     -> "retry" (+ human feedback) -> qa_fix  (resumes from current tests/changes)
+#     -> "give up"                  -> give_up (terminate, hand to a human)
+# The retry loops back into the SAME qa_fix node carrying the human's feedback —
+# it builds on the existing specs/fixes, it never regenerates the suite from scratch.
+#
 # Artifacts: .maestro/<slug>/qa/suite.md (coverage) + run.md (clean-env result)
 # =============================================================================
 
@@ -28,7 +35,7 @@ workflow:
     default_model: claude-haiku-4-5   # backstop for any agent without an explicit model:
 
   limits:
-    max_iterations: 18
+    max_iterations: 40             # headroom for the analyze -> human-gate -> qa_fix retry cycle
     timeout_seconds: 2400
 
   input:
@@ -138,12 +145,18 @@ agents:
       freeze-assertions rule). Then re-run the suite and return `resolved: true` only if it
       now passes, else `resolved: false` with a short reason.
       - feature: {{ workflow.input.feature }}
+      {% if qa_human_gate is defined %}
+      A human reviewed the earlier failure and gave guidance. RESUME from the
+      CURRENT tests and changes — do NOT regenerate the suite from scratch. Apply
+      this feedback, then re-run:
+      {{ qa_human_gate.output.additional_input.feedback | default('') }}
+      {% endif %}
     output:
       resolved: { type: boolean }
     routes:
       - to: done
         when: "{{ output.resolved }}"
-      - to: give_up
+      - to: qa_analyze              # still red -> analyze + escalate to a human (was: give_up)
 
   - name: done
     type: terminate
@@ -153,10 +166,72 @@ agents:
       suite_path: "{{ author_tests.output.suite_path }}"
       tests_passed: "true"
 
+  # ---- ANALYZE: fix loop exhausted -> diagnose + summarize for a human ----
+  # Read-only: no test/code edits here. Turns a still-red suite into a plain
+  # summary + the specific open questions blocking green, for the gate below.
+  - name: qa_analyze
+    description: Diagnose the still-failing E2E and summarize it (+ open questions) for a human.
+    model: "{{ workflow.input.model.qa_analyze if workflow.input.model.qa_analyze is defined else 'claude-haiku-4-5' }}"
+    prompt: |
+      The bounded QA fix loop is exhausted and the critical-journey E2E is STILL
+      failing. ANALYZE only — do NOT edit tests or code in this step.
+
+      Inputs:
+      - feature:      {{ workflow.input.feature }}
+      - feature_slug: {{ workflow.input.feature_slug }}
+      - suite_path:   {{ author_tests.output.suite_path }}
+      - last run output (stdout+stderr):
+      {{ run_e2e.output.stdout }}{{ run_e2e.output.stderr }}
+      {% if qa_fix is defined %}- fix-loop result: resolved={{ qa_fix.output.resolved }}{% endif %}
+
+      Inspect the failing spec(s) and the changes made so far, then produce:
+      - summary: 3–6 sentences a non-QA teammate can follow — what is failing, the
+        likely root cause, and what was already tried. Say plainly whether this
+        looks like a product/spec ambiguity vs. a test/environment problem.
+      - open_questions: a short markdown list of the SPECIFIC decisions or missing
+        information you need from the human to get the suite green (e.g. expected
+        behavior for an ambiguous acceptance criterion, a real test credential, an
+        env/data dependency). Make each one actionable.
+      Return: summary, open_questions.
+    output:
+      summary: { type: string }
+      open_questions: { type: string }
+    routes:
+      - to: qa_human_gate
+
+  # ---- HUMAN GATE: hand the analysis over; feedback loops back into qa_fix ----
+  - name: qa_human_gate
+    type: human_gate
+    description: Review the failing-QA analysis; give feedback to retry, or give up.
+    prompt: |
+      ## QA still failing — needs your input — {{ workflow.input.feature }}
+
+      The critical-journey E2E is still red after the bounded fix attempts.
+
+      **Analysis:** {{ qa_analyze.output.summary }}
+
+      **Open questions / decisions needed:**
+
+      {{ qa_analyze.output.open_questions }}
+
+      Suite: `{{ author_tests.output.suite_path }}`
+
+      Choose **Provide feedback & retry** and type your answers/guidance — the fix
+      loop resumes from the CURRENT tests and changes (it does not start over) and
+      applies your feedback. Or **Give up** to fail the QA phase for manual handling.
+    options:
+      - label: "Provide feedback & retry"
+        value: retry
+        route: qa_fix
+        prompt_for: feedback
+      - label: "Give up — needs manual handling"
+        value: give-up
+        route: give_up
+
   - name: give_up
     type: terminate
     status: failed
-    reason: "QA E2E still failing after 3 attempts — needs a human."
+    reason: "QA E2E still failing — human chose to stop the retry loop; needs manual handling."
 
 output:
   suite_path: "{{ author_tests.output.suite_path }}"
