@@ -131,6 +131,13 @@ if [ "$INSTALL_CONDUCTOR" = 1 ]; then
     uv tool install --force --with 'claude-agent-sdk>=0.1.0' \
       git+https://github.com/microsoft/conductor.git \
       || echo "WARN: Conductor install failed — install manually (see README)."
+    # uv just added its bin dir to your shell profile, but THIS shell's PATH/command
+    # hash won't reflect it — a fresh session (or `hash -r`) will. Flag that so the
+    # first `maestro` call doesn't surprise you with 'conductor: not found'.
+    if ! command -v conductor >/dev/null 2>&1; then
+      echo "    NOTE: 'conductor' was installed but isn't visible in THIS shell yet."
+      echo "          Open a new terminal (or run: hash -r) before using \`maestro\`."
+    fi
   else
     echo "==> Skipping Conductor: 'uv' unavailable. To run the workflows later, install"
     echo "    uv (https://docs.astral.sh/uv/getting-started/installation/), then:"
