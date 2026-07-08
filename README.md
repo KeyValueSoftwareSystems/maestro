@@ -19,9 +19,33 @@ steps once so every developer runs them the same way.
 - **Proof, not promises.** Every step writes an artifact to disk, and the pipeline checks the
   file exists before moving on.
 
+## Prerequisites — set up the workspace first
+
+This pack runs against an **umbrella workspace**: one parent git repo per project that becomes the
+agent's working surface for a whole feature. Stand it up once per project, then install the pack
+into it. The flow assumes these are in place — do them in order.
+
+- **One parent repo, N child clones.** Keep every service repo independent (own branches, PRs,
+  CI) — don't merge them into a monorepo. Instead clone them, **gitignored**, into the umbrella
+  under `codebase/` so a single agent sees the frontend, backend, and every microservice at once,
+  instead of one repo in isolation. A `workspace.yaml` manifest lists the repos.
+- **One command for the whole stack.** Wire the full stack up and down behind a single command
+  (e.g. `stack up` / `stack down` over Docker Compose, Tilt, or Nix — team's choice). Host
+  prerequisites and secrets stay human-owned in a `SETUP.md`; the workflow never touches them.
+- **Docs + tests centralised in the umbrella.** Keep the per-feature docs tree (`docs/technical`,
+  `docs/functional`, `docs/business`) and the cross-repo integration + UI-automation suites
+  (`test/integration`, `test/ui-automation`) here, so one suite spans all repos.
+- **Source-of-truth MCPs connected.** The design flow assumes a PRD + designs already exist —
+  connect Jira / Confluence / Figma over MCP so the agent reads tickets, specs, and designs
+  directly.
+
+> The umbrella is a per-project setup, not something this pack ships (yet). Set it up manually for
+> now; the pack installs into it and every feature — requirement input and generated artifacts —
+> lives under `.maestro/<slug>/` inside it.
+
 ## Install
 
-**Prerequisites:** [Node.js](https://nodejs.org) (for `npx`), plus `curl` + `tar` (standard on
+**Requires:** [Node.js](https://nodejs.org) (for `npx`), plus `curl` + `tar` (standard on
 macOS/Linux).
 
 One command from the root of **your** repo:
