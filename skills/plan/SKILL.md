@@ -6,24 +6,25 @@ allowed-tools: Read, Grep, Glob, Bash, Write, AskUserQuestion
 
 # plan — high-level design
 
-Turn a feature request + PRD into a **high-level design**: the shape of the solution, the
+Turn a feature request + requirement files into a **high-level design**: the shape of the solution, the
 options considered, the chosen approach, and the risks — enough for a human to approve the
 *direction* before anyone designs APIs or writes code. This is a design artifact, not code.
 
 ## When to use / not use
-- **Use** at the very start of a feature, once a PRD/intent exists.
+- **Use** at the very start of a feature, once a requirement/intent exists.
 - **Don't** design APIs, schemas, or code here — that is the design phase (per-stack LLDs +
   `/api-contract`) after approval.
 
 ## Inputs
 - `feature` — one-line description.  `feature_slug` — kebab-case id for artifact paths.
-- `prd_path` — the PRD (assumed to exist).
+- `requirement_dir` — the requirement FOLDER (assumed to exist). **Read every file in it**
+  as the feature requirement (it may hold a PRD, notes, mockups, etc.).
 - **Artifact path** — you resolve it yourself from `skills.config.yaml` → `artifacts.hld`
-  with `{slug}` = `feature_slug` (i.e. `docs/technical/<slug>/hld.md`). The caller does not
+  with `{slug}` = `feature_slug` (i.e. `.maestro/<slug>/hld.md`). The caller does not
   pass a path; this skill owns where it writes.
 
 ## Steps
-1. **Gather context** — read the PRD, related ADRs, `CLAUDE.md`, and any existing design.
+1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
    Identify the users, the job-to-be-done, and hard constraints (deadlines, platforms,
    compliance, budget).
 2. **Clarify unknowns** — list assumptions explicitly; ask the human when a business rule,
@@ -39,7 +40,7 @@ options considered, the chosen approach, and the risks — enough for a human to
    interactively, resolve the open questions in a loop — see "Open-question loop".
 
 ## What to cover (standard HLD sections — write all)
-1. **Context & problem** — what, why, who; link the PRD.
+1. **Context & problem** — what, why, who; link the requirement files.
 2. **Goals / non-goals** — explicit scope boundaries.
 3. **Options considered** — 2–3 approaches, each with trade-offs (cost, risk, effort, time-to-value).
 4. **Chosen approach** — the recommendation and the reasoning.
@@ -71,13 +72,13 @@ alternatives with trade-offs, surfaced assumptions, and a pre-mortem. If `none`,
 yourself.
 ## Output
 Write two artifacts:
-- `docs/technical/<slug>/hld.md` — the HLD with all sections above, including an
+- `.maestro/<slug>/hld.md` — the HLD with all sections above, including an
   "Open questions" section (human-readable prose).
-- `.sdlc/<slug>/open-questions.json` — the machine-readable mirror of that
+- `.maestro/<slug>/open-questions.json` — the machine-readable mirror of that
   section (`artifacts.open_questions`), conforming to
   `workflows/open-questions.schema.json`. Each question carries `why` it matters
   and 2–4 suggested `options`. Validate it with
-  `python3 workflows/validate_open_questions.py .sdlc/<slug>/open-questions.json`.
+  `python3 workflows/validate_open_questions.py .maestro/<slug>/open-questions.json`.
 
 Return `hld_path` and `hld_summary` (2–3 sentences). Do **not** return open
 questions as a separate structured output field — they live in the file (a prior

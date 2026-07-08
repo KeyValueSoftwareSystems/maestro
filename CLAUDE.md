@@ -17,12 +17,13 @@ A **distributable pack**, not an application. It ships:
   external helper skill) backs each SDLC slot. Read by **both** slash commands and Conductor.
 - **`install.sh`** — installs the pack + external Superpowers skills + Conductor into a user's repo,
   and drops the **`bin/maestro`** run wrapper on PATH.
-- **`bin/maestro`** — the slug-only front door: `maestro <slug>` reads the PRD from
-  `features/<slug>/prd.md`, runs `conductor run` with a deterministic `--web-port` (`KV_WEB_PORT`,
+- **`bin/maestro`** — the slug-only front door. `maestro init <slug>` scaffolds the requirement
+  folder `.maestro/<slug>/requirement/`. `maestro <slug>` reads the requirement from that folder
+  (every file in it), runs `conductor run` with a deterministic `--web-port` (`KV_WEB_PORT`,
   default 8080), and passes the slug through. Defaults to `workflows/main.yaml`; override with
-  `--path=<file>` to run any individual or customised workflow. PRD resolution is done in-workflow
-  (design.yaml's `resolve_prd` set step), so a bare `conductor run` with `--input feature_slug=…`
-  works too.
+  `--path=<file>` to run any individual or customised workflow. Requirement resolution is done
+  in-workflow (design.yaml's `resolve_requirement` set step), so a bare `conductor run` with
+  `--input feature_slug=…` works too.
 
 There is **no build and no app to run.** The "code" is prompts and YAML; the only executables
 are the Python helpers under `workflows/` (`validate_tasks.py`, `validate_open_questions.py`,
@@ -53,20 +54,23 @@ accepts one is a regression.
 ## The SDLC flow (what the pack produces)
 
 ```
-feature → HLD (/plan) → [open-questions loop → approve] → per-stack LLDs (backend ∥ frontend) → /api-contract
+feature + requirement → HLD (/plan) → [open-questions loop → approve] → per-stack LLDs (backend ∥ frontend) → /api-contract
         → architecture-review → [approve]
         → implement (task DAG → parallel slices → merge → tests → verify → review)
-        → QA → review pack → [approve → release]
+        → QA → review pack → [approve → release] → archive (stub)
 ```
 
 Every producing step writes an artifact to disk; the workflow gates on `test -s <file>` before
 advancing ("proof, not promises"). Artifact paths are declared once in `skills.config.yaml`
 under `artifacts:` — a skill **resolves its own output path from there** (`<slug>` = `feature_slug`);
-the caller does not pass paths in.
+the caller does not pass paths in. Everything for a feature — the input `requirement/` folder and
+all generated artifacts — lives under one git-tracked folder, `.maestro/<slug>/`. The terminal
+`archive` step in `main.yaml` is a stub (`echo` + `exit 0`) reserved for publishing the design docs
+from `.maestro/<slug>/` into committed `docs/technical|functional/` — not implemented yet.
 
 ## tasks.json — the parallel task DAG
 
-The design phase (or `/backend-tasks` as fallback) emits `.sdlc/<slug>/<stack>/tasks.json`: tasks
+The design phase (or `/backend-tasks` as fallback) emits `.maestro/<slug>/<stack>/tasks.json`: tasks
 grouped into **slices** that run in parallel via the workflow's `for_each`. Invariants beyond the
 JSON schema are enforced by `workflows/validate_tasks.py` (run it before trusting a tasks.json):
 
@@ -86,7 +90,7 @@ python3 workflows/validate_tasks.py testdata/tasks.valid.json
 ## The HLD open-questions loop
 
 The HLD phase surfaces unresolved decisions as a machine-readable loop, mirrored by the HLD's
-prose "Open questions" section. State lives at `.sdlc/<slug>/open-questions.json` (schema
+prose "Open questions" section. State lives at `.maestro/<slug>/open-questions.json` (schema
 `workflows/open-questions.schema.json`, validator `validate_open_questions.py`). `design.yaml`
 drives it with two helpers — never re-implement their logic in the YAML:
 
@@ -101,7 +105,7 @@ drives it with two helpers — never re-implement their logic in the YAML:
 
 Conductor only checkpoints the top-level run, so a sub-workflow (`design.yaml`, `qa.yaml`, …)
 would otherwise re-run from step one. `state.py` makes them re-entrant via a per-feature ledger
-at `.sdlc/<slug>/state.json` (fcntl-locked). **Only script steps call it — never an LLM/agent
+at `.maestro/<slug>/state.json` (fcntl-locked). **Only script steps call it — never an LLM/agent
 step.** A step whose artifact is recorded *and still present on disk* is skipped; the run lands
 on the first unfinished step. Approval gates are never skipped.
 
@@ -133,9 +137,13 @@ invalidate downstream steps — `reset` the step (or delete its artifact) to for
   load; an explicit env var wins; a bare `conductor run` falls back to the baked haiku default).
   For a one-off per-step model, add a literal `model:` to that step's YAML — it wins. Model
   choice is not in `skills.config.yaml`.
-- The workflow test/merge/verify shell steps are **POC stubs** (`echo` + exit 0) — a downstream
-  user wires them to their real runner. Don't mistake them for working test execution.
-- `.sdlc/` and `.kv/` are per-run proof output — gitignored, regenerable, never source.
+- The workflow test/merge/verify shell steps (and the terminal `archive` step in main.yaml) are
+  **POC stubs** (`echo` + exit 0) — a downstream user wires them to their real runner. Don't
+  mistake them for working test execution.
+- `.maestro/<slug>/` holds a feature's requirement input **and** all generated artifacts (HLD, LLDs,
+  contract, tasks, reviews, review-pack, verify markers, step ledger). It is **git-tracked for now**
+  (intentionally NOT gitignored) — the `archive` step is the reserved path to publish curated docs
+  from it into committed `docs/`.
 
 ## Editing this repo's prose
 

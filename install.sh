@@ -88,10 +88,9 @@ mkdir -p "$DEST/workflows"
 cp -R "$SRC/workflows/."         "$DEST/workflows/"
 cp    "$SRC/skills.config.yaml"  "$DEST/skills.config.yaml"
 
-# keep regenerable run output out of git
-if [ -f "$DEST/.gitignore" ] && ! grep -q '^\.sdlc/' "$DEST/.gitignore" 2>/dev/null; then
-  printf '\n# KeyValue AI-SDLC run output (regenerable)\n.sdlc/\n.kv/\n' >> "$DEST/.gitignore"
-fi
+# NOTE: a feature's files live under .maestro/<slug>/ (requirement + generated
+# artifacts) and are intentionally git-tracked for now — nothing is added to
+# .gitignore here.
 
 # 3b) install the slug-only run wrapper (maestro <slug>) on PATH — same dir uv
 #     uses for `conductor`, so it's already on PATH when Conductor is installed.
@@ -152,7 +151,7 @@ cat <<EOF
 Done. Next:
   • Slash commands (any IDE):  /hld  /design  /backend-impl  /qa  ...
   • Full pipeline, the easy way (from your repo root):
-      mkdir -p features/saved-search && \$EDITOR features/saved-search/prd.md
+      maestro init saved-search && \$EDITOR .maestro/saved-search/requirement/requirement.md
       maestro saved-search                              # default pipeline (dashboard on :8080)
       maestro saved-search --path=workflows/design.yaml # or any individual/custom workflow
   • Full pipeline, explicit (Conductor):

@@ -14,8 +14,8 @@ Implement the approved backend scope so it satisfies the contract exactly. The b
 - **Don't** start if the contract is unstable, or expand scope beyond what was approved.
 
 ## Before editing
-1. Read `CLAUDE.md`, `AGENTS.md`, the backend LLD (`docs/technical/<slug>/lld/backend.md`),
-   and the contract (`contracts/<slug>/openapi.yaml`).
+1. Read `CLAUDE.md`, `AGENTS.md`, the backend LLD (`.maestro/<slug>/lld/backend.md`),
+   and the contract (`.maestro/<slug>/openapi.yaml`).
 2. Read the `/backend-tasks` plan if present; otherwise derive the same ordered slices.
 3. List the files you intend to change.
 4. **Stop and ask a human** before DB migrations, auth/permission, payment logic, prod

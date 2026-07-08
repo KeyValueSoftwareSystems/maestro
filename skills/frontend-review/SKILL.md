@@ -66,5 +66,5 @@ blocking: <true if any blocker/major remains>
 
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
-Write `.sdlc/<slug>/frontend/reviews/summary.md`. Return `review_path` and `blocking`. In the
+Write `.maestro/<slug>/frontend/reviews/summary.md`. Return `review_path` and `blocking`. In the
 workflow a blocking result routes back to the frontend implementer (bounded to 3).

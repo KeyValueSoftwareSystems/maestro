@@ -4,7 +4,7 @@
   "feature_slug": "saved-search",
   "context_manifest": {
     "read_once": ["src/searches/router.py", "src/searches/service.py", "src/db/models.py"],
-    "reference": ["docs/technical/saved-search/lld/backend.md", "contracts/saved-search/openapi.yaml", "CLAUDE.md"]
+    "reference": [".maestro/saved-search/lld/backend.md", ".maestro/saved-search/openapi.yaml", "CLAUDE.md"]
   },
   "slices": [
     { "group_id": "g1", "task_ids": ["t1", "t2"] },

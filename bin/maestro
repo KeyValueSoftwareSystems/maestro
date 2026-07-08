@@ -2,15 +2,17 @@
 # =============================================================================
 # maestro — run the KeyValue AI-SDLC pipeline by feature slug
 # =============================================================================
-# Drop your PRD at features/<slug>/prd.md, then from your repo root:
+# Scaffold the requirement folder, drop your requirement files in it, then run:
 #
+#   maestro init <slug>                         # create .maestro/<slug>/requirement/
 #   maestro <slug>                              # default pipeline (workflows/main.yaml)
 #   maestro <slug> --path=workflows/design.yaml # run any individual/custom workflow
 #   maestro <slug> --path=wf/custom.yaml -- --dry-run   # extra flags pass to conductor
 #
-# The default workflow is workflows/main.yaml; override it with --path=<file>
-# (must come right after the slug). Anything after `--` is forwarded verbatim to
-# `conductor run`.
+# The requirement lives in .maestro/<slug>/requirement/ — a folder of one or more
+# files; /plan reads them all. The default workflow is workflows/main.yaml; override
+# it with --path=<file> (must come right after the slug). Anything after `--` is
+# forwarded verbatim to `conductor run`.
 #
 # Deterministic dashboard: reads workflows/maestro.config.yaml `web.port`
 #   (default 8080) and passes it as Conductor's --web-port CLI flag.
@@ -20,7 +22,20 @@
 # =============================================================================
 set -uo pipefail
 
-slug="${1:?usage: maestro <slug> [--path=<workflow.yaml>] [-- conductor-args]}"; shift
+# Subcommand: `maestro init <slug>` scaffolds the requirement folder and exits.
+if [ "${1:-}" = "init" ]; then
+  shift
+  slug="${1:?usage: maestro init <slug>}"; shift
+  req_dir=".maestro/${slug}/requirement"
+  mkdir -p "$req_dir"
+  if [ ! -e "$req_dir/requirement.md" ]; then
+    printf '# %s\n\n<!-- Describe the feature. Add any number of files in this folder; /plan reads them all. -->\n' "$slug" > "$req_dir/requirement.md"
+  fi
+  echo "==> Initialized $req_dir — edit the files there, then run: maestro $slug"
+  exit 0
+fi
+
+slug="${1:?usage: maestro <slug> [--path=<workflow.yaml>] [-- conductor-args]  |  maestro init <slug>}"; shift
 
 # Default workflow; override with --path (as the first arg after the slug).
 wf="workflows/main.yaml"
@@ -75,8 +90,10 @@ if [ -f "$cfg" ]; then
   [ -n "$p" ] && web_port="$p"
 fi
 
-prd="features/${slug}/prd.md"
-[ -s "$prd" ] || echo "maestro: WARN — $prd is missing or empty. Create it, or pass --input prd_path=... after --." >&2
+req_dir=".maestro/${slug}/requirement"
+if [ ! -d "$req_dir" ] || [ -z "$(find "$req_dir" -type f -size +0c -print -quit 2>/dev/null)" ]; then
+  echo "maestro: WARN — $req_dir is missing or empty. Run: maestro init $slug (then add your requirement files)." >&2
+fi
 
 if ! command -v conductor >/dev/null 2>&1; then
   echo "maestro: 'conductor' not found on PATH — it orchestrates the workflows." >&2
@@ -92,6 +109,6 @@ exec conductor run "$wf" \
   --web --web-port "$web_port" \
   --input feature_slug="$slug" \
   --input feature="$slug" \
-  --input prd_path="$prd" \
+  --input requirement_dir="$req_dir" \
   --input model="$model_json" \
   "$@"

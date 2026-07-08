@@ -12,16 +12,16 @@ readiness.
 
 ## Steps
 1. **Collect the diff summary** — changed files/areas per stack; new endpoints/migrations/UI.
-2. **Pull the proof** — the `/verify` reports and `.kv/last-verify.json` markers per stack;
+2. **Pull the proof** — the `/verify` reports and `.maestro/<slug>/<stack>/last-verify.json` markers per stack;
    the QA suite result. If proof is missing or `status:"fail"`, say so — do not claim green.
-3. **Pull the reviewer findings** — `.sdlc/<slug>/architecture-review.md` and each stack's
+3. **Pull the reviewer findings** — `.maestro/<slug>/architecture-review.md` and each stack's
    `reviews/summary.md`; separate what was **fixed** from what is **deferred/accepted**.
 4. **Assess risk & release readiness** — migrations, flags, rollout/backout, data impact.
 5. **Write** the pack and state the exact decision required.
 
 ## The pack must include (with evidence/links)
 1. **What changed** — feature summary + per-stack change list.
-2. **Why** — link the PRD/HLD; the problem solved.
+2. **Why** — link the requirement/HLD; the problem solved.
 3. **Files changed** — grouped by area; call out anything security/auth/data-sensitive.
 4. **API / DB / UI impact** — contract changes (breaking?), migrations (+ rollback), new UI states.
 5. **Tests & proof** — commands run and pass/fail (from `/verify`); coverage vs threshold;
@@ -41,5 +41,5 @@ readiness.
 - **Risky migration / irreversible step** — flag as requiring extra human attention.
 
 ## Output
-Write `.sdlc/<slug>/review-pack.md`. Return `pack_path`. Never claim readiness without the
+Write `.maestro/<slug>/review-pack.md`. Return `pack_path`. Never claim readiness without the
 proof to back it — the review pack is a decision aid, not a rubber stamp.

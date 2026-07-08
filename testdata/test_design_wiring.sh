@@ -11,9 +11,9 @@ $STATE check --slug "$SLUG" --step hld && fail "hld should be not-done on a fres
 
 # Seed an artifact and mark hld done -> guard exits 0 (would route to serve, the
 # open-question loop, which falls through to hld_approval when nothing is open)
-mkdir -p "docs/technical/$SLUG"
-echo "# HLD" > "docs/technical/$SLUG/hld.md"
-$STATE mark --slug "$SLUG" --step hld --artifact "docs/technical/$SLUG/hld.md" || fail "mark hld"
+mkdir -p ".maestro/$SLUG"
+echo "# HLD" > ".maestro/$SLUG/hld.md"
+$STATE mark --slug "$SLUG" --step hld --artifact ".maestro/$SLUG/hld.md" || fail "mark hld"
 $STATE check --slug "$SLUG" --step hld || fail "hld should be done after mark"
 
 # Cascade reset (revise route) clears hld + downstream
@@ -21,5 +21,5 @@ $STATE reset --slug "$SLUG" --step hld --step backend_lld --step frontend_lld --
 $STATE check --slug "$SLUG" --step hld && fail "hld should be cleared after reset"
 
 # Cleanup
-rm -rf ".sdlc/$SLUG" "docs/technical/$SLUG"
+rm -rf ".maestro/$SLUG"
 echo "OK: design.yaml guard/mark/reset wiring verified"

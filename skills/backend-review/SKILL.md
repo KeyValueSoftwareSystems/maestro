@@ -11,7 +11,7 @@ never edit code; reviewers return evidence and recommendations, humans decide fi
 
 ## Steps
 1. **Scope the diff** — identify changed files, new endpoints, migrations, and their blast radius.
-2. **Line the diff up against the contract** (`contracts/<slug>/openapi.yaml`) and the LLD.
+2. **Line the diff up against the contract** (`.maestro/<slug>/openapi.yaml`) and the LLD.
 3. **Deep, evidence-backed pass** over every dimension in the checklist below. For a more
    independent read you MAY spawn a fresh read-only sub-agent (via the Task tool) that follows
    this same skill — do this where your harness supports it (e.g. Claude Code). Otherwise
@@ -66,5 +66,5 @@ blocking: <true if any blocker/major remains>
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
 Auth/permission or contract changes are never `safe_for_ai_fix` — escalate. Write
-`.sdlc/<slug>/backend/reviews/summary.md`. Return `review_path` and `blocking`. In the
+`.maestro/<slug>/backend/reviews/summary.md`. Return `review_path` and `blocking`. In the
 workflow a blocking result routes back to the backend implementer (bounded to 3).

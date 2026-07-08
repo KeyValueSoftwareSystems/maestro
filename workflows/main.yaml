@@ -64,13 +64,14 @@ workflow:
       description: >
         Kebab-case id for artifact paths, e.g. "saved-search". Optional — if omitted,
         it is derived from `feature` by the `derive_slug` step.
-    prd_path:
+    requirement_dir:
       type: string
       required: false
       default: ""
       description: >
-        Path to the PRD artifact (assumed to exist). If empty, the design phase
-        resolves it to `features/<slug>/prd.md` (the per-feature drop folder).
+        Path to the requirement FOLDER (holds one or more files describing the
+        feature; all are read by /plan). If empty, the design phase resolves it to
+        `.maestro/<slug>/requirement/` (create it with `maestro init <slug>`).
     stacks:
       type: array
       required: false
@@ -148,7 +149,7 @@ agents:
     input_mapping:
       feature: "{{ workflow.input.feature or derive_slug.output }}"
       feature_slug: "{{ derive_slug.output }}"
-      prd_path: "{{ workflow.input.prd_path }}"
+      requirement_dir: "{{ workflow.input.requirement_dir }}"
       model: "{{ workflow.input.model | json }}"
     # Outputs come from design.yaml's own `output:` block (design.output.*).
     routes:
@@ -164,9 +165,9 @@ agents:
       - |
         set -uo pipefail
         s="{{ derive_slug.output }}"
-        be="docs/technical/$s/lld/backend.md"
-        fe="docs/technical/$s/lld/frontend.md"
-        api="contracts/$s/openapi.yaml"
+        be=".maestro/$s/lld/backend.md"
+        fe=".maestro/$s/lld/frontend.md"
+        api=".maestro/$s/openapi.yaml"
         ok=1
         for f in "$be" "$fe" "$api"; do
           if [ -s "$f" ]; then echo "[artifact] OK: $f"; else echo "[artifact] MISSING/EMPTY: $f" >&2; ok=0; fi
@@ -204,7 +205,7 @@ agents:
       - "-c"
       - |
         set -uo pipefail
-        f=".sdlc/{{ derive_slug.output }}/architecture-review.md"
+        f=".maestro/{{ derive_slug.output }}/architecture-review.md"
         if [ -s "$f" ]; then echo "[artifact] OK: $f"; exit 0
         else echo "[artifact] MISSING/EMPTY: $f" >&2; exit 1; fi
     routes:
@@ -230,7 +231,7 @@ agents:
     prompt: |
       ## Architecture Review — BLOCKING findings — {{ workflow.input.feature }}
 
-      Review: `.sdlc/{{ derive_slug.output }}/architecture-review.md`
+      Review: `.maestro/{{ derive_slug.output }}/architecture-review.md`
 
       **Summary:** {{ arch_review.output.summary }}
 
@@ -256,9 +257,9 @@ agents:
       ## Contract Review — {{ workflow.input.feature }}
 
       Artifacts to review:
-      - Backend LLD: `docs/technical/{{ derive_slug.output }}/lld/backend.md`
-      - Frontend LLD: `docs/technical/{{ derive_slug.output }}/lld/frontend.md`
-      - Contract: `contracts/{{ derive_slug.output }}/openapi.yaml`
+      - Backend LLD: `.maestro/{{ derive_slug.output }}/lld/backend.md`
+      - Frontend LLD: `.maestro/{{ derive_slug.output }}/lld/frontend.md`
+      - Contract: `.maestro/{{ derive_slug.output }}/openapi.yaml`
 
       **Affected stacks:** {{ design.output.affected_repos | json }}
       **Contract summary:** {{ design.output.contract_summary }}
@@ -368,7 +369,7 @@ agents:
       - "-c"
       - |
         set -uo pipefail
-        f=".sdlc/{{ derive_slug.output }}/review-pack.md"
+        f=".maestro/{{ derive_slug.output }}/review-pack.md"
         if [ -s "$f" ]; then echo "[artifact] OK: $f"; exit 0
         else echo "[artifact] MISSING/EMPTY: $f" >&2; exit 1; fi
     routes:
@@ -383,7 +384,7 @@ agents:
     prompt: |
       ## Release Approval — {{ workflow.input.feature }}
 
-      Review pack: `.sdlc/{{ derive_slug.output }}/review-pack.md`
+      Review pack: `.maestro/{{ derive_slug.output }}/review-pack.md`
 
       | Stack | Branch | Tests |
       |------|--------|-------|
@@ -397,10 +398,33 @@ agents:
     options:
       - label: "Approve — proceed to final merge"
         value: approve
-        route: $end
+        route: archive
       - label: "Reject the release"
         value: reject
         route: abort
+
+  # ---- 9. ARCHIVE (STUB) --------------------------------------------------
+  # Everything for the feature lives under .maestro/<slug>/ (git-tracked). This
+  # step is where the curated design docs get PUBLISHED into committed docs/.
+  # POC stub (echo + exit 0, like merge_for_test) — a downstream user implements
+  # the real copy.
+  - name: archive
+    type: script
+    description: (STUB) Publish the feature's .maestro/<slug>/ design docs into committed docs.
+    command: bash
+    args:
+      - "-c"
+      - |
+        set -uo pipefail
+        s="{{ derive_slug.output }}"
+        # TODO: archive .maestro/$s/ into committed docs (NOT implemented yet):
+        #   .maestro/$s/hld.md, lld/*.md       -> docs/technical/$s/
+        #   .maestro/$s/openapi.yaml           -> docs/technical/$s/
+        #   .maestro/$s/acceptance-criteria.md -> docs/functional/$s/
+        echo "[archive] TODO: publish .maestro/$s/ -> docs/technical|functional/$s/ (stub, not implemented)"
+        exit 0
+    routes:
+      - to: $end
 
   # ---- terminal: abort ----------------------------------------------------
   - name: abort
@@ -411,10 +435,10 @@ agents:
 output:
   feature: "{{ workflow.input.feature }}"
   feature_slug: "{{ derive_slug.output }}"
-  hld: "docs/technical/{{ derive_slug.output }}/hld.md"
-  lld_backend: "docs/technical/{{ derive_slug.output }}/lld/backend.md"
-  lld_frontend: "docs/technical/{{ derive_slug.output }}/lld/frontend.md"
-  contract: "contracts/{{ derive_slug.output }}/openapi.yaml"
+  hld: ".maestro/{{ derive_slug.output }}/hld.md"
+  lld_backend: ".maestro/{{ derive_slug.output }}/lld/backend.md"
+  lld_frontend: ".maestro/{{ derive_slug.output }}/lld/frontend.md"
+  contract: ".maestro/{{ derive_slug.output }}/openapi.yaml"
   stacks_built: "{% if implement is defined %}{{ implement.outputs | length }}{% endif %}"
   results: "{% if implement is defined %}{{ implement.outputs | json }}{% endif %}"
-  review_pack: ".sdlc/{{ derive_slug.output }}/review-pack.md"
+  review_pack: ".maestro/{{ derive_slug.output }}/review-pack.md"

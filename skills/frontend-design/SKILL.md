@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: Author the frontend low-level design (LLD) for a feature — read the relevant frontend code to ground the design, then design component/state architecture, routing, the full UI-state matrix, the API it needs to consume, accessibility, performance, i18n, and tests. Writes docs/technical/<slug>/lld/frontend.md; never edits app code. Runs in the design phase (parallel with the backend). Front door for /frontend-design.
+description: Author the frontend low-level design (LLD) for a feature — read the relevant frontend code to ground the design, then design component/state architecture, routing, the full UI-state matrix, the API it needs to consume, accessibility, performance, i18n, and tests. Writes .maestro/<slug>/lld/frontend.md; never edits app code. Runs in the design phase (parallel with the backend). Front door for /frontend-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
 ---
 
@@ -19,7 +19,7 @@ code — never edit app code. Prefer reuse over reinvention; cite `file:line` fo
 ## Inputs
 - `feature`, `feature_slug`, approved `hld_path`.
 - **Artifact path** — resolve it yourself from `skills.config.yaml` → `artifacts.lld` with
-  `{slug}` = `feature_slug`, i.e. `docs/technical/<slug>/lld/frontend.md`. The caller passes
+  `{slug}` = `feature_slug`, i.e. `.maestro/<slug>/lld/frontend.md`. The caller passes
   no path; this skill owns where it writes.
 
 ## Steps
@@ -42,7 +42,7 @@ code — never edit app code. Prefer reuse over reinvention; cite `file:line` fo
    optimistic UI + rollback).
 6. **Test plan** — component + E2E coverage, including the negative UI states.
 7. **Write** the frontend LLD; flag anything that forces a backend/contract change.
-8. **Emit the task DAG** — write `.sdlc/<slug>/frontend/tasks.json` (see section below),
+8. **Emit the task DAG** — write `.maestro/<slug>/frontend/tasks.json` (see section below),
    reusing the code you already read. No re-reading.
 
 ## What the frontend LLD must cover (write all)
@@ -65,7 +65,7 @@ Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-
 findings you can cite in the LLD. If `none`, design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
-Write `.sdlc/<slug>/frontend/tasks.json` conforming to `workflows/tasks.schema.json`. Build it
+Write `.maestro/<slug>/frontend/tasks.json` conforming to `workflows/tasks.schema.json`. Build it
 from the LLD you just wrote, reusing files you already read (do not re-read the codebase).
 
 **Author it in one shot, then refine once.** Compose the entire tasks.json — manifest, every
@@ -84,11 +84,11 @@ Fields:
   `needs_human_gate` (true for auth/permission, prod config, or dependency changes).
 - **Grouping:** two tasks share a `group_id` **iff** one depends on the other OR they write a
   common file; otherwise different groups. Fill `slices[]`, `task_ids` in dependency order.
-- **Validate before returning:** `python3 workflows/validate_tasks.py .sdlc/<slug>/frontend/tasks.json`
+- **Validate before returning:** `python3 workflows/validate_tasks.py .maestro/<slug>/frontend/tasks.json`
   must print `OK`.
 
 ## Output
-`file:line`. Return `lld_path`, `tasks_path` (`.sdlc/<slug>/frontend/tasks.json`), and a short
+`file:line`. Return `lld_path`, `tasks_path` (`.maestro/<slug>/frontend/tasks.json`), and a short
 list of the **decisions/constraints that shape the contract** (e.g. "data-fetching goes through hook X — reuse it"; "needs `GET /searches`
 returning `{items, nextCursor}`"). The API-consumed section feeds `/api-contract`.
 

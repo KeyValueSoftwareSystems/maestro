@@ -15,7 +15,7 @@ never invent API shapes. Start only after the contract is stable.
 - **Plan mode:** if invoked to plan only, produce the task/UI-state list and stop.
 
 ## Before editing
-1. Read `CLAUDE.md`, the frontend LLD (`docs/technical/<slug>/lld/frontend.md`) — reuse the
+1. Read `CLAUDE.md`, the frontend LLD (`.maestro/<slug>/lld/frontend.md`) — reuse the
    components/patterns it identified before adding new ones — and the contract.
 2. List pages affected, components to reuse/add, API hooks, form schema/validation,
    analytics, and tests. List files to change.
@@ -37,16 +37,16 @@ slices sequentially in this one session.
 
 ### Plan mode / fallback authoring (emit tasks.json)
 This is the **fallback** author: the design phase normally emits `tasks.json` via
-`/frontend-design`. Run this only when `.sdlc/<slug>/frontend/tasks.json` is absent (e.g. a
+`/frontend-design`. Run this only when `.maestro/<slug>/frontend/tasks.json` is absent (e.g. a
 standalone `/frontend-impl` run with no design phase, or when invoked in plan mode).
 
 When invoked in plan mode with no `tasks.json` present, write
-`.sdlc/<slug>/frontend/tasks.json` conforming to `workflows/tasks.schema.json`:
+`.maestro/<slug>/frontend/tasks.json` conforming to `workflows/tasks.schema.json`:
 `context_manifest` (batched-read files), `tasks[]` (`id`, `group_id`, `title`, `depends_on`
 intra-group only, `reads`, `writes`, `test`, `standards`, `needs_human_gate`), and `slices[]`
 (one entry per independent group — two tasks share a group iff one depends on the other OR
 they write a common file). Validate with
-`python3 workflows/validate_tasks.py .sdlc/<slug>/frontend/tasks.json` (must print `OK`).
+`python3 workflows/validate_tasks.py .maestro/<slug>/frontend/tasks.json` (must print `OK`).
 Return `tasks_path`, `slices`.
 
 ## Steps

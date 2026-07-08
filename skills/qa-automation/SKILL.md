@@ -26,7 +26,7 @@ not every path.
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
 4. **Author tests** with stable selectors (roles/test-ids), explicit waits on conditions,
    and assertions that verify observable behavior + the contract's outcomes.
-5. **Emit the scenario DAG** — write `.sdlc/<slug>/qa/tasks.json` (see section below) so the
+5. **Emit the scenario DAG** — write `.maestro/<slug>/qa/tasks.json` (see section below) so the
    suite can be authored in parallel.
 6. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
    always runs).
@@ -58,7 +58,7 @@ Read `skills.config.yaml` → `qa.external.generator` (e.g. `anthropics:webapp-t
 (isolation, determinism, real assertions, risk-tiering). If `none`, author in-pack.
 
 ## Emit tasks.json (parallel scenario authoring)
-Write `.sdlc/<slug>/qa/tasks.json` conforming to `workflows/tasks.schema.json`, with
+Write `.maestro/<slug>/qa/tasks.json` conforming to `workflows/tasks.schema.json`, with
 `"stack": "qa"`. Scenarios are independent, so each scenario is its **own single-task group**.
 
 **Author it in one shot, then refine once.** Compose the entire tasks.json — manifest, every
@@ -75,15 +75,15 @@ Fields:
   `depends_on`, `reads` (extra fixtures), `writes` (the spec file it creates), `test` (the
   scenario id), `standards` (e.g. `["risk-tiered","determinism","isolation"]`),
   `needs_human_gate: false`. `slices[]` = one group per scenario.
-- **Validate before returning:** `python3 workflows/validate_tasks.py .sdlc/<slug>/qa/tasks.json`
+- **Validate before returning:** `python3 workflows/validate_tasks.py .maestro/<slug>/qa/tasks.json`
   must print `OK`.
 
 **Scenario mode:** when invoked with a `group_id` and `tasks_path`, author only that one
 scenario's spec file (batch-load the fixture manifest once) and return `spec_path`.
 
 ## Output
-Write a coverage note to `.sdlc/<slug>/qa/suite.md` (journeys covered, negatives covered,
-out-of-scope, data strategy). Also write `.sdlc/<slug>/qa/tasks.json`. Return `suite_path`,
+Write a coverage note to `.maestro/<slug>/qa/suite.md` (journeys covered, negatives covered,
+out-of-scope, data strategy). Also write `.maestro/<slug>/qa/tasks.json`. Return `suite_path`,
 `tasks_path`, `slices` (the `slices` array from tasks.json), and `tests_passed`.
 
 ## Definition of done

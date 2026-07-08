@@ -105,9 +105,9 @@ agents:
     description: Load-or-author the task DAG (tasks.json) and return the fan-out slices.
     model: "{{ workflow.input.model.tasks if workflow.input.model.tasks is defined else 'claude-haiku-4-5' }}"
     prompt: |
-      Ensure `.sdlc/{{ workflow.input.feature_slug }}/backend/tasks.json` exists and is valid:
+      Ensure `.maestro/{{ workflow.input.feature_slug }}/backend/tasks.json` exists and is valid:
       - If present (authored by /backend-design in the design phase), validate it:
-        `python3 workflows/validate_tasks.py .sdlc/{{ workflow.input.feature_slug }}/backend/tasks.json`
+        `python3 workflows/validate_tasks.py .maestro/{{ workflow.input.feature_slug }}/backend/tasks.json`
       - If absent, run the **/backend-tasks** skill to author it (JSON, schema-valid), then validate.
       Inputs:
       - feature:          {{ workflow.input.feature }}

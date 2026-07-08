@@ -34,12 +34,12 @@ plan:
 # two LLDs into the formal OpenAPI contract. HLD (section 1) + these run together
 # in the design phase (workflows/design.yaml): HLD -> approve -> LLDs -> contract.
 lld:
-  backend:  backend-design                      # -> docs/technical/<slug>/lld/backend.md
-  frontend: frontend-design                     # -> docs/technical/<slug>/lld/frontend.md
+  backend:  backend-design                      # -> .maestro/<slug>/lld/backend.md
+  frontend: frontend-design                     # -> .maestro/<slug>/lld/frontend.md
   external:
     research: none                              # deep-research for unfamiliar libs/protocols | none
 contract:
-  skill: api-contract                           # reconciles the LLDs -> contracts/<slug>/openapi.yaml
+  skill: api-contract                           # reconciles the LLDs -> .maestro/<slug>/openapi.yaml
 
 # ---- 3. Backend implementation ----------------------------------------------
 backend:
@@ -88,12 +88,16 @@ shared:
 
 # ---- Artifact paths (feature-scoped; <slug> = feature_slug) -----------------
 # Every producing step writes to one of these paths; the workflow verifies each
-# file exists and is non-empty (a `test -s` gate) before advancing.
+# file exists and is non-empty (a `test -s` gate) before advancing. Everything
+# for a feature — the input requirement and all generated artifacts — lives under
+# one folder, .maestro/<slug>/. The archive step later publishes the design docs
+# from here into committed docs/technical|functional/.
 artifacts:
-  hld:         docs/technical/<slug>/hld.md
-  open_questions: .sdlc/<slug>/open-questions.json    # machine-readable HLD open-question loop state (mirrors the HLD "Open questions" prose)
-  lld:         docs/technical/<slug>/lld/              # backend.md, frontend.md (one per stack)
-  contract:    contracts/<slug>/openapi.yaml
-  acceptance:  docs/functional/<slug>/acceptance-criteria.md
-  work_dir:    .sdlc/<slug>/                          # tasks, verify, reviews, review-pack
-  tasks:       .sdlc/<slug>/<stack>/tasks.json        # machine-readable task DAG (<stack> = backend|frontend|qa)
+  requirement:    .maestro/<slug>/requirement/        # INPUT: folder of requirement files (all read by /plan)
+  hld:         .maestro/<slug>/hld.md
+  open_questions: .maestro/<slug>/open-questions.json # machine-readable HLD open-question loop state (mirrors the HLD "Open questions" prose)
+  lld:         .maestro/<slug>/lld/                    # backend.md, frontend.md (one per stack)
+  contract:    .maestro/<slug>/openapi.yaml
+  acceptance:  .maestro/<slug>/acceptance-criteria.md
+  work_dir:    .maestro/<slug>/                        # tasks, verify, reviews, review-pack
+  tasks:       .maestro/<slug>/<stack>/tasks.json      # machine-readable task DAG (<stack> = backend|frontend|qa)

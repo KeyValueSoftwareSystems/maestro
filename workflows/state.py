@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Per-step 'done' ledger for Conductor sub-workflows.
 
-Ledger lives at <root>/<slug>/state.json (root defaults to .sdlc). Only script
+Ledger lives at <root>/<slug>/state.json (root defaults to .maestro). Only script
 steps in a workflow should call this — never an LLM/agent step.
 
 Usage:
@@ -21,7 +21,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_ROOT = Path(".sdlc")
+DEFAULT_ROOT = Path(".maestro")
 
 
 def ledger_path(slug: str, root: Path = DEFAULT_ROOT) -> Path:

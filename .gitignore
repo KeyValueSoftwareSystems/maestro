@@ -1,11 +1,8 @@
 # keyvalue-skills — ignored, regenerable/local
 # NOTE: git has no inline comments — keep each pattern on its own line.
 
-# per-run orchestration proof (tasks, verify, reviews, review-pack)
-.sdlc/
-
-# /verify's proof marker — evidence read by /review-pack
-.kv/
+# NOTE: .maestro/<slug>/ (feature requirement + all generated artifacts) is
+# intentionally NOT ignored — it is git-tracked for now.
 
 # installed skills (Claude Code / Cursor). Source of truth is ./skills/;
 # these dirs are populated by install.sh (npx skills). Regenerable — never the source.

@@ -9,14 +9,14 @@ allowed-tools: Read, Grep, Glob, Bash, Write
 Break the approved backend scope into the **smallest ordered set of verifiable tasks** that
 implement the contract. Small tasks keep the implement→verify→fix loop tight and every
 change reviewable. Read-only — produces a task list, not code. This is the **fallback** author: the design phase normally emits `tasks.json` via
-`/backend-design`. Run this only when `.sdlc/<slug>/backend/tasks.json` is absent (e.g. a
+`/backend-design`. Run this only when `.maestro/<slug>/backend/tasks.json` is absent (e.g. a
 standalone `/backend-impl` run with no design phase).
 
 ## Inputs
 `feature`, `contract_summary` (the contract the backend OWNS), optional `lld_path`.
 
 ## Steps
-1. **Read** the contract and the backend LLD (`docs/technical/<slug>/lld/backend.md`); read
+1. **Read** the contract and the backend LLD (`.maestro/<slug>/lld/backend.md`); read
    the target service's structure read-only.
 2. **Slice vertically** where possible — a thin end-to-end slice (schema→API→test) before
    breadth, so value is demonstrable early.
@@ -60,12 +60,12 @@ carry files + test + standards + risk as above. If `none`, plan in-pack.
 Validate once; if it fails, make one corrective edit and re-validate (repeat only to fix
 validation errors, never to build the file up incrementally).
 
-Write the DAG to `.sdlc/<slug>/backend/tasks.json` conforming to `workflows/tasks.schema.json`
+Write the DAG to `.maestro/<slug>/backend/tasks.json` conforming to `workflows/tasks.schema.json`
 (same shape `/backend-design` emits): `context_manifest` (batched-read files), `tasks[]`
 (`id`, `group_id`, `title`, `depends_on` intra-group only, `reads`, `writes`, `test`,
 `standards`, `needs_human_gate`), and `slices[]` (one per independent group — two tasks share
 a group iff one depends on the other or they write a common file). Validate with
-`python3 workflows/validate_tasks.py .sdlc/<slug>/backend/tasks.json` (must print `OK`).
+`python3 workflows/validate_tasks.py .maestro/<slug>/backend/tasks.json` (must print `OK`).
 Return `tasks_path`, `slices`, and `risky` (true if any task needs a human gate).
 
 ## Definition of done

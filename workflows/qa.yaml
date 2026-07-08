@@ -9,7 +9,7 @@
 # framework (playwright/maestro) and any external generator per skills.config.yaml
 # (`qa.*`). Route-backs follow the fix-loop skill (selectors/flakes only).
 #
-# Artifacts: .sdlc/<slug>/qa/suite.md (coverage) + run.md (clean-env result)
+# Artifacts: .maestro/<slug>/qa/suite.md (coverage) + run.md (clean-env result)
 # =============================================================================
 
 workflow:

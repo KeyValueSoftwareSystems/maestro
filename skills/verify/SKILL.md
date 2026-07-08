@@ -33,8 +33,8 @@ Storybook/component check (if available) · Playwright E2E · accessibility basi
 
 ## Proof artifacts (this is what makes "done" checkable, not just claimed)
 Also WRITE:
-- `.sdlc/<slug>/<stack>/verify.md` — the human-readable report above.
-- `.kv/last-verify.json` — the marker, e.g.
+- `.maestro/<slug>/<stack>/verify.md` — the human-readable report above.
+- `.maestro/<slug>/<stack>/last-verify.json` — the marker, e.g.
   `{"status":"pass|fail","date":"<YYYY-MM-DD>","stack":"backend|frontend","checks":[{"cmd":"…","result":"pass|fail"}]}`.
 
 Nothing auto-runs this for you — it's on you (or `/review-pack`) to check the marker exists

@@ -52,18 +52,19 @@ The installer:
 Conductor runs the skills for you, end to end, with automatic approval gates. Same skills,
 same artifacts — it just drives the sequence.
 
-**The easy way — by feature slug.** Drop your PRD in a per-feature folder and run one command
-from your repo root:
+**The easy way — by feature slug.** Scaffold the requirement folder, drop your requirement
+files in it, and run one command from your repo root:
 
 ```bash
-mkdir -p features/user-authentication
-$EDITOR features/user-authentication/prd.md               # write the PRD here
+maestro init user-authentication                          # create .maestro/user-authentication/requirement/
+$EDITOR .maestro/user-authentication/requirement/requirement.md   # write the requirement (add more files if you like)
 maestro user-authentication                               # run full pipeline
 maestro user-authentication --path=workflows/design.yaml  # run design phase only
 ```
 
-`maestro` (installed by the installer) resolves the PRD at `features/<slug>/prd.md` and runs the
-default pipeline at `http://127.0.0.1:8080` (set `web.port` in `maestro.config.yaml`). Use `--path=<file>`
+`maestro` (installed by the installer) reads the requirement from the folder
+`.maestro/<slug>/requirement/` (every file in it) and runs the default pipeline at
+`http://127.0.0.1:8080` (set `web.port` in `maestro.config.yaml`). Use `--path=<file>`
 to run a specific workflow. Extra flags go after `--`, e.g. `maestro user-authentication -- --dry-run`.
 
 Run individual workflows for specific phases:
@@ -77,7 +78,7 @@ Run individual workflows for specific phases:
 
 ### Resuming a partially-run workflow
 
-Sub-workflows record completed steps in `.sdlc/<slug>/state.json`. Re-run the same command to
+Sub-workflows record completed steps in `.maestro/<slug>/state.json`. Re-run the same command to
 resume from the first incomplete step. To force a rebuild:
 
 ```bash
@@ -124,10 +125,12 @@ destructive.
 
 This is the basic workflow — a starting point you can customize to fit your process. Each step
 captures decision points, produces artifacts, and gates on their existence before advancing.
-Completed steps are recorded in `.sdlc/<slug>/state.json` so partial runs resume correctly.
+Completed steps are recorded in `.maestro/<slug>/state.json` so partial runs resume correctly.
+Everything for a feature — the requirement input and all generated artifacts — lives under one
+folder, `.maestro/<slug>/`.
 
 ```text
-                          feature + PRD
+                     feature + requirement
                                 │
                                 ▼
                      ┌──────────────────────┐
@@ -176,6 +179,9 @@ Completed steps are recorded in `.sdlc/<slug>/state.json` so partial runs resume
                                 │
                                 ▼
                              release
+                                │
+                                ▼
+                        archive (stub → docs/)
 ```
 
 ## Configure

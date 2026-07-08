@@ -10,8 +10,8 @@ Review the drafted design **before any code is written**, so architecture proble
 caught while they are cheap to fix. Read-only — never edit code.
 
 ## Inputs
-`feature`, `feature_slug`; the per-stack LLDs (`docs/technical/<slug>/lld/backend.md`,
-`docs/technical/<slug>/lld/frontend.md`) and contract (`contracts/<slug>/openapi.yaml`),
+`feature`, `feature_slug`; the per-stack LLDs (`.maestro/<slug>/lld/backend.md`,
+`.maestro/<slug>/lld/frontend.md`) and contract (`.maestro/<slug>/openapi.yaml`),
 cross-checked against the HLD, acceptance criteria, and architecture rules (`CLAUDE.md`, ADRs).
 
 ## Steps
@@ -71,6 +71,6 @@ blocking: <true if any blocker/major remains>
 ## Decide & output
 Sort findings blocker → major → minor → suggestion; `blocking = true` if any blocker/major
 remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write
-`.sdlc/<slug>/architecture-review.md` (summary + findings table). Return `review_path`,
+`.maestro/<slug>/architecture-review.md` (summary + findings table). Return `review_path`,
 `summary`, `blocking`. Feeds the contract-approval gate; a blocking result should route back
 to revise the design (via `arch_gate_router`).

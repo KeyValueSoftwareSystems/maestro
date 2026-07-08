@@ -1,6 +1,6 @@
 ---
 name: backend-design
-description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in — component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes docs/technical/<slug>/lld/backend.md; never edits app code. Runs in the design phase (parallel with the frontend). Front door for /backend-design.
+description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in — component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes .maestro/<slug>/lld/backend.md; never edits app code. Runs in the design phase (parallel with the frontend). Front door for /backend-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
 ---
 
@@ -20,7 +20,7 @@ rely on; don't guess.
 ## Inputs
 - `feature`, `feature_slug`, approved `hld_path`.
 - **Artifact path** — resolve it yourself from `skills.config.yaml` → `artifacts.lld` with
-  `{slug}` = `feature_slug`, i.e. `docs/technical/<slug>/lld/backend.md`. The caller passes no
+  `{slug}` = `feature_slug`, i.e. `.maestro/<slug>/lld/backend.md`. The caller passes no
   path; this skill owns where it writes.
 
 ## Steps
@@ -44,7 +44,7 @@ rely on; don't guess.
    **performance** considerations.
 6. **Test plan** — unit + integration coverage, including the contract's negative paths.
 7. **Write** the backend LLD; flag every breaking change in plain language.
-8. **Emit the task DAG** — write `.sdlc/<slug>/backend/tasks.json` (see section below),
+8. **Emit the task DAG** — write `.maestro/<slug>/backend/tasks.json` (see section below),
    reusing the code you already read. No re-reading.
 
 ## What the backend LLD must cover (write all)
@@ -69,7 +69,7 @@ Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-
 return sourced findings you can cite in the LLD. If `none`, design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
-Write `.sdlc/<slug>/backend/tasks.json` conforming to `workflows/tasks.schema.json`. It is
+Write `.maestro/<slug>/backend/tasks.json` conforming to `workflows/tasks.schema.json`. It is
 the plan the backend impl phase fans out over — build it from the LLD you just wrote, reusing
 the files you already read (do not re-read the codebase).
 
@@ -91,12 +91,12 @@ Fields:
   the other OR they write a common file; otherwise put them in different groups. Then fill
   `slices[]` — one entry per group, `task_ids` in dependency order.
 - **Validate before returning:** run
-  `python3 workflows/validate_tasks.py .sdlc/<slug>/backend/tasks.json` — it must print `OK`.
+  `python3 workflows/validate_tasks.py .maestro/<slug>/backend/tasks.json` — it must print `OK`.
   Fix any `FAIL` (cross-group edge, shared write, mis-ordered slice) before finishing.
 
 ## Output
-Write `docs/technical/<slug>/lld/backend.md` with the sections above, each constraint citing
-`file:line`. Return `lld_path`, `tasks_path` (`.sdlc/<slug>/backend/tasks.json`), and a short
+Write `.maestro/<slug>/lld/backend.md` with the sections above, each constraint citing
+`file:line`. Return `lld_path`, `tasks_path` (`.maestro/<slug>/backend/tasks.json`), and a short
 list of the **decisions/constraints that shape the contract** (e.g. "auth is centralized in X — new endpoints must use it"; "exposes `GET
 /searches` with cursor pagination"). The API/events section feeds `/api-contract`.
 

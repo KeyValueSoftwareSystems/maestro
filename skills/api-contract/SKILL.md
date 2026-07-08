@@ -13,7 +13,7 @@ frontend consumes — the boundary that lets each side build and verify alone. W
 contract + acceptance criteria only; no app code.
 
 ## When to use / not use
-- **Use** once both per-stack LLDs exist (`docs/technical/<slug>/lld/backend.md` and
+- **Use** once both per-stack LLDs exist (`.maestro/<slug>/lld/backend.md` and
   `.../frontend.md`). Runs after the design phase, before implementation.
 - **Don't** design internals (that's the LLDs) or implement. Don't invent operations neither
   LLD calls for.
@@ -22,11 +22,11 @@ contract + acceptance criteria only; no app code.
 - `feature`, `feature_slug`, optional `hld_path`.
 - `backend_lld`, `frontend_lld` — the two per-stack LLD paths.
 - **Artifact paths** — resolve from `skills.config.yaml` → `artifacts.contract` and
-  `artifacts.acceptance` (`contracts/<slug>/openapi.yaml`,
-  `docs/functional/<slug>/acceptance-criteria.md`).
+  `artifacts.acceptance` (`.maestro/<slug>/openapi.yaml`,
+  `.maestro/<slug>/acceptance-criteria.md`).
 
 ## Steps
-1. **Read** both LLDs, any existing `contracts/`, and the acceptance intent in the HLD.
+1. **Read** both LLDs, any existing `.maestro/<slug>/openapi.yaml`, and the acceptance intent in the HLD.
 2. **Reconcile** the backend's *exposed* API against the frontend's *consumed* API. Where
    they disagree (shape, field, pagination, error), resolve it explicitly — the contract is
    the source of truth — and note which side must adjust its LLD/implementation.
@@ -60,8 +60,8 @@ Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-
 work from the LLDs.
 
 ## Output — write these artifacts
-- `contracts/<slug>/openapi.yaml` — the contract (source of truth).
-- `docs/functional/<slug>/acceptance-criteria.md` — what QA automates (include negative paths).
+- `.maestro/<slug>/openapi.yaml` — the contract (source of truth).
+- `.maestro/<slug>/acceptance-criteria.md` — what QA automates (include negative paths).
 
 Return `contract_path`, `contract_summary` (breaking changes flagged), `affected_repos`
 (objects with `name` exactly `backend`/`frontend`), and `acceptance_criteria`.
