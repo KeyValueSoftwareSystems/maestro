@@ -41,7 +41,7 @@ The installer:
 1. installs **our skills** (`npx skills add KeyValueSoftwareSystems/kv-skills`);
 2. installs the **external helper skills** the flow uses ([Superpowers](https://github.com/obra/superpowers) — brainstorming, planning, TDD, code review, debugging, worktrees);
 3. copies the **Conductor workflows** + `skills.config.yaml` into your repo (fetched from the repo tarball when run piped);
-4. installs **Conductor** if [`uv`](https://github.com/astral-sh/uv) is available (skip with `--no-conductor`).
+4. installs **Conductor** (installing [`uv`](https://github.com/astral-sh/uv) first if it's missing; skip the whole step with `--no-conductor`).
 
 > Conductor runs the full pipeline; you don't need it if you only use the slash commands.
 

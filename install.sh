@@ -109,13 +109,31 @@ fi
 
 # 4) Conductor (optional)
 if [ "$INSTALL_CONDUCTOR" = 1 ]; then
+  # Conductor is a uv tool. If uv is missing, install it first (the maestro wrapper
+  # is useless without conductor on PATH) — official astral-sh installer, into the
+  # same ~/.local/bin we already put maestro in.
+  if ! command -v uv >/dev/null 2>&1; then
+    echo "==> 'uv' not found — installing it (astral-sh) so Conductor can be installed"
+    if curl -LsSf https://astral.sh/uv/install.sh | sh; then
+      # Make uv usable for the rest of THIS script: source the env file the installer
+      # writes, and prepend its bin dir to PATH as a fallback.
+      UV_BIN="${XDG_BIN_HOME:-$HOME/.local/bin}"
+      # shellcheck disable=SC1090
+      [ -f "$UV_BIN/env" ] && . "$UV_BIN/env"
+      case ":$PATH:" in *":$UV_BIN:"*) : ;; *) PATH="$UV_BIN:$PATH" ;; esac
+    else
+      echo "WARN: 'uv' install failed."
+    fi
+  fi
+
   if command -v uv >/dev/null 2>&1; then
     echo "==> Installing Conductor (with claude-agent-sdk)"
     uv tool install --force --with 'claude-agent-sdk>=0.1.0' \
       git+https://github.com/microsoft/conductor.git \
       || echo "WARN: Conductor install failed — install manually (see README)."
   else
-    echo "==> Skipping Conductor: 'uv' not found. To run the workflows later:"
+    echo "==> Skipping Conductor: 'uv' unavailable. To run the workflows later, install"
+    echo "    uv (https://docs.astral.sh/uv/getting-started/installation/), then:"
     echo "    uv tool install --force --with 'claude-agent-sdk>=0.1.0' git+https://github.com/microsoft/conductor.git"
   fi
 fi

@@ -78,6 +78,14 @@ fi
 prd="features/${slug}/prd.md"
 [ -s "$prd" ] || echo "maestro: WARN — $prd is missing or empty. Create it, or pass --input prd_path=... after --." >&2
 
+if ! command -v conductor >/dev/null 2>&1; then
+  echo "maestro: 'conductor' not found on PATH — it orchestrates the workflows." >&2
+  echo "         Install it (needs uv), then re-run:" >&2
+  echo "           uv tool install --force --with 'claude-agent-sdk>=0.1.0' git+https://github.com/microsoft/conductor.git" >&2
+  echo "         Or re-run the pack installer (install.sh), which installs uv + conductor for you." >&2
+  exit 1
+fi
+
 exec conductor run "$wf" \
   --web --web-port "$web_port" \
   --input feature_slug="$slug" \
