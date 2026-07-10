@@ -1,0 +1,1682 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maestro Workflow Builder</title>
+<style>
+:root {
+  --bg: #f6f7fb; --panel: #ffffff; --panel2: #f0f2f8; --border: #dde1ec;
+  --text: #1b2233; --muted: #6b7385; --accent: #4f6bf5; --accent-soft: #e8ecff;
+  --danger: #d64550; --warn: #d69a2d; --ok: #2f9e6e;
+  --agent: #4f6bf5; --gate: #d69a2d; --script: #2f9e6e; --parallel: #9a5df0; --subworkflow: #d6558e;
+  --shadow: 0 2px 10px rgba(20,28,60,.08), 0 1px 3px rgba(20,28,60,.06);
+  --shadow-lg: 0 12px 40px rgba(20,28,60,.16);
+  --radius: 10px; --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+:root[data-theme="dark"] {
+  --bg: #12151f; --panel: #1a1f2e; --panel2: #161a26; --border: #2a3145;
+  --text: #e6e9f2; --muted: #8b93a8; --accent: #7288ff; --accent-soft: #232c4d;
+  --danger: #ef6b74; --warn: #e5b45b; --ok: #4dbd8f;
+  --agent: #7288ff; --gate: #e5b45b; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
+  --shadow: 0 2px 10px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.3);
+  --shadow-lg: 0 12px 40px rgba(0,0,0,.5);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --bg: #12151f; --panel: #1a1f2e; --panel2: #161a26; --border: #2a3145;
+    --text: #e6e9f2; --muted: #8b93a8; --accent: #7288ff; --accent-soft: #232c4d;
+    --danger: #ef6b74; --warn: #e5b45b; --ok: #4dbd8f;
+    --agent: #7288ff; --gate: #e5b45b; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
+    --shadow: 0 2px 10px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.3);
+    --shadow-lg: 0 12px 40px rgba(0,0,0,.5);
+  }
+}
+* { box-sizing: border-box; margin: 0; }
+html, body { height: 100%; overflow: hidden; }
+body { font-family: var(--font); font-size: 13px; color: var(--text); background: var(--bg); }
+button, input, select, textarea { font: inherit; color: inherit; }
+
+/* ---- layout ---- */
+#app { display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 216px 1fr 320px; height: 100%; }
+#toolbar { grid-column: 1 / 4; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+  background: var(--panel); border-bottom: 1px solid var(--border); z-index: 30; }
+#palette { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; }
+#canvas-wrap { position: relative; overflow: hidden; background: var(--bg);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 22px 22px; }
+#inspector { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; }
+
+/* ---- toolbar ---- */
+.logo { font-weight: 700; font-size: 14px; letter-spacing: .2px; margin-right: 6px; }
+.logo b { color: var(--accent); }
+.tb { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 5px 11px;
+  cursor: pointer; color: var(--text); transition: background .12s; white-space: nowrap; }
+.tb:hover { background: var(--panel2); }
+.tb.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tb.primary:hover { filter: brightness(1.08); }
+.tb:disabled { opacity: .45; cursor: default; }
+.tb-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
+#crumbs { display: flex; gap: 4px; align-items: center; margin-left: 8px; font-weight: 600; }
+#crumbs .crumb { cursor: pointer; padding: 3px 8px; border-radius: 6px; }
+#crumbs .crumb:hover { background: var(--panel2); }
+#crumbs .crumb.here { background: var(--accent-soft); color: var(--accent); cursor: default; }
+#crumbs .sep { color: var(--muted); }
+.spacer { flex: 1; }
+#dirty-dot { color: var(--warn); font-size: 18px; visibility: hidden; }
+
+/* ---- palette ---- */
+.pal-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 4px 6px; }
+.pal-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border: 1px solid var(--border);
+  border-radius: 9px; margin-bottom: 6px; cursor: grab; background: var(--panel); transition: box-shadow .12s, transform .12s; }
+.pal-item:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.pal-item .ico { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center;
+  justify-content: center; color: #fff; font-size: 13px; flex: none; }
+.pal-item .nm { font-weight: 600; }
+.pal-item .ds { color: var(--muted); font-size: 11px; }
+.hint { color: var(--muted); font-size: 11px; padding: 6px 4px; line-height: 1.5; }
+
+/* ---- canvas ---- */
+#viewport { position: absolute; inset: 0; transform-origin: 0 0; }
+#edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+#edges path.edge { fill: none; stroke: var(--muted); stroke-width: 1.8; pointer-events: stroke; cursor: pointer; }
+#edges path.edge.back { stroke-dasharray: 7 5; stroke: var(--parallel); }
+#edges path.edge.selected { stroke: var(--accent); stroke-width: 2.6; }
+#edges path.hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
+#edges text { font-size: 10.5px; fill: var(--muted); font-family: var(--font); pointer-events: none; }
+#edges .arrow { fill: var(--muted); }
+#edges .arrow.back { fill: var(--parallel); }
+#edges .arrow.selected { fill: var(--accent); }
+#edges .cap-badge { font-size: 9.5px; fill: var(--parallel); font-weight: 700; }
+.node { position: absolute; width: 190px; background: var(--panel); border: 1.5px solid var(--border);
+  border-radius: var(--radius); box-shadow: var(--shadow); cursor: grab; user-select: none; }
+.node:hover { box-shadow: var(--shadow-lg); }
+.node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-lg); }
+.node .head { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0; }
+.node .ico { width: 22px; height: 22px; border-radius: 6px; color: #fff; display: flex; align-items: center;
+  justify-content: center; font-size: 12px; flex: none; }
+.node .ttl { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node .body { padding: 7px 10px 9px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
+.chip { font-size: 10.5px; background: var(--panel2); border: 1px solid var(--border); border-radius: 20px;
+  padding: 1.5px 8px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.skill { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
+.node .err-badge { position: absolute; top: -7px; right: -7px; width: 17px; height: 17px; border-radius: 50%;
+  background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; }
+.node .err-badge.warn { background: var(--warn); }
+.port { position: absolute; width: 13px; height: 13px; border-radius: 50%; background: var(--panel);
+  border: 2.5px solid var(--accent); right: -7px; cursor: crosshair; z-index: 5; }
+.port:hover { background: var(--accent); }
+.port.in { left: -7px; right: auto; border-color: var(--muted); cursor: default; }
+.port-label { position: absolute; right: 10px; font-size: 9.5px; color: var(--muted); transform: translateY(-1px);
+  pointer-events: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node.n-agent .ico, .pal-item.n-agent .ico { background: var(--agent); }
+.node.n-gate .ico, .pal-item.n-gate .ico { background: var(--gate); }
+.node.n-script .ico, .pal-item.n-script .ico { background: var(--script); }
+.node.n-parallel .ico, .pal-item.n-parallel .ico { background: var(--parallel); }
+.node.n-subworkflow .ico, .pal-item.n-subworkflow .ico { background: var(--subworkflow); }
+.node.n-terminal { width: 110px; opacity: .92; }
+.node.n-terminal .head { border-bottom: none; justify-content: center; }
+.node .open-btn { font-size: 11px; color: var(--accent); cursor: pointer; padding: 1.5px 8px;
+  border: 1px solid var(--accent-soft); background: var(--accent-soft); border-radius: 20px; }
+#temp-edge { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+#temp-edge path { stroke: var(--accent); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
+#empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center;
+  justify-content: center; color: var(--muted); pointer-events: none; }
+#empty-state .big { font-size: 17px; font-weight: 600; }
+
+/* ---- inspector ---- */
+#inspector h3 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+#inspector h3 .ico { width: 20px; height: 20px; border-radius: 6px; color: #fff; display: flex;
+  align-items: center; justify-content: center; font-size: 11px; }
+.f { margin-bottom: 10px; }
+.f label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+.f input[type=text], .f input[type=number], .f select, .f textarea { width: 100%; border: 1px solid var(--border);
+  border-radius: 7px; padding: 6px 8px; background: var(--panel2); outline: none; }
+.f input:focus, .f select:focus, .f textarea:focus { border-color: var(--accent); }
+.f textarea { min-height: 84px; resize: vertical; font-family: var(--mono); font-size: 12px; line-height: 1.45; }
+.f .invalid { border-color: var(--danger) !important; }
+.frow { display: flex; gap: 8px; }
+.frow .f { flex: 1; }
+.mini-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 6px; }
+.mini-row { display: flex; gap: 5px; align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--border);
+  background: var(--panel2); }
+.mini-row:last-child { border-bottom: none; }
+.mini-row input, .mini-row select { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 5px;
+  padding: 3px 6px; background: var(--panel); font-size: 12px; }
+.mini-row .del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 3px; }
+.mini-row .del:hover { color: var(--danger); }
+.add-btn { border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 7px;
+  padding: 5px; width: 100%; cursor: pointer; margin-bottom: 10px; }
+.add-btn:hover { color: var(--accent); border-color: var(--accent); }
+.sec { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
+.sec > .sec-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
+.danger-btn { color: var(--danger); border: 1px solid var(--border); background: none; border-radius: 7px;
+  padding: 6px; width: 100%; cursor: pointer; margin-top: 8px; }
+.danger-btn:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
+.note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+
+/* ---- issues panel ---- */
+#issues { position: absolute; left: 226px; bottom: 10px; right: 330px; max-height: 150px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+  z-index: 20; display: none; }
+#issues.show { display: block; }
+#issues .ih { display: flex; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--border);
+  font-weight: 650; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
+#issues .irow { padding: 5px 12px; cursor: pointer; display: flex; gap: 8px; font-size: 12px; }
+#issues .irow:hover { background: var(--panel2); }
+#issues .lvl { font-weight: 700; width: 14px; }
+#issues .lvl.error { color: var(--danger); } #issues .lvl.warning { color: var(--warn); }
+#lint-pill { cursor: pointer; }
+#lint-pill.bad { color: var(--danger); font-weight: 650; }
+#lint-pill.warn { color: var(--warn); font-weight: 650; }
+#lint-pill.good { color: var(--ok); }
+
+/* ---- modals ---- */
+.modal-bg { position: fixed; inset: 0; background: rgba(10,14,30,.45); display: none; align-items: center;
+  justify-content: center; z-index: 100; }
+.modal-bg.show { display: flex; }
+.modal { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow-lg); width: min(680px, 92vw);
+  max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+.modal .mh { padding: 15px 20px; font-weight: 700; font-size: 15px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; }
+.modal .mh .x { margin-left: auto; cursor: pointer; color: var(--muted); border: none; background: none; font-size: 17px; }
+.modal .mb { padding: 16px 20px; overflow-y: auto; }
+.modal .mf { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
+.tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.tpl { border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; transition: all .12s; }
+.tpl:hover { border-color: var(--accent); box-shadow: var(--shadow); transform: translateY(-1px); }
+.tpl .tn { font-weight: 700; margin-bottom: 5px; }
+.tpl .td { color: var(--muted); font-size: 12px; line-height: 1.5; }
+.tpl .tt { margin-top: 9px; display: flex; gap: 4px; flex-wrap: wrap; }
+.or-row { display: flex; align-items: center; gap: 10px; margin: 16px 0 4px; color: var(--muted); font-size: 11px; }
+.or-row::before, .or-row::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+#export-preview { font-family: var(--mono); font-size: 11.5px; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 8px; padding: 12px; white-space: pre; overflow: auto; max-height: 46vh; line-height: 1.5; }
+#paste-ta { width: 100%; min-height: 240px; font-family: var(--mono); font-size: 12px; border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px; background: var(--panel2); }
+.toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text);
+  color: var(--bg); border-radius: 9px; padding: 9px 16px; z-index: 200; box-shadow: var(--shadow-lg);
+  opacity: 0; transition: opacity .2s; pointer-events: none; font-weight: 600; }
+.toast.show { opacity: 1; }
+
+/* ---- selftest ---- */
+#selftest-view { position: fixed; inset: 0; background: var(--bg); z-index: 500; padding: 40px; overflow: auto; display: none; }
+#selftest-view h1 { margin-bottom: 18px; }
+.st-row { padding: 8px 12px; border-radius: 8px; margin-bottom: 6px; font-family: var(--mono); font-size: 13px; }
+.st-row.pass { background: color-mix(in srgb, var(--ok) 14%, transparent); }
+.st-row.fail { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="toolbar">
+    <span class="logo">Maestro <b>Builder</b></span>
+    <button class="tb" id="btn-new" title="Templates / new workflow">✚ New</button>
+    <button class="tb" id="btn-open" title="Open a workflow.yaml (⌘O)">Open</button>
+    <button class="tb" id="btn-paste" title="Paste YAML">Paste</button>
+    <span class="tb-sep"></span>
+    <button class="tb primary" id="btn-export" title="Export YAML (⌘S)">Export ⤓</button>
+    <span class="tb-sep"></span>
+    <button class="tb" id="btn-undo" title="Undo (⌘Z)">↩</button>
+    <button class="tb" id="btn-redo" title="Redo (⇧⌘Z)">↪</button>
+    <button class="tb" id="btn-layout" title="Auto-arrange nodes">Auto-layout</button>
+    <button class="tb" id="btn-fit" title="Fit to view (F)">Fit</button>
+    <div id="crumbs"></div>
+    <span class="spacer"></span>
+    <span id="dirty-dot" title="Unsaved changes">●</span>
+    <span class="tb" id="lint-pill">…</span>
+    <button class="tb" id="btn-theme" title="Toggle theme">◐</button>
+    <button class="tb" id="btn-help" title="Help">?</button>
+  </div>
+
+  <div id="palette">
+    <div class="pal-h">Presets</div>
+    <div class="pal-item n-agent" draggable="true" data-preset="planner"><span class="ico">✎</span><span><div class="nm">Planner</div><div class="ds">designs &amp; plans</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="implementer"><span class="ico">⚒</span><span><div class="nm">Implementer</div><div class="ds">writes the code</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="reviewer"><span class="ico">🔍</span><span><div class="nm">Reviewer</div><div class="ds">reviews changes</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="qa"><span class="ico">✓</span><span><div class="nm">QA</div><div class="ds">tests the feature</div></span></div>
+    <div class="pal-h">Nodes</div>
+    <div class="pal-item n-agent" draggable="true" data-preset="agent"><span class="ico">🤖</span><span><div class="nm">Agent</div><div class="ds">AI step</div></span></div>
+    <div class="pal-item n-gate" draggable="true" data-preset="gate"><span class="ico">👤</span><span><div class="nm">Gate</div><div class="ds">human decision</div></span></div>
+    <div class="pal-item n-script" draggable="true" data-preset="script"><span class="ico">$</span><span><div class="nm">Script</div><div class="ds">run a command</div></span></div>
+    <div class="pal-item n-parallel" draggable="true" data-preset="parallel"><span class="ico">⫘</span><span><div class="nm">Parallel</div><div class="ds">fork &amp; join</div></span></div>
+    <div class="pal-item n-subworkflow" draggable="true" data-preset="subworkflow"><span class="ico">⧉</span><span><div class="nm">Subworkflow</div><div class="ds">another file</div></span></div>
+    <div class="hint">Drag onto the canvas.<br>Drag from a node's ⚪ port to another node to connect — arrows may point <b>back</b> to earlier steps to create loops.</div>
+  </div>
+
+  <div id="canvas-wrap">
+    <div id="empty-state"><div class="big">Empty workflow</div><div>Drag a node from the palette, or press ✚ New for a template.</div></div>
+    <div id="viewport">
+      <svg id="edges"></svg>
+      <div id="nodes-layer"></div>
+    </div>
+    <svg id="temp-edge"></svg>
+    <div id="issues"><div class="ih"><span id="issues-title">Problems</span><span class="spacer"></span><button class="tb" id="issues-close" style="padding:1px 8px">×</button></div><div id="issues-body"></div></div>
+  </div>
+
+  <div id="inspector"></div>
+</div>
+
+<div class="modal-bg" id="m-templates"><div class="modal">
+  <div class="mh">Start a workflow <button class="x" data-close="m-templates">✕</button></div>
+  <div class="mb">
+    <div class="tpl-grid" id="tpl-grid"></div>
+    <div class="or-row">or</div>
+    <div style="display:flex; gap:8px; justify-content:center">
+      <button class="tb" id="tpl-open">Open a .yaml file…</button>
+      <button class="tb" id="tpl-paste">Paste YAML…</button>
+    </div>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="m-export"><div class="modal">
+  <div class="mh">Export workflow.yaml <button class="x" data-close="m-export">✕</button></div>
+  <div class="mb"><div id="export-issues" class="note" style="margin-bottom:8px"></div><div id="export-preview"></div></div>
+  <div class="mf">
+    <button class="tb" id="exp-copy">Copy</button>
+    <button class="tb" id="exp-save" title="Save back to the opened file">Save in place</button>
+    <button class="tb primary" id="exp-dl">Download</button>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="m-paste"><div class="modal">
+  <div class="mh">Paste workflow YAML <button class="x" data-close="m-paste">✕</button></div>
+  <div class="mb"><textarea id="paste-ta" placeholder="version: 1&#10;name: my-workflow&#10;…" spellcheck="false"></textarea>
+  <div class="note" id="paste-err" style="color:var(--danger); margin-top:6px"></div></div>
+  <div class="mf"><button class="tb primary" id="paste-load">Load</button></div>
+</div></div>
+
+<div class="modal-bg" id="m-help"><div class="modal">
+  <div class="mh">Maestro Builder <button class="x" data-close="m-help">✕</button></div>
+  <div class="mb" style="line-height:1.65">
+    <p><b>Create</b> — drag nodes from the palette. Every node's properties live in the right panel; the <b>Instruction</b> box is all an agent step needs (pin a skill under Advanced for reproducible runs).</p>
+    <p><b>Connect</b> — drag from a node's ⚪ output port onto another node. Arrows back to an earlier node create a <b>loop</b>: the engine re-runs from there and a repeat-limit (max&nbsp;visits) keeps it bounded — click the dashed edge to tune it.</p>
+    <p><b>Gates</b> — each option is its own outgoing edge. Edit options in the inspector.</p>
+    <p><b>Parallel / subworkflow</b> — double-click (or use the card's open buttons) to drill into branches; breadcrumbs bring you back.</p>
+    <p><b>Export</b> — one click, always validated. Positions are saved in a <code>ui:</code> key the engine ignores. YAML comments are not preserved on export — keep prose in <i>description</i> and node <i>notes</i>.</p>
+    <p class="note">Run a workflow with <code>/maestro &lt;slug&gt; &lt;file&gt;</code> in Claude Code / Cursor. Validate anytime with <code>python3 engine/maestroctl.py validate &lt;file&gt;</code>.</p>
+  </div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+<div id="selftest-view"><h1>Builder self-test</h1><div id="st-results"></div></div>
+
+<script>/* vendored js-yaml 4.1.0 — https://github.com/nodeca/js-yaml (MIT) */
+/*! js-yaml 4.1.0 https://github.com/nodeca/js-yaml @license MIT */
+!function(e,t){"object"==typeof exports&&"undefined"!=typeof module?t(exports):"function"==typeof define&&define.amd?define(["exports"],t):t((e="undefined"!=typeof globalThis?globalThis:e||self).jsyaml={})}(this,(function(e){"use strict";function t(e){return null==e}var n={isNothing:t,isObject:function(e){return"object"==typeof e&&null!==e},toArray:function(e){return Array.isArray(e)?e:t(e)?[]:[e]},repeat:function(e,t){var n,i="";for(n=0;n<t;n+=1)i+=e;return i},isNegativeZero:function(e){return 0===e&&Number.NEGATIVE_INFINITY===1/e},extend:function(e,t){var n,i,r,o;if(t)for(n=0,i=(o=Object.keys(t)).length;n<i;n+=1)e[r=o[n]]=t[r];return e}};function i(e,t){var n="",i=e.reason||"(unknown reason)";return e.mark?(e.mark.name&&(n+='in "'+e.mark.name+'" '),n+="("+(e.mark.line+1)+":"+(e.mark.column+1)+")",!t&&e.mark.snippet&&(n+="\n\n"+e.mark.snippet),i+" "+n):i}function r(e,t){Error.call(this),this.name="YAMLException",this.reason=e,this.mark=t,this.message=i(this,!1),Error.captureStackTrace?Error.captureStackTrace(this,this.constructor):this.stack=(new Error).stack||""}r.prototype=Object.create(Error.prototype),r.prototype.constructor=r,r.prototype.toString=function(e){return this.name+": "+i(this,e)};var o=r;function a(e,t,n,i,r){var o="",a="",l=Math.floor(r/2)-1;return i-t>l&&(t=i-l+(o=" ... ").length),n-i>l&&(n=i+l-(a=" ...").length),{str:o+e.slice(t,n).replace(/\t/g,"→")+a,pos:i-t+o.length}}function l(e,t){return n.repeat(" ",t-e.length)+e}var c=function(e,t){if(t=Object.create(t||null),!e.buffer)return null;t.maxLength||(t.maxLength=79),"number"!=typeof t.indent&&(t.indent=1),"number"!=typeof t.linesBefore&&(t.linesBefore=3),"number"!=typeof t.linesAfter&&(t.linesAfter=2);for(var i,r=/\r?\n|\r|\0/g,o=[0],c=[],s=-1;i=r.exec(e.buffer);)c.push(i.index),o.push(i.index+i[0].length),e.position<=i.index&&s<0&&(s=o.length-2);s<0&&(s=o.length-1);var u,p,f="",d=Math.min(e.line+t.linesAfter,c.length).toString().length,h=t.maxLength-(t.indent+d+3);for(u=1;u<=t.linesBefore&&!(s-u<0);u++)p=a(e.buffer,o[s-u],c[s-u],e.position-(o[s]-o[s-u]),h),f=n.repeat(" ",t.indent)+l((e.line-u+1).toString(),d)+" | "+p.str+"\n"+f;for(p=a(e.buffer,o[s],c[s],e.position,h),f+=n.repeat(" ",t.indent)+l((e.line+1).toString(),d)+" | "+p.str+"\n",f+=n.repeat("-",t.indent+d+3+p.pos)+"^\n",u=1;u<=t.linesAfter&&!(s+u>=c.length);u++)p=a(e.buffer,o[s+u],c[s+u],e.position-(o[s]-o[s+u]),h),f+=n.repeat(" ",t.indent)+l((e.line+u+1).toString(),d)+" | "+p.str+"\n";return f.replace(/\n$/,"")},s=["kind","multi","resolve","construct","instanceOf","predicate","represent","representName","defaultStyle","styleAliases"],u=["scalar","sequence","mapping"];var p=function(e,t){if(t=t||{},Object.keys(t).forEach((function(t){if(-1===s.indexOf(t))throw new o('Unknown option "'+t+'" is met in definition of "'+e+'" YAML type.')})),this.options=t,this.tag=e,this.kind=t.kind||null,this.resolve=t.resolve||function(){return!0},this.construct=t.construct||function(e){return e},this.instanceOf=t.instanceOf||null,this.predicate=t.predicate||null,this.represent=t.represent||null,this.representName=t.representName||null,this.defaultStyle=t.defaultStyle||null,this.multi=t.multi||!1,this.styleAliases=function(e){var t={};return null!==e&&Object.keys(e).forEach((function(n){e[n].forEach((function(e){t[String(e)]=n}))})),t}(t.styleAliases||null),-1===u.indexOf(this.kind))throw new o('Unknown kind "'+this.kind+'" is specified for "'+e+'" YAML type.')};function f(e,t){var n=[];return e[t].forEach((function(e){var t=n.length;n.forEach((function(n,i){n.tag===e.tag&&n.kind===e.kind&&n.multi===e.multi&&(t=i)})),n[t]=e})),n}function d(e){return this.extend(e)}d.prototype.extend=function(e){var t=[],n=[];if(e instanceof p)n.push(e);else if(Array.isArray(e))n=n.concat(e);else{if(!e||!Array.isArray(e.implicit)&&!Array.isArray(e.explicit))throw new o("Schema.extend argument should be a Type, [ Type ], or a schema definition ({ implicit: [...], explicit: [...] })");e.implicit&&(t=t.concat(e.implicit)),e.explicit&&(n=n.concat(e.explicit))}t.forEach((function(e){if(!(e instanceof p))throw new o("Specified list of YAML types (or a single Type object) contains a non-Type object.");if(e.loadKind&&"scalar"!==e.loadKind)throw new o("There is a non-scalar type in the implicit list of a schema. Implicit resolving of such types is not supported.");if(e.multi)throw new o("There is a multi type in the implicit list of a schema. Multi tags can only be listed as explicit.")})),n.forEach((function(e){if(!(e instanceof p))throw new o("Specified list of YAML types (or a single Type object) contains a non-Type object.")}));var i=Object.create(d.prototype);return i.implicit=(this.implicit||[]).concat(t),i.explicit=(this.explicit||[]).concat(n),i.compiledImplicit=f(i,"implicit"),i.compiledExplicit=f(i,"explicit"),i.compiledTypeMap=function(){var e,t,n={scalar:{},sequence:{},mapping:{},fallback:{},multi:{scalar:[],sequence:[],mapping:[],fallback:[]}};function i(e){e.multi?(n.multi[e.kind].push(e),n.multi.fallback.push(e)):n[e.kind][e.tag]=n.fallback[e.tag]=e}for(e=0,t=arguments.length;e<t;e+=1)arguments[e].forEach(i);return n}(i.compiledImplicit,i.compiledExplicit),i};var h=d,g=new p("tag:yaml.org,2002:str",{kind:"scalar",construct:function(e){return null!==e?e:""}}),m=new p("tag:yaml.org,2002:seq",{kind:"sequence",construct:function(e){return null!==e?e:[]}}),y=new p("tag:yaml.org,2002:map",{kind:"mapping",construct:function(e){return null!==e?e:{}}}),b=new h({explicit:[g,m,y]});var A=new p("tag:yaml.org,2002:null",{kind:"scalar",resolve:function(e){if(null===e)return!0;var t=e.length;return 1===t&&"~"===e||4===t&&("null"===e||"Null"===e||"NULL"===e)},construct:function(){return null},predicate:function(e){return null===e},represent:{canonical:function(){return"~"},lowercase:function(){return"null"},uppercase:function(){return"NULL"},camelcase:function(){return"Null"},empty:function(){return""}},defaultStyle:"lowercase"});var v=new p("tag:yaml.org,2002:bool",{kind:"scalar",resolve:function(e){if(null===e)return!1;var t=e.length;return 4===t&&("true"===e||"True"===e||"TRUE"===e)||5===t&&("false"===e||"False"===e||"FALSE"===e)},construct:function(e){return"true"===e||"True"===e||"TRUE"===e},predicate:function(e){return"[object Boolean]"===Object.prototype.toString.call(e)},represent:{lowercase:function(e){return e?"true":"false"},uppercase:function(e){return e?"TRUE":"FALSE"},camelcase:function(e){return e?"True":"False"}},defaultStyle:"lowercase"});function w(e){return 48<=e&&e<=55}function k(e){return 48<=e&&e<=57}var C=new p("tag:yaml.org,2002:int",{kind:"scalar",resolve:function(e){if(null===e)return!1;var t,n,i=e.length,r=0,o=!1;if(!i)return!1;if("-"!==(t=e[r])&&"+"!==t||(t=e[++r]),"0"===t){if(r+1===i)return!0;if("b"===(t=e[++r])){for(r++;r<i;r++)if("_"!==(t=e[r])){if("0"!==t&&"1"!==t)return!1;o=!0}return o&&"_"!==t}if("x"===t){for(r++;r<i;r++)if("_"!==(t=e[r])){if(!(48<=(n=e.charCodeAt(r))&&n<=57||65<=n&&n<=70||97<=n&&n<=102))return!1;o=!0}return o&&"_"!==t}if("o"===t){for(r++;r<i;r++)if("_"!==(t=e[r])){if(!w(e.charCodeAt(r)))return!1;o=!0}return o&&"_"!==t}}if("_"===t)return!1;for(;r<i;r++)if("_"!==(t=e[r])){if(!k(e.charCodeAt(r)))return!1;o=!0}return!(!o||"_"===t)},construct:function(e){var t,n=e,i=1;if(-1!==n.indexOf("_")&&(n=n.replace(/_/g,"")),"-"!==(t=n[0])&&"+"!==t||("-"===t&&(i=-1),t=(n=n.slice(1))[0]),"0"===n)return 0;if("0"===t){if("b"===n[1])return i*parseInt(n.slice(2),2);if("x"===n[1])return i*parseInt(n.slice(2),16);if("o"===n[1])return i*parseInt(n.slice(2),8)}return i*parseInt(n,10)},predicate:function(e){return"[object Number]"===Object.prototype.toString.call(e)&&e%1==0&&!n.isNegativeZero(e)},represent:{binary:function(e){return e>=0?"0b"+e.toString(2):"-0b"+e.toString(2).slice(1)},octal:function(e){return e>=0?"0o"+e.toString(8):"-0o"+e.toString(8).slice(1)},decimal:function(e){return e.toString(10)},hexadecimal:function(e){return e>=0?"0x"+e.toString(16).toUpperCase():"-0x"+e.toString(16).toUpperCase().slice(1)}},defaultStyle:"decimal",styleAliases:{binary:[2,"bin"],octal:[8,"oct"],decimal:[10,"dec"],hexadecimal:[16,"hex"]}}),x=new RegExp("^(?:[-+]?(?:[0-9][0-9_]*)(?:\\.[0-9_]*)?(?:[eE][-+]?[0-9]+)?|\\.[0-9_]+(?:[eE][-+]?[0-9]+)?|[-+]?\\.(?:inf|Inf|INF)|\\.(?:nan|NaN|NAN))$");var I=/^[-+]?[0-9]+e/;var S=new p("tag:yaml.org,2002:float",{kind:"scalar",resolve:function(e){return null!==e&&!(!x.test(e)||"_"===e[e.length-1])},construct:function(e){var t,n;return n="-"===(t=e.replace(/_/g,"").toLowerCase())[0]?-1:1,"+-".indexOf(t[0])>=0&&(t=t.slice(1)),".inf"===t?1===n?Number.POSITIVE_INFINITY:Number.NEGATIVE_INFINITY:".nan"===t?NaN:n*parseFloat(t,10)},predicate:function(e){return"[object Number]"===Object.prototype.toString.call(e)&&(e%1!=0||n.isNegativeZero(e))},represent:function(e,t){var i;if(isNaN(e))switch(t){case"lowercase":return".nan";case"uppercase":return".NAN";case"camelcase":return".NaN"}else if(Number.POSITIVE_INFINITY===e)switch(t){case"lowercase":return".inf";case"uppercase":return".INF";case"camelcase":return".Inf"}else if(Number.NEGATIVE_INFINITY===e)switch(t){case"lowercase":return"-.inf";case"uppercase":return"-.INF";case"camelcase":return"-.Inf"}else if(n.isNegativeZero(e))return"-0.0";return i=e.toString(10),I.test(i)?i.replace("e",".e"):i},defaultStyle:"lowercase"}),O=b.extend({implicit:[A,v,C,S]}),j=O,T=new RegExp("^([0-9][0-9][0-9][0-9])-([0-9][0-9])-([0-9][0-9])$"),N=new RegExp("^([0-9][0-9][0-9][0-9])-([0-9][0-9]?)-([0-9][0-9]?)(?:[Tt]|[ \\t]+)([0-9][0-9]?):([0-9][0-9]):([0-9][0-9])(?:\\.([0-9]*))?(?:[ \\t]*(Z|([-+])([0-9][0-9]?)(?::([0-9][0-9]))?))?$");var F=new p("tag:yaml.org,2002:timestamp",{kind:"scalar",resolve:function(e){return null!==e&&(null!==T.exec(e)||null!==N.exec(e))},construct:function(e){var t,n,i,r,o,a,l,c,s=0,u=null;if(null===(t=T.exec(e))&&(t=N.exec(e)),null===t)throw new Error("Date resolve error");if(n=+t[1],i=+t[2]-1,r=+t[3],!t[4])return new Date(Date.UTC(n,i,r));if(o=+t[4],a=+t[5],l=+t[6],t[7]){for(s=t[7].slice(0,3);s.length<3;)s+="0";s=+s}return t[9]&&(u=6e4*(60*+t[10]+ +(t[11]||0)),"-"===t[9]&&(u=-u)),c=new Date(Date.UTC(n,i,r,o,a,l,s)),u&&c.setTime(c.getTime()-u),c},instanceOf:Date,represent:function(e){return e.toISOString()}});var E=new p("tag:yaml.org,2002:merge",{kind:"scalar",resolve:function(e){return"<<"===e||null===e}}),M="ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=\n\r";var L=new p("tag:yaml.org,2002:binary",{kind:"scalar",resolve:function(e){if(null===e)return!1;var t,n,i=0,r=e.length,o=M;for(n=0;n<r;n++)if(!((t=o.indexOf(e.charAt(n)))>64)){if(t<0)return!1;i+=6}return i%8==0},construct:function(e){var t,n,i=e.replace(/[\r\n=]/g,""),r=i.length,o=M,a=0,l=[];for(t=0;t<r;t++)t%4==0&&t&&(l.push(a>>16&255),l.push(a>>8&255),l.push(255&a)),a=a<<6|o.indexOf(i.charAt(t));return 0===(n=r%4*6)?(l.push(a>>16&255),l.push(a>>8&255),l.push(255&a)):18===n?(l.push(a>>10&255),l.push(a>>2&255)):12===n&&l.push(a>>4&255),new Uint8Array(l)},predicate:function(e){return"[object Uint8Array]"===Object.prototype.toString.call(e)},represent:function(e){var t,n,i="",r=0,o=e.length,a=M;for(t=0;t<o;t++)t%3==0&&t&&(i+=a[r>>18&63],i+=a[r>>12&63],i+=a[r>>6&63],i+=a[63&r]),r=(r<<8)+e[t];return 0===(n=o%3)?(i+=a[r>>18&63],i+=a[r>>12&63],i+=a[r>>6&63],i+=a[63&r]):2===n?(i+=a[r>>10&63],i+=a[r>>4&63],i+=a[r<<2&63],i+=a[64]):1===n&&(i+=a[r>>2&63],i+=a[r<<4&63],i+=a[64],i+=a[64]),i}}),_=Object.prototype.hasOwnProperty,D=Object.prototype.toString;var U=new p("tag:yaml.org,2002:omap",{kind:"sequence",resolve:function(e){if(null===e)return!0;var t,n,i,r,o,a=[],l=e;for(t=0,n=l.length;t<n;t+=1){if(i=l[t],o=!1,"[object Object]"!==D.call(i))return!1;for(r in i)if(_.call(i,r)){if(o)return!1;o=!0}if(!o)return!1;if(-1!==a.indexOf(r))return!1;a.push(r)}return!0},construct:function(e){return null!==e?e:[]}}),q=Object.prototype.toString;var Y=new p("tag:yaml.org,2002:pairs",{kind:"sequence",resolve:function(e){if(null===e)return!0;var t,n,i,r,o,a=e;for(o=new Array(a.length),t=0,n=a.length;t<n;t+=1){if(i=a[t],"[object Object]"!==q.call(i))return!1;if(1!==(r=Object.keys(i)).length)return!1;o[t]=[r[0],i[r[0]]]}return!0},construct:function(e){if(null===e)return[];var t,n,i,r,o,a=e;for(o=new Array(a.length),t=0,n=a.length;t<n;t+=1)i=a[t],r=Object.keys(i),o[t]=[r[0],i[r[0]]];return o}}),R=Object.prototype.hasOwnProperty;var B=new p("tag:yaml.org,2002:set",{kind:"mapping",resolve:function(e){if(null===e)return!0;var t,n=e;for(t in n)if(R.call(n,t)&&null!==n[t])return!1;return!0},construct:function(e){return null!==e?e:{}}}),K=j.extend({implicit:[F,E],explicit:[L,U,Y,B]}),P=Object.prototype.hasOwnProperty,W=/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x84\x86-\x9F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?:[^\uD800-\uDBFF]|^)[\uDC00-\uDFFF]/,H=/[\x85\u2028\u2029]/,$=/[,\[\]\{\}]/,G=/^(?:!|!!|![a-z\-]+!)$/i,V=/^(?:!|[^,\[\]\{\}])(?:%[0-9a-f]{2}|[0-9a-z\-#;\/\?:@&=\+\$,_\.!~\*'\(\)\[\]])*$/i;function Z(e){return Object.prototype.toString.call(e)}function J(e){return 10===e||13===e}function Q(e){return 9===e||32===e}function z(e){return 9===e||32===e||10===e||13===e}function X(e){return 44===e||91===e||93===e||123===e||125===e}function ee(e){var t;return 48<=e&&e<=57?e-48:97<=(t=32|e)&&t<=102?t-97+10:-1}function te(e){return 48===e?"\0":97===e?"":98===e?"\b":116===e||9===e?"\t":110===e?"\n":118===e?"\v":102===e?"\f":114===e?"\r":101===e?"":32===e?" ":34===e?'"':47===e?"/":92===e?"\\":78===e?"":95===e?" ":76===e?"\u2028":80===e?"\u2029":""}function ne(e){return e<=65535?String.fromCharCode(e):String.fromCharCode(55296+(e-65536>>10),56320+(e-65536&1023))}for(var ie=new Array(256),re=new Array(256),oe=0;oe<256;oe++)ie[oe]=te(oe)?1:0,re[oe]=te(oe);function ae(e,t){this.input=e,this.filename=t.filename||null,this.schema=t.schema||K,this.onWarning=t.onWarning||null,this.legacy=t.legacy||!1,this.json=t.json||!1,this.listener=t.listener||null,this.implicitTypes=this.schema.compiledImplicit,this.typeMap=this.schema.compiledTypeMap,this.length=e.length,this.position=0,this.line=0,this.lineStart=0,this.lineIndent=0,this.firstTabInLine=-1,this.documents=[]}function le(e,t){var n={name:e.filename,buffer:e.input.slice(0,-1),position:e.position,line:e.line,column:e.position-e.lineStart};return n.snippet=c(n),new o(t,n)}function ce(e,t){throw le(e,t)}function se(e,t){e.onWarning&&e.onWarning.call(null,le(e,t))}var ue={YAML:function(e,t,n){var i,r,o;null!==e.version&&ce(e,"duplication of %YAML directive"),1!==n.length&&ce(e,"YAML directive accepts exactly one argument"),null===(i=/^([0-9]+)\.([0-9]+)$/.exec(n[0]))&&ce(e,"ill-formed argument of the YAML directive"),r=parseInt(i[1],10),o=parseInt(i[2],10),1!==r&&ce(e,"unacceptable YAML version of the document"),e.version=n[0],e.checkLineBreaks=o<2,1!==o&&2!==o&&se(e,"unsupported YAML version of the document")},TAG:function(e,t,n){var i,r;2!==n.length&&ce(e,"TAG directive accepts exactly two arguments"),i=n[0],r=n[1],G.test(i)||ce(e,"ill-formed tag handle (first argument) of the TAG directive"),P.call(e.tagMap,i)&&ce(e,'there is a previously declared suffix for "'+i+'" tag handle'),V.test(r)||ce(e,"ill-formed tag prefix (second argument) of the TAG directive");try{r=decodeURIComponent(r)}catch(t){ce(e,"tag prefix is malformed: "+r)}e.tagMap[i]=r}};function pe(e,t,n,i){var r,o,a,l;if(t<n){if(l=e.input.slice(t,n),i)for(r=0,o=l.length;r<o;r+=1)9===(a=l.charCodeAt(r))||32<=a&&a<=1114111||ce(e,"expected valid JSON character");else W.test(l)&&ce(e,"the stream contains non-printable characters");e.result+=l}}function fe(e,t,i,r){var o,a,l,c;for(n.isObject(i)||ce(e,"cannot merge mappings; the provided source object is unacceptable"),l=0,c=(o=Object.keys(i)).length;l<c;l+=1)a=o[l],P.call(t,a)||(t[a]=i[a],r[a]=!0)}function de(e,t,n,i,r,o,a,l,c){var s,u;if(Array.isArray(r))for(s=0,u=(r=Array.prototype.slice.call(r)).length;s<u;s+=1)Array.isArray(r[s])&&ce(e,"nested arrays are not supported inside keys"),"object"==typeof r&&"[object Object]"===Z(r[s])&&(r[s]="[object Object]");if("object"==typeof r&&"[object Object]"===Z(r)&&(r="[object Object]"),r=String(r),null===t&&(t={}),"tag:yaml.org,2002:merge"===i)if(Array.isArray(o))for(s=0,u=o.length;s<u;s+=1)fe(e,t,o[s],n);else fe(e,t,o,n);else e.json||P.call(n,r)||!P.call(t,r)||(e.line=a||e.line,e.lineStart=l||e.lineStart,e.position=c||e.position,ce(e,"duplicated mapping key")),"__proto__"===r?Object.defineProperty(t,r,{configurable:!0,enumerable:!0,writable:!0,value:o}):t[r]=o,delete n[r];return t}function he(e){var t;10===(t=e.input.charCodeAt(e.position))?e.position++:13===t?(e.position++,10===e.input.charCodeAt(e.position)&&e.position++):ce(e,"a line break is expected"),e.line+=1,e.lineStart=e.position,e.firstTabInLine=-1}function ge(e,t,n){for(var i=0,r=e.input.charCodeAt(e.position);0!==r;){for(;Q(r);)9===r&&-1===e.firstTabInLine&&(e.firstTabInLine=e.position),r=e.input.charCodeAt(++e.position);if(t&&35===r)do{r=e.input.charCodeAt(++e.position)}while(10!==r&&13!==r&&0!==r);if(!J(r))break;for(he(e),r=e.input.charCodeAt(e.position),i++,e.lineIndent=0;32===r;)e.lineIndent++,r=e.input.charCodeAt(++e.position)}return-1!==n&&0!==i&&e.lineIndent<n&&se(e,"deficient indentation"),i}function me(e){var t,n=e.position;return!(45!==(t=e.input.charCodeAt(n))&&46!==t||t!==e.input.charCodeAt(n+1)||t!==e.input.charCodeAt(n+2)||(n+=3,0!==(t=e.input.charCodeAt(n))&&!z(t)))}function ye(e,t){1===t?e.result+=" ":t>1&&(e.result+=n.repeat("\n",t-1))}function be(e,t){var n,i,r=e.tag,o=e.anchor,a=[],l=!1;if(-1!==e.firstTabInLine)return!1;for(null!==e.anchor&&(e.anchorMap[e.anchor]=a),i=e.input.charCodeAt(e.position);0!==i&&(-1!==e.firstTabInLine&&(e.position=e.firstTabInLine,ce(e,"tab characters must not be used in indentation")),45===i)&&z(e.input.charCodeAt(e.position+1));)if(l=!0,e.position++,ge(e,!0,-1)&&e.lineIndent<=t)a.push(null),i=e.input.charCodeAt(e.position);else if(n=e.line,we(e,t,3,!1,!0),a.push(e.result),ge(e,!0,-1),i=e.input.charCodeAt(e.position),(e.line===n||e.lineIndent>t)&&0!==i)ce(e,"bad indentation of a sequence entry");else if(e.lineIndent<t)break;return!!l&&(e.tag=r,e.anchor=o,e.kind="sequence",e.result=a,!0)}function Ae(e){var t,n,i,r,o=!1,a=!1;if(33!==(r=e.input.charCodeAt(e.position)))return!1;if(null!==e.tag&&ce(e,"duplication of a tag property"),60===(r=e.input.charCodeAt(++e.position))?(o=!0,r=e.input.charCodeAt(++e.position)):33===r?(a=!0,n="!!",r=e.input.charCodeAt(++e.position)):n="!",t=e.position,o){do{r=e.input.charCodeAt(++e.position)}while(0!==r&&62!==r);e.position<e.length?(i=e.input.slice(t,e.position),r=e.input.charCodeAt(++e.position)):ce(e,"unexpected end of the stream within a verbatim tag")}else{for(;0!==r&&!z(r);)33===r&&(a?ce(e,"tag suffix cannot contain exclamation marks"):(n=e.input.slice(t-1,e.position+1),G.test(n)||ce(e,"named tag handle cannot contain such characters"),a=!0,t=e.position+1)),r=e.input.charCodeAt(++e.position);i=e.input.slice(t,e.position),$.test(i)&&ce(e,"tag suffix cannot contain flow indicator characters")}i&&!V.test(i)&&ce(e,"tag name cannot contain such characters: "+i);try{i=decodeURIComponent(i)}catch(t){ce(e,"tag name is malformed: "+i)}return o?e.tag=i:P.call(e.tagMap,n)?e.tag=e.tagMap[n]+i:"!"===n?e.tag="!"+i:"!!"===n?e.tag="tag:yaml.org,2002:"+i:ce(e,'undeclared tag handle "'+n+'"'),!0}function ve(e){var t,n;if(38!==(n=e.input.charCodeAt(e.position)))return!1;for(null!==e.anchor&&ce(e,"duplication of an anchor property"),n=e.input.charCodeAt(++e.position),t=e.position;0!==n&&!z(n)&&!X(n);)n=e.input.charCodeAt(++e.position);return e.position===t&&ce(e,"name of an anchor node must contain at least one character"),e.anchor=e.input.slice(t,e.position),!0}function we(e,t,i,r,o){var a,l,c,s,u,p,f,d,h,g=1,m=!1,y=!1;if(null!==e.listener&&e.listener("open",e),e.tag=null,e.anchor=null,e.kind=null,e.result=null,a=l=c=4===i||3===i,r&&ge(e,!0,-1)&&(m=!0,e.lineIndent>t?g=1:e.lineIndent===t?g=0:e.lineIndent<t&&(g=-1)),1===g)for(;Ae(e)||ve(e);)ge(e,!0,-1)?(m=!0,c=a,e.lineIndent>t?g=1:e.lineIndent===t?g=0:e.lineIndent<t&&(g=-1)):c=!1;if(c&&(c=m||o),1!==g&&4!==i||(d=1===i||2===i?t:t+1,h=e.position-e.lineStart,1===g?c&&(be(e,h)||function(e,t,n){var i,r,o,a,l,c,s,u=e.tag,p=e.anchor,f={},d=Object.create(null),h=null,g=null,m=null,y=!1,b=!1;if(-1!==e.firstTabInLine)return!1;for(null!==e.anchor&&(e.anchorMap[e.anchor]=f),s=e.input.charCodeAt(e.position);0!==s;){if(y||-1===e.firstTabInLine||(e.position=e.firstTabInLine,ce(e,"tab characters must not be used in indentation")),i=e.input.charCodeAt(e.position+1),o=e.line,63!==s&&58!==s||!z(i)){if(a=e.line,l=e.lineStart,c=e.position,!we(e,n,2,!1,!0))break;if(e.line===o){for(s=e.input.charCodeAt(e.position);Q(s);)s=e.input.charCodeAt(++e.position);if(58===s)z(s=e.input.charCodeAt(++e.position))||ce(e,"a whitespace character is expected after the key-value separator within a block mapping"),y&&(de(e,f,d,h,g,null,a,l,c),h=g=m=null),b=!0,y=!1,r=!1,h=e.tag,g=e.result;else{if(!b)return e.tag=u,e.anchor=p,!0;ce(e,"can not read an implicit mapping pair; a colon is missed")}}else{if(!b)return e.tag=u,e.anchor=p,!0;ce(e,"can not read a block mapping entry; a multiline key may not be an implicit key")}}else 63===s?(y&&(de(e,f,d,h,g,null,a,l,c),h=g=m=null),b=!0,y=!0,r=!0):y?(y=!1,r=!0):ce(e,"incomplete explicit mapping pair; a key node is missed; or followed by a non-tabulated empty line"),e.position+=1,s=i;if((e.line===o||e.lineIndent>t)&&(y&&(a=e.line,l=e.lineStart,c=e.position),we(e,t,4,!0,r)&&(y?g=e.result:m=e.result),y||(de(e,f,d,h,g,m,a,l,c),h=g=m=null),ge(e,!0,-1),s=e.input.charCodeAt(e.position)),(e.line===o||e.lineIndent>t)&&0!==s)ce(e,"bad indentation of a mapping entry");else if(e.lineIndent<t)break}return y&&de(e,f,d,h,g,null,a,l,c),b&&(e.tag=u,e.anchor=p,e.kind="mapping",e.result=f),b}(e,h,d))||function(e,t){var n,i,r,o,a,l,c,s,u,p,f,d,h=!0,g=e.tag,m=e.anchor,y=Object.create(null);if(91===(d=e.input.charCodeAt(e.position)))a=93,s=!1,o=[];else{if(123!==d)return!1;a=125,s=!0,o={}}for(null!==e.anchor&&(e.anchorMap[e.anchor]=o),d=e.input.charCodeAt(++e.position);0!==d;){if(ge(e,!0,t),(d=e.input.charCodeAt(e.position))===a)return e.position++,e.tag=g,e.anchor=m,e.kind=s?"mapping":"sequence",e.result=o,!0;h?44===d&&ce(e,"expected the node content, but found ','"):ce(e,"missed comma between flow collection entries"),f=null,l=c=!1,63===d&&z(e.input.charCodeAt(e.position+1))&&(l=c=!0,e.position++,ge(e,!0,t)),n=e.line,i=e.lineStart,r=e.position,we(e,t,1,!1,!0),p=e.tag,u=e.result,ge(e,!0,t),d=e.input.charCodeAt(e.position),!c&&e.line!==n||58!==d||(l=!0,d=e.input.charCodeAt(++e.position),ge(e,!0,t),we(e,t,1,!1,!0),f=e.result),s?de(e,o,y,p,u,f,n,i,r):l?o.push(de(e,null,y,p,u,f,n,i,r)):o.push(u),ge(e,!0,t),44===(d=e.input.charCodeAt(e.position))?(h=!0,d=e.input.charCodeAt(++e.position)):h=!1}ce(e,"unexpected end of the stream within a flow collection")}(e,d)?y=!0:(l&&function(e,t){var i,r,o,a,l,c=1,s=!1,u=!1,p=t,f=0,d=!1;if(124===(a=e.input.charCodeAt(e.position)))r=!1;else{if(62!==a)return!1;r=!0}for(e.kind="scalar",e.result="";0!==a;)if(43===(a=e.input.charCodeAt(++e.position))||45===a)1===c?c=43===a?3:2:ce(e,"repeat of a chomping mode identifier");else{if(!((o=48<=(l=a)&&l<=57?l-48:-1)>=0))break;0===o?ce(e,"bad explicit indentation width of a block scalar; it cannot be less than one"):u?ce(e,"repeat of an indentation width identifier"):(p=t+o-1,u=!0)}if(Q(a)){do{a=e.input.charCodeAt(++e.position)}while(Q(a));if(35===a)do{a=e.input.charCodeAt(++e.position)}while(!J(a)&&0!==a)}for(;0!==a;){for(he(e),e.lineIndent=0,a=e.input.charCodeAt(e.position);(!u||e.lineIndent<p)&&32===a;)e.lineIndent++,a=e.input.charCodeAt(++e.position);if(!u&&e.lineIndent>p&&(p=e.lineIndent),J(a))f++;else{if(e.lineIndent<p){3===c?e.result+=n.repeat("\n",s?1+f:f):1===c&&s&&(e.result+="\n");break}for(r?Q(a)?(d=!0,e.result+=n.repeat("\n",s?1+f:f)):d?(d=!1,e.result+=n.repeat("\n",f+1)):0===f?s&&(e.result+=" "):e.result+=n.repeat("\n",f):e.result+=n.repeat("\n",s?1+f:f),s=!0,u=!0,f=0,i=e.position;!J(a)&&0!==a;)a=e.input.charCodeAt(++e.position);pe(e,i,e.position,!1)}}return!0}(e,d)||function(e,t){var n,i,r;if(39!==(n=e.input.charCodeAt(e.position)))return!1;for(e.kind="scalar",e.result="",e.position++,i=r=e.position;0!==(n=e.input.charCodeAt(e.position));)if(39===n){if(pe(e,i,e.position,!0),39!==(n=e.input.charCodeAt(++e.position)))return!0;i=e.position,e.position++,r=e.position}else J(n)?(pe(e,i,r,!0),ye(e,ge(e,!1,t)),i=r=e.position):e.position===e.lineStart&&me(e)?ce(e,"unexpected end of the document within a single quoted scalar"):(e.position++,r=e.position);ce(e,"unexpected end of the stream within a single quoted scalar")}(e,d)||function(e,t){var n,i,r,o,a,l,c;if(34!==(l=e.input.charCodeAt(e.position)))return!1;for(e.kind="scalar",e.result="",e.position++,n=i=e.position;0!==(l=e.input.charCodeAt(e.position));){if(34===l)return pe(e,n,e.position,!0),e.position++,!0;if(92===l){if(pe(e,n,e.position,!0),J(l=e.input.charCodeAt(++e.position)))ge(e,!1,t);else if(l<256&&ie[l])e.result+=re[l],e.position++;else if((a=120===(c=l)?2:117===c?4:85===c?8:0)>0){for(r=a,o=0;r>0;r--)(a=ee(l=e.input.charCodeAt(++e.position)))>=0?o=(o<<4)+a:ce(e,"expected hexadecimal character");e.result+=ne(o),e.position++}else ce(e,"unknown escape sequence");n=i=e.position}else J(l)?(pe(e,n,i,!0),ye(e,ge(e,!1,t)),n=i=e.position):e.position===e.lineStart&&me(e)?ce(e,"unexpected end of the document within a double quoted scalar"):(e.position++,i=e.position)}ce(e,"unexpected end of the stream within a double quoted scalar")}(e,d)?y=!0:!function(e){var t,n,i;if(42!==(i=e.input.charCodeAt(e.position)))return!1;for(i=e.input.charCodeAt(++e.position),t=e.position;0!==i&&!z(i)&&!X(i);)i=e.input.charCodeAt(++e.position);return e.position===t&&ce(e,"name of an alias node must contain at least one character"),n=e.input.slice(t,e.position),P.call(e.anchorMap,n)||ce(e,'unidentified alias "'+n+'"'),e.result=e.anchorMap[n],ge(e,!0,-1),!0}(e)?function(e,t,n){var i,r,o,a,l,c,s,u,p=e.kind,f=e.result;if(z(u=e.input.charCodeAt(e.position))||X(u)||35===u||38===u||42===u||33===u||124===u||62===u||39===u||34===u||37===u||64===u||96===u)return!1;if((63===u||45===u)&&(z(i=e.input.charCodeAt(e.position+1))||n&&X(i)))return!1;for(e.kind="scalar",e.result="",r=o=e.position,a=!1;0!==u;){if(58===u){if(z(i=e.input.charCodeAt(e.position+1))||n&&X(i))break}else if(35===u){if(z(e.input.charCodeAt(e.position-1)))break}else{if(e.position===e.lineStart&&me(e)||n&&X(u))break;if(J(u)){if(l=e.line,c=e.lineStart,s=e.lineIndent,ge(e,!1,-1),e.lineIndent>=t){a=!0,u=e.input.charCodeAt(e.position);continue}e.position=o,e.line=l,e.lineStart=c,e.lineIndent=s;break}}a&&(pe(e,r,o,!1),ye(e,e.line-l),r=o=e.position,a=!1),Q(u)||(o=e.position+1),u=e.input.charCodeAt(++e.position)}return pe(e,r,o,!1),!!e.result||(e.kind=p,e.result=f,!1)}(e,d,1===i)&&(y=!0,null===e.tag&&(e.tag="?")):(y=!0,null===e.tag&&null===e.anchor||ce(e,"alias node should not have any properties")),null!==e.anchor&&(e.anchorMap[e.anchor]=e.result)):0===g&&(y=c&&be(e,h))),null===e.tag)null!==e.anchor&&(e.anchorMap[e.anchor]=e.result);else if("?"===e.tag){for(null!==e.result&&"scalar"!==e.kind&&ce(e,'unacceptable node kind for !<?> tag; it should be "scalar", not "'+e.kind+'"'),s=0,u=e.implicitTypes.length;s<u;s+=1)if((f=e.implicitTypes[s]).resolve(e.result)){e.result=f.construct(e.result),e.tag=f.tag,null!==e.anchor&&(e.anchorMap[e.anchor]=e.result);break}}else if("!"!==e.tag){if(P.call(e.typeMap[e.kind||"fallback"],e.tag))f=e.typeMap[e.kind||"fallback"][e.tag];else for(f=null,s=0,u=(p=e.typeMap.multi[e.kind||"fallback"]).length;s<u;s+=1)if(e.tag.slice(0,p[s].tag.length)===p[s].tag){f=p[s];break}f||ce(e,"unknown tag !<"+e.tag+">"),null!==e.result&&f.kind!==e.kind&&ce(e,"unacceptable node kind for !<"+e.tag+'> tag; it should be "'+f.kind+'", not "'+e.kind+'"'),f.resolve(e.result,e.tag)?(e.result=f.construct(e.result,e.tag),null!==e.anchor&&(e.anchorMap[e.anchor]=e.result)):ce(e,"cannot resolve a node with !<"+e.tag+"> explicit tag")}return null!==e.listener&&e.listener("close",e),null!==e.tag||null!==e.anchor||y}function ke(e){var t,n,i,r,o=e.position,a=!1;for(e.version=null,e.checkLineBreaks=e.legacy,e.tagMap=Object.create(null),e.anchorMap=Object.create(null);0!==(r=e.input.charCodeAt(e.position))&&(ge(e,!0,-1),r=e.input.charCodeAt(e.position),!(e.lineIndent>0||37!==r));){for(a=!0,r=e.input.charCodeAt(++e.position),t=e.position;0!==r&&!z(r);)r=e.input.charCodeAt(++e.position);for(i=[],(n=e.input.slice(t,e.position)).length<1&&ce(e,"directive name must not be less than one character in length");0!==r;){for(;Q(r);)r=e.input.charCodeAt(++e.position);if(35===r){do{r=e.input.charCodeAt(++e.position)}while(0!==r&&!J(r));break}if(J(r))break;for(t=e.position;0!==r&&!z(r);)r=e.input.charCodeAt(++e.position);i.push(e.input.slice(t,e.position))}0!==r&&he(e),P.call(ue,n)?ue[n](e,n,i):se(e,'unknown document directive "'+n+'"')}ge(e,!0,-1),0===e.lineIndent&&45===e.input.charCodeAt(e.position)&&45===e.input.charCodeAt(e.position+1)&&45===e.input.charCodeAt(e.position+2)?(e.position+=3,ge(e,!0,-1)):a&&ce(e,"directives end mark is expected"),we(e,e.lineIndent-1,4,!1,!0),ge(e,!0,-1),e.checkLineBreaks&&H.test(e.input.slice(o,e.position))&&se(e,"non-ASCII line breaks are interpreted as content"),e.documents.push(e.result),e.position===e.lineStart&&me(e)?46===e.input.charCodeAt(e.position)&&(e.position+=3,ge(e,!0,-1)):e.position<e.length-1&&ce(e,"end of the stream or a document separator is expected")}function Ce(e,t){t=t||{},0!==(e=String(e)).length&&(10!==e.charCodeAt(e.length-1)&&13!==e.charCodeAt(e.length-1)&&(e+="\n"),65279===e.charCodeAt(0)&&(e=e.slice(1)));var n=new ae(e,t),i=e.indexOf("\0");for(-1!==i&&(n.position=i,ce(n,"null byte is not allowed in input")),n.input+="\0";32===n.input.charCodeAt(n.position);)n.lineIndent+=1,n.position+=1;for(;n.position<n.length-1;)ke(n);return n.documents}var xe={loadAll:function(e,t,n){null!==t&&"object"==typeof t&&void 0===n&&(n=t,t=null);var i=Ce(e,n);if("function"!=typeof t)return i;for(var r=0,o=i.length;r<o;r+=1)t(i[r])},load:function(e,t){var n=Ce(e,t);if(0!==n.length){if(1===n.length)return n[0];throw new o("expected a single document in the stream, but found more")}}},Ie=Object.prototype.toString,Se=Object.prototype.hasOwnProperty,Oe=65279,je={0:"\\0",7:"\\a",8:"\\b",9:"\\t",10:"\\n",11:"\\v",12:"\\f",13:"\\r",27:"\\e",34:'\\"',92:"\\\\",133:"\\N",160:"\\_",8232:"\\L",8233:"\\P"},Te=["y","Y","yes","Yes","YES","on","On","ON","n","N","no","No","NO","off","Off","OFF"],Ne=/^[-+]?[0-9_]+(?::[0-9_]+)+(?:\.[0-9_]*)?$/;function Fe(e){var t,i,r;if(t=e.toString(16).toUpperCase(),e<=255)i="x",r=2;else if(e<=65535)i="u",r=4;else{if(!(e<=4294967295))throw new o("code point within a string may not be greater than 0xFFFFFFFF");i="U",r=8}return"\\"+i+n.repeat("0",r-t.length)+t}function Ee(e){this.schema=e.schema||K,this.indent=Math.max(1,e.indent||2),this.noArrayIndent=e.noArrayIndent||!1,this.skipInvalid=e.skipInvalid||!1,this.flowLevel=n.isNothing(e.flowLevel)?-1:e.flowLevel,this.styleMap=function(e,t){var n,i,r,o,a,l,c;if(null===t)return{};for(n={},r=0,o=(i=Object.keys(t)).length;r<o;r+=1)a=i[r],l=String(t[a]),"!!"===a.slice(0,2)&&(a="tag:yaml.org,2002:"+a.slice(2)),(c=e.compiledTypeMap.fallback[a])&&Se.call(c.styleAliases,l)&&(l=c.styleAliases[l]),n[a]=l;return n}(this.schema,e.styles||null),this.sortKeys=e.sortKeys||!1,this.lineWidth=e.lineWidth||80,this.noRefs=e.noRefs||!1,this.noCompatMode=e.noCompatMode||!1,this.condenseFlow=e.condenseFlow||!1,this.quotingType='"'===e.quotingType?2:1,this.forceQuotes=e.forceQuotes||!1,this.replacer="function"==typeof e.replacer?e.replacer:null,this.implicitTypes=this.schema.compiledImplicit,this.explicitTypes=this.schema.compiledExplicit,this.tag=null,this.result="",this.duplicates=[],this.usedDuplicates=null}function Me(e,t){for(var i,r=n.repeat(" ",t),o=0,a=-1,l="",c=e.length;o<c;)-1===(a=e.indexOf("\n",o))?(i=e.slice(o),o=c):(i=e.slice(o,a+1),o=a+1),i.length&&"\n"!==i&&(l+=r),l+=i;return l}function Le(e,t){return"\n"+n.repeat(" ",e.indent*t)}function _e(e){return 32===e||9===e}function De(e){return 32<=e&&e<=126||161<=e&&e<=55295&&8232!==e&&8233!==e||57344<=e&&e<=65533&&e!==Oe||65536<=e&&e<=1114111}function Ue(e){return De(e)&&e!==Oe&&13!==e&&10!==e}function qe(e,t,n){var i=Ue(e),r=i&&!_e(e);return(n?i:i&&44!==e&&91!==e&&93!==e&&123!==e&&125!==e)&&35!==e&&!(58===t&&!r)||Ue(t)&&!_e(t)&&35===e||58===t&&r}function Ye(e,t){var n,i=e.charCodeAt(t);return i>=55296&&i<=56319&&t+1<e.length&&(n=e.charCodeAt(t+1))>=56320&&n<=57343?1024*(i-55296)+n-56320+65536:i}function Re(e){return/^\n* /.test(e)}function Be(e,t,n,i,r,o,a,l){var c,s,u=0,p=null,f=!1,d=!1,h=-1!==i,g=-1,m=De(s=Ye(e,0))&&s!==Oe&&!_e(s)&&45!==s&&63!==s&&58!==s&&44!==s&&91!==s&&93!==s&&123!==s&&125!==s&&35!==s&&38!==s&&42!==s&&33!==s&&124!==s&&61!==s&&62!==s&&39!==s&&34!==s&&37!==s&&64!==s&&96!==s&&function(e){return!_e(e)&&58!==e}(Ye(e,e.length-1));if(t||a)for(c=0;c<e.length;u>=65536?c+=2:c++){if(!De(u=Ye(e,c)))return 5;m=m&&qe(u,p,l),p=u}else{for(c=0;c<e.length;u>=65536?c+=2:c++){if(10===(u=Ye(e,c)))f=!0,h&&(d=d||c-g-1>i&&" "!==e[g+1],g=c);else if(!De(u))return 5;m=m&&qe(u,p,l),p=u}d=d||h&&c-g-1>i&&" "!==e[g+1]}return f||d?n>9&&Re(e)?5:a?2===o?5:2:d?4:3:!m||a||r(e)?2===o?5:2:1}function Ke(e,t,n,i,r){e.dump=function(){if(0===t.length)return 2===e.quotingType?'""':"''";if(!e.noCompatMode&&(-1!==Te.indexOf(t)||Ne.test(t)))return 2===e.quotingType?'"'+t+'"':"'"+t+"'";var a=e.indent*Math.max(1,n),l=-1===e.lineWidth?-1:Math.max(Math.min(e.lineWidth,40),e.lineWidth-a),c=i||e.flowLevel>-1&&n>=e.flowLevel;switch(Be(t,c,e.indent,l,(function(t){return function(e,t){var n,i;for(n=0,i=e.implicitTypes.length;n<i;n+=1)if(e.implicitTypes[n].resolve(t))return!0;return!1}(e,t)}),e.quotingType,e.forceQuotes&&!i,r)){case 1:return t;case 2:return"'"+t.replace(/'/g,"''")+"'";case 3:return"|"+Pe(t,e.indent)+We(Me(t,a));case 4:return">"+Pe(t,e.indent)+We(Me(function(e,t){var n,i,r=/(\n+)([^\n]*)/g,o=(l=e.indexOf("\n"),l=-1!==l?l:e.length,r.lastIndex=l,He(e.slice(0,l),t)),a="\n"===e[0]||" "===e[0];var l;for(;i=r.exec(e);){var c=i[1],s=i[2];n=" "===s[0],o+=c+(a||n||""===s?"":"\n")+He(s,t),a=n}return o}(t,l),a));case 5:return'"'+function(e){for(var t,n="",i=0,r=0;r<e.length;i>=65536?r+=2:r++)i=Ye(e,r),!(t=je[i])&&De(i)?(n+=e[r],i>=65536&&(n+=e[r+1])):n+=t||Fe(i);return n}(t)+'"';default:throw new o("impossible error: invalid scalar style")}}()}function Pe(e,t){var n=Re(e)?String(t):"",i="\n"===e[e.length-1];return n+(i&&("\n"===e[e.length-2]||"\n"===e)?"+":i?"":"-")+"\n"}function We(e){return"\n"===e[e.length-1]?e.slice(0,-1):e}function He(e,t){if(""===e||" "===e[0])return e;for(var n,i,r=/ [^ ]/g,o=0,a=0,l=0,c="";n=r.exec(e);)(l=n.index)-o>t&&(i=a>o?a:l,c+="\n"+e.slice(o,i),o=i+1),a=l;return c+="\n",e.length-o>t&&a>o?c+=e.slice(o,a)+"\n"+e.slice(a+1):c+=e.slice(o),c.slice(1)}function $e(e,t,n,i){var r,o,a,l="",c=e.tag;for(r=0,o=n.length;r<o;r+=1)a=n[r],e.replacer&&(a=e.replacer.call(n,String(r),a)),(Ve(e,t+1,a,!0,!0,!1,!0)||void 0===a&&Ve(e,t+1,null,!0,!0,!1,!0))&&(i&&""===l||(l+=Le(e,t)),e.dump&&10===e.dump.charCodeAt(0)?l+="-":l+="- ",l+=e.dump);e.tag=c,e.dump=l||"[]"}function Ge(e,t,n){var i,r,a,l,c,s;for(a=0,l=(r=n?e.explicitTypes:e.implicitTypes).length;a<l;a+=1)if(((c=r[a]).instanceOf||c.predicate)&&(!c.instanceOf||"object"==typeof t&&t instanceof c.instanceOf)&&(!c.predicate||c.predicate(t))){if(n?c.multi&&c.representName?e.tag=c.representName(t):e.tag=c.tag:e.tag="?",c.represent){if(s=e.styleMap[c.tag]||c.defaultStyle,"[object Function]"===Ie.call(c.represent))i=c.represent(t,s);else{if(!Se.call(c.represent,s))throw new o("!<"+c.tag+'> tag resolver accepts not "'+s+'" style');i=c.represent[s](t,s)}e.dump=i}return!0}return!1}function Ve(e,t,n,i,r,a,l){e.tag=null,e.dump=n,Ge(e,n,!1)||Ge(e,n,!0);var c,s=Ie.call(e.dump),u=i;i&&(i=e.flowLevel<0||e.flowLevel>t);var p,f,d="[object Object]"===s||"[object Array]"===s;if(d&&(f=-1!==(p=e.duplicates.indexOf(n))),(null!==e.tag&&"?"!==e.tag||f||2!==e.indent&&t>0)&&(r=!1),f&&e.usedDuplicates[p])e.dump="*ref_"+p;else{if(d&&f&&!e.usedDuplicates[p]&&(e.usedDuplicates[p]=!0),"[object Object]"===s)i&&0!==Object.keys(e.dump).length?(!function(e,t,n,i){var r,a,l,c,s,u,p="",f=e.tag,d=Object.keys(n);if(!0===e.sortKeys)d.sort();else if("function"==typeof e.sortKeys)d.sort(e.sortKeys);else if(e.sortKeys)throw new o("sortKeys must be a boolean or a function");for(r=0,a=d.length;r<a;r+=1)u="",i&&""===p||(u+=Le(e,t)),c=n[l=d[r]],e.replacer&&(c=e.replacer.call(n,l,c)),Ve(e,t+1,l,!0,!0,!0)&&((s=null!==e.tag&&"?"!==e.tag||e.dump&&e.dump.length>1024)&&(e.dump&&10===e.dump.charCodeAt(0)?u+="?":u+="? "),u+=e.dump,s&&(u+=Le(e,t)),Ve(e,t+1,c,!0,s)&&(e.dump&&10===e.dump.charCodeAt(0)?u+=":":u+=": ",p+=u+=e.dump));e.tag=f,e.dump=p||"{}"}(e,t,e.dump,r),f&&(e.dump="&ref_"+p+e.dump)):(!function(e,t,n){var i,r,o,a,l,c="",s=e.tag,u=Object.keys(n);for(i=0,r=u.length;i<r;i+=1)l="",""!==c&&(l+=", "),e.condenseFlow&&(l+='"'),a=n[o=u[i]],e.replacer&&(a=e.replacer.call(n,o,a)),Ve(e,t,o,!1,!1)&&(e.dump.length>1024&&(l+="? "),l+=e.dump+(e.condenseFlow?'"':"")+":"+(e.condenseFlow?"":" "),Ve(e,t,a,!1,!1)&&(c+=l+=e.dump));e.tag=s,e.dump="{"+c+"}"}(e,t,e.dump),f&&(e.dump="&ref_"+p+" "+e.dump));else if("[object Array]"===s)i&&0!==e.dump.length?(e.noArrayIndent&&!l&&t>0?$e(e,t-1,e.dump,r):$e(e,t,e.dump,r),f&&(e.dump="&ref_"+p+e.dump)):(!function(e,t,n){var i,r,o,a="",l=e.tag;for(i=0,r=n.length;i<r;i+=1)o=n[i],e.replacer&&(o=e.replacer.call(n,String(i),o)),(Ve(e,t,o,!1,!1)||void 0===o&&Ve(e,t,null,!1,!1))&&(""!==a&&(a+=","+(e.condenseFlow?"":" ")),a+=e.dump);e.tag=l,e.dump="["+a+"]"}(e,t,e.dump),f&&(e.dump="&ref_"+p+" "+e.dump));else{if("[object String]"!==s){if("[object Undefined]"===s)return!1;if(e.skipInvalid)return!1;throw new o("unacceptable kind of an object to dump "+s)}"?"!==e.tag&&Ke(e,e.dump,t,a,u)}null!==e.tag&&"?"!==e.tag&&(c=encodeURI("!"===e.tag[0]?e.tag.slice(1):e.tag).replace(/!/g,"%21"),c="!"===e.tag[0]?"!"+c:"tag:yaml.org,2002:"===c.slice(0,18)?"!!"+c.slice(18):"!<"+c+">",e.dump=c+" "+e.dump)}return!0}function Ze(e,t){var n,i,r=[],o=[];for(Je(e,r,o),n=0,i=o.length;n<i;n+=1)t.duplicates.push(r[o[n]]);t.usedDuplicates=new Array(i)}function Je(e,t,n){var i,r,o;if(null!==e&&"object"==typeof e)if(-1!==(r=t.indexOf(e)))-1===n.indexOf(r)&&n.push(r);else if(t.push(e),Array.isArray(e))for(r=0,o=e.length;r<o;r+=1)Je(e[r],t,n);else for(r=0,o=(i=Object.keys(e)).length;r<o;r+=1)Je(e[i[r]],t,n)}function Qe(e,t){return function(){throw new Error("Function yaml."+e+" is removed in js-yaml 4. Use yaml."+t+" instead, which is now safe by default.")}}var ze=p,Xe=h,et=b,tt=O,nt=j,it=K,rt=xe.load,ot=xe.loadAll,at={dump:function(e,t){var n=new Ee(t=t||{});n.noRefs||Ze(e,n);var i=e;return n.replacer&&(i=n.replacer.call({"":i},"",i)),Ve(n,0,i,!0,!0)?n.dump+"\n":""}}.dump,lt=o,ct={binary:L,float:S,map:y,null:A,pairs:Y,set:B,timestamp:F,bool:v,int:C,merge:E,omap:U,seq:m,str:g},st=Qe("safeLoad","load"),ut=Qe("safeLoadAll","loadAll"),pt=Qe("safeDump","dump"),ft={Type:ze,Schema:Xe,FAILSAFE_SCHEMA:et,JSON_SCHEMA:tt,CORE_SCHEMA:nt,DEFAULT_SCHEMA:it,load:rt,loadAll:ot,dump:at,YAMLException:lt,types:ct,safeLoad:st,safeLoadAll:ut,safeDump:pt};e.CORE_SCHEMA=nt,e.DEFAULT_SCHEMA=it,e.FAILSAFE_SCHEMA=et,e.JSON_SCHEMA=tt,e.Schema=Xe,e.Type=ze,e.YAMLException=lt,e.default=ft,e.dump=at,e.load=rt,e.loadAll=ot,e.safeDump=pt,e.safeLoad=st,e.safeLoadAll=ut,e.types=ct,Object.defineProperty(e,"__esModule",{value:!0})}));
+</script>
+<script type="application/json" id="workflow-schema">{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "maestro/workflow.schema.json",
+  "title": "Maestro workflow v1",
+  "type": "object",
+  "required": ["version", "name", "start", "nodes"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {"const": 1},
+    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
+    "description": {"type": "string"},
+    "inputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "type": {"enum": ["string", "number", "boolean", "list"]},
+          "required": {"type": "boolean"},
+          "default": {},
+          "description": {"type": "string"}
+        }
+      }
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": {"type": "string"},
+        "agent": {"type": "string"},
+        "max_visits": {"type": "integer", "minimum": 1}
+      }
+    },
+    "start": {"type": "string"},
+    "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/node"}},
+    "outputs": {"type": "object", "additionalProperties": {"type": "string"}},
+    "ui": {"type": "object"}
+  },
+  "definitions": {
+    "nodeId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
+    "routeTarget": {"type": "string", "pattern": "^[a-z0-9_-]+|end|abort$"},
+    "route": {
+      "type": "object",
+      "required": ["to"],
+      "additionalProperties": false,
+      "properties": {
+        "when": {"type": "string"},
+        "to": {"$ref": "#/definitions/routeTarget"}
+      }
+    },
+    "failTarget": {"type": "string", "description": "node id, or the keywords abort | ask"},
+    "routingProps": {
+      "next": {"$ref": "#/definitions/routeTarget"},
+      "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
+      "on_fail": {"$ref": "#/definitions/failTarget"},
+      "max_visits": {"type": "integer", "minimum": 1},
+      "on_exhausted": {"$ref": "#/definitions/failTarget"}
+    },
+    "node": {
+      "oneOf": [
+        {"$ref": "#/definitions/agentNode"},
+        {"$ref": "#/definitions/gateNode"},
+        {"$ref": "#/definitions/scriptNode"},
+        {"$ref": "#/definitions/parallelNode"},
+        {"$ref": "#/definitions/subworkflowNode"}
+      ]
+    },
+    "branchNode": {
+      "oneOf": [
+        {"$ref": "#/definitions/agentNode"},
+        {"$ref": "#/definitions/gateNode"},
+        {"$ref": "#/definitions/scriptNode"},
+        {"$ref": "#/definitions/subworkflowNode"}
+      ]
+    },
+    "agentNode": {
+      "type": "object",
+      "required": ["id", "type", "instruction"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/nodeId"},
+        "type": {"const": "agent"},
+        "label": {"type": "string"},
+        "instruction": {"type": "string", "minLength": 1},
+        "skill": {"type": "string"},
+        "agent": {"type": "string"},
+        "model": {"type": "string"},
+        "inputs": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
+        "outputs": {"type": "array", "items": {"type": "string"}},
+        "artifact": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
+        "retries": {"type": "integer", "minimum": 0},
+        "isolate": {"enum": ["worktree"]},
+        "next": {"$ref": "#/definitions/routeTarget"},
+        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
+        "on_fail": {"$ref": "#/definitions/failTarget"},
+        "max_visits": {"type": "integer", "minimum": 1},
+        "on_exhausted": {"$ref": "#/definitions/failTarget"},
+        "ui": {"type": "object"}
+      }
+    },
+    "gateNode": {
+      "type": "object",
+      "required": ["id", "type", "prompt", "options"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/nodeId"},
+        "type": {"const": "gate"},
+        "label": {"type": "string"},
+        "prompt": {"type": "string", "minLength": 1},
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["id", "label", "to"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"type": "string"},
+              "label": {"type": "string"},
+              "to": {"$ref": "#/definitions/routeTarget"},
+              "input": {"type": "string"}
+            }
+          }
+        },
+        "max_visits": {"type": "integer", "minimum": 1},
+        "on_exhausted": {"$ref": "#/definitions/failTarget"},
+        "ui": {"type": "object"}
+      }
+    },
+    "scriptNode": {
+      "type": "object",
+      "required": ["id", "type", "run"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/nodeId"},
+        "type": {"const": "script"},
+        "label": {"type": "string"},
+        "run": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+        "timeout": {"type": "integer", "minimum": 1},
+        "next": {"$ref": "#/definitions/routeTarget"},
+        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
+        "on_fail": {"$ref": "#/definitions/failTarget"},
+        "max_visits": {"type": "integer", "minimum": 1},
+        "on_exhausted": {"$ref": "#/definitions/failTarget"},
+        "ui": {"type": "object"}
+      }
+    },
+    "parallelNode": {
+      "type": "object",
+      "required": ["id", "type", "branches"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/nodeId"},
+        "type": {"const": "parallel"},
+        "label": {"type": "string"},
+        "join": {"enum": ["all", "any"]},
+        "on_branch_fail": {"enum": ["fail_all", "continue", "ask"]},
+        "branches": {
+          "type": "array",
+          "minItems": 2,
+          "items": {
+            "type": "object",
+            "required": ["id", "start", "steps"],
+            "additionalProperties": false,
+            "properties": {
+              "id": {"$ref": "#/definitions/nodeId"},
+              "start": {"type": "string"},
+              "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/branchNode"}},
+              "ui": {"type": "object"}
+            }
+          }
+        },
+        "isolate": {"enum": ["worktree"]},
+        "next": {"$ref": "#/definitions/routeTarget"},
+        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
+        "on_fail": {"$ref": "#/definitions/failTarget"},
+        "max_visits": {"type": "integer", "minimum": 1},
+        "on_exhausted": {"$ref": "#/definitions/failTarget"},
+        "ui": {"type": "object"}
+      }
+    },
+    "subworkflowNode": {
+      "type": "object",
+      "required": ["id", "type", "workflow"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"$ref": "#/definitions/nodeId"},
+        "type": {"const": "subworkflow"},
+        "label": {"type": "string"},
+        "workflow": {"type": "string"},
+        "inputs": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
+        "next": {"$ref": "#/definitions/routeTarget"},
+        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
+        "on_fail": {"$ref": "#/definitions/failTarget"},
+        "max_visits": {"type": "integer", "minimum": 1},
+        "on_exhausted": {"$ref": "#/definitions/failTarget"},
+        "ui": {"type": "object"}
+      }
+    }
+  }
+}</script>
+<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "no-routing", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction"]</script>
+<script type="application/json" id="wf-templates">{"sdlc-main": {"label": "Full SDLC pipeline", "desc": "Requirement to release: design, review gates, parallel per-stack implementation, QA, release pack.", "tags": ["design", "implement", "qa", "release"], "yaml": "# The full KeyValue AI-SDLC pipeline \u2014 the default workflow behind `/maestro <slug>`.\n#\n#   design (sub-wf) -> architecture review -> [gates] -> parallel per-stack impl\n#   (impl.yaml per branch) -> merge (stub) -> qa (sub-wf) -> review pack -> release\n#   gate -> archive (stub)\n#\n# Every producing step writes an artifact under .maestro/<slug>/ and the engine gates\n# on it (\"proof, not promises\"). Human gates own every irreversible decision; their\n# revise options are back-edges that cascade-reset everything downstream.\nversion: 1\nname: sdlc-main\ndescription: Full feature pipeline \u2014 requirement to release-ready review pack.\ninputs:\n  slug: {type: string, required: true, description: kebab-case feature id}\n  feature: {type: string, default: \"${inputs.slug}\", description: one-line feature summary}\ndefaults:\n  model: haiku\n  agent: general\n  max_visits: 10\nstart: design\nnodes:\n  - id: design\n    type: subworkflow\n    label: Design phase\n    workflow: workflows/design.yaml\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    max_visits: 4\n    next: arch_review\n\n  - id: arch_review\n    type: agent\n    label: Architecture review\n    instruction: |\n      Review the full design set for this feature (HLD, both LLDs, contract, test\n      cases under .maestro/${inputs.slug}/) for soundness, consistency and risk.\n      Findings need evidence; set blocking=true only for must-fix issues.\n    skill: architecture-review\n    agent: reviewer\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [review_path, blocking, summary]\n    artifact: \".maestro/${inputs.slug}/reviews/architecture.md\"\n    max_visits: 4\n    routes:\n      - {when: \"${steps.arch_review.outputs.blocking} == true\", to: arch_gate}\n      - {to: contract_approval}\n\n  - id: arch_gate\n    type: gate\n    label: Blocking architecture findings\n    prompt: |\n      Architecture review found BLOCKING issues:\n      ${steps.arch_review.outputs.summary}\n      Full review: ${steps.arch_review.outputs.review_path}\n    options:\n      - {id: revise, label: Revise the design (regenerates design phase), to: design, input: feedback}\n      - {id: waive, label: Waive \u2014 proceed anyway, to: contract_approval}\n      - {id: reject, label: Abort the run, to: abort}\n\n  - id: contract_approval\n    type: gate\n    label: Contract approval\n    prompt: |\n      Design approved for implementation?\n      Design: ${steps.design.outputs.hld_summary}\n      Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})\n      Architecture review: ${steps.arch_review.outputs.summary}\n    options:\n      - {id: approve, label: Approve \u2014 start implementation, to: implement}\n      - {id: revise, label: Request design revisions, to: design, input: feedback}\n      - {id: reject, label: Reject \u2014 abort, to: abort}\n\n  - id: implement\n    type: parallel\n    label: Implementation\n    join: all\n    on_branch_fail: ask\n    branches:\n      - id: backend\n        start: impl\n        steps:\n          - id: impl\n            type: subworkflow\n            workflow: workflows/impl.yaml\n            inputs: {slug: \"${inputs.slug}\", stack: backend, feature: \"${inputs.feature}\"}\n            next: end\n      - id: frontend\n        start: impl\n        steps:\n          - id: impl\n            type: subworkflow\n            workflow: workflows/impl.yaml\n            inputs: {slug: \"${inputs.slug}\", stack: frontend, feature: \"${inputs.feature}\"}\n            next: end\n    next: merge_for_test\n\n  - id: merge_for_test\n    type: script\n    label: Merge for test (stub)\n    # POC stub \u2014 wire to your real merge/stack-up command. Branches:\n    #   ${steps.implement.branches.backend.outputs.branch}\n    #   ${steps.implement.branches.frontend.outputs.branch}\n    run: [bash, -c, \"echo 'merge stub: wire your merge + stack-up here'; exit 0\"]\n    on_fail: ask\n    next: qa\n\n  - id: qa\n    type: subworkflow\n    label: QA phase\n    workflow: workflows/qa.yaml\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    max_visits: 3\n    next: review_pack\n\n  - id: review_pack\n    type: agent\n    label: Human review pack\n    instruction: |\n      Assemble the release review pack for this feature: what was built (per stack),\n      review outcomes, QA results, open risks, and how to verify locally. Digest the\n      artifacts under .maestro/${inputs.slug}/ \u2014 the pack is what the human reads at\n      the release gate.\n    skill: human-review-pack\n    agent: analyst\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [pack_path, summary]\n    artifact: \".maestro/${inputs.slug}/review-pack.md\"\n    next: release_approval\n\n  - id: release_approval\n    type: gate\n    label: Release approval\n    prompt: |\n      Ready to release?\n      ${steps.review_pack.outputs.summary}\n      Review pack: ${steps.review_pack.outputs.pack_path}\n      QA: ${steps.qa.outputs.qa_summary}\n    options:\n      - {id: approve, label: Approve \u2014 archive and finish, to: archive}\n      - {id: revise, label: Send back to design, to: design, input: feedback}\n      - {id: reject, label: Reject \u2014 abort, to: abort}\n\n  - id: archive\n    type: script\n    label: Archive (stub)\n    # POC stub \u2014 reserved for publishing curated docs from .maestro/<slug>/ into\n    # committed docs/technical|functional/.\n    run: [bash, -c, \"echo 'archive stub: publish .maestro/${inputs.slug}/ docs here'; exit 0\"]\n    next: end\n\noutputs:\n  hld: \"${steps.design.outputs.hld_path}\"\n  contract: \"${steps.design.outputs.contract_path}\"\n  review_pack: \"${steps.review_pack.outputs.pack_path}\"\n  backend_branch: \"${steps.implement.branches.backend.outputs.branch}\"\n  frontend_branch: \"${steps.implement.branches.frontend.outputs.branch}\"\n"}, "design": {"label": "Design only", "desc": "HLD with an open-questions loop, approval gate, parallel LLDs, API contract, test cases.", "tags": ["hld", "lld", "contract"], "yaml": "# Design phase: requirement -> HLD -> open-questions loop -> approval -> parallel LLDs\n# -> API contract -> functional test cases.\n#\n# Showcases: script routing on stdout JSON (oq_serve), a human-in-the-loop cycle built\n# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets all\n# downstream design artifacts, and a parallel fork.\nversion: 1\nname: design\ndescription: Design a feature end-to-end, from requirement folder to reviewed design artifacts.\ninputs:\n  slug: {type: string, required: true, description: kebab-case feature id}\n  feature: {type: string, default: \"${inputs.slug}\", description: one-line feature summary}\ndefaults:\n  model: haiku\n  agent: planner\n  max_visits: 10\nstart: assert_requirement\nnodes:\n  - id: assert_requirement\n    type: script\n    label: Requirement present?\n    run: [bash, -c, \"find .maestro/${inputs.slug}/requirement -type f -size +1c 2>/dev/null | grep -q .\"]\n    on_fail: abort\n    next: author_hld\n\n  - id: author_hld\n    type: agent\n    label: Author HLD\n    instruction: |\n      Write the high-level design for this feature. Read EVERY file in the requirement\n      folder as the requirement. Surface unresolved product/technical decisions as open\n      questions: write them to BOTH the HLD's \"Open questions\" section AND\n      .maestro/${inputs.slug}/open-questions.json (schema\n      engine/schemas/open-questions.schema.json). Do not ask the user anything directly.\n      If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback}\n    skill: plan\n    inputs:\n      feature: \"${inputs.feature}\"\n      slug: \"${inputs.slug}\"\n      requirement_dir: \".maestro/${inputs.slug}/requirement\"\n    outputs: [hld_summary]\n    artifact: \".maestro/${inputs.slug}/hld.md\"\n    max_visits: 5\n    next: oq_serve\n\n  # ---- open-questions cycle: serve -> ask -> record -> serve (back-edges) ----\n  - id: oq_serve\n    type: script\n    label: Next open question?\n    run: [python3, engine/oq_serve.py, \".maestro/${inputs.slug}/open-questions.json\"]\n    max_visits: 40\n    on_exhausted: hld_approval\n    routes:\n      - {when: \"${steps.oq_serve.outputs.state} == ask\", to: oq_ask}\n      - {when: \"${steps.oq_serve.outputs.state} == refine\", to: refine_hld}\n      - {to: hld_approval}\n\n  - id: oq_ask\n    type: gate\n    label: Open question\n    prompt: |\n      **${steps.oq_serve.outputs.question}**\n\n      Why it matters: ${steps.oq_serve.outputs.why}\n\n      ${steps.oq_serve.outputs.options_md}\n\n      Answer with an option number or free text.\n    max_visits: 40\n    options:\n      - {id: answer, label: Answer it, to: oq_record, input: answer}\n      - {id: you-decide, label: You decide (pick a sensible default), to: oq_record}\n      - {id: skip, label: Skip \u2014 defer to LLD, to: oq_record}\n\n  - id: oq_record\n    type: script\n    label: Record answer\n    run:\n      - python3\n      - engine/oq_record.py\n      - \".maestro/${inputs.slug}/open-questions.json\"\n      - \"${steps.oq_serve.outputs.qid}\"\n      - \"${steps.oq_ask.outputs.choice}\"\n      - \"${steps.oq_ask.outputs.answer}\"\n    max_visits: 40\n    on_fail: abort\n    next: oq_serve\n\n  - id: refine_hld\n    type: agent\n    label: Fold answers into HLD\n    instruction: |\n      Resolved open questions await folding into the HLD. Apply each resolved answer to\n      .maestro/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default\n      and record the choice), then mark those questions status \"folded\" in\n      .maestro/${inputs.slug}/open-questions.json and re-validate it with\n      python3 engine/validate_open_questions.py.\n    skill: plan\n    inputs:\n      slug: \"${inputs.slug}\"\n    outputs: [refined_summary]\n    artifact: \".maestro/${inputs.slug}/hld.md\"\n    max_visits: 20\n    next: oq_serve\n\n  - id: hld_approval\n    type: gate\n    label: HLD approval\n    prompt: |\n      HLD ready at .maestro/${inputs.slug}/hld.md \u2014 ${steps.author_hld.outputs.hld_summary}\n\n      Review the document, then choose.\n    options:\n      - {id: approve, label: Approve \u2014 write the detailed designs, to: author_llds}\n      - {id: revise, label: Request revisions (regenerates everything downstream), to: author_hld, input: feedback}\n      - {id: reject, label: Reject \u2014 abort the run, to: abort}\n\n  - id: author_llds\n    type: parallel\n    label: Detailed designs\n    join: all\n    on_branch_fail: ask\n    branches:\n      - id: backend\n        start: backend_design\n        steps:\n          - id: backend_design\n            type: agent\n            instruction: |\n              Write the backend low-level design from the approved HLD at\n              .maestro/${inputs.slug}/hld.md.\n            skill: backend-design\n            inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n            outputs: [lld_path, contract_notes]\n            artifact: \".maestro/${inputs.slug}/lld/backend.md\"\n            next: end\n      - id: frontend\n        start: frontend_design\n        steps:\n          - id: frontend_design\n            type: agent\n            instruction: |\n              Write the frontend low-level design from the approved HLD at\n              .maestro/${inputs.slug}/hld.md.\n            skill: frontend-design\n            inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n            outputs: [lld_path, contract_notes]\n            artifact: \".maestro/${inputs.slug}/lld/frontend.md\"\n            next: end\n    next: contract\n\n  - id: contract\n    type: agent\n    label: API contract\n    instruction: |\n      Reconcile the backend and frontend LLDs under .maestro/${inputs.slug}/lld/ into a\n      single OpenAPI contract. Flag any mismatch you had to resolve.\n    skill: api-contract\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [contract_summary]\n    artifact: \".maestro/${inputs.slug}/openapi.yaml\"\n    next: test_cases\n\n  - id: test_cases\n    type: agent\n    label: Functional test cases\n    instruction: |\n      Produce the functional test-case catalog for this feature from the HLD, LLDs and\n      contract \u2014 the QA source of truth.\n    skill: functional-testcases\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [test_cases_path, case_count]\n    artifact: \".maestro/${inputs.slug}/test-cases.md\"\n    next: end\n\noutputs:\n  hld_summary: \"${steps.author_hld.outputs.hld_summary}\"\n  contract_summary: \"${steps.contract.outputs.contract_summary}\"\n  hld_path: \".maestro/${inputs.slug}/hld.md\"\n  contract_path: \".maestro/${inputs.slug}/openapi.yaml\"\n  test_cases_path: \".maestro/${inputs.slug}/test-cases.md\"\n"}, "impl": {"label": "Implement + review", "desc": "One stack: task DAG, sliced implementation, code review with a bounded fix loop.", "tags": ["tasks", "code", "fix-loop"], "yaml": "# Implementation phase for ONE stack (invoked per-stack by sdlc-main.yaml's parallel\n# node, or standalone: /maestro <slug> workflows/impl.yaml stack=backend).\n#\n# Showcases: a workflow parameterized by an input (skill names contain placeholders \u2014\n# no dispatch glue needed), engine-validated task DAGs, and a bounded fix cycle built\n# from a back-edge whose cap comes from maestro.config.yaml.\nversion: 1\nname: impl\ndescription: Build one stack from its approved LLD \u2014 task DAG, sliced implementation, review, bounded fix loop.\ninputs:\n  slug: {type: string, required: true}\n  stack: {type: string, required: true, description: backend | frontend}\n  feature: {type: string, default: \"${inputs.slug}\"}\ndefaults:\n  model: haiku\n  agent: implementer\n  max_visits: 10\nstart: tasks\nnodes:\n  - id: tasks\n    type: agent\n    label: Task DAG\n    instruction: |\n      Produce the parallel task DAG for the ${inputs.stack} stack from its LLD at\n      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at\n      .maestro/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group\n      dependencies only and disjoint writes across groups (schema\n      engine/schemas/tasks.schema.json). If a previous validation failed, fix what it\n      reported.\n    skill: backend-tasks\n    agent: planner\n    inputs: {slug: \"${inputs.slug}\", stack: \"${inputs.stack}\"}\n    outputs: [task_count, slice_count]\n    artifact: \".maestro/${inputs.slug}/${inputs.stack}/tasks.json\"\n    max_visits: 3\n    on_exhausted: abort\n    next: validate_tasks\n\n  - id: validate_tasks\n    type: script\n    label: Validate task DAG\n    run: [python3, engine/validate_tasks.py, \".maestro/${inputs.slug}/${inputs.stack}/tasks.json\"]\n    max_visits: 3\n    on_fail: tasks\n    next: implement\n\n  - id: implement\n    type: agent\n    label: Implement slices\n    instruction: |\n      Implement the ${inputs.stack} stack for this feature from\n      .maestro/${inputs.slug}/${inputs.stack}/tasks.json \u2014 every slice, with tests. The\n      skill owns slice fan-out and worktree hygiene. Work against the LLD at\n      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at\n      .maestro/${inputs.slug}/openapi.yaml. Report tests honestly.\n    skill: \"${inputs.stack}-implement\"\n    isolate: worktree\n    inputs:\n      slug: \"${inputs.slug}\"\n      stack: \"${inputs.stack}\"\n      tasks_path: \".maestro/${inputs.slug}/${inputs.stack}/tasks.json\"\n      branch: \"feature/${inputs.slug}-${inputs.stack}\"\n    outputs: [branch, summary, tests_passed]\n    retries: 1\n    max_visits: 3\n    next: contract_check\n\n  - id: contract_check\n    type: script\n    label: Contract check (stub)\n    # POC stub \u2014 wire to your real contract test runner (e.g. schemathesis, dredd)\n    run: [bash, -c, \"echo 'contract check stub: wire your runner here'; exit 0\"]\n    next: review\n\n  - id: review\n    type: agent\n    label: Code review\n    instruction: |\n      Review the ${inputs.stack} implementation on branch\n      ${steps.implement.outputs.branch} against the LLD, contract and standards.\n      Findings need file:line evidence; set blocking=true only for must-fix issues.\n    skill: \"${inputs.stack}-review\"\n    agent: reviewer\n    inputs:\n      slug: \"${inputs.slug}\"\n      branch: \"${steps.implement.outputs.branch}\"\n    outputs: [review_path, blocking, summary]\n    artifact: \".maestro/${inputs.slug}/${inputs.stack}/reviews/summary.md\"\n    max_visits: 5\n    on_exhausted: impl_gate\n    routes:\n      - {when: \"${steps.review.outputs.blocking} == true\", to: fix}\n      - {when: \"${steps.implement.outputs.tests_passed} != true\", to: fix}\n      - {to: end}\n\n  - id: fix\n    type: agent\n    label: Fix findings\n    instruction: |\n      One fix attempt: address the blocking findings in\n      ${steps.review.outputs.review_path} (and any failing tests) on branch\n      ${steps.implement.outputs.branch}. Smallest safe fix; never weaken or delete a\n      failing test. Re-run the failing checks before returning. Do NOT loop \u2014 the\n      workflow re-invokes you if needed.\n    skill: fix-loop\n    inputs:\n      slug: \"${inputs.slug}\"\n      stack: \"${inputs.stack}\"\n      branch: \"${steps.implement.outputs.branch}\"\n    outputs: [fix_summary, checks_passed]\n    max_visits: \"${config.fix_loop.max_attempts}\"\n    on_exhausted: impl_gate\n    next: review\n\n  - id: impl_gate\n    type: gate\n    label: Implementation escalation\n    prompt: |\n      The ${inputs.stack} implementation still has problems after the automated fix\n      rounds. Last review: ${steps.review.outputs.summary}\n      Branch: ${steps.implement.outputs.branch}\n    options:\n      - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}\n      - {id: accept, label: Accept as-is \u2014 I'll handle the rest, to: end}\n      - {id: abandon, label: Abort this stack, to: abort}\n\noutputs:\n  branch: \"${steps.implement.outputs.branch}\"\n  summary: \"${steps.implement.outputs.summary}\"\n  review_path: \"${steps.review.outputs.review_path}\"\n"}, "qa": {"label": "QA", "desc": "Automate and run the functional suite with a fix loop and escalation gate.", "tags": ["e2e", "fix-loop"], "yaml": "# QA phase: author + run the automated functional/E2E suite from the test-case catalog,\n# with a bounded fix cycle and a human escalation gate.\nversion: 1\nname: qa\ndescription: Automate and run the functional test suite; fix loop on failures.\ninputs:\n  slug: {type: string, required: true}\n  feature: {type: string, default: \"${inputs.slug}\"}\ndefaults:\n  model: haiku\n  agent: qa\n  max_visits: 10\nstart: qa_run\nnodes:\n  - id: qa_run\n    type: agent\n    label: Author & run E2E suite\n    instruction: |\n      Automate the functional test-case catalog at .maestro/${inputs.slug}/test-cases.md\n      into an executable E2E suite (framework/tier per maestro.config.yaml `qa:`) and\n      RUN it. Write the run report. Report results honestly \u2014 failures route into the\n      fix loop, they are not your problem to hide.\n    skill: qa-automation\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [passed, failed_count, summary]\n    artifact: \".maestro/${inputs.slug}/qa/report.md\"\n    max_visits: 5\n    on_exhausted: qa_gate\n    routes:\n      - {when: \"${steps.qa_run.outputs.passed} == true\", to: end}\n      - {to: qa_fix}\n\n  - id: qa_fix\n    type: agent\n    label: Fix failures\n    instruction: |\n      One fix attempt: diagnose the failures in .maestro/${inputs.slug}/qa/report.md and\n      apply the smallest safe fix (product bug or genuine test bug \u2014 never weaken or\n      delete a legitimate failing assertion). Re-run the failing specs before returning.\n      Do NOT loop \u2014 the workflow re-invokes you if needed.\n    skill: fix-loop\n    agent: implementer\n    inputs: {slug: \"${inputs.slug}\", report: \".maestro/${inputs.slug}/qa/report.md\"}\n    outputs: [fix_summary, checks_passed]\n    max_visits: \"${config.fix_loop.max_attempts}\"\n    on_exhausted: qa_gate\n    next: qa_run\n\n  - id: qa_gate\n    type: gate\n    label: QA escalation\n    prompt: |\n      QA is still failing after the automated fix rounds.\n      Last run: ${steps.qa_run.outputs.summary}\n      Report: .maestro/${inputs.slug}/qa/report.md\n    options:\n      - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}\n      - {id: accept, label: Accept with known failures, to: end}\n      - {id: abandon, label: Abort, to: abort}\n\noutputs:\n  qa_summary: \"${steps.qa_run.outputs.summary}\"\n  qa_report: \".maestro/${inputs.slug}/qa/report.md\"\n"}}</script>
+<script>
+/* ================= Maestro Workflow Builder ================= */
+"use strict";
+const $ = (s, el) => (el || document).querySelector(s);
+const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
+const SCHEMA = JSON.parse($("#workflow-schema").textContent);
+const LINT_RULES = JSON.parse($("#lint-rules").textContent);
+const TEMPLATES = JSON.parse($("#wf-templates").textContent);
+const RESERVED = ["end", "abort"];
+const NODE_TYPES = ["agent", "gate", "script", "parallel", "subworkflow"];
+const ICONS = { agent: "🤖", gate: "👤", script: "$", parallel: "⫘", subworkflow: "⧉" };
+const SKILL_CATALOG = ["plan","backend-design","frontend-design","api-contract","functional-testcases",
+  "backend-tasks","backend-implement","frontend-implement","qa-automation","architecture-review",
+  "backend-review","frontend-review","verify","fix-loop","human-review-pack"];
+const AGENT_CATALOG = ["planner","implementer","reviewer","qa","analyst","general"];
+const MODEL_CATALOG = ["haiku","sonnet","opus"];
+const YAML_DUMP_OPTS = { lineWidth: -1, noRefs: true, noCompatMode: true };
+
+/* ---------------- state ---------------- */
+let doc = null;                       // the workflow object (unknown keys preserved)
+const ed = { stack: [], sel: null, pan: { x: 60, y: 40 }, zoom: 1,
+  undo: [], redo: [], dirty: false, fileHandle: null, fileName: "workflow.yaml" };
+
+function blankDoc() {
+  return { version: 1, name: "my-workflow", description: "",
+    inputs: { slug: { type: "string", required: true } },
+    defaults: { model: "haiku", max_visits: 10 }, start: "", nodes: [] };
+}
+function ctxNodes() {                 // node list of the graph being edited (drill-in aware)
+  let nodes = doc.nodes;
+  for (const f of ed.stack) {
+    const n = nodes.find(x => x.id === f.nodeId);
+    nodes = (n.branches.find(b => b.id === f.branchId)).steps;
+  }
+  return nodes;
+}
+function ctxStart() {
+  if (!ed.stack.length) return doc.start;
+  let nodes = doc.nodes, br = null;
+  for (const f of ed.stack) {
+    const n = nodes.find(x => x.id === f.nodeId);
+    br = n.branches.find(b => b.id === f.branchId);
+    nodes = br.steps;
+  }
+  return br.start;
+}
+function commit(label, fn) {
+  ed.undo.push(JSON.stringify(doc));
+  if (ed.undo.length > 100) ed.undo.shift();
+  ed.redo.length = 0;
+  fn();
+  ed.dirty = true;
+  renderAll();
+}
+function undo() { if (!ed.undo.length) return; ed.redo.push(JSON.stringify(doc)); doc = JSON.parse(ed.undo.pop()); fixupStack(); renderAll(); }
+function redo() { if (!ed.redo.length) return; ed.undo.push(JSON.stringify(doc)); doc = JSON.parse(ed.redo.pop()); fixupStack(); renderAll(); }
+function fixupStack() {               // drop drill-in frames that no longer resolve
+  let nodes = doc.nodes, ok = [];
+  for (const f of ed.stack) {
+    const n = nodes.find(x => x.id === f.nodeId);
+    const b = n && (n.branches || []).find(b => b.id === f.branchId);
+    if (!b) break;
+    ok.push(f); nodes = b.steps;
+  }
+  ed.stack = ok; ed.sel = null;
+}
+
+/* ---------------- edges model ---------------- */
+function edgesOf(nodes) {
+  const edges = [];
+  for (const n of nodes) {
+    if (!n || !n.id) continue;
+    if (typeof n.next === "string") edges.push({ from: n.id, to: n.next, kind: "next", label: "" });
+    (n.routes || []).forEach((r, i) => edges.push({ from: n.id, to: r.to, kind: "route", idx: i,
+      label: r.when ? shortCond(r.when) : "default" }));
+    (n.options || []).forEach((o, i) => edges.push({ from: n.id, to: o.to, kind: "option", idx: i,
+      label: o.label || o.id }));
+    for (const k of ["on_fail", "on_exhausted"]) {
+      const v = n[k];
+      if (typeof v === "string" && v !== "ask" && v !== "abort") edges.push({ from: n.id, to: v, kind: k, label: k.replace("_", " ") });
+    }
+  }
+  return edges;
+}
+function shortCond(w) { return w.length > 34 ? w.slice(0, 32) + "…" : w; }
+function nodeIndexOf(nodes, id) { return nodes.findIndex(n => n.id === id); }
+function isBackEdge(nodes, e) {       // heuristic used for styling: target earlier in flow order
+  const order = layoutOrder(nodes);
+  return (order[e.to] ?? 1e9) <= (order[e.from] ?? -1) && e.to !== e.from ? true : e.to === e.from;
+}
+
+/* ---------------- layout ---------------- */
+function layoutOrder(nodes) {         // longest-path layer per node id from start
+  const ids = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const layer = {}, visiting = {};
+  function depth(id, d) {
+    if (!(id in ids)) return;
+    if (visiting[id]) return;         // cycle: keep first assignment
+    if ((layer[id] ?? -1) >= d) return;
+    layer[id] = d; visiting[id] = 1;
+    for (const e of edgesOf([ids[id]])) if (!RESERVED.includes(e.to)) depth(e.to, d + 1);
+    visiting[id] = 0;
+  }
+  depth(ctxStart() || (nodes[0] && nodes[0].id), 0);
+  let extra = 0;
+  for (const n of nodes) if (!(n.id in layer)) layer[n.id] = ++extra + Math.max(0, ...Object.values(layer));
+  return layer;
+}
+function autoLayout(nodes, force) {
+  const layer = layoutOrder(nodes);
+  const byLayer = {};
+  nodes.forEach(n => { (byLayer[layer[n.id]] = byLayer[layer[n.id]] || []).push(n); });
+  const COLW = 260, ROWH = 130;
+  for (const [l, group] of Object.entries(byLayer)) {
+    group.forEach((n, i) => {
+      if (force || !n.ui || n.ui.x == null) {
+        n.ui = Object.assign({}, n.ui, { x: 40 + l * COLW, y: 40 + i * ROWH });
+      }
+    });
+  }
+}
+
+/* ---------------- lint (client-side subset of engine/validate.py) ---------------- */
+function lint() {
+  const issues = [];
+  const err = (code, msg, node) => issues.push({ level: "error", code, msg, node });
+  const warn = (code, msg, node) => issues.push({ level: "warning", code, msg, node });
+  if (!doc) return issues;
+  const declared = new Set(Object.keys(doc.inputs || {})); declared.add("slug");
+  function checkGraph(nodes, start, where) {
+    const ids = {};
+    for (const n of nodes) {
+      if (!n.id || !/^[a-z0-9][a-z0-9_-]*$/.test(n.id) || RESERVED.includes(n.id)) err("bad-id", `${where}: bad node id "${n.id || ""}"`, n.id);
+      else if (ids[n.id]) err("dup-id", `${where}: duplicate id "${n.id}"`, n.id);
+      ids[n.id] = n;
+    }
+    if (!start || !ids[start]) err("no-start", `${where}: start "${start || ""}" is not a node`);
+    for (const n of nodes) {
+      const w = `${where}#${n.id}`;
+      if (n.type === "gate") {
+        if (!(n.options || []).length) err("gate-no-options", `${w}: gate needs at least one option`, n.id);
+      } else {
+        const hasNext = typeof n.next === "string", hasRoutes = Array.isArray(n.routes) && n.routes.length;
+        if (!hasNext && !hasRoutes) err("no-routing", `${w}: needs a next step (drag from its port)`, n.id);
+        if (hasRoutes) {
+          const def = n.routes.filter(r => !r.when);
+          if (!def.length) err("no-default-route", `${w}: conditional routes need a final default`, n.id);
+          else if (n.routes.indexOf(def[0]) !== n.routes.length - 1) err("no-default-route", `${w}: the default route must be last`, n.id);
+        }
+      }
+      if (n.type === "agent" && !(n.instruction || "").trim()) err("empty-instruction", `${w}: agent needs an instruction`, n.id);
+      if (n.type === "script" && !(Array.isArray(n.run) && n.run.length)) err("bad-type", `${w}: script needs a command`, n.id);
+      if (n.type === "subworkflow" && !n.workflow) err("missing-key", `${w}: subworkflow needs a file path`, n.id);
+      for (const e of edgesOf([n])) {
+        if (!RESERVED.includes(e.to) && !ids[e.to]) err("missing-route-target", `${w}: edge points at unknown node "${e.to}"`, n.id);
+      }
+      for (const m of JSON.stringify(n).matchAll(/\$\{inputs\.([A-Za-z0-9_]+)\}/g)) {
+        if (!declared.has(m[1])) err("undeclared-input", `${w}: \${inputs.${m[1]}} is not declared in workflow inputs`, n.id);
+      }
+      if (n.type === "parallel") {
+        if (!(n.branches || []).length || n.branches.length < 2) err("parallel-too-few-branches", `${w}: parallel needs 2+ branches`, n.id);
+        for (const b of n.branches || []) {
+          for (const s of b.steps || []) if (!["agent","gate","script","subworkflow"].includes(s.type))
+            err("branch-bad-type", `${w}[${b.id}]: "${s.id}" — only agent/gate/script/subworkflow inside branches`, n.id);
+          checkGraph(b.steps || [], b.start, `${w}[${b.id}]`);
+        }
+      }
+    }
+    // reachability
+    if (start && ids[start]) {
+      const seen = new Set(), stack = [start];
+      while (stack.length) {
+        const id = stack.pop();
+        if (seen.has(id) || !ids[id]) continue;
+        seen.add(id);
+        for (const e of edgesOf([ids[id]])) if (!RESERVED.includes(e.to)) stack.push(e.to);
+      }
+      for (const n of nodes) if (!seen.has(n.id)) warn("unreachable-node", `${where}: "${n.id}" is unreachable from start`, n.id);
+    }
+  }
+  if (!doc.name || !/^[a-z0-9][a-z0-9-]*$/.test(doc.name)) issues.push({ level: "error", code: "bad-name", msg: "workflow name must be kebab-case" });
+  checkGraph(doc.nodes || [], doc.start, "main");
+  return issues;
+}
+
+/* ---------------- rendering ---------------- */
+const vp = $("#viewport"), nodesLayer = $("#nodes-layer"), edgesSvg = $("#edges");
+let lastIssues = [];
+function renderAll() {
+  lastIssues = lint();
+  renderCrumbs(); renderCanvas(); renderInspector(); renderIssuesPill();
+  $("#dirty-dot").style.visibility = ed.dirty ? "visible" : "hidden";
+  try { localStorage.setItem("maestro-builder-doc", JSON.stringify(doc)); } catch (e) {}
+}
+function applyTransform() { vp.style.transform = `translate(${ed.pan.x}px, ${ed.pan.y}px) scale(${ed.zoom})`; }
+function renderCrumbs() {
+  const c = $("#crumbs"); c.innerHTML = "";
+  const mk = (label, depth) => {
+    const s = document.createElement("span"); s.className = "crumb"; s.textContent = label;
+    if (depth === ed.stack.length) s.classList.add("here");
+    else s.onclick = () => { ed.stack = ed.stack.slice(0, depth); ed.sel = null; renderAll(); fitView(); };
+    return s;
+  };
+  if (!doc) return;
+  c.appendChild(mk(doc.name || "workflow", 0));
+  ed.stack.forEach((f, i) => {
+    const sep = document.createElement("span"); sep.className = "sep"; sep.textContent = "›";
+    c.appendChild(sep); c.appendChild(mk(`${f.nodeId} · ${f.branchId}`, i + 1));
+  });
+}
+function terminalTargets(nodes) {     // which reserved targets are referenced here
+  const t = new Set();
+  for (const e of edgesOf(nodes)) if (RESERVED.includes(e.to)) t.add(e.to);
+  return t;
+}
+function renderCanvas() {
+  nodesLayer.innerHTML = ""; edgesSvg.innerHTML = "";
+  applyTransform();
+  if (!doc) return;
+  const nodes = ctxNodes();
+  $("#empty-state").style.display = nodes.length ? "none" : "flex";
+  autoLayout(nodes, false);
+  const order = layoutOrder(nodes);
+  // terminal pseudo-nodes
+  const terms = terminalTargets(nodes);
+  const maxX = Math.max(120, ...nodes.map(n => n.ui.x)), termPos = {};
+  let ty = 60;
+  for (const t of ["end", "abort"]) if (terms.has(t)) { termPos[t] = { x: maxX + 260, y: ty }; ty += 120; }
+  const issueByNode = {};
+  for (const i of lastIssues) if (i.node) (issueByNode[i.node] = issueByNode[i.node] || []).push(i);
+
+  for (const n of nodes) nodesLayer.appendChild(nodeEl(n, issueByNode[n.id]));
+  for (const [t, p] of Object.entries(termPos)) {
+    const el = document.createElement("div");
+    el.className = "node n-terminal"; el.dataset.id = "$" + t;
+    el.style.left = p.x + "px"; el.style.top = p.y + "px";
+    el.innerHTML = `<div class="head"><span class="ico" style="background:${t === "end" ? "var(--ok)" : "var(--danger)"}">${t === "end" ? "◉" : "✕"}</span><span class="ttl">${t}</span></div>`;
+    nodesLayer.appendChild(el);
+  }
+  // edges need DOM sizes — draw after insert
+  requestAnimationFrame(() => drawEdges(nodes, termPos, order));
+}
+function nodeEl(n, issues) {
+  const el = document.createElement("div");
+  el.className = `node n-${n.type}`; el.dataset.id = n.id;
+  el.style.left = (n.ui.x || 0) + "px"; el.style.top = (n.ui.y || 0) + "px";
+  if (ed.sel && ed.sel.kind === "node" && ed.sel.id === n.id) el.classList.add("selected");
+  const chips = [];
+  if (n.type === "agent") {
+    chips.push(`<span class="chip skill">${esc(n.skill || "auto skill")}</span>`);
+    if (n.model) chips.push(`<span class="chip">${esc(n.model)}</span>`);
+    if (n.agent) chips.push(`<span class="chip">${esc(n.agent)}</span>`);
+    if (n.artifact) chips.push(`<span class="chip" title="artifact">📄</span>`);
+  } else if (n.type === "gate") {
+    chips.push(`<span class="chip">${(n.options || []).length} option${(n.options || []).length === 1 ? "" : "s"}</span>`);
+  } else if (n.type === "script") {
+    chips.push(`<span class="chip" style="font-family:var(--mono)">${esc((n.run || []).join(" ").slice(0, 30))}</span>`);
+  } else if (n.type === "parallel") {
+    for (const b of n.branches || []) chips.push(`<span class="open-btn" data-branch="${esc(b.id)}">${esc(b.id)} ↗</span>`);
+  } else if (n.type === "subworkflow") {
+    chips.push(`<span class="chip" style="font-family:var(--mono)">${esc(n.workflow || "?")}</span>`);
+  }
+  if (n.ui && n.ui.note) chips.push(`<span class="chip" title="${esc(n.ui.note)}">🗒</span>`);
+  el.innerHTML = `<div class="head"><span class="ico">${ICONS[n.type] || "?"}</span><span class="ttl">${esc(n.label || n.id)}</span></div>
+    <div class="body">${chips.join("")}</div><div class="port in"></div><div class="port out" style="top: 14px"></div>`;
+  if (issues && issues.length) {
+    const worst = issues.some(i => i.level === "error") ? "" : " warn";
+    const b = document.createElement("div");
+    b.className = "err-badge" + worst; b.textContent = "!";
+    b.title = issues.map(i => i.msg).join("\n");
+    b.onclick = (ev) => { ev.stopPropagation(); showIssues(); };
+    el.appendChild(b);
+  }
+  return el;
+}
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function nodeRect(id) {
+  const el = nodesLayer.querySelector(`[data-id="${CSS.escape(id)}"]`);
+  if (!el) return null;
+  return { x: el.offsetLeft, y: el.offsetTop, w: el.offsetWidth, h: el.offsetHeight };
+}
+function drawEdges(nodes, termPos, order) {
+  edgesSvg.innerHTML = "";
+  const ids = Object.fromEntries(nodes.map(n => [n.id, n]));
+  const edges = edgesOf(nodes);
+  const fromCount = {};
+  edges.forEach(e => { fromCount[e.from] = (fromCount[e.from] || 0) + 1; });
+  const fromSeen = {};
+  for (const e of edges) {
+    const a = nodeRect(e.from), b = RESERVED.includes(e.to) ? nodeRect("$" + e.to) : nodeRect(e.to);
+    if (!a || !b) continue;
+    const slot = (fromSeen[e.from] = (fromSeen[e.from] || 0) + 1);
+    const total = fromCount[e.from];
+    const sy = a.y + a.h / 2 + (slot - (total + 1) / 2) * Math.min(18, a.h / (total + 1));
+    const sx = a.x + a.w, tx = b.x, tyy = b.y + b.h / 2;
+    const back = tx < sx - 20 || e.to === e.from;
+    let d;
+    if (e.to === e.from) {
+      d = `M ${sx} ${sy} C ${sx + 70} ${sy - 60}, ${a.x - 70} ${sy - 60}, ${a.x} ${a.y + a.h / 2}`;
+    } else if (back) {
+      const lift = Math.min(a.y, b.y) - 55 - (order[e.from] || 0) * 6;
+      d = `M ${sx} ${sy} C ${sx + 90} ${sy}, ${sx + 90} ${lift}, ${(sx + tx) / 2} ${lift} S ${tx - 90} ${tyy}, ${tx} ${tyy}`;
+    } else {
+      const mx = (sx + tx) / 2;
+      d = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${tyy}, ${tx} ${tyy}`;
+    }
+    const sel = ed.sel && ed.sel.kind === "edge" && sameEdge(ed.sel.edge, e);
+    const g = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    g.innerHTML = `<path class="hit" d="${d}"></path>
+      <path class="edge${back ? " back" : ""}${sel ? " selected" : ""}" d="${d}" marker-end="url(#arr${back ? "b" : sel ? "s" : ""})"></path>`;
+    if (e.label) {
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      const lx = back ? (sx + tx) / 2 : (sx + tx) / 2, ly = back ? Math.min(a.y, b.y) - 61 : (sy + tyy) / 2 - 6;
+      t.setAttribute("x", lx); t.setAttribute("y", ly); t.setAttribute("text-anchor", "middle");
+      t.textContent = e.label;
+      g.appendChild(t);
+    }
+    if (back && !RESERVED.includes(e.to) && ids[e.to]) {
+      const cap = (ids[e.from].max_visits ?? (doc.defaults || {}).max_visits ?? 10);
+      const t = document.createElementNS("http://www.w3.org/2000/svg", "text");
+      t.setAttribute("x", (sx + tx) / 2); t.setAttribute("y", Math.min(a.y, b.y) - 47);
+      t.setAttribute("text-anchor", "middle"); t.setAttribute("class", "cap-badge");
+      t.textContent = `↻ ≤${cap}`;
+      g.appendChild(t);
+    }
+    g.addEventListener("mousedown", ev => { ev.stopPropagation(); ed.sel = { kind: "edge", edge: e }; renderAll(); });
+    edgesSvg.appendChild(g);
+  }
+  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+  defs.innerHTML = `
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow"></path></marker>
+    <marker id="arrb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow back"></path></marker>
+    <marker id="arrs" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="arrow selected"></path></marker>`;
+  edgesSvg.appendChild(defs);
+}
+function sameEdge(a, b) { return a && b && a.from === b.from && a.to === b.to && a.kind === b.kind && (a.idx ?? -1) === (b.idx ?? -1); }
+
+/* ---------------- inspector ---------------- */
+function renderInspector() {
+  const box = $("#inspector"); box.innerHTML = "";
+  if (!doc) return;
+  if (ed.sel && ed.sel.kind === "node") return inspectNode(box);
+  if (ed.sel && ed.sel.kind === "edge") return inspectEdge(box);
+  inspectWorkflow(box);
+}
+function field(labelTxt, inputEl, help) {
+  const f = document.createElement("div"); f.className = "f";
+  const l = document.createElement("label"); l.textContent = labelTxt; f.appendChild(l);
+  f.appendChild(inputEl);
+  if (help) { const n = document.createElement("div"); n.className = "note"; n.textContent = help; f.appendChild(n); }
+  return f;
+}
+function txt(value, onchange, opts) {
+  const i = document.createElement(opts && opts.area ? "textarea" : "input");
+  if (!opts || !opts.area) i.type = opts && opts.number ? "number" : "text";
+  i.value = value ?? "";
+  if (opts && opts.placeholder) i.placeholder = opts.placeholder;
+  if (opts && opts.list) i.setAttribute("list", opts.list);
+  if (opts && opts.mono) i.style.fontFamily = "var(--mono)";
+  i.addEventListener("change", () => onchange(i.value, i));
+  return i;
+}
+function sel(value, choices, onchange) {
+  const s = document.createElement("select");
+  for (const c of choices) {
+    const o = document.createElement("option");
+    o.value = c.v ?? c; o.textContent = c.t ?? c;
+    if ((c.v ?? c) === String(value ?? "")) o.selected = true;
+    s.appendChild(o);
+  }
+  s.addEventListener("change", () => onchange(s.value));
+  return s;
+}
+function targetChoices(nodes, extra) {
+  return [...(extra || []), ...nodes.map(n => n.id), "end", "abort"];
+}
+function inspectWorkflow(box) {
+  box.innerHTML = `<h3><span class="ico" style="background:var(--accent)">⚙</span> Workflow settings</h3>`;
+  box.appendChild(field("Name", txt(doc.name, v => commit("name", () => doc.name = v))));
+  box.appendChild(field("Description", txt(doc.description, v => commit("desc", () => doc.description = v), { area: true })));
+  const nodes = ctxNodes();
+  if (!ed.stack.length) {
+    box.appendChild(field("Start node", sel(doc.start, ["", ...nodes.map(n => n.id)], v => commit("start", () => doc.start = v))));
+    const d = doc.defaults = doc.defaults || {};
+    const row = document.createElement("div"); row.className = "frow";
+    row.appendChild(field("Default model", txt(d.model, v => commit("model", () => v ? d.model = v : delete d.model), { list: "dl-models" })));
+    row.appendChild(field("Repeat limit", txt(d.max_visits, v => commit("mv", () => v ? d.max_visits = +v : delete d.max_visits), { number: true })));
+    box.appendChild(row);
+    // inputs editor
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `<div class="sec-h">Inputs</div>`;
+    const list = document.createElement("div"); list.className = "mini-list";
+    for (const [name, spec0] of Object.entries(doc.inputs || {})) {
+      const spec = spec0 || {};
+      const r = document.createElement("div"); r.className = "mini-row";
+      r.appendChild(txt(name, v => commit("in", () => { const d2 = doc.inputs; const nv = {}; for (const [k, s] of Object.entries(d2)) nv[k === name ? v : k] = s; doc.inputs = nv; })));
+      r.appendChild(sel(spec.type || "string", ["string", "number", "boolean", "list"], v => commit("in", () => spec.type = v)));
+      const req = document.createElement("input"); req.type = "checkbox"; req.checked = !!spec.required; req.title = "required";
+      req.onchange = () => commit("in", () => req.checked ? spec.required = true : delete spec.required);
+      r.appendChild(req);
+      r.appendChild(txt(spec.default ?? "", v => commit("in", () => v ? spec.default = v : delete spec.default), { placeholder: "default" }));
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+      del.onclick = () => commit("in", () => delete doc.inputs[name]);
+      r.appendChild(del);
+      list.appendChild(r);
+      doc.inputs[name] = spec;
+    }
+    sec.appendChild(list);
+    const add = document.createElement("button"); add.className = "add-btn"; add.textContent = "+ input";
+    add.onclick = () => commit("in", () => { doc.inputs = doc.inputs || {}; doc.inputs["input_" + Object.keys(doc.inputs).length] = { type: "string" }; });
+    sec.appendChild(add);
+    box.appendChild(sec);
+    // outputs
+    const sec2 = document.createElement("div"); sec2.className = "sec";
+    sec2.innerHTML = `<div class="sec-h">Workflow outputs</div>`;
+    const list2 = document.createElement("div"); list2.className = "mini-list";
+    for (const [k, v] of Object.entries(doc.outputs || {})) {
+      const r = document.createElement("div"); r.className = "mini-row";
+      r.appendChild(txt(k, nv => commit("out", () => { const o = {}; for (const [kk, vv] of Object.entries(doc.outputs)) o[kk === k ? nv : kk] = vv; doc.outputs = o; })));
+      r.appendChild(txt(v, nv => commit("out", () => doc.outputs[k] = nv), { mono: true }));
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+      del.onclick = () => commit("out", () => { delete doc.outputs[k]; if (!Object.keys(doc.outputs).length) delete doc.outputs; });
+      r.appendChild(del);
+      list2.appendChild(r);
+    }
+    sec2.appendChild(list2);
+    const add2 = document.createElement("button"); add2.className = "add-btn"; add2.textContent = "+ output";
+    add2.onclick = () => commit("out", () => { doc.outputs = doc.outputs || {}; doc.outputs["output_" + Object.keys(doc.outputs).length] = ""; });
+    sec2.appendChild(add2);
+    box.appendChild(sec2);
+  } else {
+    // branch settings
+    let nodesUp = doc.nodes, branch = null;
+    for (const f of ed.stack) { const n = nodesUp.find(x => x.id === f.nodeId); branch = n.branches.find(b => b.id === f.branchId); nodesUp = branch.steps; }
+    box.appendChild(field("Branch start node", sel(branch.start, ["", ...nodes.map(n => n.id)], v => commit("bstart", () => branch.start = v))));
+    const n = document.createElement("div"); n.className = "note";
+    n.textContent = "You are editing a parallel branch. Route a step to `end` to finish the branch. Use the breadcrumb to go back.";
+    box.appendChild(n);
+  }
+  const help = document.createElement("div"); help.className = "note"; help.style.marginTop = "14px";
+  help.textContent = "Select a node or an edge to edit it here.";
+  box.appendChild(help);
+}
+function inspectNode(box) {
+  const nodes = ctxNodes();
+  const n = nodes.find(x => x.id === ed.sel.id);
+  if (!n) { ed.sel = null; return inspectWorkflow(box); }
+  box.innerHTML = `<h3><span class="ico" style="background:var(--${n.type})">${ICONS[n.type]}</span> ${esc(n.type)} step</h3>`;
+  const rid = document.createElement("div"); rid.className = "frow";
+  rid.appendChild(field("Id", txt(n.id, v => renameNode(n, v))));
+  rid.appendChild(field("Label", txt(n.label, v => commit("label", () => v ? n.label = v : delete n.label))));
+  box.appendChild(rid);
+  if (n.type === "agent") {
+    box.appendChild(field("Instruction — what should this step do?",
+      txt(n.instruction, v => commit("instr", () => n.instruction = v), { area: true, placeholder: "Write the high-level design for this feature…" })));
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `<div class="sec-h">Advanced</div>`;
+    sec.appendChild(field("Skill (empty = pick automatically)", txt(n.skill, v => commit("skill", () => v ? n.skill = v : delete n.skill), { list: "dl-skills", placeholder: "auto" })));
+    const row = document.createElement("div"); row.className = "frow";
+    row.appendChild(field("Model", txt(n.model, v => commit("model", () => v ? n.model = v : delete n.model), { list: "dl-models", placeholder: "default" })));
+    row.appendChild(field("Agent type", txt(n.agent, v => commit("agent", () => v ? n.agent = v : delete n.agent), { list: "dl-agents", placeholder: "default" })));
+    sec.appendChild(row);
+    sec.appendChild(field("Artifact file(s) it must write", txt(Array.isArray(n.artifact) ? n.artifact.join(", ") : n.artifact,
+      v => commit("art", () => { const list = v.split(",").map(s => s.trim()).filter(Boolean); if (!list.length) delete n.artifact; else n.artifact = list.length > 1 ? list : list[0]; }),
+      { mono: true, placeholder: ".maestro/${inputs.slug}/hld.md" }), "The engine refuses to mark the step done unless these exist non-empty."));
+    sec.appendChild(field("Returned fields (comma-separated)", txt((n.outputs || []).join(", "),
+      v => commit("outs", () => { const list = v.split(",").map(s => s.trim()).filter(Boolean); if (list.length) n.outputs = list; else delete n.outputs; }),
+      { mono: true, placeholder: "summary" })));
+    // inputs kv
+    const kv = document.createElement("div"); kv.className = "mini-list";
+    for (const [k, v] of Object.entries(n.inputs || {})) {
+      const r = document.createElement("div"); r.className = "mini-row";
+      r.appendChild(txt(k, nv => commit("i", () => { const o = {}; for (const [kk, vv] of Object.entries(n.inputs)) o[kk === k ? nv : kk] = vv; n.inputs = o; })));
+      r.appendChild(txt(v, nv => commit("i", () => n.inputs[k] = nv), { mono: true }));
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+      del.onclick = () => commit("i", () => { delete n.inputs[k]; if (!Object.keys(n.inputs).length) delete n.inputs; });
+      r.appendChild(del);
+      kv.appendChild(r);
+    }
+    sec.appendChild(field("Step inputs", kv));
+    const add = document.createElement("button"); add.className = "add-btn"; add.textContent = "+ input";
+    add.onclick = () => commit("i", () => { n.inputs = n.inputs || {}; n.inputs["key" + Object.keys(n.inputs).length] = "${inputs.slug}"; });
+    sec.appendChild(add);
+    box.appendChild(sec);
+  } else if (n.type === "gate") {
+    box.appendChild(field("Question for the human", txt(n.prompt, v => commit("prompt", () => n.prompt = v), { area: true })));
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `<div class="sec-h">Options (each is an outgoing arrow)</div>`;
+    (n.options || []).forEach((o, i) => {
+      const r1 = document.createElement("div"); r1.className = "mini-row";
+      r1.appendChild(txt(o.id, v => commit("o", () => o.id = v), { placeholder: "id" }));
+      r1.appendChild(txt(o.label, v => commit("o", () => o.label = v), { placeholder: "label" }));
+      r1.appendChild(sel(o.to, targetChoices(nodes), v => commit("o", () => o.to = v)));
+      r1.appendChild(txt(o.input ?? "", v => commit("o", () => v ? o.input = v : delete o.input), { placeholder: "collect text as…" }));
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+      del.onclick = () => commit("o", () => n.options.splice(i, 1));
+      r1.appendChild(del);
+      const wrap = document.createElement("div"); wrap.className = "mini-list"; wrap.appendChild(r1);
+      sec.appendChild(wrap);
+    });
+    const add = document.createElement("button"); add.className = "add-btn"; add.textContent = "+ option";
+    add.onclick = () => commit("o", () => { n.options = n.options || []; n.options.push({ id: "option-" + (n.options.length + 1), label: "New option", to: "end" }); });
+    sec.appendChild(add);
+    box.appendChild(sec);
+  } else if (n.type === "script") {
+    box.appendChild(field("Command (one argument per line)", txt((n.run || []).join("\n"),
+      v => commit("run", () => n.run = v.split("\n").map(s => s.trim()).filter(Boolean)), { area: true, mono: true, placeholder: "bash\n-c\necho hello" })));
+    box.appendChild(field("Timeout (seconds)", txt(n.timeout, v => commit("t", () => v ? n.timeout = +v : delete n.timeout), { number: true, placeholder: "300" })));
+  } else if (n.type === "parallel") {
+    const row = document.createElement("div"); row.className = "frow";
+    row.appendChild(field("Join", sel(n.join || "all", ["all", "any"], v => commit("j", () => n.join = v))));
+    row.appendChild(field("If a branch fails", sel(n.on_branch_fail || "fail_all", ["fail_all", "continue", "ask"], v => commit("bf", () => n.on_branch_fail = v))));
+    box.appendChild(row);
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `<div class="sec-h">Branches</div>`;
+    (n.branches || []).forEach((b, i) => {
+      const r = document.createElement("div"); r.className = "mini-row";
+      r.appendChild(txt(b.id, v => commit("b", () => b.id = v)));
+      const open = document.createElement("button"); open.className = "tb"; open.textContent = "Edit ↗"; open.style.padding = "3px 9px";
+      open.onclick = () => { ed.stack.push({ nodeId: n.id, branchId: b.id }); ed.sel = null; renderAll(); fitView(); };
+      r.appendChild(open);
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+      del.onclick = () => commit("b", () => n.branches.splice(i, 1));
+      r.appendChild(del);
+      const wrap = document.createElement("div"); wrap.className = "mini-list"; wrap.appendChild(r);
+      sec.appendChild(wrap);
+    });
+    const add = document.createElement("button"); add.className = "add-btn"; add.textContent = "+ branch";
+    add.onclick = () => commit("b", () => {
+      n.branches = n.branches || [];
+      const id = "branch-" + (n.branches.length + 1);
+      n.branches.push({ id, start: "step-1", steps: [{ id: "step-1", type: "agent", instruction: "Describe this step…", next: "end", ui: { x: 60, y: 60 } }] });
+    });
+    sec.appendChild(add);
+    box.appendChild(sec);
+  } else if (n.type === "subworkflow") {
+    box.appendChild(field("Workflow file", txt(n.workflow, v => commit("wf", () => n.workflow = v), { mono: true, placeholder: "workflows/design.yaml" })));
+    const kv = document.createElement("div"); kv.className = "mini-list";
+    for (const [k, v] of Object.entries(n.inputs || {})) {
+      const r = document.createElement("div"); r.className = "mini-row";
+      r.appendChild(txt(k, nv => commit("i", () => { const o = {}; for (const [kk, vv] of Object.entries(n.inputs)) o[kk === k ? nv : kk] = vv; n.inputs = o; })));
+      r.appendChild(txt(v, nv => commit("i", () => n.inputs[k] = nv), { mono: true }));
+      const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+      del.onclick = () => commit("i", () => { delete n.inputs[k]; if (!Object.keys(n.inputs).length) delete n.inputs; });
+      r.appendChild(del);
+      kv.appendChild(r);
+    }
+    box.appendChild(field("Inputs passed to it", kv));
+    const add = document.createElement("button"); add.className = "add-btn"; add.textContent = "+ input";
+    add.onclick = () => commit("i", () => { n.inputs = n.inputs || {}; n.inputs["slug"] = "${inputs.slug}"; });
+    box.appendChild(add);
+  }
+  // routing (non-gate)
+  if (n.type !== "gate") {
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `<div class="sec-h">Where next</div>`;
+    if (n.routes) {
+      n.routes.forEach((r, i) => {
+        const row = document.createElement("div"); row.className = "mini-row";
+        row.appendChild(txt(r.when ?? "", v => commit("r", () => v ? r.when = v : delete r.when), { mono: true, placeholder: "always (default)" }));
+        row.appendChild(sel(r.to, targetChoices(nodes), v => commit("r", () => r.to = v)));
+        const del = document.createElement("button"); del.className = "del"; del.textContent = "✕";
+        del.onclick = () => commit("r", () => { n.routes.splice(i, 1); if (!n.routes.length) delete n.routes; });
+        row.appendChild(del);
+        const wrap = document.createElement("div"); wrap.className = "mini-list"; wrap.appendChild(row);
+        sec.appendChild(wrap);
+      });
+      const add = document.createElement("button"); add.className = "add-btn"; add.textContent = "+ conditional route";
+      add.onclick = () => commit("r", () => n.routes.splice(n.routes.length - 1, 0, { when: "${steps." + n.id + ".outputs.x} == true", to: "end" }));
+      sec.appendChild(add);
+    } else {
+      sec.appendChild(field("Next step", sel(n.next ?? "", targetChoices(nodes, [""]), v => commit("n", () => v ? n.next = v : delete n.next))));
+      const conv = document.createElement("button"); conv.className = "add-btn"; conv.textContent = "Switch to conditional routes";
+      conv.onclick = () => commit("r", () => { n.routes = [{ to: n.next || "end" }]; delete n.next; });
+      sec.appendChild(conv);
+    }
+    const row2 = document.createElement("div"); row2.className = "frow";
+    row2.appendChild(field("If it fails", sel(n.on_fail ?? "ask", targetChoices(nodes, ["ask", "abort"]).filter(t => t !== "end"), v => commit("f", () => v === "ask" ? delete n.on_fail : n.on_fail = v))));
+    box.appendChild(sec);
+    const sec3 = document.createElement("div"); sec3.className = "sec";
+    sec3.innerHTML = `<div class="sec-h">Loop safety</div>`;
+    const row3 = document.createElement("div"); row3.className = "frow";
+    row3.appendChild(field("Repeat at most", txt(n.max_visits, v => commit("mv", () => v ? n.max_visits = (/^\d+$/.test(v) ? +v : v) : delete n.max_visits), { placeholder: String((doc.defaults || {}).max_visits ?? 10) })));
+    row3.appendChild(field("…then go to", sel(n.on_exhausted ?? "ask", targetChoices(nodes, ["ask", "abort"]), v => commit("oe", () => v === "ask" ? delete n.on_exhausted : n.on_exhausted = v))));
+    sec3.appendChild(row3);
+    sec3.appendChild(row2);
+    box.appendChild(sec3);
+  }
+  // note + delete
+  const sec4 = document.createElement("div"); sec4.className = "sec";
+  sec4.appendChild(field("Note (editor only)", txt((n.ui || {}).note, v => commit("note", () => { n.ui = n.ui || {}; if (v) n.ui.note = v; else delete n.ui.note; }))));
+  const del = document.createElement("button"); del.className = "danger-btn"; del.textContent = "Delete node";
+  del.onclick = () => deleteNode(n.id);
+  sec4.appendChild(del);
+  box.appendChild(sec4);
+}
+function inspectEdge(box) {
+  const nodes = ctxNodes();
+  const e = ed.sel.edge;
+  const n = nodes.find(x => x.id === e.from);
+  if (!n) { ed.sel = null; return inspectWorkflow(box); }
+  box.innerHTML = `<h3><span class="ico" style="background:var(--muted)">→</span> Connection</h3>
+    <div class="note" style="margin-bottom:10px">${esc(e.from)} → ${esc(e.to)} (${e.kind.replace("_", " ")})</div>`;
+  if (e.kind === "route") {
+    const r = n.routes[e.idx];
+    box.appendChild(field("Condition (empty = default)", txt(r.when ?? "", v => commit("cond", () => v ? r.when = v : delete r.when),
+      { mono: true, placeholder: "${steps." + e.from + ".outputs.x} == true" }),
+      'Forms: ${…} == value · ${…} != value · ${…} in [a, b] · ${…} (truthy)'));
+    box.appendChild(field("Target", sel(r.to, targetChoices(nodes), v => commit("to", () => r.to = v))));
+  } else if (e.kind === "option") {
+    const o = n.options[e.idx];
+    box.appendChild(field("Option label", txt(o.label, v => commit("ol", () => o.label = v))));
+    box.appendChild(field("Target", sel(o.to, targetChoices(nodes), v => commit("to", () => o.to = v))));
+  } else if (e.kind === "next") {
+    box.appendChild(field("Target", sel(n.next, targetChoices(nodes), v => commit("to", () => n.next = v))));
+  } else {
+    box.appendChild(field(e.kind.replace("_", " ") + " target", sel(n[e.kind], targetChoices(nodes, ["ask", "abort"]), v => commit("to", () => n[e.kind] = v))));
+  }
+  const tgt = nodes.find(x => x.id === e.to);
+  if (tgt && isBackEdge(nodes, e)) {
+    const sec = document.createElement("div"); sec.className = "sec";
+    sec.innerHTML = `<div class="sec-h">This arrow goes back — it makes a loop</div>`;
+    sec.appendChild(field(`Repeat "${e.from}" at most`, txt(n.max_visits, v => commit("mv", () => v ? n.max_visits = (/^\d+$/.test(v) ? +v : v) : delete n.max_visits),
+      { placeholder: String((doc.defaults || {}).max_visits ?? 10) }), "The engine stops the loop after this many passes."));
+    sec.appendChild(field("…then go to", sel(n.on_exhausted ?? "ask", targetChoices(nodes, ["ask", "abort"]), v => commit("oe", () => v === "ask" ? delete n.on_exhausted : n.on_exhausted = v))));
+    box.appendChild(sec);
+  }
+  const del = document.createElement("button"); del.className = "danger-btn"; del.textContent = "Delete connection";
+  del.onclick = () => { deleteEdge(e); };
+  box.appendChild(del);
+}
+function deleteEdge(e) {
+  commit("del-edge", () => {
+    const n = ctxNodes().find(x => x.id === e.from);
+    if (!n) return;
+    if (e.kind === "next") delete n.next;
+    else if (e.kind === "route") { n.routes.splice(e.idx, 1); if (!n.routes.length) delete n.routes; }
+    else if (e.kind === "option") n.options.splice(e.idx, 1);
+    else delete n[e.kind];
+    ed.sel = null;
+  });
+}
+function renameNode(n, newId) {
+  if (!newId || newId === n.id) return;
+  commit("rename", () => {
+    const old = n.id;
+    n.id = newId;
+    const fix = (nodes) => {
+      for (const m of nodes) {
+        if (m.next === old) m.next = newId;
+        for (const r of m.routes || []) if (r.to === old) r.to = newId;
+        for (const o of m.options || []) if (o.to === old) o.to = newId;
+        for (const k of ["on_fail", "on_exhausted"]) if (m[k] === old) m[k] = newId;
+      }
+    };
+    fix(ctxNodes());
+    if (!ed.stack.length && doc.start === old) doc.start = newId;
+    ed.sel = { kind: "node", id: newId };
+  });
+}
+function deleteNode(id) {
+  commit("del-node", () => {
+    const nodes = ctxNodes();
+    const i = nodeIndexOf(nodes, id);
+    if (i >= 0) nodes.splice(i, 1);
+    for (const m of nodes) {
+      if (m.next === id) delete m.next;
+      if (m.routes) { m.routes = m.routes.filter(r => r.to !== id); if (!m.routes.length) delete m.routes; }
+      if (m.options) m.options = m.options.filter(o => o.to !== id);
+      for (const k of ["on_fail", "on_exhausted"]) if (m[k] === id) delete m[k];
+    }
+    if (!ed.stack.length && doc.start === id) doc.start = nodes[0] ? nodes[0].id : "";
+    ed.sel = null;
+  });
+}
+
+/* ---------------- issues panel ---------------- */
+function renderIssuesPill() {
+  const pill = $("#lint-pill");
+  const errs = lastIssues.filter(i => i.level === "error").length;
+  const warns = lastIssues.length - errs;
+  pill.className = "tb " + (errs ? "bad" : warns ? "warn" : "good");
+  pill.id = "lint-pill";
+  pill.textContent = errs ? `✕ ${errs} problem${errs > 1 ? "s" : ""}` : warns ? `△ ${warns} warning${warns > 1 ? "s" : ""}` : "✓ valid";
+  const body = $("#issues-body"); body.innerHTML = "";
+  for (const i of lastIssues) {
+    const r = document.createElement("div"); r.className = "irow";
+    r.innerHTML = `<span class="lvl ${i.level}">${i.level === "error" ? "✕" : "△"}</span><span>${esc(i.msg)}</span>`;
+    if (i.node) r.onclick = () => { ed.sel = { kind: "node", id: i.node }; renderAll(); };
+    body.appendChild(r);
+  }
+  if (!lastIssues.length) body.innerHTML = `<div class="irow"><span class="lvl" style="color:var(--ok)">✓</span> No problems — ready to export.</div>`;
+}
+function showIssues() { $("#issues").classList.add("show"); }
+$("#lint-pill").addEventListener("click", () => $("#issues").classList.toggle("show"));
+$("#issues-close").addEventListener("click", () => $("#issues").classList.remove("show"));
+
+/* ---------------- canvas interactions ---------------- */
+const wrap = $("#canvas-wrap");
+let drag = null;
+function canvasPos(ev) {
+  const r = wrap.getBoundingClientRect();
+  return { x: (ev.clientX - r.left - ed.pan.x) / ed.zoom, y: (ev.clientY - r.top - ed.pan.y) / ed.zoom };
+}
+wrap.addEventListener("mousedown", ev => {
+  const nodeEl = ev.target.closest(".node");
+  if (ev.target.classList.contains("port") && !ev.target.classList.contains("in")) {
+    const from = nodeEl.dataset.id;
+    if (from.startsWith("$")) return;
+    drag = { kind: "edge", from, cur: canvasPos(ev) };
+    ev.preventDefault(); return;
+  }
+  if (nodeEl) {
+    const id = nodeEl.dataset.id;
+    if (id.startsWith("$")) return;
+    if (ev.target.dataset.branch) {          // open branch chip
+      ed.stack.push({ nodeId: id, branchId: ev.target.dataset.branch });
+      ed.sel = null; renderAll(); fitView(); return;
+    }
+    const n = ctxNodes().find(x => x.id === id);
+    ed.sel = { kind: "node", id };
+    drag = { kind: "node", n, start: canvasPos(ev), ox: n.ui.x, oy: n.ui.y, moved: false,
+      snap: JSON.stringify(doc) };
+    renderAll();
+    ev.preventDefault(); return;
+  }
+  drag = { kind: "pan", sx: ev.clientX, sy: ev.clientY, ox: ed.pan.x, oy: ed.pan.y, moved: false };
+});
+window.addEventListener("mousemove", ev => {
+  if (!drag) return;
+  if (drag.kind === "pan") {
+    ed.pan.x = drag.ox + ev.clientX - drag.sx; ed.pan.y = drag.oy + ev.clientY - drag.sy;
+    drag.moved = true; applyTransform();
+  } else if (drag.kind === "node") {
+    const p = canvasPos(ev);
+    drag.n.ui.x = Math.round((drag.ox + p.x - drag.start.x) / 11) * 11;
+    drag.n.ui.y = Math.round((drag.oy + p.y - drag.start.y) / 11) * 11;
+    drag.moved = true;
+    const el = nodesLayer.querySelector(`[data-id="${CSS.escape(drag.n.id)}"]`);
+    el.style.left = drag.n.ui.x + "px"; el.style.top = drag.n.ui.y + "px";
+    drawEdges(ctxNodes(), {}, layoutOrder(ctxNodes()));
+    renderTermAndEdges();
+  } else if (drag.kind === "edge") {
+    drag.cur = canvasPos(ev);
+    const a = nodeRect(drag.from);
+    const svg = $("#temp-edge");
+    const r = wrap.getBoundingClientRect();
+    const sx = (a.x + a.w) * ed.zoom + ed.pan.x, sy = (a.y + a.h / 2) * ed.zoom + ed.pan.y;
+    const tx = ev.clientX - r.left, ty = ev.clientY - r.top;
+    svg.innerHTML = `<path d="M ${sx} ${sy} C ${(sx + tx) / 2} ${sy}, ${(sx + tx) / 2} ${ty}, ${tx} ${ty}"></path>`;
+  }
+});
+function renderTermAndEdges() {
+  const nodes = ctxNodes();
+  const terms = terminalTargets(nodes);
+  const termPos = {};
+  for (const t of ["end", "abort"]) {
+    const el = nodesLayer.querySelector(`[data-id="$${t}"]`);
+    if (el) termPos[t] = { x: el.offsetLeft, y: el.offsetTop };
+  }
+  drawEdges(nodes, termPos, layoutOrder(nodes));
+}
+window.addEventListener("mouseup", ev => {
+  if (!drag) return;
+  const d = drag; drag = null;
+  $("#temp-edge").innerHTML = "";
+  if (d.kind === "node" && d.moved) {
+    ed.dirty = true;
+    ed.undo.push(d.snap); ed.redo.length = 0;
+    renderAll();
+  } else if (d.kind === "edge") {
+    const el = ev.target.closest(".node");
+    if (!el) return;
+    let target = el.dataset.id;
+    if (target.startsWith("$")) target = target.slice(1);
+    if (target === d.from) {} // self-loop allowed
+    connect(d.from, target);
+  } else if (d.kind === "pan" && !d.moved) {
+    ed.sel = null; renderAll();
+  }
+});
+function connect(fromId, toId) {
+  const nodes = ctxNodes();
+  const n = nodes.find(x => x.id === fromId);
+  if (!n) return;
+  commit("connect", () => {
+    if (n.type === "gate") {
+      n.options = n.options || [];
+      n.options.push({ id: "option-" + (n.options.length + 1), label: "New option", to: toId });
+      ed.sel = { kind: "edge", edge: { from: fromId, to: toId, kind: "option", idx: n.options.length - 1 } };
+    } else if (!n.next && !n.routes) {
+      n.next = toId;
+      ed.sel = { kind: "edge", edge: { from: fromId, to: toId, kind: "next" } };
+    } else if (n.next) {
+      n.routes = [{ when: "${steps." + fromId + ".outputs.x} == true", to: toId }, { to: n.next }];
+      delete n.next;
+      ed.sel = { kind: "edge", edge: { from: fromId, to: toId, kind: "route", idx: 0 } };
+      toast("Added a conditional route — set its condition in the panel");
+    } else {
+      n.routes.splice(n.routes.length - 1, 0, { when: "${steps." + fromId + ".outputs.x} == true", to: toId });
+      ed.sel = { kind: "edge", edge: { from: fromId, to: toId, kind: "route", idx: n.routes.length - 2 } };
+      toast("Added a conditional route — set its condition in the panel");
+    }
+  });
+}
+wrap.addEventListener("dblclick", ev => {
+  const el = ev.target.closest(".node");
+  if (!el) return;
+  const n = ctxNodes().find(x => x.id === el.dataset.id);
+  if (n && n.type === "parallel" && n.branches && n.branches.length) {
+    ed.stack.push({ nodeId: n.id, branchId: n.branches[0].id });
+    ed.sel = null; renderAll(); fitView();
+  }
+});
+wrap.addEventListener("wheel", ev => {
+  ev.preventDefault();
+  const r = wrap.getBoundingClientRect();
+  const mx = ev.clientX - r.left, my = ev.clientY - r.top;
+  const factor = ev.deltaY < 0 ? 1.09 : 1 / 1.09;
+  const nz = Math.min(2.2, Math.max(0.25, ed.zoom * factor));
+  ed.pan.x = mx - (mx - ed.pan.x) * (nz / ed.zoom);
+  ed.pan.y = my - (my - ed.pan.y) * (nz / ed.zoom);
+  ed.zoom = nz;
+  applyTransform();
+}, { passive: false });
+function fitView() {
+  requestAnimationFrame(() => {
+    const els = $$(".node", nodesLayer);
+    if (!els.length) return;
+    let x0 = 1e9, y0 = 1e9, x1 = -1e9, y1 = -1e9;
+    for (const el of els) {
+      x0 = Math.min(x0, el.offsetLeft); y0 = Math.min(y0, el.offsetTop);
+      x1 = Math.max(x1, el.offsetLeft + el.offsetWidth); y1 = Math.max(y1, el.offsetTop + el.offsetHeight);
+    }
+    const r = wrap.getBoundingClientRect();
+    const z = Math.min(1.15, Math.max(0.25, Math.min((r.width - 80) / (x1 - x0), (r.height - 80) / (y1 - y0))));
+    ed.zoom = z;
+    ed.pan.x = (r.width - (x1 - x0) * z) / 2 - x0 * z;
+    ed.pan.y = (r.height - (y1 - y0) * z) / 2 - y0 * z;
+    applyTransform();
+  });
+}
+
+/* ---------------- palette dnd ---------------- */
+const PRESETS = {
+  agent: { type: "agent", instruction: "" },
+  planner: { type: "agent", agent: "planner", skill: "plan", label: "Plan",
+    instruction: "Write the plan/design for this feature from the requirement.", outputs: ["summary"] },
+  implementer: { type: "agent", agent: "implementer", label: "Implement",
+    instruction: "Implement the approved design, with tests. Report results honestly.", outputs: ["summary", "tests_passed"] },
+  reviewer: { type: "agent", agent: "reviewer", label: "Review",
+    instruction: "Review the changes; findings need file:line evidence. Set blocking=true only for must-fix issues.", outputs: ["blocking", "summary"] },
+  qa: { type: "agent", agent: "qa", skill: "qa-automation", label: "QA",
+    instruction: "Automate and run the functional tests; report pass/fail honestly.", outputs: ["passed", "summary"] },
+  gate: { type: "gate", prompt: "Approve?", options: [
+    { id: "approve", label: "Approve", to: "end" }, { id: "reject", label: "Reject", to: "abort" }] },
+  script: { type: "script", run: ["bash", "-c", "echo hello"] },
+  parallel: { type: "parallel", join: "all", branches: [
+    { id: "branch-1", start: "step-1", steps: [{ id: "step-1", type: "agent", instruction: "Describe this step…", next: "end", ui: { x: 60, y: 60 } }] },
+    { id: "branch-2", start: "step-1", steps: [{ id: "step-1", type: "agent", instruction: "Describe this step…", next: "end", ui: { x: 60, y: 200 } }] }] },
+  subworkflow: { type: "subworkflow", workflow: "workflows/design.yaml", inputs: { slug: "${inputs.slug}" } },
+};
+$$(".pal-item").forEach(el => {
+  el.addEventListener("dragstart", ev => ev.dataTransfer.setData("text/preset", el.dataset.preset));
+});
+wrap.addEventListener("dragover", ev => { ev.preventDefault(); });
+wrap.addEventListener("drop", ev => {
+  ev.preventDefault();
+  const preset = ev.dataTransfer.getData("text/preset");
+  if (preset) {
+    const p = canvasPos(ev);
+    addNode(preset, p.x - 95, p.y - 30);
+    return;
+  }
+  const file = ev.dataTransfer.files && ev.dataTransfer.files[0];
+  if (file) file.text().then(t => loadYamlText(t, file.name));
+});
+function addNode(preset, x, y) {
+  if (!doc) { doc = blankDoc(); }
+  commit("add", () => {
+    const nodes = ctxNodes();
+    const spec = JSON.parse(JSON.stringify(PRESETS[preset] || PRESETS.agent));
+    let base = preset === "agent" ? "step" : preset, i = 1;
+    while (nodes.some(n => n.id === `${base}-${i}`)) i++;
+    spec.id = `${base}-${i}`;
+    spec.ui = { x: Math.round(x / 11) * 11, y: Math.round(y / 11) * 11 };
+    nodes.push(spec);
+    if (!ed.stack.length && !doc.start) doc.start = spec.id;
+    ed.sel = { kind: "node", id: spec.id };
+  });
+}
+
+/* ---------------- io ---------------- */
+function loadYamlText(text, name, handle) {
+  let parsed;
+  try { parsed = jsyaml.load(text); }
+  catch (e) { toast("YAML error: " + e.message); return false; }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.nodes)) { toast("Not a workflow file (needs a nodes: list)"); return false; }
+  doc = parsed;
+  ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = []; ed.dirty = false;
+  ed.fileName = name || "workflow.yaml"; ed.fileHandle = handle || null;
+  closeModals(); renderAll(); fitView();
+  toast(`Loaded ${ed.fileName}`);
+  return true;
+}
+function exportYaml() {
+  const clean = orderedDoc(doc);
+  return jsyaml.dump(clean, YAML_DUMP_OPTS);
+}
+const NODE_KEY_ORDER = ["id", "label", "type", "instruction", "skill", "agent", "model", "inputs", "outputs",
+  "artifact", "retries", "isolate", "prompt", "options", "run", "timeout", "workflow", "join",
+  "on_branch_fail", "branches", "max_visits", "on_exhausted", "on_fail", "next", "routes", "ui"];
+const TOP_KEY_ORDER = ["version", "name", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"];
+function orderKeys(obj, order) {
+  const out = {};
+  for (const k of order) if (k in obj) out[k] = obj[k];
+  for (const k of Object.keys(obj)) if (!(k in out)) out[k] = obj[k];   // unknown keys preserved
+  return out;
+}
+function orderedDoc(d) {
+  const c = JSON.parse(JSON.stringify(d));
+  const fixNodes = list => list.map(n => {
+    const o = orderKeys(n, NODE_KEY_ORDER);
+    if (o.branches) o.branches = o.branches.map(b => Object.assign({}, b, { steps: fixNodes(b.steps || []) }));
+    return o;
+  });
+  const out = orderKeys(c, TOP_KEY_ORDER);
+  out.nodes = fixNodes(out.nodes || []);
+  return out;
+}
+$("#btn-open").addEventListener("click", openFile);
+async function openFile() {
+  if (window.showOpenFilePicker) {
+    try {
+      const [h] = await window.showOpenFilePicker({ types: [{ description: "YAML", accept: { "text/yaml": [".yaml", ".yml"] } }] });
+      const f = await h.getFile();
+      loadYamlText(await f.text(), f.name, h);
+    } catch (e) {}
+    return;
+  }
+  const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".yaml,.yml";
+  inp.onchange = () => { const f = inp.files[0]; if (f) f.text().then(t => loadYamlText(t, f.name)); };
+  inp.click();
+}
+$("#btn-export").addEventListener("click", showExport);
+function showExport() {
+  if (!doc) return;
+  const errs = lastIssues.filter(i => i.level === "error");
+  $("#export-issues").innerHTML = errs.length
+    ? `<span style="color:var(--danger)">⚠ ${errs.length} problem(s) — the engine will reject this file. Export anyway to keep a draft.</span>`
+    : `<span style="color:var(--ok)">✓ No problems found.</span> <span class="note">Verify with: <code>python3 engine/maestroctl.py validate ${esc(ed.fileName)}</code></span>`;
+  $("#export-preview").textContent = exportYaml();
+  $("#exp-save").style.display = ed.fileHandle ? "" : "none";
+  openModal("m-export");
+}
+$("#exp-dl").addEventListener("click", () => {
+  const blob = new Blob([exportYaml()], { type: "text/yaml" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = ed.fileName;
+  a.click(); URL.revokeObjectURL(a.href);
+  ed.dirty = false; renderAll(); closeModals();
+});
+$("#exp-copy").addEventListener("click", async () => {
+  await navigator.clipboard.writeText(exportYaml());
+  toast("Copied to clipboard");
+});
+$("#exp-save").addEventListener("click", async () => {
+  try {
+    const w = await ed.fileHandle.createWritable();
+    await w.write(exportYaml()); await w.close();
+    ed.dirty = false; renderAll(); closeModals(); toast(`Saved ${ed.fileName}`);
+  } catch (e) { toast("Save failed: " + e.message); }
+});
+$("#btn-paste").addEventListener("click", () => { $("#paste-err").textContent = ""; openModal("m-paste"); });
+$("#tpl-paste").addEventListener("click", () => { closeModals(); $("#paste-err").textContent = ""; openModal("m-paste"); });
+$("#tpl-open").addEventListener("click", () => { closeModals(); openFile(); });
+$("#paste-load").addEventListener("click", () => {
+  try {
+    const parsed = jsyaml.load($("#paste-ta").value);
+    if (!parsed || !Array.isArray(parsed.nodes)) throw new Error("needs a top-level nodes: list");
+    loadYamlText($("#paste-ta").value, "workflow.yaml");
+  } catch (e) { $("#paste-err").textContent = "✕ " + e.message; }
+});
+
+/* ---------------- templates ---------------- */
+function renderTemplates() {
+  const grid = $("#tpl-grid"); grid.innerHTML = "";
+  const items = [{ key: "__blank__", label: "Blank canvas", desc: "Start from nothing — drag nodes from the palette.", tags: [] },
+    ...Object.entries(TEMPLATES).map(([k, t]) => ({ key: k, label: t.label, desc: t.desc, tags: t.tags || [] }))];
+  for (const it of items) {
+    const el = document.createElement("div"); el.className = "tpl";
+    el.innerHTML = `<div class="tn">${esc(it.label)}</div><div class="td">${esc(it.desc)}</div>
+      <div class="tt">${it.tags.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>`;
+    el.onclick = () => {
+      if (it.key === "__blank__") { doc = blankDoc(); ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = []; ed.dirty = false; ed.fileHandle = null; ed.fileName = "workflow.yaml"; closeModals(); renderAll(); fitView(); }
+      else { loadYamlText(TEMPLATES[it.key].yaml, it.key + ".yaml"); ed.dirty = true; }
+    };
+    grid.appendChild(el);
+  }
+}
+$("#btn-new").addEventListener("click", () => { renderTemplates(); openModal("m-templates"); });
+
+/* ---------------- modals / toast / theme ---------------- */
+function openModal(id) { $("#" + id).classList.add("show"); }
+function closeModals() { $$(".modal-bg").forEach(m => m.classList.remove("show")); }
+$$("[data-close]").forEach(b => b.addEventListener("click", () => closeModals()));
+$$(".modal-bg").forEach(m => m.addEventListener("mousedown", ev => { if (ev.target === m) closeModals(); }));
+let toastTimer;
+function toast(msg) {
+  const t = $("#toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
+}
+$("#btn-theme").addEventListener("click", () => {
+  const cur = document.documentElement.dataset.theme
+    || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+  const next = cur === "dark" ? "light" : "dark";
+  document.documentElement.dataset.theme = next;
+  try { localStorage.setItem("maestro-builder-theme", next); } catch (e) {}
+});
+try { const th = localStorage.getItem("maestro-builder-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
+$("#btn-help").addEventListener("click", () => openModal("m-help"));
+$("#btn-undo").addEventListener("click", undo);
+$("#btn-redo").addEventListener("click", redo);
+$("#btn-layout").addEventListener("click", () => commit("layout", () => autoLayout(ctxNodes(), true)) || fitView());
+$("#btn-fit").addEventListener("click", fitView);
+
+/* ---------------- keyboard ---------------- */
+window.addEventListener("keydown", ev => {
+  const inField = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
+  const mod = ev.metaKey || ev.ctrlKey;
+  if (mod && ev.key === "z" && !ev.shiftKey) { ev.preventDefault(); if (!inField) undo(); }
+  else if (mod && (ev.key === "Z" || (ev.key === "z" && ev.shiftKey))) { ev.preventDefault(); if (!inField) redo(); }
+  else if (mod && ev.key === "s") { ev.preventDefault(); showExport(); }
+  else if (mod && ev.key === "o") { ev.preventDefault(); openFile(); }
+  else if (mod && ev.key === "d" && ed.sel && ed.sel.kind === "node" && !inField) {
+    ev.preventDefault();
+    commit("dup", () => {
+      const nodes = ctxNodes();
+      const src = nodes.find(n => n.id === ed.sel.id);
+      const c = JSON.parse(JSON.stringify(src));
+      let i = 2; while (nodes.some(n => n.id === `${src.id}-${i}`)) i++;
+      c.id = `${src.id}-${i}`;
+      c.ui = { x: (src.ui.x || 0) + 30, y: (src.ui.y || 0) + 30 };
+      delete c.next; delete c.routes;
+      nodes.push(c);
+      ed.sel = { kind: "node", id: c.id };
+    });
+  }
+  else if ((ev.key === "Delete" || ev.key === "Backspace") && !inField && ed.sel) {
+    ev.preventDefault();
+    if (ed.sel.kind === "node") deleteNode(ed.sel.id);
+    else if (ed.sel.kind === "edge") deleteEdge(ed.sel.edge);
+  }
+  else if (ev.key === "f" && !inField && !mod) fitView();
+  else if (ev.key === "Escape") { closeModals(); $("#issues").classList.remove("show"); }
+});
+
+/* ---------------- selftest ---------------- */
+const GOLDEN = TEMPLATES["sdlc-main"] ? TEMPLATES["sdlc-main"].yaml : null;
+function deepSort(o) {
+  if (Array.isArray(o)) return o.map(deepSort);
+  if (o && typeof o === "object") { const r = {}; for (const k of Object.keys(o).sort()) r[k] = deepSort(o[k]); return r; }
+  return o;
+}
+function semanticEqual(a, b) { return JSON.stringify(deepSort(a)) === JSON.stringify(deepSort(b)); }
+function runSelftest() {
+  const results = [];
+  const t = (name, fn) => { try { fn(); results.push([name, true, ""]); } catch (e) { results.push([name, false, String(e.message || e)]); } };
+  const assert = (cond, msg) => { if (!cond) throw new Error(msg || "assertion failed"); };
+  for (const [key, tpl] of Object.entries(TEMPLATES)) {
+    t(`template ${key}: YAML parses`, () => { assert(jsyaml.load(tpl.yaml).nodes.length > 0); });
+    t(`template ${key}: round-trip is semantically identical`, () => {
+      const a = jsyaml.load(tpl.yaml);
+      doc = JSON.parse(JSON.stringify(a));
+      const b = jsyaml.load(exportYaml());
+      assert(semanticEqual(a, b), "export differs from import");
+    });
+    t(`template ${key}: lints clean`, () => {
+      doc = jsyaml.load(tpl.yaml);
+      const errs = lint().filter(i => i.level === "error");
+      assert(!errs.length, errs.map(i => i.msg).join("; "));
+    });
+  }
+  t("positions persist in ui: and survive round-trip", () => {
+    doc = jsyaml.load(TEMPLATES[Object.keys(TEMPLATES)[0]].yaml);
+    doc.nodes[0].ui = { x: 123, y: 456 };
+    const b = jsyaml.load(exportYaml());
+    assert(b.nodes[0].ui.x === 123 && b.nodes[0].ui.y === 456);
+  });
+  t("unknown keys survive round-trip", () => {
+    doc = jsyaml.load("version: 1\nname: t\nstart: a\ncustom_key: kept\nnodes:\n  - {id: a, type: script, run: [\"true\"], mystery: 7, next: end}\n");
+    const b = jsyaml.load(exportYaml());
+    assert(b.custom_key === "kept" && b.nodes[0].mystery === 7);
+  });
+  t("no folded scalars in export (engine subset)", () => {
+    doc = jsyaml.load("version: 1\nname: t\nstart: a\nnodes:\n  - id: a\n    type: agent\n    instruction: " + JSON.stringify("word ".repeat(60)) + "\n    next: end\n");
+    const y = exportYaml();
+    assert(!/^\s*\w+: >/m.test(y), "found folded scalar");
+  });
+  t("lint: dup-id fires", () => {
+    doc = jsyaml.load("version: 1\nname: t\nstart: a\nnodes:\n  - {id: a, type: script, run: [\"true\"], next: end}\n  - {id: a, type: script, run: [\"true\"], next: end}\n");
+    assert(lint().some(i => i.code === "dup-id"));
+  });
+  t("lint: missing-route-target fires", () => {
+    doc = jsyaml.load("version: 1\nname: t\nstart: a\nnodes:\n  - {id: a, type: script, run: [\"true\"], next: ghost}\n");
+    assert(lint().some(i => i.code === "missing-route-target"));
+  });
+  t("lint: gate-no-options fires", () => {
+    doc = jsyaml.load("version: 1\nname: t\nstart: a\nnodes:\n  - {id: a, type: gate, prompt: hi, options: []}\n");
+    assert(lint().some(i => i.code === "gate-no-options"));
+  });
+  t("lint: undeclared-input fires", () => {
+    doc = jsyaml.load("version: 1\nname: t\nstart: a\nnodes:\n  - {id: a, type: agent, instruction: \"${inputs.ghost}\", next: end}\n");
+    assert(lint().some(i => i.code === "undeclared-input"));
+  });
+  t("lint rule ids are a subset of the engine catalog", () => {
+    const used = ["bad-id","dup-id","no-start","gate-no-options","no-routing","no-default-route",
+      "empty-instruction","bad-type","missing-key","missing-route-target","undeclared-input",
+      "parallel-too-few-branches","branch-bad-type","unreachable-node","bad-name"];
+    for (const r of used) assert(LINT_RULES.includes(r), `rule ${r} missing from engine catalog`);
+  });
+  // render results
+  const view = $("#selftest-view"); view.style.display = "block";
+  const out = $("#st-results"); out.innerHTML = "";
+  let pass = 0;
+  for (const [name, ok, msg] of results) {
+    if (ok) pass++;
+    const d = document.createElement("div");
+    d.className = "st-row " + (ok ? "pass" : "fail");
+    d.textContent = (ok ? "✓ " : "✕ ") + name + (ok ? "" : " — " + msg);
+    out.appendChild(d);
+  }
+  const h = document.createElement("div");
+  h.className = "st-row " + (pass === results.length ? "pass" : "fail");
+  h.style.fontWeight = "700";
+  h.textContent = `${pass}/${results.length} passed`;
+  out.prepend(h);
+  document.title = (pass === results.length ? "PASS" : "FAIL") + " — Builder self-test";
+}
+
+/* ---------------- boot ---------------- */
+function makeDatalists() {
+  for (const [id, items] of [["dl-skills", SKILL_CATALOG], ["dl-models", MODEL_CATALOG], ["dl-agents", AGENT_CATALOG]]) {
+    const d = document.createElement("datalist"); d.id = id;
+    for (const v of items) { const o = document.createElement("option"); o.value = v; d.appendChild(o); }
+    document.body.appendChild(d);
+  }
+}
+function boot() {
+  makeDatalists();
+  if (location.hash === "#selftest") { runSelftest(); return; }
+  const tplMatch = location.hash.match(/^#template=([a-z0-9-]+)$/);
+  if (tplMatch && TEMPLATES[tplMatch[1]]) {
+    loadYamlText(TEMPLATES[tplMatch[1]].yaml, tplMatch[1] + ".yaml");
+    return;
+  }
+  let restored = null;
+  try { restored = JSON.parse(localStorage.getItem("maestro-builder-doc") || "null"); } catch (e) {}
+  if (restored && Array.isArray(restored.nodes) && restored.nodes.length) {
+    doc = restored; renderAll(); fitView();
+    toast("Restored your last session — ✚ New for templates");
+  } else {
+    doc = blankDoc(); renderAll();
+    renderTemplates(); openModal("m-templates");
+  }
+}
+boot();
+</script>
+</body>
+</html>

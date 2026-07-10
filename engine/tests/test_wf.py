@@ -117,5 +117,13 @@ class DumpTest(unittest.TestCase):
         })
 
 
+class QuoteScanTest(unittest.TestCase):
+    def test_quoted_scalar_with_escapes_and_colon_is_not_a_key(self):
+        doc = wf.loads("run:\n  - 'echo ''stub: here''; exit 0'\nx: 'a''b: c''d'\n'quoted key': v\n")
+        self.assertEqual(doc["run"], ["echo 'stub: here'; exit 0"])
+        self.assertEqual(doc["x"], "a'b: c'd")
+        self.assertEqual(doc["quoted key"], "v")
+
+
 if __name__ == "__main__":
     unittest.main()

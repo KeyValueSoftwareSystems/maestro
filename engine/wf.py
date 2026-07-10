@@ -206,12 +206,38 @@ def _parse_block_literal(lines, pos, key_line, strip_final, raw_lines):
     return text, pos
 
 
-_QUOTED = r'"(?:[^"\\]|\\.)*"|\'(?:[^\']|\'\')*\''
-_KEY_RE = re.compile(rf"^({_QUOTED}|[^\s:#\[\]{{}},][^:]*?):(\s+|$)")
+_KEY_RE_PLAIN = re.compile(r"^([^\s:#'\"\[\]{},][^:]*?):(\s+|$)")
+
+
+def _scan_quoted(text):
+    """Index just past the closing quote of a quoted scalar at text[0], else None."""
+    q = text[0]
+    i = 1
+    while i < len(text):
+        c = text[i]
+        if q == '"' and c == "\\":
+            i += 2
+            continue
+        if c == q:
+            if q == "'" and i + 1 < len(text) and text[i + 1] == "'":
+                i += 2  # '' escape
+                continue
+            return i + 1
+        i += 1
+    return None
 
 
 def _try_key(text):
-    m = _KEY_RE.match(text)
+    if text and text[0] in ("'", '"'):
+        # a quoted token is a key ONLY if the maximal quoted scalar is followed by ':'
+        end = _scan_quoted(text)
+        if end is None:
+            return None, None
+        rest = text[end:]
+        if rest == ":" or rest.startswith(": ") or rest.rstrip() == ":":
+            return _unquote(text[:end]), rest[1:].strip()
+        return None, None
+    m = _KEY_RE_PLAIN.match(text)
     if m:
         return _unquote(m.group(1)), text[m.end() :].strip()
     return None, None
