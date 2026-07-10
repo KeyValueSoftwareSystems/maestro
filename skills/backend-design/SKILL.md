@@ -2,6 +2,7 @@
 name: backend-design
 description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in — component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes .maestro/<slug>/lld/backend.md; never edits app code. Runs in the design phase (parallel with the frontend). Front door for /backend-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
+tags: [sdlc, design, lld, backend]
 ---
 
 # backend-design — backend low-level design
@@ -19,8 +20,8 @@ rely on; don't guess.
 
 ## Inputs
 - `feature`, `feature_slug`, approved `hld_path`.
-- **Artifact path** — resolve it yourself from `skills.config.yaml` → `artifacts.lld` with
-  `{slug}` = `feature_slug`, i.e. `.maestro/<slug>/lld/backend.md`. The caller passes no
+- **Artifact path** — resolve it yourself from `maestro.config.yaml` → `artifacts.lld_backend`
+  with `<slug>` = `feature_slug`, i.e. `.maestro/<slug>/lld/backend.md`. The caller passes no
   path; this skill owns where it writes.
 
 ## Steps
@@ -64,12 +65,12 @@ reliability (timeouts, retries, idempotency, partial-failure) · test plan · ro
 - Monorepo vs multi-repo; generated code; vendored/legacy areas; areas with **no tests**.
 
 ## External skill (provision — research)
-Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-research`, or
+Read `maestro.config.yaml` → `external_skills.research` (a skill name, e.g. `deep-research`, or
 `none`). If set, use it to research unfamiliar libraries, protocols, or compliance — it must
 return sourced findings you can cite in the LLD. If `none`, design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
-Write `.maestro/<slug>/backend/tasks.json` conforming to `workflows/tasks.schema.json`. It is
+Write `.maestro/<slug>/backend/tasks.json` conforming to `engine/schemas/tasks.schema.json`. It is
 the plan the backend impl phase fans out over — build it from the LLD you just wrote, reusing
 the files you already read (do not re-read the codebase).
 
@@ -91,14 +92,18 @@ Fields:
   the other OR they write a common file; otherwise put them in different groups. Then fill
   `slices[]` — one entry per group, `task_ids` in dependency order.
 - **Validate before returning:** run
-  `python3 workflows/validate_tasks.py .maestro/<slug>/backend/tasks.json` — it must print `OK`.
+  `python3 engine/validate_tasks.py .maestro/<slug>/backend/tasks.json` — it must print `OK`.
   Fix any `FAIL` (cross-group edge, shared write, mis-ordered slice) before finishing.
 
-## Output
+## Output contract
 Write `.maestro/<slug>/lld/backend.md` with the sections above, each constraint citing
-`file:line`. Return `lld_path`, `tasks_path` (`.maestro/<slug>/backend/tasks.json`), and a short
-list of the **decisions/constraints that shape the contract** (e.g. "auth is centralized in X — new endpoints must use it"; "exposes `GET
-/searches` with cursor pagination"). The API/events section feeds `/api-contract`.
+`file:line`. Return `lld_path`, `tasks_path` (`.maestro/<slug>/backend/tasks.json`), and
+`contract_notes` — a short summary of the **decisions/constraints that shape the contract**
+(e.g. "auth is centralized in X — new endpoints must use it"; "exposes `GET /searches` with
+cursor pagination"). The API/events section feeds `/api-contract`.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.
 
 ## Definition of done
 Every section present; API surface concrete enough to formalize; migration reversible; edge

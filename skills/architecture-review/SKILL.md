@@ -2,6 +2,7 @@
 name: architecture-review
 description: Review the per-stack LLDs and the cross-repo contract AFTER design, before implementation — analyze architecture gaps, security, scaling, reliability, data model, and contract soundness. Read-only; writes a review artifact. Front door for /architecture-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
+tags: [sdlc, review]
 ---
 
 # architecture-review
@@ -10,9 +11,10 @@ Review the drafted design **before any code is written**, so architecture proble
 caught while they are cheap to fix. Read-only — never edit code.
 
 ## Inputs
-`feature`, `feature_slug`; the per-stack LLDs (`.maestro/<slug>/lld/backend.md`,
-`.maestro/<slug>/lld/frontend.md`) and contract (`.maestro/<slug>/openapi.yaml`),
-cross-checked against the HLD, acceptance criteria, and architecture rules (`CLAUDE.md`, ADRs).
+`feature`, `feature_slug`; the per-stack LLDs and contract — resolve their paths from
+`maestro.config.yaml` → `artifacts.lld_backend`, `artifacts.lld_frontend`,
+`artifacts.contract` (`<slug>` = `feature_slug`) — cross-checked against the HLD
+(`artifacts.hld`), acceptance criteria, and architecture rules (`CLAUDE.md`, ADRs).
 
 ## Steps
 1. **Read** the HLD, both LLDs, the contract, and acceptance criteria; note the stated NFRs.
@@ -51,7 +53,7 @@ cross-checked against the HLD, acceptance criteria, and architecture rules (`CLA
 - Cross-service transaction assumed where only eventual consistency is available.
 
 ## External skill (provision — review method)
-Read `skills.config.yaml` → `review.external` (default `requesting-code-review`, from the
+Read `maestro.config.yaml` → `external_skills.review` (default `requesting-code-review`, from the
 Superpowers pack, or `none`). If set, apply its review discipline first; it must not narrow the checklist
 above.
 
@@ -70,7 +72,12 @@ blocking: <true if any blocker/major remains>
 
 ## Decide & output
 Sort findings blocker → major → minor → suggestion; `blocking = true` if any blocker/major
-remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write
-`.maestro/<slug>/architecture-review.md` (summary + findings table). Return `review_path`,
-`summary`, `blocking`. Feeds the contract-approval gate; a blocking result should route back
-to revise the design (via `arch_gate_router`).
+remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write the report
+(summary + findings table) to the `artifacts.arch_review` path from `maestro.config.yaml`
+(`.maestro/<slug>/reviews/architecture.md`). Feeds the contract-approval gate; a blocking
+result routes the workflow back to revise the design.
+
+## Output contract
+Return `review_path`, `blocking`, `summary`. When invoked as a Maestro workflow step, your
+reply's LAST line must be exactly one JSON object with these fields — short scalar values
+only, never file contents.

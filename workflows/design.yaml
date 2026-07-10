@@ -1,507 +1,181 @@
-# =============================================================================
-# KeyValue AI-SDLC  ::  design.yaml — HLD -> approve -> LLD + CONTRACT
-# =============================================================================
-# The whole design phase in one workflow. Runnable directly:
-#   conductor run design.yaml --web --input feature="..." --input feature_slug="saved-search"
-# Composed by main.yaml as the design step.
+# Design phase: requirement -> HLD -> open-questions loop -> approval -> parallel LLDs
+# -> API contract -> functional test cases.
 #
-# Flow (each phase guarded by the .maestro/<slug>/state.json ledger for resume):
-#   assert_requirement -> guard_hld -> author_hld (/plan) -> mark_hld
-#     -> open-question loop:  serve -> ask_question -> record_answer -> serve
-#                             serve -> refine_hld -> serve   (until resolved)
-#     -> HUMAN approve   (revise -> reset_hld_cascade -> re-author -> loop again)
-#     -> guard_llds -> backend_design ∥ frontend_design -> mark_llds
-#        -> guard_contract -> contract (/api-contract: reconcile the LLDs into the
-#           cross-repo OpenAPI contract + acceptance criteria) -> mark_contract
-#        -> guard_test_cases -> test_cases (/functional-testcases: derive the
-#           functional test-case catalog QA later automates) -> mark_test_cases
-# On resume, guard_hld routes a done HLD into `serve`, so any still-open questions are
-# re-asked before the (never-skipped) approval gate.
-#
-# NOTE: this workflow contains a human_gate (HLD approval). Run it with `--web`.
-# When composed by main.yaml it runs as a nested sub-workflow — verify your
-# Conductor surfaces the nested gate to the parent run.
-#
-# Artifacts (all under one feature folder):
-#   .maestro/<slug>/hld.md
-#   .maestro/<slug>/lld/backend.md
-#   .maestro/<slug>/lld/frontend.md
-#   .maestro/<slug>/openapi.yaml
-#   .maestro/<slug>/acceptance-criteria.md
-#   .maestro/<slug>/test-cases.md
-# =============================================================================
-
-workflow:
-  name: sdlc-design
-  description: HLD -> human approval -> per-stack LLDs (parallel) -> cross-repo contract.
-  entry_point: resolve_requirement
-
-  instructions:
-    - >-
-      Each step invokes an installed skill by name; the skill owns its own behavior.
-      Write each artifact to the path the skill resolves from skills.config.yaml
-      `artifacts:` before returning.
-
-  runtime:
-    provider: claude-agent-sdk
-    default_model: claude-haiku-4-5   # backstop for any agent without an explicit model:
-  limits:
-    max_iterations: 128            # headroom for the open-question loop (serve/ask/record/refine per question)
-    timeout_seconds: 4200
-
-  input:
-    feature:
-      type: string
-      required: true
-    feature_slug:
-      type: string
-      required: true
-    requirement_dir:
-      type: string
-      required: false
-      default: ""
-      description: >
-        Path to the requirement FOLDER (holds one or more files describing the
-        feature; all are read by /plan). If empty, resolved by the
-        `resolve_requirement` step to `.maestro/<slug>/requirement/` (create it
-        with `maestro init <slug>`).
-    model:
-      type: object
-      required: false
-      default: {}
-      description: >
-        Per-agent model overrides, keyed by agent name (e.g.
-        {"author_hld":"claude-sonnet-5"}). Passed by the `maestro` wrapper from
-        maestro.config.yaml `models.agents`. Any agent not listed falls back to
-        claude-haiku-4-5, so a plain `conductor run` (no model input) uses defaults.
-
-# ----------------------------------------------------------------------------
-# Parallel LLD authoring: backend + frontend, concurrent (after HLD approval).
-# ----------------------------------------------------------------------------
-parallel:
-  - name: author_llds
-    description: Author the backend and frontend LLDs in parallel.
-    failure_mode: all_or_nothing
-    agents: [backend_design, frontend_design]
-    routes:
-      - to: mark_llds
-
-agents:
-  # ---- 0. RESOLVE the requirement folder ---------------------------------
-  # Slug-only runs (maestro <slug>) drop the requirement files under
-  # .maestro/<slug>/requirement/ (via `maestro init`) and pass no requirement_dir.
-  # Resolve it here so every downstream ref uses one value.
-  - name: resolve_requirement
-    type: set
-    value: >-
-      {{ workflow.input.requirement_dir or ('.maestro/' ~ workflow.input.feature_slug ~ '/requirement') }}
-    output_type: string
-    routes:
-      - to: assert_requirement
-
-  # ---- 0b. ASSERT the requirement folder is present + non-empty ----------
-  - name: assert_requirement
+# Showcases: script routing on stdout JSON (oq_serve), a human-in-the-loop cycle built
+# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets all
+# downstream design artifacts, and a parallel fork.
+version: 1
+name: design
+description: Design a feature end-to-end, from requirement folder to reviewed design artifacts.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+defaults:
+  model: haiku
+  agent: planner
+  max_visits: 10
+start: assert_requirement
+nodes:
+  - id: assert_requirement
     type: script
-    description: Verify the requirement folder has ≥1 non-empty file before designing.
-    command: bash
-    args:
-      - "-c"
-      - |
-        set -uo pipefail
-        d="{{ resolve_requirement.output }}"
-        if [ -d "$d" ] && [ -n "$(find "$d" -type f -size +0c -print -quit 2>/dev/null)" ]; then
-          echo "[requirement] OK: $d"; exit 0
-        else
-          echo "[requirement] NOT FOUND (or empty): $d — run \`maestro init <slug>\` and add requirement files before designing." >&2; exit 1
-        fi
-    routes:
-      - to: guard_hld
-        when: "exit_code == 0"
-      - to: abort
+    label: Requirement present?
+    run: [bash, -c, "find .maestro/${inputs.slug}/requirement -type f -size +1c 2>/dev/null | grep -q ."]
+    on_fail: abort
+    next: author_hld
 
-  # ---- GUARD: skip HLD authoring if already done (gate still runs) --------
-  - name: guard_hld
+  - id: author_hld
+    type: agent
+    label: Author HLD
+    instruction: |
+      Write the high-level design for this feature. Read EVERY file in the requirement
+      folder as the requirement. Surface unresolved product/technical decisions as open
+      questions: write them to BOTH the HLD's "Open questions" section AND
+      .maestro/${inputs.slug}/open-questions.json (schema
+      engine/schemas/open-questions.schema.json). Do not ask the user anything directly.
+      If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback}
+    skill: plan
+    inputs:
+      feature: "${inputs.feature}"
+      slug: "${inputs.slug}"
+      requirement_dir: ".maestro/${inputs.slug}/requirement"
+    outputs: [hld_summary]
+    artifact: ".maestro/${inputs.slug}/hld.md"
+    max_visits: 5
+    next: oq_serve
+
+  # ---- open-questions cycle: serve -> ask -> record -> serve (back-edges) ----
+  - id: oq_serve
     type: script
-    description: Skip /plan if hld.md is already marked done and present.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step hld
+    label: Next open question?
+    run: [python3, engine/oq_serve.py, ".maestro/${inputs.slug}/open-questions.json"]
+    max_visits: 40
+    on_exhausted: hld_approval
     routes:
-      - to: serve                   # done -> skip authoring, resume the open-question loop / gate
-        when: "exit_code == 0"
-      - to: author_hld              # not done -> author it
+      - {when: "${steps.oq_serve.outputs.state} == ask", to: oq_ask}
+      - {when: "${steps.oq_serve.outputs.state} == refine", to: refine_hld}
+      - {to: hld_approval}
 
-  # ---- 1. PLAN — author the HLD (/plan) -----------------------------------
-  - name: author_hld
-    description: Produce the high-level design (HLD) via the plan skill.
-    model: "{{ workflow.input.model.author_hld if workflow.input.model.author_hld is defined else 'claude-haiku-4-5' }}"
+  - id: oq_ask
+    type: gate
+    label: Open question
     prompt: |
-      Run the **/plan** skill. Inputs:
-      - feature:         {{ workflow.input.feature }}
-      - feature_slug:    {{ workflow.input.feature_slug }}
-      - requirement_dir: {{ resolve_requirement.output }}   (read ALL files in this folder as the requirement)
-      Return: hld_path, hld_summary. Write open questions to BOTH the HLD's
-      "Open questions" section AND `.maestro/{{ workflow.input.feature_slug }}/open-questions.json`
-      (per workflows/open-questions.schema.json — each question with `why` and
-      2–4 suggested `options`, `status: open`, `resolution: null`). Do NOT return
-      open questions as a structured output field.
-    output:
-      hld_path: { type: string }
-      hld_summary: { type: string }
-    routes:
-      - to: mark_hld
+      **${steps.oq_serve.outputs.question}**
 
-  # ---- MARK: record hld done (subsumes the old assert_hld) ----------------
-  - name: mark_hld
-    type: script
-    description: Assert + record hld.md done in the ledger.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
-          --step hld --artifact ".maestro/{{ workflow.input.feature_slug }}/hld.md"
-    routes:
-      - to: serve
-        when: "exit_code == 0"
-      - to: abort
+      Why it matters: ${steps.oq_serve.outputs.why}
 
-  # ---- 1c. OPEN-QUESTION LOOP: serve -> ask -> record -> refine -----------
-  # A script-driven state machine that resolves the HLD's open questions one at
-  # a time (Claude AskUserQuestion-style), then loops until none remain:
-  #   serve --(open)--> ask_question --> record_answer --> serve
-  #   serve --(resolved-unfolded)--> refine_hld --> serve
-  #   serve --(none)--> hld_approval
-  # Questions live in .maestro/<slug>/open-questions.json (never an agent output
-  # field — that shape failed schema validation before).
-  - name: serve
-    type: script
-    description: Decide the next open-question loop state (ask / refine / approve).
-    command: python3
-    args:
-      - "workflows/oq_serve.py"
-      - ".maestro/{{ workflow.input.feature_slug }}/open-questions.json"
-    routes:
-      - to: ask_question
-        when: "exit_code == 0 and state == 'ask'"
-      - to: refine_hld
-        when: "exit_code == 0 and state == 'refine'"
-      - to: hld_approval
-        when: "exit_code == 0 and state == 'approve'"
-      - to: abort
+      ${steps.oq_serve.outputs.options_md}
 
-  - name: ask_question
-    type: human_gate
-    description: Answer one open question — pick a suggestion, decide, or defer.
-    prompt: |
-      ## Open question — {{ workflow.input.feature }}
-
-      **{{ serve.output.question }}**
-
-      _Why this matters:_ {{ serve.output.why }}
-
-      Suggested answers:
-
-      {{ serve.output.options_md }}
-
-      Choose **Answer** and type a suggestion number (or your own wording),
-      **You decide** to let the plan pick a sensible default (recorded as a stated
-      assumption), or **Skip / defer** to carry this question forward to the LLD.
+      Answer with an option number or free text.
+    max_visits: 40
     options:
-      - label: "Answer"
-        value: answer
-        route: record_answer
-        prompt_for: answer
-      - label: "You decide"
-        value: you-decide
-        route: record_answer
-      - label: "Skip / defer"
-        value: skip
-        route: record_answer
+      - {id: answer, label: Answer it, to: oq_record, input: answer}
+      - {id: you-decide, label: You decide (pick a sensible default), to: oq_record}
+      - {id: skip, label: Skip — defer to LLD, to: oq_record}
 
-  - name: record_answer
+  - id: oq_record
     type: script
-    description: Record the gate answer into open-questions.json, then loop back to serve.
-    command: python3
-    args:
-      - "workflows/oq_record.py"
-      - ".maestro/{{ workflow.input.feature_slug }}/open-questions.json"
-      - "{{ serve.output.qid }}"
-      - "{{ ask_question.output.selected }}"
-      - "{{ ask_question.output.additional_input.answer | default('') }}"
-    routes:
-      - to: serve
-        when: "exit_code == 0"
-      - to: abort
+    label: Record answer
+    run:
+      - python3
+      - engine/oq_record.py
+      - ".maestro/${inputs.slug}/open-questions.json"
+      - "${steps.oq_serve.outputs.qid}"
+      - "${steps.oq_ask.outputs.choice}"
+      - "${steps.oq_ask.outputs.answer}"
+    max_visits: 40
+    on_fail: abort
+    next: oq_serve
 
-  - name: refine_hld
-    description: Fold answered questions into the HLD, then re-derive open questions.
-    model: "{{ workflow.input.model.refine_hld if workflow.input.model.refine_hld is defined else 'claude-haiku-4-5' }}"
+  - id: refine_hld
+    type: agent
+    label: Fold answers into HLD
+    instruction: |
+      Resolved open questions await folding into the HLD. Apply each resolved answer to
+      .maestro/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default
+      and record the choice), then mark those questions status "folded" in
+      .maestro/${inputs.slug}/open-questions.json and re-validate it with
+      python3 engine/validate_open_questions.py.
+    skill: plan
+    inputs:
+      slug: "${inputs.slug}"
+    outputs: [refined_summary]
+    artifact: ".maestro/${inputs.slug}/hld.md"
+    max_visits: 20
+    next: oq_serve
+
+  - id: hld_approval
+    type: gate
+    label: HLD approval
     prompt: |
-      Refine the HLD at `.maestro/{{ workflow.input.feature_slug }}/hld.md`
-      using the answers in `.maestro/{{ workflow.input.feature_slug }}/open-questions.json`.
+      HLD ready at .maestro/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
 
-      For every question with `"status": "resolved"`:
-      - Fold its `resolution.answer` into the relevant HLD section(s). For kind
-        `you-decide`, choose a sensible default and record it explicitly as a
-        **stated assumption** in the HLD.
-      - Set that question's `"status"` to `"folded"`.
-      Leave `deferred` questions untouched — they stay in the HLD "Open questions"
-      section and do not block approval.
-
-      Then re-examine the refined HLD and append any GENUINELY NEW, blocking open
-      questions as new entries (unique `id`, `status: open`, `resolution: null`,
-      2–4 suggested `options`, a `why`). Do NOT re-add answered or deferred
-      questions. If nothing new is blocking, add none.
-
-      Keep `open-questions.json` valid (validate with
-      `python3 workflows/validate_open_questions.py .maestro/{{ workflow.input.feature_slug }}/open-questions.json`)
-      and update the HLD's "Open questions" prose section to match.
-      Return hld_summary (2–3 sentences).
-    output:
-      hld_summary: { type: string }
-    routes:
-      - to: serve
-
-  # ---- 2. HUMAN APPROVAL: HLD (never skipped) -----------------------------
-  - name: hld_approval
-    type: human_gate
-    description: Review the high-level design before detailed design.
-    prompt: |
-      ## HLD Review — {{ workflow.input.feature }}
-
-      Artifact: `.maestro/{{ workflow.input.feature_slug }}/hld.md`
-
-      **Summary:** {{ author_hld.output.hld_summary if author_hld is defined else "(loaded from a prior run — see the HLD file)" }}
-
-      **Open questions:** all blocking questions were resolved in the open-question
-      loop above. Any that remain in the HLD "Open questions" section were
-      explicitly deferred to the LLD.
-
-      Approve to proceed to detailed design (per-stack LLDs), request broader HLD
-      revisions (regenerates the HLD and everything downstream, then re-runs the
-      open-question loop), or reject.
+      Review the document, then choose.
     options:
-      - label: "Approve — proceed to LLD"
-        value: approve
-        route: guard_llds
-      - label: "Request broader HLD revisions"
-        value: revise
-        route: reset_hld_cascade
-        prompt_for: feedback
-      - label: "Reject — abort"
-        value: reject
-        route: abort
+      - {id: approve, label: Approve — write the detailed designs, to: author_llds}
+      - {id: revise, label: Request revisions (regenerates everything downstream), to: author_hld, input: feedback}
+      - {id: reject, label: Reject — abort the run, to: abort}
 
-  # ---- RESET: revise HLD invalidates HLD + everything downstream ----------
-  - name: reset_hld_cascade
-    type: script
-    description: Clear hld + derived LLD/contract/test-case flags so a revision regenerates them.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py reset --slug "{{ workflow.input.feature_slug }}" \
-          --step hld --step backend_lld --step frontend_lld --step api_contract --step test_cases
-    routes:
-      - to: author_hld
-        when: "exit_code == 0"
-      - to: abort
+  - id: author_llds
+    type: parallel
+    label: Detailed designs
+    join: all
+    on_branch_fail: ask
+    branches:
+      - id: backend
+        start: backend_design
+        steps:
+          - id: backend_design
+            type: agent
+            instruction: |
+              Write the backend low-level design from the approved HLD at
+              .maestro/${inputs.slug}/hld.md.
+            skill: backend-design
+            inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+            outputs: [lld_path, contract_notes]
+            artifact: ".maestro/${inputs.slug}/lld/backend.md"
+            next: end
+      - id: frontend
+        start: frontend_design
+        steps:
+          - id: frontend_design
+            type: agent
+            instruction: |
+              Write the frontend low-level design from the approved HLD at
+              .maestro/${inputs.slug}/hld.md.
+            skill: frontend-design
+            inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+            outputs: [lld_path, contract_notes]
+            artifact: ".maestro/${inputs.slug}/lld/frontend.md"
+            next: end
+    next: contract
 
-  # ---- GUARD: skip LLD authoring only if BOTH LLDs are done ---------------
-  - name: guard_llds
-    type: script
-    description: Skip the parallel LLD group only when both LLDs are already done.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step backend_lld \
-          && python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step frontend_lld
-    routes:
-      - to: guard_contract              # both done -> skip group
-        when: "exit_code == 0"
-      - to: author_llds             # either missing -> run group
+  - id: contract
+    type: agent
+    label: API contract
+    instruction: |
+      Reconcile the backend and frontend LLDs under .maestro/${inputs.slug}/lld/ into a
+      single OpenAPI contract. Flag any mismatch you had to resolve.
+    skill: api-contract
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [contract_summary]
+    artifact: ".maestro/${inputs.slug}/openapi.yaml"
+    next: test_cases
 
-  # ---- 3. PER-STACK LLDs (parallel) ---------------------------------------
-  - name: backend_design
-    description: Author the backend LLD via the backend-design skill.
-    model: "{{ workflow.input.model.backend_design if workflow.input.model.backend_design is defined else 'claude-haiku-4-5' }}"
-    max_agent_iterations: 100
-    prompt: |
-      Run the **/backend-design** skill. Inputs:
-      - feature:      {{ workflow.input.feature }}
-      - feature_slug: {{ workflow.input.feature_slug }}
-      - hld_path:     .maestro/{{ workflow.input.feature_slug }}/hld.md
-      Return: lld_path, tasks_path.
-    output:
-      lld_path: { type: string }
-      tasks_path: { type: string }
+  - id: test_cases
+    type: agent
+    label: Functional test cases
+    instruction: |
+      Produce the functional test-case catalog for this feature from the HLD, LLDs and
+      contract — the QA source of truth.
+    skill: functional-testcases
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [test_cases_path, case_count]
+    artifact: ".maestro/${inputs.slug}/test-cases.md"
+    next: end
 
-  - name: frontend_design
-    description: Author the frontend LLD via the frontend-design skill.
-    model: "{{ workflow.input.model.frontend_design if workflow.input.model.frontend_design is defined else 'claude-haiku-4-5' }}"
-    max_agent_iterations: 100
-    prompt: |
-      Run the **/frontend-design** skill. Inputs:
-      - feature:      {{ workflow.input.feature }}
-      - feature_slug: {{ workflow.input.feature_slug }}
-      - hld_path:     .maestro/{{ workflow.input.feature_slug }}/hld.md
-      Return: lld_path, tasks_path.
-    output:
-      lld_path: { type: string }
-      tasks_path: { type: string }
-
-  # ---- MARK: record both LLDs done (subsumes main.yaml's assert_lld) -------
-  # NOTE: backend_lld may be marked done before the chained frontend mark fails
-  # (-> abort); the next resume re-runs the whole group (group-level granularity).
-  - name: mark_llds
-    type: script
-    description: Assert + record both per-stack LLDs done.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
-          --step backend_lld --artifact ".maestro/{{ workflow.input.feature_slug }}/lld/backend.md" \
-        && python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
-          --step frontend_lld --artifact ".maestro/{{ workflow.input.feature_slug }}/lld/frontend.md"
-    routes:
-      - to: guard_contract
-        when: "exit_code == 0"
-      - to: abort
-
-  # ---- GUARD: skip contract if already done -------------------------------
-  - name: guard_contract
-    type: script
-    description: Skip /api-contract if the OpenAPI contract is already done.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step api_contract
-    routes:
-      - to: guard_test_cases            # done -> skip authoring, resume at the test-case phase
-        when: "exit_code == 0"
-      - to: contract
-
-  # ---- 4. CONTRACT (/api-contract) ----------------------------------------
-  - name: contract
-    description: Reconcile the per-stack LLDs into the cross-repo contract via the api-contract skill.
-    model: "{{ workflow.input.model.contract if workflow.input.model.contract is defined else 'claude-haiku-4-5' }}"
-    prompt: |
-      Run the **/api-contract** skill (the per-stack LLDs have already been written — pass them).
-      Inputs:
-      - feature:      {{ workflow.input.feature }}
-      - feature_slug: {{ workflow.input.feature_slug }}
-      - hld_path:     .maestro/{{ workflow.input.feature_slug }}/hld.md
-      - backend_lld:  .maestro/{{ workflow.input.feature_slug }}/lld/backend.md
-      - frontend_lld: .maestro/{{ workflow.input.feature_slug }}/lld/frontend.md
-      Return: contract_path, contract_summary, affected_repos, acceptance_criteria.
-    output:
-      contract_path: { type: string }
-      contract_summary:
-        type: string
-        description: Human-readable cross-repo contract (breaking changes flagged).
-      affected_repos:
-        type: array
-        description: 'e.g. [{"name":"backend"},{"name":"frontend"}].'
-      acceptance_criteria:
-        type: string
-    routes:
-      - to: mark_contract
-
-  # ---- MARK: record contract done -----------------------------------------
-  - name: mark_contract
-    type: script
-    description: Assert + record the OpenAPI contract done.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
-          --step api_contract --artifact ".maestro/{{ workflow.input.feature_slug }}/openapi.yaml"
-    routes:
-      - to: guard_test_cases
-        when: "exit_code == 0"
-      - to: abort
-
-  # ---- GUARD: skip functional test cases if already done ------------------
-  - name: guard_test_cases
-    type: script
-    description: Skip /functional-testcases if the test-case catalog is already done.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py check --slug "{{ workflow.input.feature_slug }}" --step test_cases
-    routes:
-      - to: $end                    # done -> whole design phase complete
-        when: "exit_code == 0"
-      - to: test_cases
-
-  # ---- 5. FUNCTIONAL TEST CASES (/functional-testcases) -------------------
-  # Derive the human-readable, black-box test-case catalog from the acceptance
-  # criteria + HLD + contract. This is the SOURCE the QA phase (/qa) automates
-  # into the E2E suite — QA reads .maestro/<slug>/test-cases.md.
-  - name: test_cases
-    description: Author the functional test-case catalog via the functional-testcases skill.
-    model: "{{ workflow.input.model.test_cases if workflow.input.model.test_cases is defined else 'claude-haiku-4-5' }}"
-    prompt: |
-      Run the **/functional-testcases** skill (the contract + acceptance criteria are already
-      written — derive cases from them, not from any implementation). Inputs:
-      - feature:         {{ workflow.input.feature }}
-      - feature_slug:    {{ workflow.input.feature_slug }}
-      - hld_path:        .maestro/{{ workflow.input.feature_slug }}/hld.md
-      - contract_path:   .maestro/{{ workflow.input.feature_slug }}/openapi.yaml
-      - acceptance_path: .maestro/{{ workflow.input.feature_slug }}/acceptance-criteria.md
-      {% if contract is defined %}- acceptance_criteria: {{ contract.output.acceptance_criteria }}{% endif %}
-      Return: test_cases_path, case_count, coverage_summary.
-    output:
-      test_cases_path: { type: string }
-      case_count: { type: number }
-      coverage_summary: { type: string }
-    routes:
-      - to: mark_test_cases
-
-  # ---- MARK: record the functional test-case catalog done -----------------
-  - name: mark_test_cases
-    type: script
-    description: Assert + record the functional test-case catalog done.
-    command: bash
-    args:
-      - "-c"
-      - |
-        python3 workflows/state.py mark --slug "{{ workflow.input.feature_slug }}" \
-          --step test_cases --artifact ".maestro/{{ workflow.input.feature_slug }}/test-cases.md"
-    routes:
-      - to: $end
-        when: "exit_code == 0"
-      - to: abort
-
-  - name: abort
-    type: terminate
-    status: failed
-    reason: "Design aborted (missing requirement or HLD artifact, or HLD rejected)."
-
-# The output block is rendered on EVERY termination — including `abort` before the
-# later steps run. So paths are literal (deterministic, per skills.config.yaml
-# artifacts.*) and every step-output reference is guarded with `is defined`, so an
-# early abort terminates cleanly instead of raising a TemplateError. (Same defensive
-# pattern as main.yaml's `{% if implement is defined %}` outputs.)
-output:
-  hld_path:  ".maestro/{{ workflow.input.feature_slug }}/hld.md"
-  open_questions_path: ".maestro/{{ workflow.input.feature_slug }}/open-questions.json"
-  hld_summary:    "{% if refine_hld is defined %}{{ refine_hld.output.hld_summary }}{% elif author_hld is defined %}{{ author_hld.output.hld_summary }}{% endif %}"
-  backend_lld_path:  ".maestro/{{ workflow.input.feature_slug }}/lld/backend.md"
-  frontend_lld_path: ".maestro/{{ workflow.input.feature_slug }}/lld/frontend.md"
-  backend_tasks_path:  ".maestro/{{ workflow.input.feature_slug }}/backend/tasks.json"
-  frontend_tasks_path: ".maestro/{{ workflow.input.feature_slug }}/frontend/tasks.json"
-  contract_path: ".maestro/{{ workflow.input.feature_slug }}/openapi.yaml"
-  contract_summary:    "{% if contract is defined %}{{ contract.output.contract_summary }}{% endif %}"
-  affected_repos:      "{% if contract is defined %}{{ contract.output.affected_repos | json }}{% endif %}"
-  acceptance_criteria: "{% if contract is defined %}{{ contract.output.acceptance_criteria }}{% endif %}"
-  test_cases_path: ".maestro/{{ workflow.input.feature_slug }}/test-cases.md"
-  test_cases_summary:  "{% if test_cases is defined %}{{ test_cases.output.coverage_summary }}{% endif %}"
+outputs:
+  hld_summary: "${steps.author_hld.outputs.hld_summary}"
+  contract_summary: "${steps.contract.outputs.contract_summary}"
+  hld_path: ".maestro/${inputs.slug}/hld.md"
+  contract_path: ".maestro/${inputs.slug}/openapi.yaml"
+  test_cases_path: ".maestro/${inputs.slug}/test-cases.md"

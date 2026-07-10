@@ -1,0 +1,155 @@
+# The full KeyValue AI-SDLC pipeline — the default workflow behind `/maestro <slug>`.
+#
+#   design (sub-wf) -> architecture review -> [gates] -> parallel per-stack impl
+#   (impl.yaml per branch) -> merge (stub) -> qa (sub-wf) -> review pack -> release
+#   gate -> archive (stub)
+#
+# Every producing step writes an artifact under .maestro/<slug>/ and the engine gates
+# on it ("proof, not promises"). Human gates own every irreversible decision; their
+# revise options are back-edges that cascade-reset everything downstream.
+version: 1
+name: sdlc-main
+description: Full feature pipeline — requirement to release-ready review pack.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+defaults:
+  model: haiku
+  agent: general
+  max_visits: 10
+start: design
+nodes:
+  - id: design
+    type: subworkflow
+    label: Design phase
+    workflow: workflows/design.yaml
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    max_visits: 4
+    next: arch_review
+
+  - id: arch_review
+    type: agent
+    label: Architecture review
+    instruction: |
+      Review the full design set for this feature (HLD, both LLDs, contract, test
+      cases under .maestro/${inputs.slug}/) for soundness, consistency and risk.
+      Findings need evidence; set blocking=true only for must-fix issues.
+    skill: architecture-review
+    agent: reviewer
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [review_path, blocking, summary]
+    artifact: ".maestro/${inputs.slug}/reviews/architecture.md"
+    max_visits: 4
+    routes:
+      - {when: "${steps.arch_review.outputs.blocking} == true", to: arch_gate}
+      - {to: contract_approval}
+
+  - id: arch_gate
+    type: gate
+    label: Blocking architecture findings
+    prompt: |
+      Architecture review found BLOCKING issues:
+      ${steps.arch_review.outputs.summary}
+      Full review: ${steps.arch_review.outputs.review_path}
+    options:
+      - {id: revise, label: Revise the design (regenerates design phase), to: design, input: feedback}
+      - {id: waive, label: Waive — proceed anyway, to: contract_approval}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: contract_approval
+    type: gate
+    label: Contract approval
+    prompt: |
+      Design approved for implementation?
+      Design: ${steps.design.outputs.hld_summary}
+      Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})
+      Architecture review: ${steps.arch_review.outputs.summary}
+    options:
+      - {id: approve, label: Approve — start implementation, to: implement}
+      - {id: revise, label: Request design revisions, to: design, input: feedback}
+      - {id: reject, label: Reject — abort, to: abort}
+
+  - id: implement
+    type: parallel
+    label: Implementation
+    join: all
+    on_branch_fail: ask
+    branches:
+      - id: backend
+        start: impl
+        steps:
+          - id: impl
+            type: subworkflow
+            workflow: workflows/impl.yaml
+            inputs: {slug: "${inputs.slug}", stack: backend, feature: "${inputs.feature}"}
+            next: end
+      - id: frontend
+        start: impl
+        steps:
+          - id: impl
+            type: subworkflow
+            workflow: workflows/impl.yaml
+            inputs: {slug: "${inputs.slug}", stack: frontend, feature: "${inputs.feature}"}
+            next: end
+    next: merge_for_test
+
+  - id: merge_for_test
+    type: script
+    label: Merge for test (stub)
+    # POC stub — wire to your real merge/stack-up command. Branches:
+    #   ${steps.implement.branches.backend.outputs.branch}
+    #   ${steps.implement.branches.frontend.outputs.branch}
+    run: [bash, -c, "echo 'merge stub: wire your merge + stack-up here'; exit 0"]
+    on_fail: ask
+    next: qa
+
+  - id: qa
+    type: subworkflow
+    label: QA phase
+    workflow: workflows/qa.yaml
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    max_visits: 3
+    next: review_pack
+
+  - id: review_pack
+    type: agent
+    label: Human review pack
+    instruction: |
+      Assemble the release review pack for this feature: what was built (per stack),
+      review outcomes, QA results, open risks, and how to verify locally. Digest the
+      artifacts under .maestro/${inputs.slug}/ — the pack is what the human reads at
+      the release gate.
+    skill: human-review-pack
+    agent: analyst
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [pack_path, summary]
+    artifact: ".maestro/${inputs.slug}/review-pack.md"
+    next: release_approval
+
+  - id: release_approval
+    type: gate
+    label: Release approval
+    prompt: |
+      Ready to release?
+      ${steps.review_pack.outputs.summary}
+      Review pack: ${steps.review_pack.outputs.pack_path}
+      QA: ${steps.qa.outputs.qa_summary}
+    options:
+      - {id: approve, label: Approve — archive and finish, to: archive}
+      - {id: revise, label: Send back to design, to: design, input: feedback}
+      - {id: reject, label: Reject — abort, to: abort}
+
+  - id: archive
+    type: script
+    label: Archive (stub)
+    # POC stub — reserved for publishing curated docs from .maestro/<slug>/ into
+    # committed docs/technical|functional/.
+    run: [bash, -c, "echo 'archive stub: publish .maestro/${inputs.slug}/ docs here'; exit 0"]
+    next: end
+
+outputs:
+  hld: "${steps.design.outputs.hld_path}"
+  contract: "${steps.design.outputs.contract_path}"
+  review_pack: "${steps.review_pack.outputs.pack_path}"
+  backend_branch: "${steps.implement.branches.backend.outputs.branch}"
+  frontend_branch: "${steps.implement.branches.frontend.outputs.branch}"

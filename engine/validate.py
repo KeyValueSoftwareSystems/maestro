@@ -47,7 +47,7 @@ _NODE_KEYS = {
     "parallel": {"id", "type", "label", "join", "on_branch_fail", "branches", "isolate", "ui"} | _ROUTING_KEYS,
     "subworkflow": {"id", "type", "label", "workflow", "inputs", "ui"} | _ROUTING_KEYS,
 }
-_BRANCH_NODE_TYPES = {"agent", "gate", "script"}
+_BRANCH_NODE_TYPES = {"agent", "gate", "script", "subworkflow"}
 
 
 class Issue:
@@ -76,16 +76,27 @@ def validate_file(path, root=".", _depth=0, _stack=None):
         return [Issue("error", "bad-yaml", f"{norm}: {exc}")]
     issues.extend(validate_doc(doc, where=norm))
 
-    # recurse into subworkflow files
-    for node in (doc.get("nodes") or []) if isinstance(doc, dict) else []:
-        if isinstance(node, dict) and node.get("type") == "subworkflow" and isinstance(node.get("workflow"), str):
-            child = node["workflow"]
-            child_full = os.path.join(root, child)
-            if not os.path.exists(child_full):
-                issues.append(Issue("error", "subworkflow-missing-file",
-                                    f"node {node.get('id')}: file not found: {child}", norm))
-            else:
-                issues.extend(validate_file(child, root, _depth + 1, _stack + [norm]))
+    # recurse into subworkflow files (top-level nodes and inside parallel branches)
+    def sub_nodes(node_list):
+        for node in node_list or []:
+            if not isinstance(node, dict):
+                continue
+            if node.get("type") == "subworkflow":
+                yield node
+            for branch in node.get("branches") or []:
+                if isinstance(branch, dict):
+                    yield from sub_nodes(branch.get("steps"))
+
+    for node in sub_nodes((doc.get("nodes") or []) if isinstance(doc, dict) else []):
+        if not isinstance(node.get("workflow"), str):
+            continue
+        child = node["workflow"]
+        child_full = os.path.join(root, child)
+        if not os.path.exists(child_full):
+            issues.append(Issue("error", "subworkflow-missing-file",
+                                f"node {node.get('id')}: file not found: {child}", norm))
+        else:
+            issues.extend(validate_file(child, root, _depth + 1, _stack + [norm]))
     return issues
 
 
@@ -222,7 +233,7 @@ def _validate_node(node, ids, declared_inputs, where):
                 if step.get("type") not in _BRANCH_NODE_TYPES:
                     err("branch-bad-type",
                         f"branch {branch['id']}: node {step.get('id')!r} has type "
-                        f"{step.get('type')!r} (only agent/gate/script inside branches)")
+                        f"{step.get('type')!r} (only agent/gate/script/subworkflow inside branches)")
                     continue
                 sid = step.get("id")
                 if not isinstance(sid, str) or not _ID_RE.match(sid):

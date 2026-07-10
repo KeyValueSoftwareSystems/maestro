@@ -2,6 +2,7 @@
 name: verify
 description: Run the project's deterministic checks and produce an evidence-backed proof report plus a machine-readable proof marker. Never modifies code (writes only its proof artifacts). Use after any implementation to prove it works. Front door for /verify.
 allowed-tools: Read, Grep, Glob, Bash, Write
+tags: [sdlc, qa, verify]
 ---
 
 # verify
@@ -32,7 +33,7 @@ Storybook/component check (if available) · Playwright E2E · accessibility basi
   summary + suspected root cause · next recommended action.
 
 ## Proof artifacts (this is what makes "done" checkable, not just claimed)
-Also WRITE:
+Also WRITE (under `maestro.config.yaml` → `artifacts.work_dir`, `<slug>` = `feature_slug`):
 - `.maestro/<slug>/<stack>/verify.md` — the human-readable report above.
 - `.maestro/<slug>/<stack>/last-verify.json` — the marker, e.g.
   `{"status":"pass|fail","date":"<YYYY-MM-DD>","stack":"backend|frontend","checks":[{"cmd":"…","result":"pass|fail"}]}`.
@@ -53,3 +54,10 @@ command**, not assumed.
 ## Definition of done
 Never accept "everything works". Overall `status` reflects the weakest required check; the
 marker and report are written; on failure the next action points at `/fix`.
+
+## Output contract
+Return `status` (`pass`|`fail`), `report_path` (the verify.md written), and `failed_cmd`
+(the exact first failing command, empty string on pass).
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

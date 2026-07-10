@@ -69,7 +69,8 @@
       "oneOf": [
         {"$ref": "#/definitions/agentNode"},
         {"$ref": "#/definitions/gateNode"},
-        {"$ref": "#/definitions/scriptNode"}
+        {"$ref": "#/definitions/scriptNode"},
+        {"$ref": "#/definitions/subworkflowNode"}
       ]
     },
     "agentNode": {

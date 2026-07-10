@@ -1,0 +1,130 @@
+# Implementation phase for ONE stack (invoked per-stack by sdlc-main.yaml's parallel
+# node, or standalone: /maestro <slug> workflows/impl.yaml stack=backend).
+#
+# Showcases: a workflow parameterized by an input (skill names contain placeholders —
+# no dispatch glue needed), engine-validated task DAGs, and a bounded fix cycle built
+# from a back-edge whose cap comes from maestro.config.yaml.
+version: 1
+name: impl
+description: Build one stack from its approved LLD — task DAG, sliced implementation, review, bounded fix loop.
+inputs:
+  slug: {type: string, required: true}
+  stack: {type: string, required: true, description: backend | frontend}
+  feature: {type: string, default: "${inputs.slug}"}
+defaults:
+  model: haiku
+  agent: implementer
+  max_visits: 10
+start: tasks
+nodes:
+  - id: tasks
+    type: agent
+    label: Task DAG
+    instruction: |
+      Produce the parallel task DAG for the ${inputs.stack} stack from its LLD at
+      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at
+      .maestro/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group
+      dependencies only and disjoint writes across groups (schema
+      engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
+      reported.
+    skill: backend-tasks
+    agent: planner
+    inputs: {slug: "${inputs.slug}", stack: "${inputs.stack}"}
+    outputs: [task_count, slice_count]
+    artifact: ".maestro/${inputs.slug}/${inputs.stack}/tasks.json"
+    max_visits: 3
+    on_exhausted: abort
+    next: validate_tasks
+
+  - id: validate_tasks
+    type: script
+    label: Validate task DAG
+    run: [python3, engine/validate_tasks.py, ".maestro/${inputs.slug}/${inputs.stack}/tasks.json"]
+    max_visits: 3
+    on_fail: tasks
+    next: implement
+
+  - id: implement
+    type: agent
+    label: Implement slices
+    instruction: |
+      Implement the ${inputs.stack} stack for this feature from
+      .maestro/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
+      skill owns slice fan-out and worktree hygiene. Work against the LLD at
+      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at
+      .maestro/${inputs.slug}/openapi.yaml. Report tests honestly.
+    skill: "${inputs.stack}-implement"
+    isolate: worktree
+    inputs:
+      slug: "${inputs.slug}"
+      stack: "${inputs.stack}"
+      tasks_path: ".maestro/${inputs.slug}/${inputs.stack}/tasks.json"
+      branch: "feature/${inputs.slug}-${inputs.stack}"
+    outputs: [branch, summary, tests_passed]
+    retries: 1
+    max_visits: 3
+    next: contract_check
+
+  - id: contract_check
+    type: script
+    label: Contract check (stub)
+    # POC stub — wire to your real contract test runner (e.g. schemathesis, dredd)
+    run: [bash, -c, "echo 'contract check stub: wire your runner here'; exit 0"]
+    next: review
+
+  - id: review
+    type: agent
+    label: Code review
+    instruction: |
+      Review the ${inputs.stack} implementation on branch
+      ${steps.implement.outputs.branch} against the LLD, contract and standards.
+      Findings need file:line evidence; set blocking=true only for must-fix issues.
+    skill: "${inputs.stack}-review"
+    agent: reviewer
+    inputs:
+      slug: "${inputs.slug}"
+      branch: "${steps.implement.outputs.branch}"
+    outputs: [review_path, blocking, summary]
+    artifact: ".maestro/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+    max_visits: 5
+    on_exhausted: impl_gate
+    routes:
+      - {when: "${steps.review.outputs.blocking} == true", to: fix}
+      - {when: "${steps.implement.outputs.tests_passed} != true", to: fix}
+      - {to: end}
+
+  - id: fix
+    type: agent
+    label: Fix findings
+    instruction: |
+      One fix attempt: address the blocking findings in
+      ${steps.review.outputs.review_path} (and any failing tests) on branch
+      ${steps.implement.outputs.branch}. Smallest safe fix; never weaken or delete a
+      failing test. Re-run the failing checks before returning. Do NOT loop — the
+      workflow re-invokes you if needed.
+    skill: fix-loop
+    inputs:
+      slug: "${inputs.slug}"
+      stack: "${inputs.stack}"
+      branch: "${steps.implement.outputs.branch}"
+    outputs: [fix_summary, checks_passed]
+    max_visits: "${config.fix_loop.max_attempts}"
+    on_exhausted: impl_gate
+    next: review
+
+  - id: impl_gate
+    type: gate
+    label: Implementation escalation
+    prompt: |
+      The ${inputs.stack} implementation still has problems after the automated fix
+      rounds. Last review: ${steps.review.outputs.summary}
+      Branch: ${steps.implement.outputs.branch}
+    options:
+      - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
+      - {id: accept, label: Accept as-is — I'll handle the rest, to: end}
+      - {id: abandon, label: Abort this stack, to: abort}
+
+outputs:
+  branch: "${steps.implement.outputs.branch}"
+  summary: "${steps.implement.outputs.summary}"
+  review_path: "${steps.review.outputs.review_path}"

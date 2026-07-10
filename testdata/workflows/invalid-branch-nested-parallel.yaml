@@ -9,8 +9,16 @@ nodes:
         start: s1
         steps:
           - id: s1
-            type: subworkflow
-            workflow: testdata/workflows/valid-minimal.yaml
+            type: parallel
+            branches:
+              - id: x
+                start: s
+                steps:
+                  - {id: s, type: script, run: ["true"], next: end}
+              - id: y
+                start: s
+                steps:
+                  - {id: s, type: script, run: ["true"], next: end}
             next: end
       - id: b2
         start: s2

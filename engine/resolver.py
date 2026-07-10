@@ -337,8 +337,12 @@ def _drop_cursor(run, path):
     run.state["run"]["cursors"][:] = with_out
 
 
-def _enter(run, frame, node_id):
-    """Move execution onto `node_id` in `frame` (visit caps + re-entry reset apply)."""
+def _enter(run, frame, node_id, via_gate=False):
+    """Move execution onto `node_id` in `frame` (visit caps + re-entry reset apply).
+
+    via_gate: the human explicitly routed here through a real gate option — the visit
+    still counts, but the cap does not block (the human is the loop bound).
+    """
     node = frame.nodes.get(node_id)
     if node is None:
         raise RunError(f"route target {node_id!r} not found in {frame.prefix or 'main'}")
@@ -346,7 +350,7 @@ def _enter(run, frame, node_id):
     entry = statemod.step_entry(run.state, path)
     entry["visits"] = entry.get("visits", 0) + 1
     cap = run.max_visits_for(node, frame)
-    if entry["visits"] > cap:
+    if entry["visits"] > cap and not via_gate:
         target = node.get("on_exhausted", "ask")
         if target == "abort":
             _frame_abort(run, frame, reason=f"{path}: visit cap {cap} exhausted")
@@ -504,14 +508,14 @@ def _advance(run, frame, node, last_outputs=None):
     _leave_to(run, frame, node, target, last_outputs)
 
 
-def _leave_to(run, frame, node, target, last_outputs=None):
+def _leave_to(run, frame, node, target, last_outputs=None, via_gate=False):
     _drop_cursor(run, frame.path(node["id"]))
     if target == "end":
         _frame_end(run, frame, last_outputs or {})
     elif target == "abort":
         _frame_abort(run, frame, reason=f"aborted at {frame.path(node['id'])}")
     else:
-        _enter(run, frame, target)
+        _enter(run, frame, target, via_gate=via_gate)
 
 
 def _frame_end(run, frame, last_outputs):
@@ -671,7 +675,9 @@ def next_action(run, serial=False):
 
 
 def _script_action(run, frame, node, path):
-    argv = [run.resolve_text(a, frame) for a in node["run"]]
+    # missing_ok: argv may reference gate outputs that only exist for some options
+    # (e.g. oq_record's answer text) — a missing ref becomes an empty argument
+    argv = [run.resolve_text(a, frame, missing_ok=True) for a in node["run"]]
     return {
         "action": "run_script",
         "step": path,
@@ -727,12 +733,15 @@ def _agent_action(run, frame, node, path):
     isolate = node.get("isolate") or (
         frame.parent_node.get("isolate") if frame.kind == "branch" and frame.parent_node else None
     )
+    skill = node.get("skill")
+    if skill:
+        skill = run.resolve_text(skill, frame)  # e.g. skill: "${inputs.stack}-implement"
     return {
         "action": "run_agent",
         "step": path,
         "agent_type": run.agent_for(node, frame),
         "model": run.model_for(node, frame),
-        "skill": node.get("skill"),
+        "skill": skill,
         "isolate": isolate,
         "outputs": node.get("outputs") or [],
         "artifacts": artifacts,
@@ -906,7 +915,7 @@ def record_gate(run, path, option_id, input_text=None):
         outputs[option["input"]] = input_text
     entry["outputs"] = outputs
     entry["status"] = "done"
-    _leave_to(run, frame, node, option["to"], outputs)
+    _leave_to(run, frame, node, option["to"], outputs, via_gate=True)
     return entry
 
 

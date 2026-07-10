@@ -2,6 +2,7 @@
 name: api-contract
 description: Generate the cross-repo API/event CONTRACT (OpenAPI) by reconciling the per-stack LLDs — the backend LLD (what it exposes) and the frontend LLD (what it consumes) — into the single boundary both build against. Also derives acceptance criteria and the affected stacks. Reads the LLDs; writes the contract; never edits app code. Runs after the per-stack LLDs and before implementation. Front door for /api-contract.
 allowed-tools: Read, Grep, Glob, Bash, Write
+tags: [sdlc, design, contract]
 ---
 
 # api-contract — cross-repo contract generation
@@ -21,9 +22,10 @@ contract + acceptance criteria only; no app code.
 ## Inputs
 - `feature`, `feature_slug`, optional `hld_path`.
 - `backend_lld`, `frontend_lld` — the two per-stack LLD paths.
-- **Artifact paths** — resolve from `skills.config.yaml` → `artifacts.contract` and
-  `artifacts.acceptance` (`.maestro/<slug>/openapi.yaml`,
-  `.maestro/<slug>/acceptance-criteria.md`).
+- **Artifact paths** — resolve from `maestro.config.yaml` → `artifacts.contract` and
+  `artifacts.acceptance` with `<slug>` = `feature_slug` (`.maestro/<slug>/openapi.yaml`,
+  `.maestro/<slug>/acceptance-criteria.md`). The caller passes no paths; this skill owns
+  where it writes.
 
 ## Steps
 1. **Read** both LLDs, any existing `.maestro/<slug>/openapi.yaml`, and the acceptance intent in the HLD.
@@ -55,7 +57,7 @@ contract + acceptance criteria only; no app code.
 - A field the frontend needs but the backend LLD doesn't expose (or vice-versa) — resolve, don't paper over.
 
 ## External skill (provision — research)
-Read `skills.config.yaml` → `lld.external.research` (a skill name, e.g. `deep-research`, or
+Read `maestro.config.yaml` → `external_skills.research` (a skill name, e.g. `deep-research`, or
 `none`). If set, use it to research a protocol/standard the contract must follow. If `none`,
 work from the LLDs.
 
@@ -63,10 +65,14 @@ work from the LLDs.
 - `.maestro/<slug>/openapi.yaml` — the contract (source of truth).
 - `.maestro/<slug>/acceptance-criteria.md` — what QA automates (include negative paths).
 
-Return `contract_path`, `contract_summary` (breaking changes flagged), `affected_repos`
-(objects with `name` exactly `backend`/`frontend`), and `acceptance_criteria`.
-
 ## Definition of done
 Contract covers every item above (no undefined fields/errors); backend-exposed and
 frontend-consumed APIs reconciled (no silent mismatch); acceptance criteria include negative
 paths. End with the human contract-approval ask; do not implement.
+
+## Output contract
+Return `contract_path`, `contract_summary` (breaking changes flagged), `affected_repos`
+(objects with `name` exactly `backend`/`frontend`), and `acceptance_criteria`.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

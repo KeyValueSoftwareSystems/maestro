@@ -2,6 +2,7 @@
 name: backend-review
 description: Review the backend implementation AFTER it is built — security, contract adherence, correctness, backward compatibility, rate-limiting, performance/scaling, migrations, test gaps, observability. Read-only; writes a review artifact. Front door for /backend-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
+tags: [sdlc, review, backend]
 ---
 
 # backend-review
@@ -47,7 +48,7 @@ never edit code; reviewers return evidence and recommendations, humans decide fi
 - Tests that assert nothing meaningful, or only cover the happy path.
 
 ## External skill (provision — review method)
-Read `skills.config.yaml` → `review.external` (default `requesting-code-review`, from the
+Read `maestro.config.yaml` → `external_skills.review` (default `requesting-code-review`, from the
 Superpowers pack, or `none`). If set, apply its discipline first; it must not narrow the checklist above.
 
 ## Findings format (what the review returns — evidence mandatory)
@@ -65,6 +66,13 @@ blocking: <true if any blocker/major remains>
 
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
-Auth/permission or contract changes are never `safe_for_ai_fix` — escalate. Write
-`.maestro/<slug>/backend/reviews/summary.md`. Return `review_path` and `blocking`. In the
-workflow a blocking result routes back to the backend implementer (bounded to 3).
+Auth/permission or contract changes are never `safe_for_ai_fix` — escalate. Write the report
+to the `artifacts.backend_review` path from `maestro.config.yaml`
+(`.maestro/<slug>/backend/reviews/summary.md`). A blocking result routes back to the backend
+implementer — the engine's visit cap (`fix_loop.max_attempts`) bounds that loop, not you.
+
+## Output contract
+Return `review_path` and `blocking`.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

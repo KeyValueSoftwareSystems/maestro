@@ -1,0 +1,78 @@
+# maestro.config.yaml — the single config for Maestro v2 (lead-agent orchestration).
+#
+# Merged successor of the old skills.config.yaml + workflows/maestro.config.yaml.
+# Read by: skills (artifact paths + external-skill delegation), the engine
+# (${config.*} placeholders, model aliases, defaults) and the builder UI (catalogs).
+#
+# Workflows name skills DIRECTLY in their agent nodes — the old slot indirection is
+# gone. To swap the skill behind a step, edit the workflow (one line, visible in the
+# builder UI).
+
+# ---------------------------------------------------------------- models
+# Per-step models live in the workflow YAML (`model:` on a node, or the workflow's
+# `defaults.model`). Aliases below let workflows say `haiku`/`sonnet`/`opus` and stay
+# valid when model ids rotate. `default` is the backstop when neither node nor
+# workflow says anything.
+models:
+  default: haiku
+  aliases:
+    haiku: claude-haiku-4-5
+    sonnet: claude-sonnet-5
+    opus: claude-opus-4-8
+
+# ---------------------------------------------------------------- engine defaults
+defaults:
+  agent: general      # agents/<name>.md used when a node names none
+  max_visits: 10      # global revisit cap backstop (loops can never run away)
+
+# ---------------------------------------------------------------- enforcement knobs
+fix_loop:
+  max_attempts: 3     # referenced by workflows as ${config.fix_loop.max_attempts}
+
+gates:
+  coverage_threshold: 80        # % line coverage the verify step demands on changed code
+  require_tests_before_done: true
+  freeze_approved_tests: true   # fix loops may not weaken/delete approved tests
+
+qa:
+  framework: playwright
+  e2e_tier: critical-journeys-only
+
+# ---------------------------------------------------------------- external skills
+# Optional helper skills (installed loose into .claude/skills / .cursor/skills, bare
+# discovery names — see install.sh). `none` = the KV skill falls back to its inline
+# behavior. Each KV skill reads its own key here and delegates, but remains
+# responsible for its own quality bar.
+external_skills:
+  brainstorm: brainstorming            # plan — pre-HLD ideation
+  tasks: writing-plans                 # backend-tasks — task DAG method
+  tdd: test-driven-development         # *-implement — red/green/refactor engine
+  review: requesting-code-review       # *-review — review method
+  debug: systematic-debugging          # fix-loop — debugging method
+  worktrees: using-git-worktrees       # implement/slices — worktree hygiene
+  research: none                       # *-design — deep research for unfamiliar tech
+  qa_generator: none                   # qa-automation — E2E generation helper
+
+# ---------------------------------------------------------------- artifacts
+# Feature-scoped artifact paths. <slug> = the feature slug. Skills resolve their own
+# output paths from here; callers never pass paths in. Everything for a feature lives
+# under one git-tracked folder: .maestro/<slug>/.
+artifacts:
+  requirement: ".maestro/<slug>/requirement/"
+  hld: ".maestro/<slug>/hld.md"
+  open_questions: ".maestro/<slug>/open-questions.json"
+  lld_dir: ".maestro/<slug>/lld/"
+  lld_backend: ".maestro/<slug>/lld/backend.md"
+  lld_frontend: ".maestro/<slug>/lld/frontend.md"
+  contract: ".maestro/<slug>/openapi.yaml"
+  acceptance: ".maestro/<slug>/acceptance-criteria.md"
+  test_cases: ".maestro/<slug>/test-cases.md"
+  tasks_backend: ".maestro/<slug>/backend/tasks.json"
+  tasks_frontend: ".maestro/<slug>/frontend/tasks.json"
+  arch_review: ".maestro/<slug>/reviews/architecture.md"
+  backend_review: ".maestro/<slug>/backend/reviews/summary.md"
+  frontend_review: ".maestro/<slug>/frontend/reviews/summary.md"
+  qa_suite_dir: ".maestro/<slug>/qa/"
+  qa_report: ".maestro/<slug>/qa/report.md"
+  review_pack: ".maestro/<slug>/review-pack.md"
+  work_dir: ".maestro/<slug>/"

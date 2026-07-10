@@ -2,6 +2,7 @@
 name: frontend-review
 description: Review the frontend implementation AFTER it is built — UI-state completeness, accessibility, security, resilience, forms, performance, responsive/i18n, test gaps. Read-only; writes a review artifact. Front door for /frontend-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
+tags: [sdlc, review, frontend]
 ---
 
 # frontend-review
@@ -48,7 +49,7 @@ never edit code.
 - Large list rendered without virtualization; unbounded re-renders.
 
 ## External skill (provision — review method)
-Read `skills.config.yaml` → `review.external` (default `requesting-code-review`, from the
+Read `maestro.config.yaml` → `external_skills.review` (default `requesting-code-review`, from the
 Superpowers pack, or `none`). If set, apply its discipline first; it must not narrow the checklist above.
 
 ## Findings format (what the review returns — evidence mandatory)
@@ -66,5 +67,12 @@ blocking: <true if any blocker/major remains>
 
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
-Write `.maestro/<slug>/frontend/reviews/summary.md`. Return `review_path` and `blocking`. In the
-workflow a blocking result routes back to the frontend implementer (bounded to 3).
+Write the report to the `artifacts.frontend_review` path from `maestro.config.yaml`
+(`.maestro/<slug>/frontend/reviews/summary.md`). A blocking result routes back to the frontend
+implementer — the engine's visit cap (`fix_loop.max_attempts`) bounds that loop, not you.
+
+## Output contract
+Return `review_path` and `blocking`.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

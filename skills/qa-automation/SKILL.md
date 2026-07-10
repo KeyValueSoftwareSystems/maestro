@@ -2,6 +2,7 @@
 name: qa-automation
 description: Author critical-journey E2E / UI-automation tests from the acceptance criteria (not from the implementation), run them in a clean env, and report. Meets QA standards (risk-tiering, isolation, determinism, no weakened assertions). Edits test files only. Front door for /qa.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
+tags: [sdlc, qa]
 ---
 
 # qa-automation
@@ -21,13 +22,14 @@ optional `test_cases_path` — the design-phase functional test-case catalog
 (`.maestro/<slug>/test-cases.md`, from `/functional-testcases`).
 
 ## Steps
-1. **Pick the framework** from `skills.config.yaml` → `qa.framework` (`playwright` web /
+1. **Pick the framework** from `maestro.config.yaml` → `qa.framework` (`playwright` web /
    `maestro` mobile).
 2. **Source the journeys.** If `test_cases_path` exists, that catalog is the source of truth —
    automate its cases, preserving each case's ID/traceability, and do not silently drop a case
    (note any you defer and why). Only when no catalog is present do you derive journeys straight
-   from the acceptance criteria. Either way: rank by risk; pick the critical ones and the
-   highest-value negative paths; state what is out of scope.
+   from the acceptance criteria. Either way: rank by risk and scope per
+   `maestro.config.yaml` → `qa.e2e_tier` (default `critical-journeys-only`); pick the critical
+   ones and the highest-value negative paths; state what is out of scope.
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
 4. **Author tests** with stable selectors (roles/test-ids), explicit waits on conditions,
    and assertions that verify observable behavior + the contract's outcomes.
@@ -35,7 +37,8 @@ optional `test_cases_path` — the design-phase functional test-case catalog
    suite can be authored in parallel.
 6. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
    always runs).
-7. **On failure**, apply the fix-loop rule (selectors/flakes/waits only), bounded to 3.
+7. **On failure**, apply the fix-loop rule (selectors/flakes/waits only), bounded by
+   `maestro.config.yaml` → `fix_loop.max_attempts`.
 
 ## Standards every suite must satisfy
 - **Risk-tiered** — critical journeys + key negatives; explicit out-of-scope note.
@@ -58,13 +61,14 @@ optional `test_cases_path` — the design-phase functional test-case catalog
 - Mobile: gestures, back button, deep links, orientation (Maestro).
 
 ## External skill (provision — test generation)
-Read `skills.config.yaml` → `qa.external.generator` (e.g. `anthropics:webapp-testing`, or
-`none`). If set, use it to generate tests — the output must still meet the standards above
-(isolation, determinism, real assertions, risk-tiering). If `none`, author in-pack.
+Read `maestro.config.yaml` → `external_skills.qa_generator` (a skill name, or `none`). If
+set, use it to generate tests — the output must still meet the standards above (isolation,
+determinism, real assertions, risk-tiering). If `none`, author in-pack.
 
 ## Emit tasks.json (parallel scenario authoring)
-Write `.maestro/<slug>/qa/tasks.json` conforming to `workflows/tasks.schema.json`, with
-`"stack": "qa"`. Scenarios are independent, so each scenario is its **own single-task group**.
+Write `.maestro/<slug>/qa/tasks.json` (under `artifacts.qa_suite_dir`) conforming to
+`engine/schemas/tasks.schema.json`, with `"stack": "qa"`. Scenarios are independent, so each
+scenario is its **own single-task group**.
 
 **Author it in one shot, then refine once.** Compose the entire tasks.json — manifest, every
 `tasks[]` entry, and `slices[]` — in a single `Write`. Do **not** stub the file and grow it with
@@ -80,17 +84,25 @@ Fields:
   `depends_on`, `reads` (extra fixtures), `writes` (the spec file it creates), `test` (the
   scenario id), `standards` (e.g. `["risk-tiered","determinism","isolation"]`),
   `needs_human_gate: false`. `slices[]` = one group per scenario.
-- **Validate before returning:** `python3 workflows/validate_tasks.py .maestro/<slug>/qa/tasks.json`
+- **Validate before returning:** `python3 engine/validate_tasks.py .maestro/<slug>/qa/tasks.json`
   must print `OK`.
 
 **Scenario mode:** when invoked with a `group_id` and `tasks_path`, author only that one
 scenario's spec file (batch-load the fixture manifest once) and return `spec_path`.
 
 ## Output
-Write a coverage note to `.maestro/<slug>/qa/suite.md` (journeys covered, negatives covered,
-out-of-scope, data strategy). Also write `.maestro/<slug>/qa/tasks.json`. Return `suite_path`,
-`tasks_path`, `slices` (the `slices` array from tasks.json), and `tests_passed`.
+Resolve output paths from `maestro.config.yaml` → `artifacts.qa_suite_dir` /
+`artifacts.qa_report` (`<slug>` = `feature_slug`). Write a coverage note to
+`.maestro/<slug>/qa/suite.md` (journeys covered, negatives covered, out-of-scope, data
+strategy), the run report to `.maestro/<slug>/qa/report.md`, and `.maestro/<slug>/qa/tasks.json`.
 
 ## Definition of done
 Critical journeys + key negatives automated and green in a clean env; tests isolated and
 deterministic; failures produce artifacts; nothing weakened to pass.
+
+## Output contract
+Return `suite_path`, `tasks_path`, `slices` (the `slices` array from tasks.json), and
+`tests_passed`. In scenario mode, return `spec_path`.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

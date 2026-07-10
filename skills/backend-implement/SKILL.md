@@ -1,7 +1,8 @@
 ---
 name: backend-implement
 description: Implement an approved backend scope against the cross-repo contract, test-first, meeting the backend engineering standards (security, backward compatibility, rate limiting, idempotency, migrations, observability, performance). Edits code within the approved scope only. Use only after the contract is approved. Front door for /backend-impl.
-allowed-tools: Read, Grep, Glob, Bash, Edit, Write
+allowed-tools: Read, Grep, Glob, Bash, Edit, Write, Task
+tags: [sdlc, implement, backend]
 ---
 
 # backend-implement
@@ -15,14 +16,34 @@ Implement the approved backend scope so it satisfies the contract exactly. The b
 
 ## Before editing
 1. Read `CLAUDE.md`, `AGENTS.md`, the backend LLD (`.maestro/<slug>/lld/backend.md`),
-   and the contract (`.maestro/<slug>/openapi.yaml`).
-2. Read the `/backend-tasks` plan if present; otherwise derive the same ordered slices.
+   and the contract (`.maestro/<slug>/openapi.yaml`) — paths resolve from
+   `maestro.config.yaml` → `artifacts.lld_backend` / `artifacts.contract`.
+2. Read the task DAG at `artifacts.tasks_backend` (`.maestro/<slug>/backend/tasks.json`)
+   if present; otherwise derive the same ordered slices (via `/backend-tasks`).
 3. List the files you intend to change.
 4. **Stop and ask a human** before DB migrations, auth/permission, payment logic, prod
    config, or dependency upgrades.
 
-## Slice execution (one invocation per slice, from the impl `for_each`)
-When called with a `group_id` and `tasks_path`, implement **only that slice**:
+## Slice fan-out (owned by this skill)
+This skill owns fanning the task DAG out into slices — no orchestrator passes slices or
+worktrees in.
+
+1. **Validate first** — run `python3 engine/validate_tasks.py .maestro/<slug>/backend/tasks.json`;
+   it must print `OK`. Never build from an invalid tasks.json — fix or regenerate it first.
+2. **With the Task tool** (where the harness provides it): spawn one implementer subagent per
+   independent slice (`slices[]` group), **at most 3 concurrent**. Each subagent works in its
+   own git worktree on branch `maestro/<slug>/backend-<group_id>` — delegate worktree hygiene
+   to `maestro.config.yaml` → `external_skills.worktrees` when installed. Each subagent gets
+   its slice's tasks + the context manifest and follows the per-slice discipline below. When
+   all slices are green, **merge the slice branches into the feature branch** and resolve any
+   conflicts (disjoint `writes` across groups should make these rare).
+3. **Without the Task tool**: build the slices yourself, sequentially, in dependency order,
+   in the current checkout.
+
+Either way, **this skill is accountable for every slice building and testing clean** — a
+subagent's claim is not proof; its slice's tests must pass.
+
+Per slice (subagent or inline):
 1. **Batch-load context once** — `cat` every path in `context_manifest.read_once` +
    `context_manifest.reference` in a SINGLE call, delimited by `=== <path> ===`. Do not use
    one `Read` per file. This is how the run stays under ~50 SDK calls.
@@ -30,11 +51,11 @@ When called with a `group_id` and `tasks_path`, implement **only that slice**:
    dependency-ordered), batch-read that task's `reads` delta, then TDD it (write the failing
    `test` → minimal code → refactor) before moving to the next task.
 3. **Human gates** — stop and ask before any task with `needs_human_gate: true`.
-4. **Stay in scope** — edit only files in the slice's tasks' `writes`. Work in the worktree
-   the `for_each` item provides; commit the slice on its worktree branch.
+4. **Stay in scope** — edit only files in the slice's tasks' `writes`; commit the slice on
+   its branch.
 
 If no `tasks.json` exists (standalone run), author it first via `/backend-tasks`, then proceed
-over its slices sequentially in this one session.
+over its slices as above.
 
 ## Steps (per task, test-first)
 1. **Write the failing test first** from the contract/acceptance criteria (RED).
@@ -75,7 +96,7 @@ over its slices sequentially in this one session.
 - Rate limit reached; large result sets; time zones / DST / numeric precision & rounding.
 
 ## External skill (provision — the TDD engine)
-Read `skills.config.yaml` → `backend.external.tdd` (default
+Read `maestro.config.yaml` → `external_skills.tdd` (default
 `test-driven-development`, from the Superpowers pack, or `none`). If set, use it to drive
 RED → GREEN → REFACTOR. **Whatever the engine, ensure the tests it produces cover** the
 edge cases above and the contract's negative paths — not happy-path only. If `none`,
@@ -88,11 +109,16 @@ you are the backstop.
 
 ## Verification
 Invoke `/verify` (lint, typecheck, unit + integration, migration check, provider-side
-contract validation). On failure invoke `/fix` (bounded to 3; delegates to
-`shared.external.debug`).
+contract validation). On failure invoke `/fix` (one attempt per invocation, bounded overall
+by `maestro.config.yaml` → `fix_loop.max_attempts`; delegates to `external_skills.debug`).
 
 ## Definition of done (stop condition)
-Tests ran and pass; every standards item addressed or explicitly noted; edge-case tests
-exist; changed files summarized; remaining risks listed; contract honored exactly. Passing
-checks are the proof — not a message that says "done". Outputs: `branch`, `summary`,
-`tests_passed`. In slice mode, also return `worktree` and `tasks_done` (the ids implemented).
+Tests ran and pass; every slice merged; every standards item addressed or explicitly noted;
+edge-case tests exist; changed files summarized; remaining risks listed; contract honored
+exactly. Passing checks are the proof — not a message that says "done".
+
+## Output contract
+Return `branch`, `summary`, `tests_passed`.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

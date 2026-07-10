@@ -85,7 +85,8 @@ def _strip_comment(raw):
             out.append(c)
             i += 1
             continue
-        if c in ("'", '"'):
+        if c in ("'", '"') and (i == 0 or raw[i - 1] in " \t:,[{-"):
+            # a quote only OPENS at a token boundary (mid-word apostrophes are literal)
             quote = c
             out.append(c)
         elif c == "#" and (i == 0 or raw[i - 1] in " \t"):
@@ -286,13 +287,15 @@ def _split_flow(text, no, closer):
     if not inner:
         return []
     parts, depth, quote, cur = [], 0, None, []
+    prev = ""
     for c in inner:
         if quote:
             cur.append(c)
             if c == quote:
                 quote = None
+            prev = c
             continue
-        if c in ("'", '"'):
+        if c in ("'", '"') and (prev == "" or prev in " :,[{"):
             quote = c
             cur.append(c)
         elif c in "[{":
@@ -304,8 +307,11 @@ def _split_flow(text, no, closer):
         elif c == "," and depth == 0:
             parts.append("".join(cur).strip())
             cur = []
+            prev = ","
+            continue
         else:
             cur.append(c)
+        prev = c
     parts.append("".join(cur).strip())
     return [p for p in parts if p]
 

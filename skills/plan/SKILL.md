@@ -2,6 +2,7 @@
 name: plan
 description: Produce a high-level design (HLD) for a feature — frame the problem, weigh options with trade-offs, choose an approach, define non-functional requirements and risks, and write a standardized hld.md. Read-only (writes only the HLD doc). Use first, before detailed design. Front door for /plan.
 allowed-tools: Read, Grep, Glob, Bash, Write, AskUserQuestion
+tags: [sdlc, design, hld]
 ---
 
 # plan — high-level design
@@ -19,9 +20,10 @@ options considered, the chosen approach, and the risks — enough for a human to
 - `feature` — one-line description.  `feature_slug` — kebab-case id for artifact paths.
 - `requirement_dir` — the requirement FOLDER (assumed to exist). **Read every file in it**
   as the feature requirement (it may hold a PRD, notes, mockups, etc.).
-- **Artifact path** — you resolve it yourself from `skills.config.yaml` → `artifacts.hld`
-  with `{slug}` = `feature_slug` (i.e. `.maestro/<slug>/hld.md`). The caller does not
-  pass a path; this skill owns where it writes.
+- **Artifact paths** — you resolve them yourself from `maestro.config.yaml` →
+  `artifacts.hld` and `artifacts.open_questions` with `<slug>` = `feature_slug`
+  (i.e. `.maestro/<slug>/hld.md` and `.maestro/<slug>/open-questions.json`). The caller
+  does not pass paths; this skill owns where it writes.
 
 ## Steps
 1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
@@ -65,31 +67,29 @@ options considered, the chosen approach, and the risks — enough for a human to
 - Reversibility: can we ship behind a flag and roll back cleanly?
 
 ## External skill (provision — ideation)
-Read `skills.config.yaml` → `plan.external.brainstorm` (default `brainstorming`, from the
+Read `maestro.config.yaml` → `external_skills.brainstorm` (default `brainstorming`, from the
 Superpowers pack, or `none`). If it names a skill, use it to diverge and pressure-test — but **you remain
 responsible** for the coverage above. Whatever the external skill does, ensure it produced:
 alternatives with trade-offs, surfaced assumptions, and a pre-mortem. If `none`, do this
 yourself.
-## Output
+## Output — write these artifacts
 Write two artifacts:
 - `.maestro/<slug>/hld.md` — the HLD with all sections above, including an
   "Open questions" section (human-readable prose).
 - `.maestro/<slug>/open-questions.json` — the machine-readable mirror of that
   section (`artifacts.open_questions`), conforming to
-  `workflows/open-questions.schema.json`. Each question carries `why` it matters
+  `engine/schemas/open-questions.schema.json`. Each question carries `why` it matters
   and 2–4 suggested `options`. Validate it with
-  `python3 workflows/validate_open_questions.py .maestro/<slug>/open-questions.json`.
-
-Return `hld_path` and `hld_summary` (2–3 sentences). Do **not** return open
-questions as a separate structured output field — they live in the file (a prior
-attempt to return them as an agent output failed schema validation). The file is
-the single source of truth; the HLD prose section is its human mirror.
+  `python3 engine/validate_open_questions.py .maestro/<slug>/open-questions.json`.
 
 ## Open-question loop (interactive only)
-When `AskUserQuestion` is available (a developer running `/plan` in Claude Code)
-**and** `open-questions.json` has any `open` questions, resolve them in a loop —
-this is the same experience the Conductor `design.yaml` gate provides
-non-interactively:
+When run standalone with `AskUserQuestion` available (a developer running `/plan`
+in Claude Code), run the interactive open-question loop yourself; when run as a
+Maestro workflow step, just WRITE `open-questions.json` — the workflow's OQ loop
+(script serve → human gate → record → refine) drives resolution.
+
+If `AskUserQuestion` is available **and** `open-questions.json` has any `open`
+questions, resolve them in a loop:
 
 1. For each `open` question, ask via `AskUserQuestion` — offer its suggested
    `options` (the tool auto-adds **Other** for a custom answer), plus explicit
@@ -107,10 +107,18 @@ non-interactively:
 4. Repeat from step 1 until no `open` questions remain (deferred ones may stay).
 
 Keep `open-questions.json` valid at every step. When `AskUserQuestion` is not
-available (headless / Conductor), just write the artifacts and stop — the
-workflow drives the loop through its gate.
+available, just write the artifacts and stop — resolution happens downstream.
 
 ## Definition of done
 Every section present; ≥2 options with trade-offs; NFRs and risks concrete (not "TBD");
 open questions listed. Do not proceed to detailed design — that is the design phase (LLD +
 `/api-contract`) after human approval.
+
+## Output contract
+Return `hld_path` and `hld_summary` (2–3 sentences). Do **not** return open
+questions as a separate structured output field — they live in the file (a prior
+attempt to return them as an agent output failed schema validation). The file is
+the single source of truth; the HLD prose section is its human mirror.
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one
+JSON object with these fields — short scalar values only, never file contents.

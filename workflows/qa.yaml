@@ -1,249 +1,63 @@
-# =============================================================================
-# KeyValue AI-SDLC  ::  qa.yaml (standalone sub-workflow) — QA AUTOMATION
-# =============================================================================
-# Runnable directly:
-#   conductor run qa.yaml --input feature="..." --input feature_slug="saved-search"
-# Composed by main.yaml near the end. Also the `/qa` slash command.
-#
-# The `author_tests` step invokes the `qa-automation` skill, which picks the
-# framework (playwright/maestro) and any external generator per skills.config.yaml
-# (`qa.*`). Route-backs follow the fix-loop skill (selectors/flakes only).
-#
-# When the bounded fix loop is exhausted and E2E is still red, we DON'T just fail:
-#   run_e2e (fail) -> qa_fix -> (still red) -> qa_analyze -> qa_human_gate
-#     -> "retry" (+ human feedback) -> qa_fix  (resumes from current tests/changes)
-#     -> "give up"                  -> give_up (terminate, hand to a human)
-# The retry loops back into the SAME qa_fix node carrying the human's feedback —
-# it builds on the existing specs/fixes, it never regenerates the suite from scratch.
-#
-# Artifacts: .maestro/<slug>/qa/suite.md (coverage) + run.md (clean-env result)
-# =============================================================================
-
-workflow:
-  name: sdlc-qa
-  description: QA automation — author acceptance-criteria E2E, run in a clean env.
-  entry_point: author_tests
-
-  instructions:
-    - >-
-      Each step invokes an installed skill by name; the skill owns its own behavior.
-      Write each artifact to the path the skill resolves from skills.config.yaml
-      `artifacts:` before returning.
-
-  runtime:
-    provider: claude-agent-sdk
-    default_model: claude-haiku-4-5   # backstop for any agent without an explicit model:
-
-  limits:
-    max_iterations: 40             # headroom for the analyze -> human-gate -> qa_fix retry cycle
-    timeout_seconds: 2400
-
-  input:
-    feature:
-      type: string
-      required: true
-    feature_slug:
-      type: string
-      required: true
-    contract_summary:
-      type: string
-      required: false
-      default: ""
-    acceptance_criteria:
-      type: string
-      required: false
-      default: ""
-    test_cases_path:
-      type: string
-      required: false
-      default: ""
-      description: >
-        Path to the design-phase functional test-case catalog
-        (.maestro/<slug>/test-cases.md). When present, the /qa skill automates
-        THESE cases rather than re-deriving journeys from scratch. If empty
-        (e.g. running qa.yaml standalone), the skill falls back to the
-        acceptance criteria.
-    model:
-      type: object
-      required: false
-      default: {}
-      description: >
-        Per-agent model overrides, keyed by agent name. Any agent not listed
-        falls back to claude-haiku-4-5.
-
-# ----------------------------------------------------------------------------
-# Fan-out: author each critical-journey spec in parallel (scenarios are independent).
-# ----------------------------------------------------------------------------
-# NOTE: this for_each uses a prompt-only inline agent (unlike main.yaml's type:workflow shape).
-# Provisional pending Conductor validation — if the runtime rejects it, wrap the slice/scenario
-# build in a one-step sub-workflow (the prompt is unchanged).
-for_each:
-  - name: author_specs
-    type: for_each
-    description: Author each E2E scenario spec in parallel (one group per scenario).
-    source: author_tests.output.slices
-    as: slice
-    key_by: slice.group_id
-    max_concurrent: 3
-    failure_mode: all_or_nothing
-    agent:
-      name: author_scenario
-      model: "{{ workflow.input.model.author_scenario if workflow.input.model.author_scenario is defined else 'claude-haiku-4-5' }}"
-      prompt: |
-        Run the **/qa** skill in SCENARIO mode — author ONLY this scenario's spec. Inputs:
-        - feature:      {{ workflow.input.feature }}
-        - feature_slug: {{ workflow.input.feature_slug }}
-        - group_id:     {{ slice.group_id }}
-        - tasks_path:   {{ author_tests.output.tasks_path }}
-        Batch-load the fixture manifest in one call; write the scenario's spec file(s) with
-        stable selectors and real assertions. Return: spec_path.
-      output:
-        spec_path: { type: string }
+# QA phase: author + run the automated functional/E2E suite from the test-case catalog,
+# with a bounded fix cycle and a human escalation gate.
+version: 1
+name: qa
+description: Automate and run the functional test suite; fix loop on failures.
+inputs:
+  slug: {type: string, required: true}
+  feature: {type: string, default: "${inputs.slug}"}
+defaults:
+  model: haiku
+  agent: qa
+  max_visits: 10
+start: qa_run
+nodes:
+  - id: qa_run
+    type: agent
+    label: Author & run E2E suite
+    instruction: |
+      Automate the functional test-case catalog at .maestro/${inputs.slug}/test-cases.md
+      into an executable E2E suite (framework/tier per maestro.config.yaml `qa:`) and
+      RUN it. Write the run report. Report results honestly — failures route into the
+      fix loop, they are not your problem to hide.
+    skill: qa-automation
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [passed, failed_count, summary]
+    artifact: ".maestro/${inputs.slug}/qa/report.md"
+    max_visits: 5
+    on_exhausted: qa_gate
     routes:
-      - to: run_e2e
+      - {when: "${steps.qa_run.outputs.passed} == true", to: end}
+      - {to: qa_fix}
 
-agents:
-  - name: author_tests
-    description: Author critical-journey E2E from acceptance criteria via the qa-automation skill.
-    model: "{{ workflow.input.model.author_tests if workflow.input.model.author_tests is defined else 'claude-haiku-4-5' }}"
+  - id: qa_fix
+    type: agent
+    label: Fix failures
+    instruction: |
+      One fix attempt: diagnose the failures in .maestro/${inputs.slug}/qa/report.md and
+      apply the smallest safe fix (product bug or genuine test bug — never weaken or
+      delete a legitimate failing assertion). Re-run the failing specs before returning.
+      Do NOT loop — the workflow re-invokes you if needed.
+    skill: fix-loop
+    agent: implementer
+    inputs: {slug: "${inputs.slug}", report: ".maestro/${inputs.slug}/qa/report.md"}
+    outputs: [fix_summary, checks_passed]
+    max_visits: "${config.fix_loop.max_attempts}"
+    on_exhausted: qa_gate
+    next: qa_run
+
+  - id: qa_gate
+    type: gate
+    label: QA escalation
     prompt: |
-      Run the **/qa** skill. Inputs:
-      - feature:      {{ workflow.input.feature }}
-      - feature_slug: {{ workflow.input.feature_slug }}
-      {% if workflow.input.test_cases_path %}- test_cases_path: {{ workflow.input.test_cases_path }}  (design-phase functional test-case catalog — automate THESE cases; the acceptance criteria are the fallback){% endif %}
-      {% if workflow.input.acceptance_criteria %}- acceptance_criteria: {{ workflow.input.acceptance_criteria }}{% endif %}
-      {% if workflow.input.contract_summary %}- contract_summary: {{ workflow.input.contract_summary }}{% endif %}
-      {% if run_e2e is defined %}
-      - previous_failure (this is a fix pass — the /qa skill owns the freeze-assertions rule):
-      {{ run_e2e.output.stdout }}{{ run_e2e.output.stderr }}
-      {% endif %}
-      Return: suite_path, tasks_path, slices.
-    output:
-      suite_path: { type: string }
-      tasks_path: { type: string }
-      slices: { type: array }
-    routes:
-      - to: author_specs
-
-  - name: run_e2e
-    type: script
-    description: Spin up env, run E2E/UI suite, tear down; record the run.
-    command: bash
-    args:
-      - "-c"
-      - |
-        set -uo pipefail
-        echo "[qa] ensure-clean -> kv up -> seed -> ready_check"
-        echo "[qa] running critical-journey E2E (Playwright/Maestro)..."
-        # Real: kv up && npx playwright test ; rc=$? ; kv down ; exit $rc
-        echo "[qa] e2e: PASS"
-        exit 0
-    timeout: 1800
-    routes:
-      - to: done
-        when: "exit_code == 0"
-      - to: qa_fix                    # failed E2E -> bounded fix (cap lives in the skill)
-
-  # ---- BOUNDED FIX (agent-owned; replaces the broken workflow loop) ----
-  # No per-edge counter exists in Conductor; the "<= 3 attempts" bound lives inside
-  # the fix-loop skill. Fixes flakes/selectors ONLY (never weakens assertions), then
-  # re-runs the suite and reports resolved.
-  - name: qa_fix
-    description: Bounded QA fix + re-run via the fix-loop skill (cap enforced in the skill).
-    model: "{{ workflow.input.model.qa_fix if workflow.input.model.qa_fix is defined else 'claude-haiku-4-5' }}"
-    prompt: |
-      Run the **/fix** skill on the failed E2E suite (the /qa + /fix skills own the
-      freeze-assertions rule). Then re-run the suite and return `resolved: true` only if it
-      now passes, else `resolved: false` with a short reason.
-      - feature: {{ workflow.input.feature }}
-      {% if qa_human_gate is defined %}
-      A human reviewed the earlier failure and gave guidance. RESUME from the
-      CURRENT tests and changes — do NOT regenerate the suite from scratch. Apply
-      this feedback, then re-run:
-      {{ qa_human_gate.output.additional_input.feedback | default('') }}
-      {% endif %}
-    output:
-      resolved: { type: boolean }
-    routes:
-      - to: done
-        when: "{{ output.resolved }}"
-      - to: qa_analyze              # still red -> analyze + escalate to a human (was: give_up)
-
-  - name: done
-    type: terminate
-    status: success
-    reason: "QA green: critical-journey E2E passed."
-    output_template:
-      suite_path: "{{ author_tests.output.suite_path }}"
-      tests_passed: "true"
-
-  # ---- ANALYZE: fix loop exhausted -> diagnose + summarize for a human ----
-  # Read-only: no test/code edits here. Turns a still-red suite into a plain
-  # summary + the specific open questions blocking green, for the gate below.
-  - name: qa_analyze
-    description: Diagnose the still-failing E2E and summarize it (+ open questions) for a human.
-    model: "{{ workflow.input.model.qa_analyze if workflow.input.model.qa_analyze is defined else 'claude-haiku-4-5' }}"
-    prompt: |
-      The bounded QA fix loop is exhausted and the critical-journey E2E is STILL
-      failing. ANALYZE only — do NOT edit tests or code in this step.
-
-      Inputs:
-      - feature:      {{ workflow.input.feature }}
-      - feature_slug: {{ workflow.input.feature_slug }}
-      - suite_path:   {{ author_tests.output.suite_path }}
-      - last run output (stdout+stderr):
-      {{ run_e2e.output.stdout }}{{ run_e2e.output.stderr }}
-      {% if qa_fix is defined %}- fix-loop result: resolved={{ qa_fix.output.resolved }}{% endif %}
-
-      Inspect the failing spec(s) and the changes made so far, then produce:
-      - summary: 3–6 sentences a non-QA teammate can follow — what is failing, the
-        likely root cause, and what was already tried. Say plainly whether this
-        looks like a product/spec ambiguity vs. a test/environment problem.
-      - open_questions: a short markdown list of the SPECIFIC decisions or missing
-        information you need from the human to get the suite green (e.g. expected
-        behavior for an ambiguous acceptance criterion, a real test credential, an
-        env/data dependency). Make each one actionable.
-      Return: summary, open_questions.
-    output:
-      summary: { type: string }
-      open_questions: { type: string }
-    routes:
-      - to: qa_human_gate
-
-  # ---- HUMAN GATE: hand the analysis over; feedback loops back into qa_fix ----
-  - name: qa_human_gate
-    type: human_gate
-    description: Review the failing-QA analysis; give feedback to retry, or give up.
-    prompt: |
-      ## QA still failing — needs your input — {{ workflow.input.feature }}
-
-      The critical-journey E2E is still red after the bounded fix attempts.
-
-      **Analysis:** {{ qa_analyze.output.summary }}
-
-      **Open questions / decisions needed:**
-
-      {{ qa_analyze.output.open_questions }}
-
-      Suite: `{{ author_tests.output.suite_path }}`
-
-      Choose **Provide feedback & retry** and type your answers/guidance — the fix
-      loop resumes from the CURRENT tests and changes (it does not start over) and
-      applies your feedback. Or **Give up** to fail the QA phase for manual handling.
+      QA is still failing after the automated fix rounds.
+      Last run: ${steps.qa_run.outputs.summary}
+      Report: .maestro/${inputs.slug}/qa/report.md
     options:
-      - label: "Provide feedback & retry"
-        value: retry
-        route: qa_fix
-        prompt_for: feedback
-      - label: "Give up — needs manual handling"
-        value: give-up
-        route: give_up
+      - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}
+      - {id: accept, label: Accept with known failures, to: end}
+      - {id: abandon, label: Abort, to: abort}
 
-  - name: give_up
-    type: terminate
-    status: failed
-    reason: "QA E2E still failing — human chose to stop the retry loop; needs manual handling."
-
-output:
-  suite_path: "{{ author_tests.output.suite_path }}"
-  tests_passed: "true"
+outputs:
+  qa_summary: "${steps.qa_run.outputs.summary}"
+  qa_report: ".maestro/${inputs.slug}/qa/report.md"

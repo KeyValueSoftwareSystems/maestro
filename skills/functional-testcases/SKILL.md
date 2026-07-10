@@ -2,6 +2,7 @@
 name: functional-testcases
 description: Author a FUNCTIONAL test-case catalog (human-readable, black-box) for a feature by deriving cases from the acceptance criteria, the HLD, and the cross-repo contract — one case per behavior a user or client can observe, positive + negative + edge, each traceable to the criterion/operation it verifies. This is the QA source of truth the /qa skill turns into automated E2E; it is NOT automation code. Reads the design artifacts; writes .maestro/<slug>/test-cases.md; never edits app code. Runs in the design phase, after the contract. Front door for /functional-testcases.
 allowed-tools: Read, Grep, Glob, Bash, Write
+tags: [sdlc, design, qa]
 ---
 
 # functional-testcases — functional test-case catalog
@@ -23,7 +24,7 @@ later automates. Write cases only; never edit app code.
 - `contract_path` — `.maestro/<slug>/openapi.yaml`.
 - `acceptance_path` — `.maestro/<slug>/acceptance-criteria.md` (and/or the `acceptance_criteria`
   text passed by the caller).
-- **Artifact path** — resolve it yourself from `skills.config.yaml` → `artifacts.test_cases`
+- **Artifact path** — resolve it yourself from `maestro.config.yaml` → `artifacts.test_cases`
   with `<slug>` = `feature_slug`, i.e. `.maestro/<slug>/test-cases.md`. The caller passes no
   output path; this skill owns where it writes.
 
@@ -72,11 +73,15 @@ Write `.maestro/<slug>/test-cases.md`:
   that cover it (prove nothing is uncovered).
 - The **cases**, grouped by journey, each following the template above.
 
-Return `test_cases_path`, `case_count`, and `coverage_summary` (2–3 sentences: journeys
-covered, notable negatives/edges, anything deferred).
-
 ## Definition of done
 Every acceptance criterion and contract operation is covered by ≥1 traceable case; negatives,
 edges, and authz paths are present (not "TBD"); each case is black-box, self-contained, and
 deterministic; scope and out-of-scope stated. Do not automate — `/qa` turns this catalog into
 the executable E2E suite.
+
+## Output contract
+Return `test_cases_path`, `case_count`, and `coverage_summary` (2–3 sentences: journeys
+covered, notable negatives/edges, anything deferred).
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.

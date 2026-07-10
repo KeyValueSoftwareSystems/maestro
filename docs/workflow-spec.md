@@ -193,9 +193,10 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
   next: contract
 ```
 
-Branch bodies may contain `agent`, `gate` and `script` nodes only (no nested parallel /
-subworkflow in v1). In harnesses with parallel subagents, ready agent steps across branches are
-dispatched as one wave; elsewhere (`next --serial`) branches run one at a time.
+Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
+`parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per
+stack. In harnesses with parallel subagents, ready agent steps across branches are dispatched
+as one wave; elsewhere (`next --serial`) branches run one at a time.
 
 ### `subworkflow`
 

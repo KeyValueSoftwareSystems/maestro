@@ -2,6 +2,7 @@
 name: human-review-pack
 description: Assemble a concise, evidence-backed PR/release review pack before approval — what changed and why, impact, the verify proof, reviewer findings (fixed and deferred), and the exact decision needed. Read-only; writes the pack. Front door for /review-pack.
 allowed-tools: Read, Grep, Glob, Bash, Write
+tags: [sdlc, review, release]
 ---
 
 # human-review-pack
@@ -14,8 +15,9 @@ readiness.
 1. **Collect the diff summary** — changed files/areas per stack; new endpoints/migrations/UI.
 2. **Pull the proof** — the `/verify` reports and `.maestro/<slug>/<stack>/last-verify.json` markers per stack;
    the QA suite result. If proof is missing or `status:"fail"`, say so — do not claim green.
-3. **Pull the reviewer findings** — `.maestro/<slug>/architecture-review.md` and each stack's
-   `reviews/summary.md`; separate what was **fixed** from what is **deferred/accepted**.
+3. **Pull the reviewer findings** — resolve from `maestro.config.yaml` → `artifacts.arch_review`
+   (`.maestro/<slug>/reviews/architecture.md`) and each stack's `artifacts.*_review`
+   (`reviews/summary.md`); separate what was **fixed** from what is **deferred/accepted**.
 4. **Assess risk & release readiness** — migrations, flags, rollout/backout, data impact.
 5. **Write** the pack and state the exact decision required.
 
@@ -24,8 +26,9 @@ readiness.
 2. **Why** — link the requirement/HLD; the problem solved.
 3. **Files changed** — grouped by area; call out anything security/auth/data-sensitive.
 4. **API / DB / UI impact** — contract changes (breaking?), migrations (+ rollback), new UI states.
-5. **Tests & proof** — commands run and pass/fail (from `/verify`); coverage vs threshold;
-   QA journeys covered; screenshots / Playwright traces for frontend.
+5. **Tests & proof** — commands run and pass/fail (from `/verify`); coverage vs
+   `maestro.config.yaml` → `gates.coverage_threshold`; QA journeys covered;
+   screenshots / Playwright traces for frontend.
 6. **Review findings fixed** — with the reviewer + severity.
 7. **Findings intentionally NOT fixed** — each with a reason and risk acceptance.
 8. **Risks & limitations** — known issues, perf/scale caveats, follow-ups.
@@ -41,5 +44,13 @@ readiness.
 - **Risky migration / irreversible step** — flag as requiring extra human attention.
 
 ## Output
-Write `.maestro/<slug>/review-pack.md`. Return `pack_path`. Never claim readiness without the
-proof to back it — the review pack is a decision aid, not a rubber stamp.
+Write the pack to the `artifacts.review_pack` path from `maestro.config.yaml`
+(`.maestro/<slug>/review-pack.md`, `<slug>` = `feature_slug`). Never claim readiness without
+the proof to back it — the review pack is a decision aid, not a rubber stamp.
+
+## Output contract
+Return `pack_path` and `recommendation` (`ready` | `changes-requested` | `not-ready`,
+mirroring the pack's "Decision needed" section).
+
+When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
+object with these fields — short scalar values only, never file contents.
