@@ -41,12 +41,56 @@ code — never edit app code. Prefer reuse over reinvention; cite `file:line` fo
    authz in the UI, no secrets in the client), **i18n**, and **resilience** (error boundaries,
    optimistic UI + rollback).
 6. **Test plan** — component + E2E coverage, including the negative UI states.
-7. **Write** the frontend LLD; flag anything that forces a backend/contract change.
-8. **Emit the task DAG** — write `.maestro/<slug>/frontend/tasks.json` (see section below),
+7. **Document tech stack decisions** — see section below.
+8. **Write** the frontend LLD; flag anything that forces a backend/contract change.
+9. **Emit the task DAG** — write `.maestro/<slug>/frontend/tasks.json` (see section below),
    reusing the code you already read. No re-reading.
 
+## Tech stack decisions
+
+Document the technology choices that shape the frontend design. Teams choose based on their
+experience and project constraints; record them here so the implementer knows exactly what
+to build toward. If your team already has established patterns, reference them; if not, make
+the choice now (not "later").
+
+**Record in the LLD's "Tech Stack Decisions" section:**
+
+1. **State Management** — Which library/framework? (e.g., Redux, Zustand, Context API, Jotai,
+   native GetX/Provider for mobile). Store structure: normalized or denormalized?
+2. **Data-Fetching & Caching** — Which library? (e.g., React Query, SWR, Apollo, Relay, native
+   fetch). Cache strategy? Pagination approach (offset/limit or cursor)? Retry/backoff logic?
+3. **Styling & Design Tokens** — Approach? (e.g., Tailwind CSS, CSS Modules, styled-components,
+   Emotion, vanilla CSS). Where are design tokens defined? Theme system (CSS variables or JS)?
+   Dark mode support?
+4. **Testing Frameworks** — Unit (Jest or Vitest)? Component (React Testing Library, Testing Playground)?
+   E2E (Playwright, Cypress, WebdriverIO)? API mocking (MSW, Mirage, Prism)? Coverage targets?
+5. **Form Validation** — Library & schema validator? (e.g., react-hook-form + Zod, Formik +
+   Yup). Validation timing (real-time, on-blur, on-submit)? Async validation strategy?
+6. **API Client & Type Generation** — Generated from OpenAPI/GraphQL schema, or hand-written?
+   If generated: which tool and regeneration strategy? Single source of truth for types?
+7. **Error Tracking & Logging** — Service (Sentry, LogRocket, Bugsnag) or custom/none? What
+   gets logged? PII scrubbing rules? Error boundary placement strategy?
+8. **Analytics & Event Tracking** — Tool (Segment, Amplitude, Mixpanel, GA) or none? Events
+   to track? Event naming convention? User identification? PII handling in events?
+9. **Build & Bundling** — Bundler? (Next.js, Vite, Webpack, esbuild). Code-splitting
+   strategy? Environment configuration? Feature flags? Deployment target (Vercel, S3+CDN)?
+10. **Performance Metrics & Budgets** — Lighthouse targets? Core Web Vitals targets (LCP, INP,
+    CLS)? Bundle size limits? Virtualization thresholds? Memory budgets for mobile?
+11. **Accessibility Testing** — Automated (axe, jest-axe)? Manual (keyboard, screen reader)?
+    WCAG level (AA or AAA)? CI gates?
+12. **i18n & Localization** — Languages supported? Library (i18next, next-i18next, react-intl)?
+    Date/time library (date-fns, Day.js)? RTL support? Translation workflow?
+13. **Authentication & Authorization** — Method (JWT, sessions, OAuth)? Token storage? Refresh
+    strategy? Permission checking (UI-side, backend, or both)? Session expiry handling?
+14. **Platform-Specific** — Web only, or multi-platform (React + React Native, Flutter)? Code
+    sharing strategy? Native module integration? Platform-specific styling or components?
+
+**Why:** The implementer builds toward these decisions. Without them recorded, they'll improvise
+inconsistently. Decisions don't require team consensus yet; they're recorded here for
+`/frontend-impl` and `/frontend-review` to follow.
+
 ## What the frontend LLD must cover (write all)
-Context & constraints (grounded in the code, cited) · component & state design · routing ·
+Context & constraints (grounded in the code, cited) · **tech stack decisions** · component & state design · routing ·
 data-fetching + caching · forms & validation · **UI-state matrix** · API consumed (the
 frontend's side of the contract) · accessibility · performance · security · i18n ·
 resilience · test plan.
@@ -93,6 +137,7 @@ list of the **decisions/constraints that shape the contract** (e.g. "data-fetchi
 returning `{items, nextCursor}`"). The API-consumed section feeds `/api-contract`.
 
 ## Definition of done
-Every section present; UI-state matrix complete (no state omitted); API-consumed concrete
-enough to formalize; edge cases specified (not "TBD"). Do not implement — that is
-`/frontend-impl` after the contract is approved.
+Every section present; **tech stack decisions all recorded** (no "TBD" or "decide later");
+UI-state matrix complete (no state omitted); API-consumed concrete enough to formalize;
+edge cases specified (not "TBD"). Do not implement — that is `/frontend-impl` after the
+contract is approved.

@@ -1,6 +1,6 @@
 ---
 name: frontend-review
-description: Review the frontend implementation AFTER it is built — UI-state completeness, accessibility, security, resilience, forms, performance, responsive/i18n, test gaps. Read-only; writes a review artifact. Front door for /frontend-review.
+description: Review the frontend implementation AFTER it is built — UI-state completeness, accessibility, security, resilience, forms, performance, type safety, component quality, state management, responsive/i18n, test gaps. Read-only; writes a review artifact. Front door for /frontend-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
 ---
 
@@ -25,6 +25,8 @@ never edit code.
   permission denied, retry/failed — each reachable and correct.
 - **Accessibility (WCAG AA)** — keyboard operable, visible focus, roles/labels, contrast,
   screen-reader semantics, focus management, no traps.
+- **Accessibility Automation** — axe scan results (zero critical/serious); automated a11y tests
+  pass; keyboard navigation verified; screen reader tested (if applicable).
 - **Security** — no secrets/tokens in client; XSS-safe rendering/escaping; CSRF-safe
   requests; validated redirects; no PII in logs/analytics.
 - **Contract consumption** — calls the API as published; no invented shapes; all documented
@@ -34,8 +36,17 @@ never edit code.
 - **Forms & validation** — mirrors the contract; field-level errors; submit disabled while pending.
 - **Performance** — code-split/lazy-load; avoid needless re-renders; bundle size; large-list
   virtualization.
+- **Performance Metrics** — Lighthouse scores meet targets; Core Web Vitals within SLA (LCP, INP,
+  CLS); bundle size within limits; actual measurements, not theoretical.
 - **Responsive & i18n** — breakpoints; long text/overflow; localizable strings; locale
   formatting; RTL if supported.
+- **Type Safety & TypeScript** — no `any` types; no `@ts-ignore` comments; strict mode passes;
+  union types properly discriminated; types up-to-date with runtime.
+- **Component Quality & Code Reuse** — no obvious duplication; components have consistent APIs;
+  functions reasonably sized; DRY principle applied; existing components reused.
+- **State Management & Data Patterns** — state properly normalized (or justified denormalization);
+  single source of truth; selectors/getters well-structured; no scattered local state when
+  should be global (or vice versa).
 - **Test gaps** — component + E2E cover the acceptance criteria and the UI states;
   assertions meaningful.
 
@@ -46,6 +57,13 @@ never edit code.
 - Non-semantic clickable `div`s; missing labels; focus lost after navigation/modal close.
 - Hard-coded copy in a localized app; layout breaking on long text or small screens.
 - Large list rendered without virtualization; unbounded re-renders.
+- `any` types, `@ts-ignore` comments, or TypeScript errors ignored; types misaligned with runtime.
+- Duplicated component or form logic; similar components reinventing the wheel.
+- State scattered across multiple stores or hooks; normalized state re-normalized at render time.
+- Missing axe scan; no automated a11y testing in CI; keyboard navigation untested.
+- Lighthouse scores below target; Core Web Vitals exceeded; no bundle size monitoring.
+- No performance profiling; animations janky; memory leaks in cleanup functions.
+- Dependency security vulnerabilities (`npm audit`); no license checks; unpinned versions.
 
 ## External skill (provision — review method)
 Read `skills.config.yaml` → `review.external` (default `requesting-code-review`, from the
@@ -56,7 +74,7 @@ Superpowers pack, or `none`). If set, apply its discipline first; it must not na
 summary: <one paragraph verdict + top risks>
 findings:
   - severity: blocker | major | minor | suggestion
-    area: ui-state | accessibility | security | contract | resilience | forms | performance | responsive-i18n | test-gap
+    area: ui-state | accessibility | accessibility-automation | security | contract | resilience | forms | performance | performance-metrics | responsive-i18n | type-safety | component-quality | state-management | test-gap
     file: <path:line>
     evidence: <quoted code / the missing state or check>
     recommendation: <smallest safe change>
