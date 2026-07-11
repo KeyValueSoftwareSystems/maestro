@@ -49,10 +49,10 @@ gate. Kill your session anytime; the run resumes exactly where it stopped.
 
 ## The visual builder
 
-`maestro ui` (or double-click `ui/builder.html`) — a single self-contained page, no
-server, works offline:
+Double-click `ui/builder.html` — a single self-contained page, no server, works offline:
 
-- start from a **template gallery** (the shipped SDLC workflows) or a blank canvas;
+- **New** gives you a blank canvas; **Open/Paste** loads any existing workflow.yaml to
+  view or update it;
 - **instruction-first node editing** — describe the step; skill defaults to *Auto*
   (pin one under Advanced), model/agent are dropdowns;
 - drag arrows between nodes — **arrows pointing back create loops**, shown dashed with
@@ -60,6 +60,24 @@ server, works offline:
 - gates' options *are* their outgoing edges; parallel branches edit via drill-in;
 - live validation with friendly messages; one-click export that the engine accepts
   (positions persist in a `ui:` key the engine ignores).
+
+Workflows are deliberately minimal to write by hand too — this is a complete one:
+
+```yaml
+nodes:
+  - id: implement
+    instruction: Implement the fix described in the requirement, with tests.
+    next: review
+  - id: review
+    instruction: Review the changes; set blocking=true for must-fix issues.
+    outputs: [blocking]
+    max_visits: 3
+    routes:
+      - {when: "${steps.review.outputs.blocking} == true", to: implement}
+      - {to: end}
+```
+
+(`type:` defaults to agent, `start:` to the first node, omitted routing to `end`.)
 
 ## Install
 
@@ -71,32 +89,28 @@ curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/m
 ```
 
 Installs: our skills/commands/agents into `.claude/` / `.cursor/`, the six external
-Superpowers skills the flow delegates to, `engine/` + `workflows/` + `ui/` +
-`maestro.config.yaml` into your repo, and the `maestro` CLI onto your PATH. The engine
-is stdlib-only python3 — nothing else to install.
+Superpowers skills the flow delegates to, and `engine/` + `workflows/` + `ui/` into your
+repo. The engine is stdlib-only python3 — no CLI, no config file, nothing else to install.
 
 ## Run
 
-```bash
-maestro init my-feature      # scaffolds .maestro/my-feature/requirement/
-# drop requirement files in (PRDs, tickets, notes — every file is read)
-```
-
-Then in your IDE:
+Everything happens inside your IDE — no CLI:
 
 ```
 /maestro my-feature                          # full pipeline (workflows/sdlc-main.yaml)
 /maestro my-feature workflows/design.yaml    # just one phase
 ```
 
-The lead agent validates, resumes or starts the run, spawns a subagent per step, asks
-you at gates, and reports where every artifact landed. Useful alongside:
+On first run the lead agent scaffolds `.maestro/my-feature/requirement/` and asks you to
+drop requirement files in (PRDs, tickets, notes — every file is read). Then it validates,
+starts or resumes the run, spawns a subagent per step, asks you at gates, and reports
+where every artifact landed. Under the hood it drives the engine, which you can also poke
+directly:
 
 ```bash
-maestro status my-feature                    # step table, gate history, active steps
-maestro validate workflows/my-flow.yaml      # lint any workflow
-maestro reset my-feature --step review --cascade   # force a rebuild from a step
-maestro ui                                   # the builder
+python3 engine/maestroctl.py status --slug my-feature      # step table, gates, active steps
+python3 engine/maestroctl.py validate workflows/my.yaml    # lint any workflow
+python3 engine/maestroctl.py reset --slug my-feature --step review --cascade
 ```
 
 Prefer manual control? Every skill is also a slash command (`/plan`, `/backend-impl`,
@@ -112,20 +126,18 @@ workflows/   the example pack: sdlc-main / design / impl / qa  — customize or 
 engine/      the deterministic engine (validate · init · next · complete · gate-record
              · fail · reset · rebase · status · graph) + schemas + helper validators
 ui/          builder.html (single-file visual editor) + embed.py
-maestro.config.yaml   models & aliases, engine defaults, fix-loop cap, external-skill
-                      delegation, artifact path map
 .maestro/<slug>/      everything for one feature: requirement/ + all artifacts + state.yaml
 ```
 
 ## Customizing
 
 - **Change a step's behavior** — edit its skill (`skills/*/SKILL.md`).
-- **Change the flow** — edit the workflow YAML (or use `maestro ui`). Steps name skills
+- **Change the flow** — edit the workflow YAML (or use the builder). Steps name skills
   directly; swapping one is a one-line change.
-- **Models** — per node (`model: sonnet`), per workflow (`defaults.model`), or globally
-  (`maestro.config.yaml → models`). Aliases keep workflows stable when model ids rotate.
+- **Models** — per node (`model: sonnet`) or per workflow (`defaults.model`); values are
+  passed to the harness as-is (`haiku` / `sonnet` / `opus` work in Claude Code).
 - **Loop bounds** — per node `max_visits` (+ `on_exhausted`), backstopped by
-  `defaults.max_visits`; the fix loops use `${config.fix_loop.max_attempts}`.
+  `defaults.max_visits` (default 10).
 - The merge/contract-check/archive scripts in the example pack are **POC stubs** —
   wire them to your real runners.
 

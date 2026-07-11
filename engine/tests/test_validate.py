@@ -19,7 +19,6 @@ EXPECTED_RULE = {
     "invalid-undeclared-input": "undeclared-input",
     "invalid-gate-route-missing": "missing-route-target",
     "invalid-dup-id": "dup-id",
-    "invalid-no-routing": "no-routing",
     "invalid-branch-nested-parallel": "branch-bad-type",
     "invalid-subworkflow-missing": "subworkflow-missing-file",
 }

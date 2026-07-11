@@ -3,7 +3,7 @@
 #
 # Showcases: a workflow parameterized by an input (skill names contain placeholders —
 # no dispatch glue needed), engine-validated task DAGs, and a bounded fix cycle built
-# from a back-edge whose cap comes from maestro.config.yaml.
+# from a visit-capped back-edge.
 version: 1
 name: impl
 description: Build one stack from its approved LLD — task DAG, sliced implementation, review, bounded fix loop.
@@ -108,7 +108,7 @@ nodes:
       stack: "${inputs.stack}"
       branch: "${steps.implement.outputs.branch}"
     outputs: [fix_summary, checks_passed]
-    max_visits: "${config.fix_loop.max_attempts}"
+    max_visits: 3
     on_exhausted: impl_gate
     next: review
 

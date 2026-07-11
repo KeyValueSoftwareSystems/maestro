@@ -24,7 +24,7 @@ RULE_IDS = [
     "bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type",
     "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route",
     "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next",
-    "no-routing", "unreachable-node", "bad-placeholder", "undeclared-input",
+    "unreachable-node", "bad-placeholder", "undeclared-input",
     "parallel-too-few-branches", "branch-bad-start", "branch-bad-type",
     "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle",
     "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction",
@@ -111,9 +111,8 @@ def validate_doc(doc, where=""):
     for key in doc:
         if key not in _TOP_KEYS:
             err("unknown-key", f"unknown top-level key {key!r}")
-    for key in ("version", "name", "start", "nodes"):
-        if key not in doc:
-            err("missing-key", f"missing required top-level key {key!r}")
+    if "nodes" not in doc:
+        err("missing-key", "missing required top-level key 'nodes'")
     if "version" in doc and doc["version"] != 1:
         err("bad-version", f"unsupported version {doc['version']!r} (expected 1)")
     if "name" in doc and (not isinstance(doc["name"], str) or not _NAME_RE.match(doc["name"])):
@@ -143,6 +142,8 @@ def validate_doc(doc, where=""):
         ids[nid] = node
 
     start = doc.get("start")
+    if start is None and nodes and isinstance(nodes[0], dict):
+        start = nodes[0].get("id")  # minimal authoring: first node is the start
     if start is not None and start not in ids:
         err("no-start", f"start {start!r} is not a node id")
 
@@ -171,7 +172,7 @@ def _validate_node(node, ids, declared_inputs, where):
     err = lambda code, msg: issues.append(Issue("error", code, msg, w))
     warn = lambda code, msg: issues.append(Issue("warning", code, msg, w))
 
-    ntype = node.get("type")
+    ntype = node.get("type", "agent")
     if ntype not in _NODE_KEYS:
         err("bad-type", f"unknown node type {ntype!r}")
         return issues
@@ -230,7 +231,7 @@ def _validate_node(node, ids, declared_inputs, where):
                 if not isinstance(step, dict):
                     err("bad-type", f"branch {branch['id']}: steps must be mappings")
                     continue
-                if step.get("type") not in _BRANCH_NODE_TYPES:
+                if step.get("type", "agent") not in _BRANCH_NODE_TYPES:
                     err("branch-bad-type",
                         f"branch {branch['id']}: node {step.get('id')!r} has type "
                         f"{step.get('type')!r} (only agent/gate/script/subworkflow inside branches)")
@@ -245,7 +246,7 @@ def _validate_node(node, ids, declared_inputs, where):
             if branch.get("start") not in bids_map:
                 err("branch-bad-start", f"branch {branch['id']}: start {branch.get('start')!r} not in steps")
             for step in steps:
-                if isinstance(step, dict) and step.get("id") in bids_map and step.get("type") in _BRANCH_NODE_TYPES:
+                if isinstance(step, dict) and step.get("id") in bids_map and step.get("type", "agent") in _BRANCH_NODE_TYPES:
                     issues.extend(_validate_node(step, bids_map, declared_inputs, f"{w}[{branch['id']}]"))
     elif ntype == "subworkflow":
         if not isinstance(node.get("workflow"), str):
@@ -256,8 +257,7 @@ def _validate_node(node, ids, declared_inputs, where):
         has_next, has_routes = "next" in node, "routes" in node
         if has_next and has_routes:
             err("route-and-next", "use either next or routes, not both")
-        elif not has_next and not has_routes:
-            err("no-routing", f"{ntype} node needs next or routes")
+        # neither set = implicit `next: end` (minimal authoring)
         if has_next and node["next"] not in ids and node["next"] not in RESERVED:
             err("missing-route-target", f"next targets unknown node {node['next']!r}")
         if has_routes:

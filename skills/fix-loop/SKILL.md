@@ -10,9 +10,8 @@ tags: [sdlc, fix, debug]
 **One invocation = one fix attempt.** Diagnose the failure, apply the smallest safe fix,
 re-run the failing checks, and report. Do **NOT** loop internally: the workflow re-invokes
 this skill while checks still fail, and the engine owns the loop bound — the workflow's fix
-nodes carry `max_visits = ${config.fix_loop.max_attempts}` (`maestro.config.yaml` →
-`fix_loop.max_attempts`), and that visit cap ends the loop. Run standalone, the same rule
-holds: one attempt, then hand the result back.
+nodes carry `max_visits` (typically 3), and that visit cap ends the loop. Run standalone,
+the same rule holds: one attempt, then hand the result back.
 
 **Safety:** never run destructive commands (`rm -rf`, force-push, `DROP`/`TRUNCATE`) or write
 prod config/secrets. Nothing auto-blocks this — you are the backstop, and this rule holds
@@ -20,10 +19,10 @@ regardless of environment. The escalation triggers below are hard stops. **Never
 delete a failing test** to make a check pass.
 
 ## External skill (provision — debugging method)
-Read `maestro.config.yaml` → `external_skills.debug` (default `systematic-debugging`, from the
-Superpowers pack, or `none`). If set, use its four-phase root-cause method — **do not "fix" what you have not
+If the `systematic-debugging` skill (from the Superpowers pack) is installed, use its
+four-phase root-cause method — **do not "fix" what you have not
 understood.** Whatever the method, it must: reproduce the failure, find the root cause,
-predict the fix, and confirm. If `none`, follow the same discipline in-pack.
+predict the fix, and confirm. If it is not installed, follow the same discipline in-pack.
 
 ## The attempt (this invocation)
 1. **Reproduce** — quote the exact failing command and its real error output.

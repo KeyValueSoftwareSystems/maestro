@@ -20,9 +20,8 @@ options considered, the chosen approach, and the risks — enough for a human to
 - `feature` — one-line description.  `feature_slug` — kebab-case id for artifact paths.
 - `requirement_dir` — the requirement FOLDER (assumed to exist). **Read every file in it**
   as the feature requirement (it may hold a PRD, notes, mockups, etc.).
-- **Artifact paths** — you resolve them yourself from `maestro.config.yaml` →
-  `artifacts.hld` and `artifacts.open_questions` with `<slug>` = `feature_slug`
-  (i.e. `.maestro/<slug>/hld.md` and `.maestro/<slug>/open-questions.json`). The caller
+- **Artifact paths** — you write `.maestro/<slug>/hld.md` and
+  `.maestro/<slug>/open-questions.json`, with `<slug>` = `feature_slug`. The caller
   does not pass paths; this skill owns where it writes.
 
 ## Steps
@@ -31,8 +30,8 @@ options considered, the chosen approach, and the risks — enough for a human to
    compliance, budget).
 2. **Clarify unknowns** — list assumptions explicitly; ask the human when a business rule,
    SLA, or data-ownership question is genuinely ambiguous. Do not silently guess.
-3. **Diverge** — generate 2–3 genuinely different approaches (delegating to the external
-   brainstorming skill if configured). Run a quick pre-mortem on each ("how would this
+3. **Diverge** — generate 2–3 genuinely different approaches (delegating to the
+   `brainstorming` skill if installed). Run a quick pre-mortem on each ("how would this
    fail?").
 4. **Evaluate & choose** — score options against effort, risk, NFRs, and reversibility.
    Recommend one; say *why it wins* and what you're trading away.
@@ -67,17 +66,16 @@ options considered, the chosen approach, and the risks — enough for a human to
 - Reversibility: can we ship behind a flag and roll back cleanly?
 
 ## External skill (provision — ideation)
-Read `maestro.config.yaml` → `external_skills.brainstorm` (default `brainstorming`, from the
-Superpowers pack, or `none`). If it names a skill, use it to diverge and pressure-test — but **you remain
-responsible** for the coverage above. Whatever the external skill does, ensure it produced:
-alternatives with trade-offs, surfaced assumptions, and a pre-mortem. If `none`, do this
-yourself.
+If the `brainstorming` skill (from the Superpowers pack) is installed, use it to diverge and
+pressure-test — but **you remain responsible** for the coverage above. Whatever the external
+skill does, ensure it produced: alternatives with trade-offs, surfaced assumptions, and a
+pre-mortem. If it is not installed, do this yourself.
 ## Output — write these artifacts
 Write two artifacts:
 - `.maestro/<slug>/hld.md` — the HLD with all sections above, including an
   "Open questions" section (human-readable prose).
 - `.maestro/<slug>/open-questions.json` — the machine-readable mirror of that
-  section (`artifacts.open_questions`), conforming to
+  section, conforming to
   `engine/schemas/open-questions.schema.json`. Each question carries `why` it matters
   and 2–4 suggested `options`. Validate it with
   `python3 engine/validate_open_questions.py .maestro/<slug>/open-questions.json`.

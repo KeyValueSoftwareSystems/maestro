@@ -6,11 +6,10 @@
 #   1. installs OUR skills + commands + agents into your AI-IDE config dirs
 #      (.claude/ and/or .cursor/ — skills, commands, agents)
 #   2. installs the external helper skills the flow delegates to (Superpowers)
-#   3. copies the engine + workflows + builder UI + maestro.config.yaml into
-#      your repo (these are runtime files the /maestro skill shells out to)
-#   4. installs the `maestro` helper CLI on PATH
+#   3. copies the engine + workflows + builder UI into your repo
+#      (runtime files the /maestro skill shells out to)
 #
-# No Conductor. No claude-agent-sdk. No API keys. Workflows run inside your
+# That's it — no CLI, no config file, no daemons. Everything runs inside your
 # interactive session via the /maestro skill; the engine is stdlib-only python3.
 #
 # Two ways to run — no clone required either way:
@@ -24,14 +23,12 @@
 #   KV_SKILLS_REPO   pack's GitHub slug      (default KeyValueSoftwareSystems/kv-skills)
 #   KV_SKILLS_REF    git ref for the tarball (default main)
 #   DEST             where to copy runtime   (default: current directory)
-#   KV_BIN_DIR       where `maestro` goes    (default: ~/.local/bin)
 # =============================================================================
 set -uo pipefail   # not -e: one failed skill install must not abort the rest
 
 REPO="${KV_SKILLS_REPO:-KeyValueSoftwareSystems/kv-skills}"
 REF="${KV_SKILLS_REF:-main}"
 DEST="${DEST:-$PWD}"
-BIN_DIR="${KV_BIN_DIR:-$HOME/.local/bin}"
 
 AGENTS=""
 for a in "$@"; do
@@ -110,30 +107,15 @@ rm -rf "$DEST/engine/tests" "$DEST/engine/__pycache__" 2>/dev/null
 cp -R "$SRC/workflows/." "$DEST/workflows/" && note "workflows/ (example pack — customize freely)"
 cp "$SRC/ui/builder.html" "$DEST/ui/builder.html" && note "ui/builder.html (visual workflow builder)"
 cp "$SRC/docs/workflow-spec.md" "$DEST/docs/workflow-spec.md" 2>/dev/null && note "docs/workflow-spec.md"
-if [ -e "$DEST/maestro.config.yaml" ]; then
-  note "maestro.config.yaml exists — left untouched"
-else
-  cp "$SRC/maestro.config.yaml" "$DEST/maestro.config.yaml" && note "maestro.config.yaml"
-fi
-
-# ---------------------------------------------------------------- 4. maestro CLI
-say "Installing the maestro helper CLI"
-mkdir -p "$BIN_DIR"
-cp "$SRC/bin/maestro" "$BIN_DIR/maestro" && chmod +x "$BIN_DIR/maestro" && note "$BIN_DIR/maestro"
-case ":$PATH:" in
-  *":$BIN_DIR:"*) ;;
-  *) note "NOTE: $BIN_DIR is not on your PATH — add:  export PATH=\"$BIN_DIR:\$PATH\"" ;;
-esac
 
 say "Done."
 cat <<'EOF'
-  Get started:
-    maestro init my-feature          # scaffold .maestro/my-feature/requirement/
-    # …drop requirement files in, then open your IDE (Claude Code / Cursor) and run:
-    /maestro my-feature              # runs workflows/sdlc-main.yaml, resumable
+  Get started — open your IDE (Claude Code / Cursor) in this repo and run:
 
-  Also:
-    maestro ui                       # visual workflow builder (create/edit workflows)
-    maestro validate workflows/…     # lint a workflow
-    maestro status my-feature        # step table for a run
+    /maestro my-feature              # runs workflows/sdlc-main.yaml, resumable
+                                     # (scaffolds .maestro/my-feature/requirement/
+                                     #  on first run and asks you to fill it)
+
+  Design workflows visually: open ui/builder.html in a browser.
+  Lint one by hand:          python3 engine/maestroctl.py validate <file>
 EOF

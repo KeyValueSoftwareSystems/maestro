@@ -16,6 +16,23 @@ plain / single- / double-quoted scalars, `|` and `|-` block literals, comments. 
 tags, multi-document files and folded scalars (`>`) are **not** supported. The builder UI emits
 only this subset.
 
+## Minimal authoring
+
+Only `nodes:` is required. Everything else has a sensible default:
+
+- `version:` defaults to 1 · `name:` optional · `start:` defaults to the **first node**
+- a node with no `type:` is an **agent**
+- a node with no `next:`/`routes:` implicitly ends the workflow (`next: end`)
+- `slug` is always available as an input; other inputs only need declaring when used
+
+The smallest valid workflow:
+
+```yaml
+nodes:
+  - id: review
+    instruction: Review the changes and summarize what you find.
+```
+
 ## Top level
 
 ```yaml
@@ -49,7 +66,7 @@ Pure string substitution — no templating engine, no filters, no expressions. F
 | `${inputs.<name>}` | workflow input value |
 | `${steps.<id>.outputs.<field>}` | recorded output of a completed step |
 | `${steps.<id>.branches.<key>.outputs.<field>}` | a parallel-branch result |
-| `${config.<dot.path>}` | value from `maestro.config.yaml` |
+| `${config.<dot.path>}` | value from an optional `maestro.config.yaml` at the repo root (advanced; nothing ships or requires one) |
 
 An unresolvable placeholder is a hard error (validation error when statically checkable,
 runtime error otherwise). Inside a parallel branch, `${steps.<id>…}` resolves branch-local step

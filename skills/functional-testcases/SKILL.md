@@ -24,9 +24,8 @@ later automates. Write cases only; never edit app code.
 - `contract_path` — `.maestro/<slug>/openapi.yaml`.
 - `acceptance_path` — `.maestro/<slug>/acceptance-criteria.md` (and/or the `acceptance_criteria`
   text passed by the caller).
-- **Artifact path** — resolve it yourself from `maestro.config.yaml` → `artifacts.test_cases`
-  with `<slug>` = `feature_slug`, i.e. `.maestro/<slug>/test-cases.md`. The caller passes no
-  output path; this skill owns where it writes.
+- **Artifact path** — you write `.maestro/<slug>/test-cases.md`, with `<slug>` =
+  `feature_slug`. The caller passes no output path; this skill owns where it writes.
 
 ## Steps
 1. **Read** the acceptance criteria, HLD, and contract. List every acceptance criterion and

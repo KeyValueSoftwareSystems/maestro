@@ -51,9 +51,9 @@ standalone `/backend-impl` run with no design phase).
 - Concurrency-sensitive writes (add a locking/versioning task).
 
 ## External skill (provision — planner)
-Read `maestro.config.yaml` → `external_skills.tasks` (default `writing-plans`, from the
-Superpowers pack, or `none`). If set, use it to produce bite-sized, verifiable tasks — each task must still
-carry files + test + standards + risk as above. If `none`, plan in-pack.
+If the `writing-plans` skill (from the Superpowers pack) is installed, use it to produce
+bite-sized, verifiable tasks — each task must still carry files + test + standards + risk as
+above. If it is not installed, plan in-pack.
 
 ## Output
 **Author it in one shot, then refine once** — compose the whole tasks.json (manifest, all
@@ -61,8 +61,8 @@ carry files + test + standards + risk as above. If `none`, plan in-pack.
 Validate once; if it fails, make one corrective edit and re-validate (repeat only to fix
 validation errors, never to build the file up incrementally).
 
-Write the DAG to `.maestro/<slug>/backend/tasks.json` (resolve the path from
-`maestro.config.yaml` → `artifacts.tasks_backend`; `<slug>` = `feature_slug`) conforming to
+Write the DAG to `.maestro/<slug>/backend/tasks.json` (`<slug>` = `feature_slug`; this
+skill owns where it writes — the caller passes no path) conforming to
 `engine/schemas/tasks.schema.json` (same shape `/backend-design` emits): `context_manifest`
 (batched-read files), `tasks[]` (`id`, `group_id`, `title`, `depends_on` intra-group only,
 `reads`, `writes`, `test`, `standards`, `needs_human_gate`), and `slices[]` (one per

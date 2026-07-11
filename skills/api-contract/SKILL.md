@@ -22,10 +22,9 @@ contract + acceptance criteria only; no app code.
 ## Inputs
 - `feature`, `feature_slug`, optional `hld_path`.
 - `backend_lld`, `frontend_lld` — the two per-stack LLD paths.
-- **Artifact paths** — resolve from `maestro.config.yaml` → `artifacts.contract` and
-  `artifacts.acceptance` with `<slug>` = `feature_slug` (`.maestro/<slug>/openapi.yaml`,
-  `.maestro/<slug>/acceptance-criteria.md`). The caller passes no paths; this skill owns
-  where it writes.
+- **Artifact paths** — you write `.maestro/<slug>/openapi.yaml` and
+  `.maestro/<slug>/acceptance-criteria.md`, with `<slug>` = `feature_slug`. The caller
+  passes no paths; this skill owns where it writes.
 
 ## Steps
 1. **Read** both LLDs, any existing `.maestro/<slug>/openapi.yaml`, and the acceptance intent in the HLD.
@@ -57,9 +56,8 @@ contract + acceptance criteria only; no app code.
 - A field the frontend needs but the backend LLD doesn't expose (or vice-versa) — resolve, don't paper over.
 
 ## External skill (provision — research)
-Read `maestro.config.yaml` → `external_skills.research` (a skill name, e.g. `deep-research`, or
-`none`). If set, use it to research a protocol/standard the contract must follow. If `none`,
-work from the LLDs.
+If a suitable deep-research skill is installed you may delegate to it to research a
+protocol/standard the contract must follow. Otherwise work from the LLDs.
 
 ## Output — write these artifacts
 - `.maestro/<slug>/openapi.yaml` — the contract (source of truth).

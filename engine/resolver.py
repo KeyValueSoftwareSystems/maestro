@@ -37,6 +37,20 @@ DEFAULT_MAX_VISITS = 10
 DEFAULT_SCRIPT_TIMEOUT = 300
 RESERVED_TARGETS = ("end", "abort")
 
+
+def ntype(node):
+    """Node type with the minimal-authoring default: no `type:` means agent."""
+    return node.get("type", "agent")
+
+
+def wf_start(workflow):
+    """`start:` is optional — default to the first node."""
+    start = workflow.get("start")
+    if start:
+        return start
+    nodes = workflow.get("nodes") or []
+    return nodes[0]["id"] if nodes else None
+
 _PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
 
 
@@ -100,7 +114,7 @@ class Run:
         info = self.state["workflow"]
         workflow = self.load_workflow(info["file"], info.get("sha256"))
         return Frame(
-            "main", "", workflow, _nodes_by_id(workflow["nodes"]), workflow["start"],
+            "main", "", workflow, _nodes_by_id(workflow["nodes"]), wf_start(workflow),
             self.state["inputs"],
         )
 
@@ -112,7 +126,7 @@ class Run:
             m = re.match(r"^([a-z0-9_-]+)\[([a-z0-9_-]+)\]$", seg)
             if m:  # parallel branch segment
                 node = frame.nodes.get(m.group(1))
-                if not node or node.get("type") != "parallel":
+                if not node or ntype(node) != "parallel":
                     raise RunError(f"bad path {path!r}: {seg!r} is not a parallel node")
                 branch = _find_branch(node, m.group(2))
                 frame = Frame(
@@ -122,7 +136,7 @@ class Run:
                 )
             else:  # subworkflow segment
                 node = frame.nodes.get(seg)
-                if not node or node.get("type") != "subworkflow":
+                if not node or ntype(node) != "subworkflow":
                     raise RunError(f"bad path {path!r}: {seg!r} is not a subworkflow node")
                 frame = self._sub_frame(frame, node)
         return frame
@@ -134,7 +148,7 @@ class Run:
             raise RunError(f"subworkflow {path!r} was never entered")
         child = self.load_workflow(info["workflow"], info.get("sha256"))
         return Frame(
-            "sub", path + "/", child, _nodes_by_id(child["nodes"]), child["start"],
+            "sub", path + "/", child, _nodes_by_id(child["nodes"]), wf_start(child),
             info.get("inputs", {}), parent=parent, parent_node=node,
         )
 
@@ -316,7 +330,7 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
     data = statemod.new_state(slug, workflow_file, digest, resolved)
     run = Run(slug, root, state_data=data)
     frame = run.main_frame()
-    _enter(run, frame, workflow["start"])
+    _enter(run, frame, wf_start(workflow))
     statemod.save(slug, data, root)
     return data, True
 
@@ -371,7 +385,7 @@ def _enter(run, frame, node_id, via_gate=False):
 def _enter_inner(run, frame, node):
     path = frame.path(node["id"])
     entry = statemod.step_entry(run.state, path)
-    kind = node.get("type")
+    kind = ntype(node)
     if kind == "parallel":
         entry["status"] = "running"
         entry["branches"] = {b["id"]: {"status": "running"} for b in node["branches"]}
@@ -487,13 +501,16 @@ def _default_target(node):
     for route in reversed(routes):
         if "when" not in route or route.get("when") in (None, ""):
             return route["to"]
-    return None
+    return None if routes else "end"  # no routing at all = implicit end
 
 
 def _route_target(run, frame, node):
     if node.get("next"):
         return node["next"]
-    for route in node.get("routes") or []:
+    routes = node.get("routes") or []
+    if not routes:
+        return "end"  # minimal authoring: omitted routing ends the workflow (or branch)
+    for route in routes:
         cond = route.get("when")
         if cond in (None, ""):
             return route["to"]
@@ -654,14 +671,14 @@ def next_action(run, serial=False):
         entry = statemod.step_entry(run.state, path)
         if entry.get("pending_ask"):
             gates.append(_synth_gate_action(run, path, node, entry))
-        elif node.get("type") == "gate":
+        elif ntype(node) == "gate":
             gates.append(_gate_action(run, frame, node, path))
-        elif node.get("type") == "script":
+        elif ntype(node) == "script":
             scripts.append(_script_action(run, frame, node, path))
-        elif node.get("type") == "agent":
+        elif ntype(node) == "agent":
             agents.append(_agent_action(run, frame, node, path))
         else:
-            raise RunError(f"unexpected {node.get('type')} node in cursors: {path}")
+            raise RunError(f"unexpected {ntype(node)} node in cursors: {path}")
 
     if scripts:
         return scripts[0]
@@ -818,7 +835,7 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None):
     entry = statemod.step_entry(run.state, path)
     if entry.get("pending_ask"):
         raise RunError(f"step {path!r} is waiting on a gate decision, not completion", code=4)
-    kind = node.get("type")
+    kind = ntype(node)
     if kind == "script":
         return _complete_script(run, frame, node, path, entry, exit_code, stdout)
     if kind != "agent":
@@ -880,7 +897,7 @@ def fail_step(run, path, reason):
 
 def _register_failure(run, frame, node, path, entry, reason):
     entry["attempts"] = entry.get("attempts", 0) + 1
-    retries = node.get("retries", 1 if node.get("type") == "agent" else 0)
+    retries = node.get("retries", 1 if ntype(node) == "agent" else 0)
     entry["reason"] = reason
     if entry["attempts"] <= retries:
         entry["status"] = "pending"  # stays in cursors; next re-serves it
@@ -902,7 +919,7 @@ def record_gate(run, path, option_id, input_text=None):
     })
     if ask:
         return _record_synth_gate(run, frame, node, path, entry, ask, option_id)
-    if node.get("type") != "gate":
+    if ntype(node) != "gate":
         raise RunError(f"step {path!r} is not a gate", code=4)
     option = next((o for o in node["options"] if o["id"] == option_id), None)
     if option is None:
@@ -925,7 +942,7 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
         if option_id == "retry":
             entry.pop("pending_ask", None)
             entry["attempts"] = 0
-            if node.get("type") in ("subworkflow", "parallel"):
+            if ntype(node) in ("subworkflow", "parallel"):
                 # container nodes re-run from scratch: wipe nested state and re-enter
                 _drop_cursor(run, path)
                 for key in list(run.state["steps"]):

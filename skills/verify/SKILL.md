@@ -23,8 +23,8 @@ proof artifacts below).
 
 ## Checks to run
 **Backend proof:** lint · typecheck · unit tests · integration tests · migration check
-(if applicable) · API contract (provider-side) validation · coverage vs
-`maestro.config.yaml` → `gates.coverage_threshold`.
+(if applicable) · API contract (provider-side) validation · coverage vs the
+coverage bar: **80% on changed code**.
 **Frontend proof:** lint · typecheck · unit/component tests · build ·
 Storybook/component check (if available) · Playwright E2E · accessibility basics.
 
@@ -33,7 +33,7 @@ Storybook/component check (if available) · Playwright E2E · accessibility basi
   summary + suspected root cause · next recommended action.
 
 ## Proof artifacts (this is what makes "done" checkable, not just claimed)
-Also WRITE (under `maestro.config.yaml` → `artifacts.work_dir`, `<slug>` = `feature_slug`):
+Also WRITE (under the feature work dir `.maestro/<slug>/`, `<slug>` = `feature_slug`):
 - `.maestro/<slug>/<stack>/verify.md` — the human-readable report above.
 - `.maestro/<slug>/<stack>/last-verify.json` — the marker, e.g.
   `{"status":"pass|fail","date":"<YYYY-MM-DD>","stack":"backend|frontend","checks":[{"cmd":"…","result":"pass|fail"}]}`.

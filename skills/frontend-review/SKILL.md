@@ -49,8 +49,9 @@ never edit code.
 - Large list rendered without virtualization; unbounded re-renders.
 
 ## External skill (provision — review method)
-Read `maestro.config.yaml` → `external_skills.review` (default `requesting-code-review`, from the
-Superpowers pack, or `none`). If set, apply its discipline first; it must not narrow the checklist above.
+If the `requesting-code-review` skill (from the Superpowers pack) is installed, apply its
+discipline first; it must not narrow the checklist above. If it is not installed, review
+inline per the checklist.
 
 ## Findings format (what the review returns — evidence mandatory)
 ```
@@ -67,9 +68,9 @@ blocking: <true if any blocker/major remains>
 
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
-Write the report to the `artifacts.frontend_review` path from `maestro.config.yaml`
-(`.maestro/<slug>/frontend/reviews/summary.md`). A blocking result routes back to the frontend
-implementer — the engine's visit cap (`fix_loop.max_attempts`) bounds that loop, not you.
+Write the report to `.maestro/<slug>/frontend/reviews/summary.md` — this skill owns where
+it writes. A blocking result routes back to the frontend
+implementer — the engine's visit cap (`max_visits`, typically 3) bounds that loop, not you.
 
 ## Output contract
 Return `review_path` and `blocking`.

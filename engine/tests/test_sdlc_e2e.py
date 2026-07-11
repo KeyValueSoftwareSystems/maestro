@@ -60,7 +60,6 @@ class SdlcE2E(unittest.TestCase):
         shutil.copytree(os.path.join(REPO, "workflows"), os.path.join(self.tmp, "workflows"))
         shutil.copytree(os.path.join(REPO, "engine"), os.path.join(self.tmp, "engine"),
                         ignore=shutil.ignore_patterns("tests", "__pycache__"))
-        shutil.copy(os.path.join(REPO, "maestro.config.yaml"), self.tmp)
         req = os.path.join(self.tmp, ".maestro", "demo", "requirement")
         os.makedirs(req)
         with open(os.path.join(req, "requirement.md"), "w") as fh:

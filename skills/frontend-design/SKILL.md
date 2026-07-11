@@ -19,9 +19,8 @@ code — never edit app code. Prefer reuse over reinvention; cite `file:line` fo
 
 ## Inputs
 - `feature`, `feature_slug`, approved `hld_path`.
-- **Artifact path** — resolve it yourself from `maestro.config.yaml` → `artifacts.lld_frontend`
-  with `<slug>` = `feature_slug`, i.e. `.maestro/<slug>/lld/frontend.md`. The caller passes
-  no path; this skill owns where it writes.
+- **Artifact path** — you write `.maestro/<slug>/lld/frontend.md`, with `<slug>` =
+  `feature_slug`. The caller passes no path; this skill owns where it writes.
 
 ## Steps
 1. **Ground in the code (read-only).** Locate the app(s)/routes this feature touches and read
@@ -61,12 +60,12 @@ resilience · test plan.
 - Bundle-size-sensitive routes; areas with no tests; heavy/legacy components.
 
 ## External skill (provision — research)
-Read `maestro.config.yaml` → `external_skills.research` (a skill name, e.g. `deep-research`, or
-`none`). If set, use it to research unfamiliar libraries or patterns — it must return sourced
-findings you can cite in the LLD. If `none`, design from the code + HLD.
+If a suitable deep-research skill is installed you may delegate to it to research unfamiliar
+libraries or patterns — it must return sourced findings you can cite in the LLD. Otherwise
+design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
-Write `.maestro/<slug>/frontend/tasks.json` (`artifacts.tasks_frontend`) conforming to
+Write `.maestro/<slug>/frontend/tasks.json` conforming to
 `engine/schemas/tasks.schema.json`. Build it
 from the LLD you just wrote, reusing files you already read (do not re-read the codebase).
 

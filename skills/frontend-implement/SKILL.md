@@ -18,21 +18,20 @@ never invent API shapes. Start only after the contract is stable.
 ## Before editing
 1. Read `CLAUDE.md`, the frontend LLD (`.maestro/<slug>/lld/frontend.md`) — reuse the
    components/patterns it identified before adding new ones — and the contract
-   (paths resolve from `maestro.config.yaml` → `artifacts.lld_frontend` / `artifacts.contract`).
+   (`.maestro/<slug>/openapi.yaml`), with `<slug>` = `feature_slug`.
 2. List pages affected, components to reuse/add, API hooks, form schema/validation,
    analytics, and tests. List files to change.
 
 ## Slice fan-out (owned by this skill)
-This skill owns fanning the task DAG (`artifacts.tasks_frontend`,
-`.maestro/<slug>/frontend/tasks.json`) out into slices — no orchestrator passes slices or
-worktrees in.
+This skill owns fanning the task DAG (`.maestro/<slug>/frontend/tasks.json`) out into
+slices — no orchestrator passes slices or worktrees in.
 
 1. **Validate first** — run `python3 engine/validate_tasks.py .maestro/<slug>/frontend/tasks.json`;
    it must print `OK`. Never build from an invalid tasks.json — fix or regenerate it first.
 2. **With the Task tool** (where the harness provides it): spawn one implementer subagent per
    independent slice (`slices[]` group), **at most 3 concurrent**. Each subagent works in its
    own git worktree on branch `maestro/<slug>/frontend-<group_id>` — delegate worktree hygiene
-   to `maestro.config.yaml` → `external_skills.worktrees` when installed. Each subagent gets
+   to the `using-git-worktrees` skill when installed. Each subagent gets
    its slice's tasks + the context manifest and follows the per-slice discipline below. When
    all slices are green, **merge the slice branches into the feature branch** and resolve any
    conflicts (disjoint `writes` across groups should make these rare).
@@ -108,9 +107,9 @@ retry / failed operation.
 - Large lists (virtualization); pagination first/last/empty; unstable ordering.
 
 ## External skill (provision — the TDD engine)
-Read `maestro.config.yaml` → `external_skills.tdd` (a skill name or `none`). If set, drive
-component work test-first; the tests must still cover the UI states and edge cases above. If
-`none`, implement then test to that bar. Run the accessibility pass yourself either way — it
+If the `test-driven-development` skill (from the Superpowers pack) is installed, use it to
+drive component work test-first; the tests must still cover the UI states and edge cases above.
+If it is not installed, implement then test to that bar. Run the accessibility pass yourself either way — it
 must cover keyboard, focus, roles/labels, and contrast (axe/WCAG-AA).
 
 ## Safety
@@ -120,8 +119,8 @@ backstop.
 
 ## Verification
 Invoke `/verify` (lint, typecheck, unit/component, build, Playwright E2E, a11y basics). On
-failure invoke `/fix` (one attempt per invocation, bounded overall by
-`maestro.config.yaml` → `fix_loop.max_attempts`).
+failure invoke `/fix` (one attempt per invocation — the workflow's `max_visits` on the fix
+node, typically 3, bounds the overall loop).
 
 ## Definition of done
 All required UI states built and tested; every slice merged; standards addressed; edge cases

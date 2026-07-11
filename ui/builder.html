@@ -213,7 +213,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 <div id="app">
   <div id="toolbar">
     <span class="logo">Maestro <b>Builder</b></span>
-    <button class="tb" id="btn-new" title="Templates / new workflow">✚ New</button>
+    <button class="tb" id="btn-new" title="Start a fresh workflow">✚ New</button>
     <button class="tb" id="btn-open" title="Open a workflow.yaml (⌘O)">Open</button>
     <button class="tb" id="btn-paste" title="Paste YAML">Paste</button>
     <span class="tb-sep"></span>
@@ -247,7 +247,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   </div>
 
   <div id="canvas-wrap">
-    <div id="empty-state"><div class="big">Empty workflow</div><div>Drag a node from the palette, or press ✚ New for a template.</div></div>
+    <div id="empty-state"><div class="big">Empty workflow</div><div>Drag a node from the palette to start — or Open / Paste an existing workflow.yaml.</div></div>
     <div id="viewport">
       <svg id="edges"></svg>
       <div id="nodes-layer"></div>
@@ -258,18 +258,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
   <div id="inspector"></div>
 </div>
-
-<div class="modal-bg" id="m-templates"><div class="modal">
-  <div class="mh">Start a workflow <button class="x" data-close="m-templates">✕</button></div>
-  <div class="mb">
-    <div class="tpl-grid" id="tpl-grid"></div>
-    <div class="or-row">or</div>
-    <div style="display:flex; gap:8px; justify-content:center">
-      <button class="tb" id="tpl-open">Open a .yaml file…</button>
-      <button class="tb" id="tpl-paste">Paste YAML…</button>
-    </div>
-  </div>
-</div></div>
 
 <div class="modal-bg" id="m-export"><div class="modal">
   <div class="mh">Export workflow.yaml <button class="x" data-close="m-export">✕</button></div>
@@ -312,22 +300,42 @@ button, input, select, textarea { font: inherit; color: inherit; }
   "$id": "maestro/workflow.schema.json",
   "title": "Maestro workflow v1",
   "type": "object",
-  "required": ["version", "name", "start", "nodes"],
+  "required": [
+    "nodes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "version": {"const": 1},
-    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-    "description": {"type": "string"},
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "description": {
+      "type": "string"
+    },
     "inputs": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "type": {"enum": ["string", "number", "boolean", "list"]},
-          "required": {"type": "boolean"},
+          "type": {
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "list"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
           "default": {},
-          "description": {"type": "string"}
+          "description": {
+            "type": "string"
+          }
         }
       }
     },
@@ -335,181 +343,484 @@ button, input, select, textarea { font: inherit; color: inherit; }
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "model": {"type": "string"},
-        "agent": {"type": "string"},
-        "max_visits": {"type": "integer", "minimum": 1}
+        "model": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "start": {"type": "string"},
-    "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/node"}},
-    "outputs": {"type": "object", "additionalProperties": {"type": "string"}},
-    "ui": {"type": "object"}
+    "start": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/node"
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "ui": {
+      "type": "object"
+    }
   },
   "definitions": {
-    "nodeId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
-    "routeTarget": {"type": "string", "pattern": "^[a-z0-9_-]+|end|abort$"},
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "routeTarget": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+|end|abort$"
+    },
     "route": {
       "type": "object",
-      "required": ["to"],
+      "required": [
+        "to"
+      ],
       "additionalProperties": false,
       "properties": {
-        "when": {"type": "string"},
-        "to": {"$ref": "#/definitions/routeTarget"}
+        "when": {
+          "type": "string"
+        },
+        "to": {
+          "$ref": "#/definitions/routeTarget"
+        }
       }
     },
-    "failTarget": {"type": "string", "description": "node id, or the keywords abort | ask"},
+    "failTarget": {
+      "type": "string",
+      "description": "node id, or the keywords abort | ask"
+    },
     "routingProps": {
-      "next": {"$ref": "#/definitions/routeTarget"},
-      "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-      "on_fail": {"$ref": "#/definitions/failTarget"},
-      "max_visits": {"type": "integer", "minimum": 1},
-      "on_exhausted": {"$ref": "#/definitions/failTarget"}
+      "next": {
+        "$ref": "#/definitions/routeTarget"
+      },
+      "routes": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/definitions/route"
+        }
+      },
+      "on_fail": {
+        "$ref": "#/definitions/failTarget"
+      },
+      "max_visits": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "on_exhausted": {
+        "$ref": "#/definitions/failTarget"
+      }
     },
     "node": {
       "oneOf": [
-        {"$ref": "#/definitions/agentNode"},
-        {"$ref": "#/definitions/gateNode"},
-        {"$ref": "#/definitions/scriptNode"},
-        {"$ref": "#/definitions/parallelNode"},
-        {"$ref": "#/definitions/subworkflowNode"}
+        {
+          "$ref": "#/definitions/agentNode"
+        },
+        {
+          "$ref": "#/definitions/gateNode"
+        },
+        {
+          "$ref": "#/definitions/scriptNode"
+        },
+        {
+          "$ref": "#/definitions/parallelNode"
+        },
+        {
+          "$ref": "#/definitions/subworkflowNode"
+        }
       ]
     },
     "branchNode": {
       "oneOf": [
-        {"$ref": "#/definitions/agentNode"},
-        {"$ref": "#/definitions/gateNode"},
-        {"$ref": "#/definitions/scriptNode"},
-        {"$ref": "#/definitions/subworkflowNode"}
+        {
+          "$ref": "#/definitions/agentNode"
+        },
+        {
+          "$ref": "#/definitions/gateNode"
+        },
+        {
+          "$ref": "#/definitions/scriptNode"
+        },
+        {
+          "$ref": "#/definitions/subworkflowNode"
+        }
       ]
     },
     "agentNode": {
       "type": "object",
-      "required": ["id", "type", "instruction"],
+      "required": [
+        "id",
+        "instruction"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "agent"},
-        "label": {"type": "string"},
-        "instruction": {"type": "string", "minLength": 1},
-        "skill": {"type": "string"},
-        "agent": {"type": "string"},
-        "model": {"type": "string"},
-        "inputs": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
-        "outputs": {"type": "array", "items": {"type": "string"}},
-        "artifact": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
-        "retries": {"type": "integer", "minimum": 0},
-        "isolate": {"enum": ["worktree"]},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "agent"
+        },
+        "label": {
+          "type": "string"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "skill": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artifact": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "isolate": {
+          "enum": [
+            "worktree"
+          ]
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "gateNode": {
       "type": "object",
-      "required": ["id", "type", "prompt", "options"],
+      "required": [
+        "id",
+        "type",
+        "prompt",
+        "options"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "gate"},
-        "label": {"type": "string"},
-        "prompt": {"type": "string", "minLength": 1},
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "gate"
+        },
+        "label": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
         "options": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["id", "label", "to"],
+            "required": [
+              "id",
+              "label",
+              "to"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"type": "string"},
-              "label": {"type": "string"},
-              "to": {"$ref": "#/definitions/routeTarget"},
-              "input": {"type": "string"}
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "to": {
+                "$ref": "#/definitions/routeTarget"
+              },
+              "input": {
+                "type": "string"
+              }
             }
           }
         },
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "scriptNode": {
       "type": "object",
-      "required": ["id", "type", "run"],
+      "required": [
+        "id",
+        "type",
+        "run"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "script"},
-        "label": {"type": "string"},
-        "run": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "timeout": {"type": "integer", "minimum": 1},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "script"
+        },
+        "label": {
+          "type": "string"
+        },
+        "run": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "parallelNode": {
       "type": "object",
-      "required": ["id", "type", "branches"],
+      "required": [
+        "id",
+        "type",
+        "branches"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "parallel"},
-        "label": {"type": "string"},
-        "join": {"enum": ["all", "any"]},
-        "on_branch_fail": {"enum": ["fail_all", "continue", "ask"]},
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "parallel"
+        },
+        "label": {
+          "type": "string"
+        },
+        "join": {
+          "enum": [
+            "all",
+            "any"
+          ]
+        },
+        "on_branch_fail": {
+          "enum": [
+            "fail_all",
+            "continue",
+            "ask"
+          ]
+        },
         "branches": {
           "type": "array",
           "minItems": 2,
           "items": {
             "type": "object",
-            "required": ["id", "start", "steps"],
+            "required": [
+              "id",
+              "start",
+              "steps"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"$ref": "#/definitions/nodeId"},
-              "start": {"type": "string"},
-              "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/branchNode"}},
-              "ui": {"type": "object"}
+              "id": {
+                "$ref": "#/definitions/nodeId"
+              },
+              "start": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/definitions/branchNode"
+                }
+              },
+              "ui": {
+                "type": "object"
+              }
             }
           }
         },
-        "isolate": {"enum": ["worktree"]},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "isolate": {
+          "enum": [
+            "worktree"
+          ]
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "subworkflowNode": {
       "type": "object",
-      "required": ["id", "type", "workflow"],
+      "required": [
+        "id",
+        "type",
+        "workflow"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "subworkflow"},
-        "label": {"type": "string"},
-        "workflow": {"type": "string"},
-        "inputs": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "subworkflow"
+        },
+        "label": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     }
-  }
+  },
+  "description": "Minimal authoring: version defaults to 1, start to the first node, node type to agent, omitted routing to next: end."
 }</script>
-<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "no-routing", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction"]</script>
-<script type="application/json" id="wf-templates">{"sdlc-main": {"label": "Full SDLC pipeline", "desc": "Requirement to release: design, review gates, parallel per-stack implementation, QA, release pack.", "tags": ["design", "implement", "qa", "release"], "yaml": "# The full KeyValue AI-SDLC pipeline \u2014 the default workflow behind `/maestro <slug>`.\n#\n#   design (sub-wf) -> architecture review -> [gates] -> parallel per-stack impl\n#   (impl.yaml per branch) -> merge (stub) -> qa (sub-wf) -> review pack -> release\n#   gate -> archive (stub)\n#\n# Every producing step writes an artifact under .maestro/<slug>/ and the engine gates\n# on it (\"proof, not promises\"). Human gates own every irreversible decision; their\n# revise options are back-edges that cascade-reset everything downstream.\nversion: 1\nname: sdlc-main\ndescription: Full feature pipeline \u2014 requirement to release-ready review pack.\ninputs:\n  slug: {type: string, required: true, description: kebab-case feature id}\n  feature: {type: string, default: \"${inputs.slug}\", description: one-line feature summary}\ndefaults:\n  model: haiku\n  agent: general\n  max_visits: 10\nstart: design\nnodes:\n  - id: design\n    type: subworkflow\n    label: Design phase\n    workflow: workflows/design.yaml\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    max_visits: 4\n    next: arch_review\n\n  - id: arch_review\n    type: agent\n    label: Architecture review\n    instruction: |\n      Review the full design set for this feature (HLD, both LLDs, contract, test\n      cases under .maestro/${inputs.slug}/) for soundness, consistency and risk.\n      Findings need evidence; set blocking=true only for must-fix issues.\n    skill: architecture-review\n    agent: reviewer\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [review_path, blocking, summary]\n    artifact: \".maestro/${inputs.slug}/reviews/architecture.md\"\n    max_visits: 4\n    routes:\n      - {when: \"${steps.arch_review.outputs.blocking} == true\", to: arch_gate}\n      - {to: contract_approval}\n\n  - id: arch_gate\n    type: gate\n    label: Blocking architecture findings\n    prompt: |\n      Architecture review found BLOCKING issues:\n      ${steps.arch_review.outputs.summary}\n      Full review: ${steps.arch_review.outputs.review_path}\n    options:\n      - {id: revise, label: Revise the design (regenerates design phase), to: design, input: feedback}\n      - {id: waive, label: Waive \u2014 proceed anyway, to: contract_approval}\n      - {id: reject, label: Abort the run, to: abort}\n\n  - id: contract_approval\n    type: gate\n    label: Contract approval\n    prompt: |\n      Design approved for implementation?\n      Design: ${steps.design.outputs.hld_summary}\n      Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})\n      Architecture review: ${steps.arch_review.outputs.summary}\n    options:\n      - {id: approve, label: Approve \u2014 start implementation, to: implement}\n      - {id: revise, label: Request design revisions, to: design, input: feedback}\n      - {id: reject, label: Reject \u2014 abort, to: abort}\n\n  - id: implement\n    type: parallel\n    label: Implementation\n    join: all\n    on_branch_fail: ask\n    branches:\n      - id: backend\n        start: impl\n        steps:\n          - id: impl\n            type: subworkflow\n            workflow: workflows/impl.yaml\n            inputs: {slug: \"${inputs.slug}\", stack: backend, feature: \"${inputs.feature}\"}\n            next: end\n      - id: frontend\n        start: impl\n        steps:\n          - id: impl\n            type: subworkflow\n            workflow: workflows/impl.yaml\n            inputs: {slug: \"${inputs.slug}\", stack: frontend, feature: \"${inputs.feature}\"}\n            next: end\n    next: merge_for_test\n\n  - id: merge_for_test\n    type: script\n    label: Merge for test (stub)\n    # POC stub \u2014 wire to your real merge/stack-up command. Branches:\n    #   ${steps.implement.branches.backend.outputs.branch}\n    #   ${steps.implement.branches.frontend.outputs.branch}\n    run: [bash, -c, \"echo 'merge stub: wire your merge + stack-up here'; exit 0\"]\n    on_fail: ask\n    next: qa\n\n  - id: qa\n    type: subworkflow\n    label: QA phase\n    workflow: workflows/qa.yaml\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    max_visits: 3\n    next: review_pack\n\n  - id: review_pack\n    type: agent\n    label: Human review pack\n    instruction: |\n      Assemble the release review pack for this feature: what was built (per stack),\n      review outcomes, QA results, open risks, and how to verify locally. Digest the\n      artifacts under .maestro/${inputs.slug}/ \u2014 the pack is what the human reads at\n      the release gate.\n    skill: human-review-pack\n    agent: analyst\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [pack_path, summary]\n    artifact: \".maestro/${inputs.slug}/review-pack.md\"\n    next: release_approval\n\n  - id: release_approval\n    type: gate\n    label: Release approval\n    prompt: |\n      Ready to release?\n      ${steps.review_pack.outputs.summary}\n      Review pack: ${steps.review_pack.outputs.pack_path}\n      QA: ${steps.qa.outputs.qa_summary}\n    options:\n      - {id: approve, label: Approve \u2014 archive and finish, to: archive}\n      - {id: revise, label: Send back to design, to: design, input: feedback}\n      - {id: reject, label: Reject \u2014 abort, to: abort}\n\n  - id: archive\n    type: script\n    label: Archive (stub)\n    # POC stub \u2014 reserved for publishing curated docs from .maestro/<slug>/ into\n    # committed docs/technical|functional/.\n    run: [bash, -c, \"echo 'archive stub: publish .maestro/${inputs.slug}/ docs here'; exit 0\"]\n    next: end\n\noutputs:\n  hld: \"${steps.design.outputs.hld_path}\"\n  contract: \"${steps.design.outputs.contract_path}\"\n  review_pack: \"${steps.review_pack.outputs.pack_path}\"\n  backend_branch: \"${steps.implement.branches.backend.outputs.branch}\"\n  frontend_branch: \"${steps.implement.branches.frontend.outputs.branch}\"\n"}, "design": {"label": "Design only", "desc": "HLD with an open-questions loop, approval gate, parallel LLDs, API contract, test cases.", "tags": ["hld", "lld", "contract"], "yaml": "# Design phase: requirement -> HLD -> open-questions loop -> approval -> parallel LLDs\n# -> API contract -> functional test cases.\n#\n# Showcases: script routing on stdout JSON (oq_serve), a human-in-the-loop cycle built\n# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets all\n# downstream design artifacts, and a parallel fork.\nversion: 1\nname: design\ndescription: Design a feature end-to-end, from requirement folder to reviewed design artifacts.\ninputs:\n  slug: {type: string, required: true, description: kebab-case feature id}\n  feature: {type: string, default: \"${inputs.slug}\", description: one-line feature summary}\ndefaults:\n  model: haiku\n  agent: planner\n  max_visits: 10\nstart: assert_requirement\nnodes:\n  - id: assert_requirement\n    type: script\n    label: Requirement present?\n    run: [bash, -c, \"find .maestro/${inputs.slug}/requirement -type f -size +1c 2>/dev/null | grep -q .\"]\n    on_fail: abort\n    next: author_hld\n\n  - id: author_hld\n    type: agent\n    label: Author HLD\n    instruction: |\n      Write the high-level design for this feature. Read EVERY file in the requirement\n      folder as the requirement. Surface unresolved product/technical decisions as open\n      questions: write them to BOTH the HLD's \"Open questions\" section AND\n      .maestro/${inputs.slug}/open-questions.json (schema\n      engine/schemas/open-questions.schema.json). Do not ask the user anything directly.\n      If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback}\n    skill: plan\n    inputs:\n      feature: \"${inputs.feature}\"\n      slug: \"${inputs.slug}\"\n      requirement_dir: \".maestro/${inputs.slug}/requirement\"\n    outputs: [hld_summary]\n    artifact: \".maestro/${inputs.slug}/hld.md\"\n    max_visits: 5\n    next: oq_serve\n\n  # ---- open-questions cycle: serve -> ask -> record -> serve (back-edges) ----\n  - id: oq_serve\n    type: script\n    label: Next open question?\n    run: [python3, engine/oq_serve.py, \".maestro/${inputs.slug}/open-questions.json\"]\n    max_visits: 40\n    on_exhausted: hld_approval\n    routes:\n      - {when: \"${steps.oq_serve.outputs.state} == ask\", to: oq_ask}\n      - {when: \"${steps.oq_serve.outputs.state} == refine\", to: refine_hld}\n      - {to: hld_approval}\n\n  - id: oq_ask\n    type: gate\n    label: Open question\n    prompt: |\n      **${steps.oq_serve.outputs.question}**\n\n      Why it matters: ${steps.oq_serve.outputs.why}\n\n      ${steps.oq_serve.outputs.options_md}\n\n      Answer with an option number or free text.\n    max_visits: 40\n    options:\n      - {id: answer, label: Answer it, to: oq_record, input: answer}\n      - {id: you-decide, label: You decide (pick a sensible default), to: oq_record}\n      - {id: skip, label: Skip \u2014 defer to LLD, to: oq_record}\n\n  - id: oq_record\n    type: script\n    label: Record answer\n    run:\n      - python3\n      - engine/oq_record.py\n      - \".maestro/${inputs.slug}/open-questions.json\"\n      - \"${steps.oq_serve.outputs.qid}\"\n      - \"${steps.oq_ask.outputs.choice}\"\n      - \"${steps.oq_ask.outputs.answer}\"\n    max_visits: 40\n    on_fail: abort\n    next: oq_serve\n\n  - id: refine_hld\n    type: agent\n    label: Fold answers into HLD\n    instruction: |\n      Resolved open questions await folding into the HLD. Apply each resolved answer to\n      .maestro/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default\n      and record the choice), then mark those questions status \"folded\" in\n      .maestro/${inputs.slug}/open-questions.json and re-validate it with\n      python3 engine/validate_open_questions.py.\n    skill: plan\n    inputs:\n      slug: \"${inputs.slug}\"\n    outputs: [refined_summary]\n    artifact: \".maestro/${inputs.slug}/hld.md\"\n    max_visits: 20\n    next: oq_serve\n\n  - id: hld_approval\n    type: gate\n    label: HLD approval\n    prompt: |\n      HLD ready at .maestro/${inputs.slug}/hld.md \u2014 ${steps.author_hld.outputs.hld_summary}\n\n      Review the document, then choose.\n    options:\n      - {id: approve, label: Approve \u2014 write the detailed designs, to: author_llds}\n      - {id: revise, label: Request revisions (regenerates everything downstream), to: author_hld, input: feedback}\n      - {id: reject, label: Reject \u2014 abort the run, to: abort}\n\n  - id: author_llds\n    type: parallel\n    label: Detailed designs\n    join: all\n    on_branch_fail: ask\n    branches:\n      - id: backend\n        start: backend_design\n        steps:\n          - id: backend_design\n            type: agent\n            instruction: |\n              Write the backend low-level design from the approved HLD at\n              .maestro/${inputs.slug}/hld.md.\n            skill: backend-design\n            inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n            outputs: [lld_path, contract_notes]\n            artifact: \".maestro/${inputs.slug}/lld/backend.md\"\n            next: end\n      - id: frontend\n        start: frontend_design\n        steps:\n          - id: frontend_design\n            type: agent\n            instruction: |\n              Write the frontend low-level design from the approved HLD at\n              .maestro/${inputs.slug}/hld.md.\n            skill: frontend-design\n            inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n            outputs: [lld_path, contract_notes]\n            artifact: \".maestro/${inputs.slug}/lld/frontend.md\"\n            next: end\n    next: contract\n\n  - id: contract\n    type: agent\n    label: API contract\n    instruction: |\n      Reconcile the backend and frontend LLDs under .maestro/${inputs.slug}/lld/ into a\n      single OpenAPI contract. Flag any mismatch you had to resolve.\n    skill: api-contract\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [contract_summary]\n    artifact: \".maestro/${inputs.slug}/openapi.yaml\"\n    next: test_cases\n\n  - id: test_cases\n    type: agent\n    label: Functional test cases\n    instruction: |\n      Produce the functional test-case catalog for this feature from the HLD, LLDs and\n      contract \u2014 the QA source of truth.\n    skill: functional-testcases\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [test_cases_path, case_count]\n    artifact: \".maestro/${inputs.slug}/test-cases.md\"\n    next: end\n\noutputs:\n  hld_summary: \"${steps.author_hld.outputs.hld_summary}\"\n  contract_summary: \"${steps.contract.outputs.contract_summary}\"\n  hld_path: \".maestro/${inputs.slug}/hld.md\"\n  contract_path: \".maestro/${inputs.slug}/openapi.yaml\"\n  test_cases_path: \".maestro/${inputs.slug}/test-cases.md\"\n"}, "impl": {"label": "Implement + review", "desc": "One stack: task DAG, sliced implementation, code review with a bounded fix loop.", "tags": ["tasks", "code", "fix-loop"], "yaml": "# Implementation phase for ONE stack (invoked per-stack by sdlc-main.yaml's parallel\n# node, or standalone: /maestro <slug> workflows/impl.yaml stack=backend).\n#\n# Showcases: a workflow parameterized by an input (skill names contain placeholders \u2014\n# no dispatch glue needed), engine-validated task DAGs, and a bounded fix cycle built\n# from a back-edge whose cap comes from maestro.config.yaml.\nversion: 1\nname: impl\ndescription: Build one stack from its approved LLD \u2014 task DAG, sliced implementation, review, bounded fix loop.\ninputs:\n  slug: {type: string, required: true}\n  stack: {type: string, required: true, description: backend | frontend}\n  feature: {type: string, default: \"${inputs.slug}\"}\ndefaults:\n  model: haiku\n  agent: implementer\n  max_visits: 10\nstart: tasks\nnodes:\n  - id: tasks\n    type: agent\n    label: Task DAG\n    instruction: |\n      Produce the parallel task DAG for the ${inputs.stack} stack from its LLD at\n      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at\n      .maestro/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group\n      dependencies only and disjoint writes across groups (schema\n      engine/schemas/tasks.schema.json). If a previous validation failed, fix what it\n      reported.\n    skill: backend-tasks\n    agent: planner\n    inputs: {slug: \"${inputs.slug}\", stack: \"${inputs.stack}\"}\n    outputs: [task_count, slice_count]\n    artifact: \".maestro/${inputs.slug}/${inputs.stack}/tasks.json\"\n    max_visits: 3\n    on_exhausted: abort\n    next: validate_tasks\n\n  - id: validate_tasks\n    type: script\n    label: Validate task DAG\n    run: [python3, engine/validate_tasks.py, \".maestro/${inputs.slug}/${inputs.stack}/tasks.json\"]\n    max_visits: 3\n    on_fail: tasks\n    next: implement\n\n  - id: implement\n    type: agent\n    label: Implement slices\n    instruction: |\n      Implement the ${inputs.stack} stack for this feature from\n      .maestro/${inputs.slug}/${inputs.stack}/tasks.json \u2014 every slice, with tests. The\n      skill owns slice fan-out and worktree hygiene. Work against the LLD at\n      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at\n      .maestro/${inputs.slug}/openapi.yaml. Report tests honestly.\n    skill: \"${inputs.stack}-implement\"\n    isolate: worktree\n    inputs:\n      slug: \"${inputs.slug}\"\n      stack: \"${inputs.stack}\"\n      tasks_path: \".maestro/${inputs.slug}/${inputs.stack}/tasks.json\"\n      branch: \"feature/${inputs.slug}-${inputs.stack}\"\n    outputs: [branch, summary, tests_passed]\n    retries: 1\n    max_visits: 3\n    next: contract_check\n\n  - id: contract_check\n    type: script\n    label: Contract check (stub)\n    # POC stub \u2014 wire to your real contract test runner (e.g. schemathesis, dredd)\n    run: [bash, -c, \"echo 'contract check stub: wire your runner here'; exit 0\"]\n    next: review\n\n  - id: review\n    type: agent\n    label: Code review\n    instruction: |\n      Review the ${inputs.stack} implementation on branch\n      ${steps.implement.outputs.branch} against the LLD, contract and standards.\n      Findings need file:line evidence; set blocking=true only for must-fix issues.\n    skill: \"${inputs.stack}-review\"\n    agent: reviewer\n    inputs:\n      slug: \"${inputs.slug}\"\n      branch: \"${steps.implement.outputs.branch}\"\n    outputs: [review_path, blocking, summary]\n    artifact: \".maestro/${inputs.slug}/${inputs.stack}/reviews/summary.md\"\n    max_visits: 5\n    on_exhausted: impl_gate\n    routes:\n      - {when: \"${steps.review.outputs.blocking} == true\", to: fix}\n      - {when: \"${steps.implement.outputs.tests_passed} != true\", to: fix}\n      - {to: end}\n\n  - id: fix\n    type: agent\n    label: Fix findings\n    instruction: |\n      One fix attempt: address the blocking findings in\n      ${steps.review.outputs.review_path} (and any failing tests) on branch\n      ${steps.implement.outputs.branch}. Smallest safe fix; never weaken or delete a\n      failing test. Re-run the failing checks before returning. Do NOT loop \u2014 the\n      workflow re-invokes you if needed.\n    skill: fix-loop\n    inputs:\n      slug: \"${inputs.slug}\"\n      stack: \"${inputs.stack}\"\n      branch: \"${steps.implement.outputs.branch}\"\n    outputs: [fix_summary, checks_passed]\n    max_visits: \"${config.fix_loop.max_attempts}\"\n    on_exhausted: impl_gate\n    next: review\n\n  - id: impl_gate\n    type: gate\n    label: Implementation escalation\n    prompt: |\n      The ${inputs.stack} implementation still has problems after the automated fix\n      rounds. Last review: ${steps.review.outputs.summary}\n      Branch: ${steps.implement.outputs.branch}\n    options:\n      - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}\n      - {id: accept, label: Accept as-is \u2014 I'll handle the rest, to: end}\n      - {id: abandon, label: Abort this stack, to: abort}\n\noutputs:\n  branch: \"${steps.implement.outputs.branch}\"\n  summary: \"${steps.implement.outputs.summary}\"\n  review_path: \"${steps.review.outputs.review_path}\"\n"}, "qa": {"label": "QA", "desc": "Automate and run the functional suite with a fix loop and escalation gate.", "tags": ["e2e", "fix-loop"], "yaml": "# QA phase: author + run the automated functional/E2E suite from the test-case catalog,\n# with a bounded fix cycle and a human escalation gate.\nversion: 1\nname: qa\ndescription: Automate and run the functional test suite; fix loop on failures.\ninputs:\n  slug: {type: string, required: true}\n  feature: {type: string, default: \"${inputs.slug}\"}\ndefaults:\n  model: haiku\n  agent: qa\n  max_visits: 10\nstart: qa_run\nnodes:\n  - id: qa_run\n    type: agent\n    label: Author & run E2E suite\n    instruction: |\n      Automate the functional test-case catalog at .maestro/${inputs.slug}/test-cases.md\n      into an executable E2E suite (framework/tier per maestro.config.yaml `qa:`) and\n      RUN it. Write the run report. Report results honestly \u2014 failures route into the\n      fix loop, they are not your problem to hide.\n    skill: qa-automation\n    inputs: {slug: \"${inputs.slug}\", feature: \"${inputs.feature}\"}\n    outputs: [passed, failed_count, summary]\n    artifact: \".maestro/${inputs.slug}/qa/report.md\"\n    max_visits: 5\n    on_exhausted: qa_gate\n    routes:\n      - {when: \"${steps.qa_run.outputs.passed} == true\", to: end}\n      - {to: qa_fix}\n\n  - id: qa_fix\n    type: agent\n    label: Fix failures\n    instruction: |\n      One fix attempt: diagnose the failures in .maestro/${inputs.slug}/qa/report.md and\n      apply the smallest safe fix (product bug or genuine test bug \u2014 never weaken or\n      delete a legitimate failing assertion). Re-run the failing specs before returning.\n      Do NOT loop \u2014 the workflow re-invokes you if needed.\n    skill: fix-loop\n    agent: implementer\n    inputs: {slug: \"${inputs.slug}\", report: \".maestro/${inputs.slug}/qa/report.md\"}\n    outputs: [fix_summary, checks_passed]\n    max_visits: \"${config.fix_loop.max_attempts}\"\n    on_exhausted: qa_gate\n    next: qa_run\n\n  - id: qa_gate\n    type: gate\n    label: QA escalation\n    prompt: |\n      QA is still failing after the automated fix rounds.\n      Last run: ${steps.qa_run.outputs.summary}\n      Report: .maestro/${inputs.slug}/qa/report.md\n    options:\n      - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}\n      - {id: accept, label: Accept with known failures, to: end}\n      - {id: abandon, label: Abort, to: abort}\n\noutputs:\n  qa_summary: \"${steps.qa_run.outputs.summary}\"\n  qa_report: \".maestro/${inputs.slug}/qa/report.md\"\n"}}</script>
+<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction"]</script>
 <script>
 /* ================= Maestro Workflow Builder ================= */
 "use strict";
@@ -517,7 +828,6 @@ const $ = (s, el) => (el || document).querySelector(s);
 const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
 const SCHEMA = JSON.parse($("#workflow-schema").textContent);
 const LINT_RULES = JSON.parse($("#lint-rules").textContent);
-const TEMPLATES = JSON.parse($("#wf-templates").textContent);
 const RESERVED = ["end", "abort"];
 const NODE_TYPES = ["agent", "gate", "script", "parallel", "subworkflow"];
 const ICONS = { agent: "🤖", gate: "👤", script: "$", parallel: "⫘", subworkflow: "⧉" };
@@ -534,9 +844,14 @@ const ed = { stack: [], sel: null, pan: { x: 60, y: 40 }, zoom: 1,
   undo: [], redo: [], dirty: false, fileHandle: null, fileName: "workflow.yaml" };
 
 function blankDoc() {
-  return { version: 1, name: "my-workflow", description: "",
-    inputs: { slug: { type: "string", required: true } },
-    defaults: { model: "haiku", max_visits: 10 }, start: "", nodes: [] };
+  return { name: "my-workflow", nodes: [] };
+}
+function normalizeDoc(d) {           // minimal-authoring defaults, applied on load
+  const walk = list => { for (const n of list || []) {
+    if (n && typeof n === "object") { if (!n.type) n.type = "agent";
+      for (const b of n.branches || []) walk(b.steps); } } };
+  walk(d.nodes);
+  return d;
 }
 function ctxNodes() {                 // node list of the graph being edited (drill-in aware)
   let nodes = doc.nodes;
@@ -547,7 +862,7 @@ function ctxNodes() {                 // node list of the graph being edited (dr
   return nodes;
 }
 function ctxStart() {
-  if (!ed.stack.length) return doc.start;
+  if (!ed.stack.length) return doc.start || (doc.nodes[0] && doc.nodes[0].id);
   let nodes = doc.nodes, br = null;
   for (const f of ed.stack) {
     const n = nodes.find(x => x.id === f.nodeId);
@@ -646,14 +961,13 @@ function lint() {
       else if (ids[n.id]) err("dup-id", `${where}: duplicate id "${n.id}"`, n.id);
       ids[n.id] = n;
     }
-    if (!start || !ids[start]) err("no-start", `${where}: start "${start || ""}" is not a node`);
+    if (nodes.length && (!start || !ids[start])) err("no-start", `${where}: start "${start || ""}" is not a node`);
     for (const n of nodes) {
       const w = `${where}#${n.id}`;
       if (n.type === "gate") {
         if (!(n.options || []).length) err("gate-no-options", `${w}: gate needs at least one option`, n.id);
       } else {
-        const hasNext = typeof n.next === "string", hasRoutes = Array.isArray(n.routes) && n.routes.length;
-        if (!hasNext && !hasRoutes) err("no-routing", `${w}: needs a next step (drag from its port)`, n.id);
+        const hasRoutes = Array.isArray(n.routes) && n.routes.length;
         if (hasRoutes) {
           const def = n.routes.filter(r => !r.when);
           if (!def.length) err("no-default-route", `${w}: conditional routes need a final default`, n.id);
@@ -690,8 +1004,8 @@ function lint() {
       for (const n of nodes) if (!seen.has(n.id)) warn("unreachable-node", `${where}: "${n.id}" is unreachable from start`, n.id);
     }
   }
-  if (!doc.name || !/^[a-z0-9][a-z0-9-]*$/.test(doc.name)) issues.push({ level: "error", code: "bad-name", msg: "workflow name must be kebab-case" });
-  checkGraph(doc.nodes || [], doc.start, "main");
+  if (doc.name != null && !/^[a-z0-9][a-z0-9-]*$/.test(doc.name)) issues.push({ level: "error", code: "bad-name", msg: "workflow name must be kebab-case" });
+  checkGraph(doc.nodes || [], doc.start || (doc.nodes && doc.nodes[0] && doc.nodes[0].id), "main");
   return issues;
 }
 
@@ -1081,7 +1395,8 @@ function inspectNode(box) {
       add.onclick = () => commit("r", () => n.routes.splice(n.routes.length - 1, 0, { when: "${steps." + n.id + ".outputs.x} == true", to: "end" }));
       sec.appendChild(add);
     } else {
-      sec.appendChild(field("Next step", sel(n.next ?? "", targetChoices(nodes, [""]), v => commit("n", () => v ? n.next = v : delete n.next))));
+      const choices = [{v: "", t: "(none — ends here)"}, ...targetChoices(nodes)];
+      sec.appendChild(field("Next step", sel(n.next ?? "", choices, v => commit("n", () => v ? n.next = v : delete n.next))));
       const conv = document.createElement("button"); conv.className = "add-btn"; conv.textContent = "Switch to conditional routes";
       conv.onclick = () => commit("r", () => { n.routes = [{ to: n.next || "end" }]; delete n.next; });
       sec.appendChild(conv);
@@ -1408,7 +1723,7 @@ function loadYamlText(text, name, handle) {
   try { parsed = jsyaml.load(text); }
   catch (e) { toast("YAML error: " + e.message); return false; }
   if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.nodes)) { toast("Not a workflow file (needs a nodes: list)"); return false; }
-  doc = parsed;
+  doc = normalizeDoc(parsed);
   ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = []; ed.dirty = false;
   ed.fileName = name || "workflow.yaml"; ed.fileHandle = handle || null;
   closeModals(); renderAll(); fitView();
@@ -1484,8 +1799,6 @@ $("#exp-save").addEventListener("click", async () => {
   } catch (e) { toast("Save failed: " + e.message); }
 });
 $("#btn-paste").addEventListener("click", () => { $("#paste-err").textContent = ""; openModal("m-paste"); });
-$("#tpl-paste").addEventListener("click", () => { closeModals(); $("#paste-err").textContent = ""; openModal("m-paste"); });
-$("#tpl-open").addEventListener("click", () => { closeModals(); openFile(); });
 $("#paste-load").addEventListener("click", () => {
   try {
     const parsed = jsyaml.load($("#paste-ta").value);
@@ -1494,23 +1807,15 @@ $("#paste-load").addEventListener("click", () => {
   } catch (e) { $("#paste-err").textContent = "✕ " + e.message; }
 });
 
-/* ---------------- templates ---------------- */
-function renderTemplates() {
-  const grid = $("#tpl-grid"); grid.innerHTML = "";
-  const items = [{ key: "__blank__", label: "Blank canvas", desc: "Start from nothing — drag nodes from the palette.", tags: [] },
-    ...Object.entries(TEMPLATES).map(([k, t]) => ({ key: k, label: t.label, desc: t.desc, tags: t.tags || [] }))];
-  for (const it of items) {
-    const el = document.createElement("div"); el.className = "tpl";
-    el.innerHTML = `<div class="tn">${esc(it.label)}</div><div class="td">${esc(it.desc)}</div>
-      <div class="tt">${it.tags.map(t => `<span class="chip">${esc(t)}</span>`).join("")}</div>`;
-    el.onclick = () => {
-      if (it.key === "__blank__") { doc = blankDoc(); ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = []; ed.dirty = false; ed.fileHandle = null; ed.fileName = "workflow.yaml"; closeModals(); renderAll(); fitView(); }
-      else { loadYamlText(TEMPLATES[it.key].yaml, it.key + ".yaml"); ed.dirty = true; }
-    };
-    grid.appendChild(el);
-  }
+/* ---------------- new ---------------- */
+function newBlank() {
+  if (ed.dirty && !confirm("Discard unsaved changes?")) return;
+  doc = blankDoc(); ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = [];
+  ed.dirty = false; ed.fileHandle = null; ed.fileName = "workflow.yaml";
+  renderAll();
+  toast("Fresh workflow — drag a node from the palette");
 }
-$("#btn-new").addEventListener("click", () => { renderTemplates(); openModal("m-templates"); });
+$("#btn-new").addEventListener("click", newBlank);
 
 /* ---------------- modals / toast / theme ---------------- */
 function openModal(id) { $("#" + id).classList.add("show"); }
@@ -1568,7 +1873,42 @@ window.addEventListener("keydown", ev => {
 });
 
 /* ---------------- selftest ---------------- */
-const GOLDEN = TEMPLATES["sdlc-main"] ? TEMPLATES["sdlc-main"].yaml : null;
+const GOLDEN = `name: golden
+inputs:
+  slug: {type: string, required: true}
+nodes:
+  - id: plan
+    instruction: Plan the work.
+    outputs: [summary]
+    artifact: ".maestro/\${inputs.slug}/plan.md"
+    next: approve
+  - id: approve
+    type: gate
+    prompt: "Approve \${steps.plan.outputs.summary}?"
+    options:
+      - {id: yes, label: Approve, to: fanout}
+      - {id: revise, label: Revise, to: plan, input: feedback}
+  - id: fanout
+    type: parallel
+    branches:
+      - id: a
+        start: s
+        steps:
+          - {id: s, instruction: Do A., next: end}
+      - id: b
+        start: s
+        steps:
+          - {id: s, type: script, run: ["true"], next: end}
+    next: check
+  - id: check
+    type: script
+    run: [bash, -c, echo done]
+    max_visits: 3
+    on_exhausted: abort
+    routes:
+      - {when: "\${steps.check.outputs.exit_code} == 0", to: end}
+      - {to: plan}
+`;
 function deepSort(o) {
   if (Array.isArray(o)) return o.map(deepSort);
   if (o && typeof o === "object") { const r = {}; for (const k of Object.keys(o).sort()) r[k] = deepSort(o[k]); return r; }
@@ -1579,22 +1919,25 @@ function runSelftest() {
   const results = [];
   const t = (name, fn) => { try { fn(); results.push([name, true, ""]); } catch (e) { results.push([name, false, String(e.message || e)]); } };
   const assert = (cond, msg) => { if (!cond) throw new Error(msg || "assertion failed"); };
-  for (const [key, tpl] of Object.entries(TEMPLATES)) {
-    t(`template ${key}: YAML parses`, () => { assert(jsyaml.load(tpl.yaml).nodes.length > 0); });
-    t(`template ${key}: round-trip is semantically identical`, () => {
-      const a = jsyaml.load(tpl.yaml);
-      doc = JSON.parse(JSON.stringify(a));
-      const b = jsyaml.load(exportYaml());
-      assert(semanticEqual(a, b), "export differs from import");
-    });
-    t(`template ${key}: lints clean`, () => {
-      doc = jsyaml.load(tpl.yaml);
-      const errs = lint().filter(i => i.level === "error");
-      assert(!errs.length, errs.map(i => i.msg).join("; "));
-    });
-  }
+  t("golden: YAML parses", () => { assert(jsyaml.load(GOLDEN).nodes.length > 0); });
+  t("golden: round-trip is semantically identical", () => {
+    const a = jsyaml.load(GOLDEN);
+    doc = JSON.parse(JSON.stringify(a));
+    const b = jsyaml.load(exportYaml());
+    assert(semanticEqual(a, b), "export differs from import");
+  });
+  t("golden: lints clean (incl. minimal defaults)", () => {
+    doc = normalizeDoc(jsyaml.load(GOLDEN));
+    const errs = lint().filter(i => i.level === "error");
+    assert(!errs.length, errs.map(i => i.msg).join("; "));
+  });
+  t("minimal one-node workflow lints clean", () => {
+    doc = normalizeDoc(jsyaml.load("nodes:\n  - id: review\n    instruction: Review it.\n"));
+    const errs = lint().filter(i => i.level === "error");
+    assert(!errs.length, errs.map(i => i.msg).join("; "));
+  });
   t("positions persist in ui: and survive round-trip", () => {
-    doc = jsyaml.load(TEMPLATES[Object.keys(TEMPLATES)[0]].yaml);
+    doc = jsyaml.load(GOLDEN);
     doc.nodes[0].ui = { x: 123, y: 456 };
     const b = jsyaml.load(exportYaml());
     assert(b.nodes[0].ui.x === 123 && b.nodes[0].ui.y === 456);
@@ -1626,7 +1969,7 @@ function runSelftest() {
     assert(lint().some(i => i.code === "undeclared-input"));
   });
   t("lint rule ids are a subset of the engine catalog", () => {
-    const used = ["bad-id","dup-id","no-start","gate-no-options","no-routing","no-default-route",
+    const used = ["bad-id","dup-id","no-start","gate-no-options","no-default-route",
       "empty-instruction","bad-type","missing-key","missing-route-target","undeclared-input",
       "parallel-too-few-branches","branch-bad-type","unreachable-node","bad-name"];
     for (const r of used) assert(LINT_RULES.includes(r), `rule ${r} missing from engine catalog`);
@@ -1661,19 +2004,13 @@ function makeDatalists() {
 function boot() {
   makeDatalists();
   if (location.hash === "#selftest") { runSelftest(); return; }
-  const tplMatch = location.hash.match(/^#template=([a-z0-9-]+)$/);
-  if (tplMatch && TEMPLATES[tplMatch[1]]) {
-    loadYamlText(TEMPLATES[tplMatch[1]].yaml, tplMatch[1] + ".yaml");
-    return;
-  }
   let restored = null;
   try { restored = JSON.parse(localStorage.getItem("maestro-builder-doc") || "null"); } catch (e) {}
   if (restored && Array.isArray(restored.nodes) && restored.nodes.length) {
-    doc = restored; renderAll(); fitView();
-    toast("Restored your last session — ✚ New for templates");
+    doc = normalizeDoc(restored); renderAll(); fitView();
+    toast("Restored your last session — ✚ New starts fresh");
   } else {
     doc = blankDoc(); renderAll();
-    renderTemplates(); openModal("m-templates");
   }
 }
 boot();

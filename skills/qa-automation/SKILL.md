@@ -22,13 +22,13 @@ optional `test_cases_path` — the design-phase functional test-case catalog
 (`.maestro/<slug>/test-cases.md`, from `/functional-testcases`).
 
 ## Steps
-1. **Pick the framework** from `maestro.config.yaml` → `qa.framework` (`playwright` web /
-   `maestro` mobile).
+1. **Pick the framework** — default **Playwright** (use the project's existing E2E framework
+   if one is already set up; e.g. Maestro for mobile).
 2. **Source the journeys.** If `test_cases_path` exists, that catalog is the source of truth —
    automate its cases, preserving each case's ID/traceability, and do not silently drop a case
    (note any you defer and why). Only when no catalog is present do you derive journeys straight
-   from the acceptance criteria. Either way: rank by risk and scope per
-   `maestro.config.yaml` → `qa.e2e_tier` (default `critical-journeys-only`); pick the critical
+   from the acceptance criteria. Either way: rank by risk and scope to the default tier —
+   **critical-journeys-only**; pick the critical
    ones and the highest-value negative paths; state what is out of scope.
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
 4. **Author tests** with stable selectors (roles/test-ids), explicit waits on conditions,
@@ -37,8 +37,8 @@ optional `test_cases_path` — the design-phase functional test-case catalog
    suite can be authored in parallel.
 6. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
    always runs).
-7. **On failure**, apply the fix-loop rule (selectors/flakes/waits only), bounded by
-   `maestro.config.yaml` → `fix_loop.max_attempts`.
+7. **On failure**, apply the fix-loop rule (selectors/flakes/waits only) — one attempt per
+   invocation; the workflow's `max_visits` on the fix node (typically 3) bounds the loop.
 
 ## Standards every suite must satisfy
 - **Risk-tiered** — critical journeys + key negatives; explicit out-of-scope note.
@@ -47,8 +47,7 @@ optional `test_cases_path` — the design-phase functional test-case catalog
   not brittle CSS chains; control time/randomness where possible.
 - **Cross-service** — real contract, not mocks, in the clean stack for cross-service journeys.
 - **No weakened assertions** — self-healing may refresh selectors / re-run only; it must NOT
-  weaken assertions, permissions, or expected behavior (enforced by
-  `maestro.config.yaml` → `gates.freeze_approved_tests`).
+  weaken assertions, permissions, or expected behavior. Approved tests are frozen.
 - **Safe** — no real secrets or production data; seeded test data only.
 - **Reportable** — on failure, capture screenshot/trace/video and the failing step.
 
@@ -61,12 +60,12 @@ optional `test_cases_path` — the design-phase functional test-case catalog
 - Mobile: gestures, back button, deep links, orientation (Maestro).
 
 ## External skill (provision — test generation)
-Read `maestro.config.yaml` → `external_skills.qa_generator` (a skill name, or `none`). If
-set, use it to generate tests — the output must still meet the standards above (isolation,
-determinism, real assertions, risk-tiering). If `none`, author in-pack.
+If a suitable test-generator skill is installed you may delegate test generation to it —
+the output must still meet the standards above (isolation, determinism, real assertions,
+risk-tiering). Otherwise author in-pack.
 
 ## Emit tasks.json (parallel scenario authoring)
-Write `.maestro/<slug>/qa/tasks.json` (under `artifacts.qa_suite_dir`) conforming to
+Write `.maestro/<slug>/qa/tasks.json` (under the QA suite dir `.maestro/<slug>/qa/`) conforming to
 `engine/schemas/tasks.schema.json`, with `"stack": "qa"`. Scenarios are independent, so each
 scenario is its **own single-task group**.
 
@@ -91,8 +90,8 @@ Fields:
 scenario's spec file (batch-load the fixture manifest once) and return `spec_path`.
 
 ## Output
-Resolve output paths from `maestro.config.yaml` → `artifacts.qa_suite_dir` /
-`artifacts.qa_report` (`<slug>` = `feature_slug`). Write a coverage note to
+All outputs go under the QA suite dir `.maestro/<slug>/qa/`, with `<slug>` = `feature_slug` —
+this skill owns where it writes; the caller passes no paths. Write a coverage note to
 `.maestro/<slug>/qa/suite.md` (journeys covered, negatives covered, out-of-scope, data
 strategy), the run report to `.maestro/<slug>/qa/report.md`, and `.maestro/<slug>/qa/tasks.json`.
 

@@ -17,9 +17,9 @@ nodes:
     label: Author & run E2E suite
     instruction: |
       Automate the functional test-case catalog at .maestro/${inputs.slug}/test-cases.md
-      into an executable E2E suite (framework/tier per maestro.config.yaml `qa:`) and
-      RUN it. Write the run report. Report results honestly — failures route into the
-      fix loop, they are not your problem to hide.
+      into an executable E2E suite (use the project's existing E2E framework, else
+      Playwright; critical journeys first) and RUN it. Write the run report. Report
+      results honestly — failures route into the fix loop, they are not yours to hide.
     skill: qa-automation
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [passed, failed_count, summary]
@@ -42,7 +42,7 @@ nodes:
     agent: implementer
     inputs: {slug: "${inputs.slug}", report: ".maestro/${inputs.slug}/qa/report.md"}
     outputs: [fix_summary, checks_passed]
-    max_visits: "${config.fix_loop.max_attempts}"
+    max_visits: 3
     on_exhausted: qa_gate
     next: qa_run
 

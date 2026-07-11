@@ -11,10 +11,10 @@ Review the drafted design **before any code is written**, so architecture proble
 caught while they are cheap to fix. Read-only — never edit code.
 
 ## Inputs
-`feature`, `feature_slug`; the per-stack LLDs and contract — resolve their paths from
-`maestro.config.yaml` → `artifacts.lld_backend`, `artifacts.lld_frontend`,
-`artifacts.contract` (`<slug>` = `feature_slug`) — cross-checked against the HLD
-(`artifacts.hld`), acceptance criteria, and architecture rules (`CLAUDE.md`, ADRs).
+`feature`, `feature_slug`; the per-stack LLDs (`.maestro/<slug>/lld/backend.md`,
+`.maestro/<slug>/lld/frontend.md`) and contract (`.maestro/<slug>/openapi.yaml`), with
+`<slug>` = `feature_slug` — cross-checked against the HLD (`.maestro/<slug>/hld.md`),
+acceptance criteria, and architecture rules (`CLAUDE.md`, ADRs).
 
 ## Steps
 1. **Read** the HLD, both LLDs, the contract, and acceptance criteria; note the stated NFRs.
@@ -53,9 +53,9 @@ caught while they are cheap to fix. Read-only — never edit code.
 - Cross-service transaction assumed where only eventual consistency is available.
 
 ## External skill (provision — review method)
-Read `maestro.config.yaml` → `external_skills.review` (default `requesting-code-review`, from the
-Superpowers pack, or `none`). If set, apply its review discipline first; it must not narrow the checklist
-above.
+If the `requesting-code-review` skill (from the Superpowers pack) is installed, apply its
+review discipline first; it must not narrow the checklist above. If it is not installed,
+review inline per the checklist.
 
 ## Findings format (what the review returns — evidence mandatory)
 ```
@@ -73,8 +73,8 @@ blocking: <true if any blocker/major remains>
 ## Decide & output
 Sort findings blocker → major → minor → suggestion; `blocking = true` if any blocker/major
 remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write the report
-(summary + findings table) to the `artifacts.arch_review` path from `maestro.config.yaml`
-(`.maestro/<slug>/reviews/architecture.md`). Feeds the contract-approval gate; a blocking
+(summary + findings table) to `.maestro/<slug>/reviews/architecture.md` — this skill owns
+where it writes. Feeds the contract-approval gate; a blocking
 result routes the workflow back to revise the design.
 
 ## Output contract

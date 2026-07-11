@@ -3,22 +3,42 @@
   "$id": "maestro/workflow.schema.json",
   "title": "Maestro workflow v1",
   "type": "object",
-  "required": ["version", "name", "start", "nodes"],
+  "required": [
+    "nodes"
+  ],
   "additionalProperties": false,
   "properties": {
-    "version": {"const": 1},
-    "name": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$"},
-    "description": {"type": "string"},
+    "version": {
+      "const": 1
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "description": {
+      "type": "string"
+    },
     "inputs": {
       "type": "object",
       "additionalProperties": {
         "type": "object",
         "additionalProperties": false,
         "properties": {
-          "type": {"enum": ["string", "number", "boolean", "list"]},
-          "required": {"type": "boolean"},
+          "type": {
+            "enum": [
+              "string",
+              "number",
+              "boolean",
+              "list"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
           "default": {},
-          "description": {"type": "string"}
+          "description": {
+            "type": "string"
+          }
         }
       }
     },
@@ -26,176 +46,480 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "model": {"type": "string"},
-        "agent": {"type": "string"},
-        "max_visits": {"type": "integer", "minimum": 1}
+        "model": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        }
       }
     },
-    "start": {"type": "string"},
-    "nodes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/node"}},
-    "outputs": {"type": "object", "additionalProperties": {"type": "string"}},
-    "ui": {"type": "object"}
+    "start": {
+      "type": "string"
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/node"
+      }
+    },
+    "outputs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "ui": {
+      "type": "object"
+    }
   },
   "definitions": {
-    "nodeId": {"type": "string", "pattern": "^[a-z0-9][a-z0-9_-]*$"},
-    "routeTarget": {"type": "string", "pattern": "^[a-z0-9_-]+|end|abort$"},
+    "nodeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9_-]*$"
+    },
+    "routeTarget": {
+      "type": "string",
+      "pattern": "^[a-z0-9_-]+|end|abort$"
+    },
     "route": {
       "type": "object",
-      "required": ["to"],
+      "required": [
+        "to"
+      ],
       "additionalProperties": false,
       "properties": {
-        "when": {"type": "string"},
-        "to": {"$ref": "#/definitions/routeTarget"}
+        "when": {
+          "type": "string"
+        },
+        "to": {
+          "$ref": "#/definitions/routeTarget"
+        }
       }
     },
-    "failTarget": {"type": "string", "description": "node id, or the keywords abort | ask"},
+    "failTarget": {
+      "type": "string",
+      "description": "node id, or the keywords abort | ask"
+    },
     "routingProps": {
-      "next": {"$ref": "#/definitions/routeTarget"},
-      "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-      "on_fail": {"$ref": "#/definitions/failTarget"},
-      "max_visits": {"type": "integer", "minimum": 1},
-      "on_exhausted": {"$ref": "#/definitions/failTarget"}
+      "next": {
+        "$ref": "#/definitions/routeTarget"
+      },
+      "routes": {
+        "type": "array",
+        "minItems": 1,
+        "items": {
+          "$ref": "#/definitions/route"
+        }
+      },
+      "on_fail": {
+        "$ref": "#/definitions/failTarget"
+      },
+      "max_visits": {
+        "type": "integer",
+        "minimum": 1
+      },
+      "on_exhausted": {
+        "$ref": "#/definitions/failTarget"
+      }
     },
     "node": {
       "oneOf": [
-        {"$ref": "#/definitions/agentNode"},
-        {"$ref": "#/definitions/gateNode"},
-        {"$ref": "#/definitions/scriptNode"},
-        {"$ref": "#/definitions/parallelNode"},
-        {"$ref": "#/definitions/subworkflowNode"}
+        {
+          "$ref": "#/definitions/agentNode"
+        },
+        {
+          "$ref": "#/definitions/gateNode"
+        },
+        {
+          "$ref": "#/definitions/scriptNode"
+        },
+        {
+          "$ref": "#/definitions/parallelNode"
+        },
+        {
+          "$ref": "#/definitions/subworkflowNode"
+        }
       ]
     },
     "branchNode": {
       "oneOf": [
-        {"$ref": "#/definitions/agentNode"},
-        {"$ref": "#/definitions/gateNode"},
-        {"$ref": "#/definitions/scriptNode"},
-        {"$ref": "#/definitions/subworkflowNode"}
+        {
+          "$ref": "#/definitions/agentNode"
+        },
+        {
+          "$ref": "#/definitions/gateNode"
+        },
+        {
+          "$ref": "#/definitions/scriptNode"
+        },
+        {
+          "$ref": "#/definitions/subworkflowNode"
+        }
       ]
     },
     "agentNode": {
       "type": "object",
-      "required": ["id", "type", "instruction"],
+      "required": [
+        "id",
+        "instruction"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "agent"},
-        "label": {"type": "string"},
-        "instruction": {"type": "string", "minLength": 1},
-        "skill": {"type": "string"},
-        "agent": {"type": "string"},
-        "model": {"type": "string"},
-        "inputs": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
-        "outputs": {"type": "array", "items": {"type": "string"}},
-        "artifact": {"oneOf": [{"type": "string"}, {"type": "array", "items": {"type": "string"}}]},
-        "retries": {"type": "integer", "minimum": 0},
-        "isolate": {"enum": ["worktree"]},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "agent"
+        },
+        "label": {
+          "type": "string"
+        },
+        "instruction": {
+          "type": "string",
+          "minLength": 1
+        },
+        "skill": {
+          "type": "string"
+        },
+        "agent": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "artifact": {
+          "oneOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          ]
+        },
+        "retries": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "isolate": {
+          "enum": [
+            "worktree"
+          ]
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "gateNode": {
       "type": "object",
-      "required": ["id", "type", "prompt", "options"],
+      "required": [
+        "id",
+        "type",
+        "prompt",
+        "options"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "gate"},
-        "label": {"type": "string"},
-        "prompt": {"type": "string", "minLength": 1},
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "gate"
+        },
+        "label": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string",
+          "minLength": 1
+        },
         "options": {
           "type": "array",
           "minItems": 1,
           "items": {
             "type": "object",
-            "required": ["id", "label", "to"],
+            "required": [
+              "id",
+              "label",
+              "to"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"type": "string"},
-              "label": {"type": "string"},
-              "to": {"$ref": "#/definitions/routeTarget"},
-              "input": {"type": "string"}
+              "id": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "to": {
+                "$ref": "#/definitions/routeTarget"
+              },
+              "input": {
+                "type": "string"
+              }
             }
           }
         },
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "scriptNode": {
       "type": "object",
-      "required": ["id", "type", "run"],
+      "required": [
+        "id",
+        "type",
+        "run"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "script"},
-        "label": {"type": "string"},
-        "run": {"type": "array", "minItems": 1, "items": {"type": "string"}},
-        "timeout": {"type": "integer", "minimum": 1},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "script"
+        },
+        "label": {
+          "type": "string"
+        },
+        "run": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "parallelNode": {
       "type": "object",
-      "required": ["id", "type", "branches"],
+      "required": [
+        "id",
+        "type",
+        "branches"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "parallel"},
-        "label": {"type": "string"},
-        "join": {"enum": ["all", "any"]},
-        "on_branch_fail": {"enum": ["fail_all", "continue", "ask"]},
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "parallel"
+        },
+        "label": {
+          "type": "string"
+        },
+        "join": {
+          "enum": [
+            "all",
+            "any"
+          ]
+        },
+        "on_branch_fail": {
+          "enum": [
+            "fail_all",
+            "continue",
+            "ask"
+          ]
+        },
         "branches": {
           "type": "array",
           "minItems": 2,
           "items": {
             "type": "object",
-            "required": ["id", "start", "steps"],
+            "required": [
+              "id",
+              "start",
+              "steps"
+            ],
             "additionalProperties": false,
             "properties": {
-              "id": {"$ref": "#/definitions/nodeId"},
-              "start": {"type": "string"},
-              "steps": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/branchNode"}},
-              "ui": {"type": "object"}
+              "id": {
+                "$ref": "#/definitions/nodeId"
+              },
+              "start": {
+                "type": "string"
+              },
+              "steps": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "$ref": "#/definitions/branchNode"
+                }
+              },
+              "ui": {
+                "type": "object"
+              }
             }
           }
         },
-        "isolate": {"enum": ["worktree"]},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "isolate": {
+          "enum": [
+            "worktree"
+          ]
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     },
     "subworkflowNode": {
       "type": "object",
-      "required": ["id", "type", "workflow"],
+      "required": [
+        "id",
+        "type",
+        "workflow"
+      ],
       "additionalProperties": false,
       "properties": {
-        "id": {"$ref": "#/definitions/nodeId"},
-        "type": {"const": "subworkflow"},
-        "label": {"type": "string"},
-        "workflow": {"type": "string"},
-        "inputs": {"type": "object", "additionalProperties": {"type": ["string", "number", "boolean"]}},
-        "next": {"$ref": "#/definitions/routeTarget"},
-        "routes": {"type": "array", "minItems": 1, "items": {"$ref": "#/definitions/route"}},
-        "on_fail": {"$ref": "#/definitions/failTarget"},
-        "max_visits": {"type": "integer", "minimum": 1},
-        "on_exhausted": {"$ref": "#/definitions/failTarget"},
-        "ui": {"type": "object"}
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "subworkflow"
+        },
+        "label": {
+          "type": "string"
+        },
+        "workflow": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
+        },
+        "on_fail": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
       }
     }
-  }
+  },
+  "description": "Minimal authoring: version defaults to 1, start to the first node, node type to agent, omitted routing to next: end."
 }

@@ -47,8 +47,10 @@ python3 engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   `python3 engine/maestroctl.py rebase --slug <slug>` (accept the edit) or
   `... reset --all` (start over). Never pick for them.
 - If the requirement folder `.maestro/<slug>/requirement/` is missing or empty and the
-  workflow needs it, tell the user to add requirement files first (`maestro init <slug>`
-  scaffolds it).
+  workflow needs it, create it yourself: `mkdir -p .maestro/<slug>/requirement/` and write a
+  stub `requirement.md` there telling the user what to drop in (PRD, notes, mockups — every
+  file in the folder is read as the requirement). Then STOP and ask the user to fill it in
+  before continuing.
 
 ## The loop
 

@@ -46,15 +46,6 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(embedded, validate.RULE_IDS,
                          "stale lint-rules embed — run: python3 ui/embed.py")
 
-    def test_templates_match_workflow_files(self):
-        templates = json.loads(block(self.html, "wf-templates"))
-        self.assertTrue(templates, "no templates embedded")
-        for key, tpl in templates.items():
-            path = os.path.join(ROOT, "workflows", f"{key}.yaml")
-            with open(path, encoding="utf-8") as fh:
-                self.assertEqual(tpl["yaml"], fh.read(),
-                                 f"stale template {key} — run: python3 ui/embed.py")
-
     def test_ui_lint_rule_ids_subset_of_engine(self):
         # the ids the client-side linter emits (mirrors the list in builder.html's selftest)
         used = re.findall(r'(?:err|warn)\("([a-z-]+)"', self.html)

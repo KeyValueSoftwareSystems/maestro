@@ -16,9 +16,8 @@ Implement the approved backend scope so it satisfies the contract exactly. The b
 
 ## Before editing
 1. Read `CLAUDE.md`, `AGENTS.md`, the backend LLD (`.maestro/<slug>/lld/backend.md`),
-   and the contract (`.maestro/<slug>/openapi.yaml`) — paths resolve from
-   `maestro.config.yaml` → `artifacts.lld_backend` / `artifacts.contract`.
-2. Read the task DAG at `artifacts.tasks_backend` (`.maestro/<slug>/backend/tasks.json`)
+   and the contract (`.maestro/<slug>/openapi.yaml`), with `<slug>` = `feature_slug`.
+2. Read the task DAG at `.maestro/<slug>/backend/tasks.json`
    if present; otherwise derive the same ordered slices (via `/backend-tasks`).
 3. List the files you intend to change.
 4. **Stop and ask a human** before DB migrations, auth/permission, payment logic, prod
@@ -33,7 +32,7 @@ worktrees in.
 2. **With the Task tool** (where the harness provides it): spawn one implementer subagent per
    independent slice (`slices[]` group), **at most 3 concurrent**. Each subagent works in its
    own git worktree on branch `maestro/<slug>/backend-<group_id>` — delegate worktree hygiene
-   to `maestro.config.yaml` → `external_skills.worktrees` when installed. Each subagent gets
+   to the `using-git-worktrees` skill when installed. Each subagent gets
    its slice's tasks + the context manifest and follows the per-slice discipline below. When
    all slices are green, **merge the slice branches into the feature branch** and resolve any
    conflicts (disjoint `writes` across groups should make these rare).
@@ -96,11 +95,10 @@ over its slices as above.
 - Rate limit reached; large result sets; time zones / DST / numeric precision & rounding.
 
 ## External skill (provision — the TDD engine)
-Read `maestro.config.yaml` → `external_skills.tdd` (default
-`test-driven-development`, from the Superpowers pack, or `none`). If set, use it to drive
-RED → GREEN → REFACTOR. **Whatever the engine, ensure the tests it produces cover** the
-edge cases above and the contract's negative paths — not happy-path only. If `none`,
-implement then add unit + integration tests to the same bar.
+If the `test-driven-development` skill (from the Superpowers pack) is installed, use it to
+drive RED → GREEN → REFACTOR. **Whatever the engine, ensure the tests it produces cover** the
+edge cases above and the contract's negative paths — not happy-path only. If it is not
+installed, implement then add unit + integration tests to the same bar.
 
 ## Safety
 Never run destructive commands (`rm -rf`, force-push, `DROP`/`TRUNCATE TABLE`) or write
@@ -109,8 +107,9 @@ you are the backstop.
 
 ## Verification
 Invoke `/verify` (lint, typecheck, unit + integration, migration check, provider-side
-contract validation). On failure invoke `/fix` (one attempt per invocation, bounded overall
-by `maestro.config.yaml` → `fix_loop.max_attempts`; delegates to `external_skills.debug`).
+contract validation). On failure invoke `/fix` (one attempt per invocation — the workflow's
+`max_visits` on the fix node, typically 3, bounds the overall loop; delegates to the
+`systematic-debugging` skill when installed).
 
 ## Definition of done (stop condition)
 Tests ran and pass; every slice merged; every standards item addressed or explicitly noted;

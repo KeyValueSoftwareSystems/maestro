@@ -1,7 +1,0 @@
-version: 1
-name: bad
-start: a
-nodes:
-  - id: a
-    type: agent
-    instruction: X.

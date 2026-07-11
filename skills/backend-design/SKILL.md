@@ -20,9 +20,8 @@ rely on; don't guess.
 
 ## Inputs
 - `feature`, `feature_slug`, approved `hld_path`.
-- **Artifact path** — resolve it yourself from `maestro.config.yaml` → `artifacts.lld_backend`
-  with `<slug>` = `feature_slug`, i.e. `.maestro/<slug>/lld/backend.md`. The caller passes no
-  path; this skill owns where it writes.
+- **Artifact path** — you write `.maestro/<slug>/lld/backend.md`, with `<slug>` =
+  `feature_slug`. The caller passes no path; this skill owns where it writes.
 
 ## Steps
 1. **Ground in the code (read-only).** Locate the service(s) this feature touches and read
@@ -65,9 +64,9 @@ reliability (timeouts, retries, idempotency, partial-failure) · test plan · ro
 - Monorepo vs multi-repo; generated code; vendored/legacy areas; areas with **no tests**.
 
 ## External skill (provision — research)
-Read `maestro.config.yaml` → `external_skills.research` (a skill name, e.g. `deep-research`, or
-`none`). If set, use it to research unfamiliar libraries, protocols, or compliance — it must
-return sourced findings you can cite in the LLD. If `none`, design from the code + HLD.
+If a suitable deep-research skill is installed you may delegate to it to research unfamiliar
+libraries, protocols, or compliance — it must return sourced findings you can cite in the
+LLD. Otherwise design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
 Write `.maestro/<slug>/backend/tasks.json` conforming to `engine/schemas/tasks.schema.json`. It is
