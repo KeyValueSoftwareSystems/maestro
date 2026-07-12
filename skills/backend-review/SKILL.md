@@ -1,6 +1,6 @@
 ---
 name: backend-review
-description: Review the backend implementation AFTER it is built — security, contract adherence, correctness, backward compatibility, rate-limiting, performance/scaling, migrations, test gaps, observability. Read-only; writes a review artifact. Front door for /backend-review.
+description: Review the backend implementation — security, contract adherence, correctness, backward compatibility, rate-limiting, performance/scaling, migrations, test gaps, observability. Read-only; writes a review artifact. Front door for /backend-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
 tags: [sdlc, review, backend]
 ---
@@ -12,7 +12,7 @@ never edit code; reviewers return evidence and recommendations, humans decide fi
 
 ## Steps
 1. **Scope the diff** — identify changed files, new endpoints, migrations, and their blast radius.
-2. **Line the diff up against the contract** (`.maestro/<slug>/openapi.yaml`) and the LLD.
+2. **Line the diff up against the contract** and the LLD — read the inputs your instructions point to.
 3. **Deep, evidence-backed pass** over every dimension in the checklist below. For a more
    independent read you MAY spawn a fresh read-only sub-agent (via the Task tool) that follows
    this same skill — do this where your harness supports it (e.g. Claude Code). Otherwise
@@ -68,12 +68,9 @@ blocking: <true if any blocker/major remains>
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
 Auth/permission or contract changes are never `safe_for_ai_fix` — escalate. Write the report
-to `.maestro/<slug>/backend/reviews/summary.md` — this skill owns where it writes.
-A blocking result routes back to the backend
-implementer — the engine's visit cap (`max_visits`, typically 3) bounds that loop, not you.
+to the artifact path your instructions specify (the orchestrator passes it). Running
+standalone? write to a sensible path you choose and tell the user where.
 
 ## Output contract
-Return `review_path` and `blocking`.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+Return `review_path`, `blocking` (true/false), and `summary` (one line: the headline
+verdict and the count of blocking findings).

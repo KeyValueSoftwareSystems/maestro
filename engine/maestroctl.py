@@ -263,6 +263,13 @@ def build_parser():
 
 def main(argv=None):
     args = build_parser().parse_args(argv)
+    # Validate the slug at the CLI boundary, before any command touches the filesystem
+    # (the lock context creates .maestro/<slug>/ — a bad slug must be rejected first).
+    slug = getattr(args, "slug", None)
+    if slug is not None and not statemod.valid_slug(slug):
+        print(f"error: invalid slug {slug!r}: use lowercase letters, digits, '.', '-', "
+              f"'_' (a single path segment, no '/' or '..')", file=sys.stderr)
+        return 3
     try:
         return args.fn(args)
     except resolver.RunError as exc:

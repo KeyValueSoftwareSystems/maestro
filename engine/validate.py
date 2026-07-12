@@ -72,7 +72,8 @@ def validate_file(path, root=".", _depth=0, _stack=None):
     full = os.path.join(root, norm)
     try:
         doc = wf.load_file(full)
-    except (wf.WfError, OSError) as exc:
+    except (OSError, ValueError) as exc:
+        # ValueError covers wf.WfError and UnicodeDecodeError (non-UTF-8 workflow files).
         return [Issue("error", "bad-yaml", f"{norm}: {exc}")]
     issues.extend(validate_doc(doc, where=norm))
 
@@ -280,6 +281,13 @@ def _validate_node(node, ids, declared_inputs, where):
                 else:
                     try:
                         condctl.parse(cond)
+                        # The RHS of a comparison is a literal — never substituted. A
+                        # placeholder there silently never matches; flag it early.
+                        rhs = re.search(r"(?:==|!=|\bin\b)(.*)$", str(cond))
+                        if rhs and "${" in rhs.group(1):
+                            err("bad-condition",
+                                f"right-hand side of a condition is a literal, not a "
+                                f"placeholder — {cond!r} will never match as written")
                     except condctl.CondError as exc:
                         err("bad-condition", str(exc))
             if not default_seen:

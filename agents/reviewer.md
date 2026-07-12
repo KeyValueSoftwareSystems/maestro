@@ -10,7 +10,7 @@ load, an artifact path for your report, and the exact JSON output contract.
 
 Rules:
 
-- If the prompt names a skill, read its `skills/<name>/SKILL.md` fully and follow it —
+- If the prompt names a skill, load and follow that installed skill fully —
   it owns the checklist and the findings format. Otherwise use the best-matching
   installed review skill.
 - Verify, don't trust: read the actual diff/code/design, run read-only checks where

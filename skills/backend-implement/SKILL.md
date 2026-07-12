@@ -1,24 +1,31 @@
 ---
 name: backend-implement
-description: Implement an approved backend scope against the cross-repo contract, test-first, meeting the backend engineering standards (security, backward compatibility, rate limiting, idempotency, migrations, observability, performance). Edits code within the approved scope only. Use only after the contract is approved. Front door for /backend-impl.
+description: Implement an approved backend scope against the cross-repo contract, test-first, meeting the backend engineering standards (security, backward compatibility, rate limiting, idempotency, migrations, observability, performance). Edits code within the approved scope only. Front door for /backend-implement.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write, Task
 tags: [sdlc, implement, backend]
 ---
 
 # backend-implement
 
-Implement the approved backend scope so it satisfies the contract exactly. The backend
-**owns** the contract — implement it as published; never silently change it.
+Implement the approved backend scope so it satisfies the contract exactly, staying within
+that scope — never expand beyond what was approved. The backend **owns** the contract —
+implement it as published; never silently change it.
 
-## When to use / not use
-- **Use** after the contract is approved (and ideally `/backend-tasks` has produced a plan).
-- **Don't** start if the contract is unstable, or expand scope beyond what was approved.
+## Isolate first (before any edit)
+If your instructions name a branch / ask you to work in a worktree (parallel runs always do),
+this is a HARD prerequisite, not a suggestion — a sibling step may be writing the main tree
+concurrently:
+1. Create and enter the worktree: `git worktree add -b <branch> <new-dir> HEAD` (or
+   `git worktree add <new-dir> <branch>` if it already exists), then work from `<new-dir>`.
+2. Verify you are isolated: `git rev-parse --show-toplevel` must NOT be the main checkout.
+3. If a worktree cannot be created (e.g. the repo has no commits), **STOP and report it** —
+   never fall back to editing the main working tree.
 
 ## Before editing
-1. Read `CLAUDE.md`, `AGENTS.md`, the backend LLD (`.maestro/<slug>/lld/backend.md`),
-   and the contract (`.maestro/<slug>/openapi.yaml`), with `<slug>` = `feature_slug`.
-2. Read the task DAG at `.maestro/<slug>/backend/tasks.json`
-   if present; otherwise derive the same ordered slices (via `/backend-tasks`).
+1. Read `CLAUDE.md`, `AGENTS.md`, the backend LLD, and the contract — the inputs your
+   instructions point to.
+2. Read the task DAG (the tasks.json your instructions point to)
+   if present; otherwise derive the same ordered slices yourself.
 3. List the files you intend to change.
 4. **Stop and ask a human** before DB migrations, auth/permission, payment logic, prod
    config, or dependency upgrades.
@@ -27,7 +34,7 @@ Implement the approved backend scope so it satisfies the contract exactly. The b
 This skill owns fanning the task DAG out into slices — no orchestrator passes slices or
 worktrees in.
 
-1. **Validate first** — run `python3 engine/validate_tasks.py .maestro/<slug>/backend/tasks.json`;
+1. **Validate first** — run `python3 engine/validate_tasks.py <the tasks.json path>`;
    it must print `OK`. Never build from an invalid tasks.json — fix or regenerate it first.
 2. **With the Task tool** (where the harness provides it): spawn one implementer subagent per
    independent slice (`slices[]` group), **at most 3 concurrent**. Each subagent works in its
@@ -53,7 +60,7 @@ Per slice (subagent or inline):
 4. **Stay in scope** — edit only files in the slice's tasks' `writes`; commit the slice on
    its branch.
 
-If no `tasks.json` exists (standalone run), author it first via `/backend-tasks`, then proceed
+If no `tasks.json` exists (standalone run), author the ordered task list first, then proceed
 over its slices as above.
 
 ## Steps (per task, test-first)
@@ -62,7 +69,7 @@ over its slices as above.
    domain/service → persistence → API/controller.
 3. **Refactor** with tests green; remove duplication.
 4. **Add cross-cutting concerns** for the slice: validation, error mapping, logging/metrics.
-5. **Run the targeted check**, then move to the next task. On failure, invoke `/fix`.
+5. **Run the targeted check**, then move to the next task. On failure, invoke `/fix-loop`.
 6. After all tasks, run full **`/verify`** and address the standards checklist.
 
 ## Standards every backend change must satisfy
@@ -107,7 +114,7 @@ you are the backstop.
 
 ## Verification
 Invoke `/verify` (lint, typecheck, unit + integration, migration check, provider-side
-contract validation). On failure invoke `/fix` (one attempt per invocation — the workflow's
+contract validation). On failure invoke `/fix-loop` (one attempt per invocation — the workflow's
 `max_visits` on the fix node, typically 3, bounds the overall loop; delegates to the
 `systematic-debugging` skill when installed).
 
@@ -117,7 +124,6 @@ edge-case tests exist; changed files summarized; remaining risks listed; contrac
 exactly. Passing checks are the proof — not a message that says "done".
 
 ## Output contract
-Return `branch`, `summary`, `tests_passed`.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+Return `branch`, `summary`, `tests_passed`. `tests_passed` MUST be the literal JSON boolean
+`true` or `false` (true only if every test actually ran AND passed) — never a count, status
+phrase, or other prose. A workflow routes on it, so prose reads as "not passing".

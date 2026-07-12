@@ -207,6 +207,55 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .st-row { padding: 8px 12px; border-radius: 8px; margin-bottom: 6px; font-family: var(--mono); font-size: 13px; }
 .st-row.pass { background: color-mix(in srgb, var(--ok) 14%, transparent); }
 .st-row.fail { background: color-mix(in srgb, var(--danger) 14%, transparent); }
+
+/* ---- runs view ---- */
+#runs-view { position: fixed; inset: 0; background: var(--bg); z-index: 400; display: none; flex-direction: column; }
+#runs-view.show { display: flex; }
+#runs-top { height: 46px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+  background: var(--panel); border-bottom: 1px solid var(--border); }
+#runs-top .logo { margin-right: 4px; }
+#runs-body { flex: 1; display: grid; grid-template-columns: 288px 1fr; min-height: 0; }
+#runs-list { border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; background: var(--panel); }
+#runs-list .empty { color: var(--muted); font-size: 12px; line-height: 1.6; padding: 8px 4px; }
+.run-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; cursor: pointer;
+  transition: box-shadow .12s, border-color .12s; background: var(--panel); }
+.run-card:hover { box-shadow: var(--shadow); }
+.run-card.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.run-card .rc-top { display: flex; align-items: center; gap: 7px; }
+.run-card .rc-slug { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-card .rc-file { color: var(--muted); font-size: 11px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-card .rc-bar { height: 6px; border-radius: 4px; background: var(--panel2); margin-top: 8px; overflow: hidden; }
+.run-card .rc-bar > i { display: block; height: 100%; background: var(--ok); }
+.run-card .rc-meta { color: var(--muted); font-size: 11px; margin-top: 5px; }
+.rbadge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px;
+  border-radius: 20px; margin-left: auto; flex: none; }
+.rbadge.running { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
+.rbadge.done { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
+.rbadge.failed { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger); }
+#runs-graph { position: relative; overflow: auto; background: var(--bg);
+  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 22px 22px; }
+#runs-graph .placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  color: var(--muted); font-size: 14px; }
+#runs-plane { position: relative; }
+#runs-graph svg { position: absolute; inset: 0; overflow: visible; }
+#runs-graph svg path { fill: none; stroke: var(--muted); stroke-width: 1.8; }
+#runs-graph svg path.back { stroke-dasharray: 7 5; stroke: var(--parallel); }
+#runs-graph svg .arrow { fill: var(--muted); }
+.rnode { position: absolute; width: 190px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--panel);
+  box-shadow: var(--shadow); overflow: hidden; }
+.rnode .rn-head { display: flex; align-items: center; gap: 7px; padding: 7px 10px; font-weight: 650; }
+.rnode .rn-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
+.rnode .rn-type { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 4px 10px 8px; }
+.rnode.s-done { border-color: var(--ok); } .rnode.s-done .rn-dot { background: var(--ok); }
+.rnode.s-done .rn-head { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.rnode.s-running { border-color: var(--warn); } .rnode.s-running .rn-dot { background: var(--warn); animation: pulse 1.3s infinite; }
+.rnode.s-running .rn-head { background: color-mix(in srgb, var(--warn) 14%, transparent); }
+.rnode.s-failed { border-color: var(--danger); } .rnode.s-failed .rn-dot { background: var(--danger); }
+.rnode.s-failed .rn-head { background: color-mix(in srgb, var(--danger) 12%, transparent); }
+.rnode .rn-count { font-size: 10px; color: var(--muted); font-weight: 600; margin-left: auto; }
+@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+#runs-legend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--muted); margin-left: 6px; }
+#runs-legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
 </style>
 </head>
 <body>
@@ -225,6 +274,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
     <button class="tb" id="btn-fit" title="Fit to view (F)">Fit</button>
     <div id="crumbs"></div>
     <span class="spacer"></span>
+    <button class="tb" id="btn-runs" title="View live run status of your .maestro runs">▶ Runs</button>
     <span id="dirty-dot" title="Unsaved changes">●</span>
     <span class="tb" id="lint-pill">…</span>
     <button class="tb" id="btn-theme" title="Toggle theme">◐</button>
@@ -261,7 +311,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 <div class="modal-bg" id="m-export"><div class="modal">
   <div class="mh">Export workflow.yaml <button class="x" data-close="m-export">✕</button></div>
-  <div class="mb"><div id="export-issues" class="note" style="margin-bottom:8px"></div><div id="export-preview"></div></div>
+  <div class="mb">
+    <div id="export-path-row" style="display:none;margin-bottom:10px">
+      <label class="pal-h" style="margin:0 0 4px 2px;display:block">Save to (path under this repo)</label>
+      <input id="export-path" spellcheck="false" placeholder="workflows/my-workflow.yaml"
+        style="width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:7px;background:var(--panel2);color:var(--text);font-family:var(--mono);font-size:12px">
+    </div>
+    <div id="export-issues" class="note" style="margin-bottom:8px"></div><div id="export-preview"></div>
+  </div>
   <div class="mf">
     <button class="tb" id="exp-copy">Copy</button>
     <button class="tb" id="exp-save" title="Save back to the opened file">Save in place</button>
@@ -290,6 +347,28 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 <div class="toast" id="toast"></div>
 <div id="selftest-view"><h1>Builder self-test</h1><div id="st-results"></div></div>
+
+<div id="runs-view">
+  <div id="runs-top">
+    <span class="logo">Maestro <b>Runs</b></span>
+    <button class="tb primary" id="runs-open">Open project folder…</button>
+    <label class="tb" for="runs-file" title="Load one or more .maestro/&lt;slug&gt;/state.yaml files">Load state.yaml…</label>
+    <input id="runs-file" type="file" accept=".yaml,.yml" multiple style="display:none">
+    <button class="tb" id="runs-refresh" title="Re-read state from disk">⟳ Refresh</button>
+    <div id="runs-legend">
+      <span><b style="background:var(--ok)"></b>done</span>
+      <span><b style="background:var(--warn)"></b>in&nbsp;progress</span>
+      <span><b style="background:var(--danger)"></b>failed</span>
+      <span><b style="background:var(--muted)"></b>pending</span>
+    </div>
+    <span class="spacer"></span>
+    <button class="tb" id="runs-close">✕ Close</button>
+  </div>
+  <div id="runs-body">
+    <div id="runs-list"></div>
+    <div id="runs-graph"><div class="placeholder">Open your project folder to see its active runs.</div></div>
+  </div>
+</div>
 
 <script>/* vendored js-yaml 4.1.0 — https://github.com/nodeca/js-yaml (MIT) */
 /*! js-yaml 4.1.0 https://github.com/nodeca/js-yaml @license MIT */
@@ -1757,6 +1836,7 @@ function orderedDoc(d) {
 }
 $("#btn-open").addEventListener("click", openFile);
 async function openFile() {
+  if (window.MAESTRO_SERVER) return openFromServer();
   if (window.showOpenFilePicker) {
     try {
       const [h] = await window.showOpenFilePicker({ types: [{ description: "YAML", accept: { "text/yaml": [".yaml", ".yml"] } }] });
@@ -1769,6 +1849,52 @@ async function openFile() {
   inp.onchange = () => { const f = inp.files[0]; if (f) f.text().then(t => loadYamlText(t, f.name)); };
   inp.click();
 }
+// Server mode: recursively list every YAML in the repo (workflows tagged), pick one, open
+// it over HTTP. Its repo-relative path is stashed as a {server} handle so Save can PUT it.
+async function openFromServer() {
+  let list;
+  try { list = await fetch("/api/workflows").then(r => r.json()); }
+  catch (e) { toast("Could not reach the server"); return; }
+  if (!Array.isArray(list) || !list.length) { toast("No YAML files found in this repo"); return; }
+  const bg = document.createElement("div"); bg.className = "modal-bg show";
+  bg.innerHTML = '<div class="modal"><div class="mh">Open workflow ' +
+    '<button class="x" data-x>✕</button></div><div class="mb">' +
+    '<input id="open-filter" placeholder="Filter by name or path…" spellcheck="false" ' +
+    'style="width:100%;padding:7px 9px;margin-bottom:8px;border:1px solid var(--border);border-radius:7px;background:var(--panel2);color:var(--text)">' +
+    '<div id="open-list" style="max-height:52vh;overflow:auto"></div></div></div>';
+  document.body.appendChild(bg);
+  const done = () => bg.remove();
+  const listEl = bg.querySelector("#open-list");
+  const render = (q) => {
+    q = (q || "").toLowerCase();
+    const shown = list.filter(w => !q || w.file.toLowerCase().includes(q) || (w.name || "").toLowerCase().includes(q));
+    if (!shown.length) { listEl.innerHTML = '<div class="note" style="padding:8px">No matches.</div>'; return; }
+    listEl.innerHTML = shown.map(w => {
+      const tag = w.workflow
+        ? '<span class="rbadge running" style="background:var(--accent-soft);color:var(--accent)">workflow</span>'
+        : '<span class="note">yaml</span>';
+      const warn = w.workflow && !w.valid ? ' <span style="color:var(--danger)">⚠ invalid</span>' : '';
+      return '<button class="tb" data-file="' + esc(w.file) + '" ' +
+        (w.workflow ? '' : 'style="opacity:.62;"') +
+        ' style="display:flex;gap:8px;align-items:center;width:100%;text-align:left;margin-bottom:6px">' +
+        tag + '<b>' + esc(w.name) + '</b><span class="note" style="margin-left:auto">' + esc(w.file) + warn + '</span></button>';
+    }).join("");
+    listEl.querySelectorAll("[data-file]").forEach(btn => btn.addEventListener("click", async () => {
+      const file = btn.getAttribute("data-file");
+      try {
+        const text = await fetch("/api/workflow?file=" + encodeURIComponent(file)).then(r => r.text());
+        if (!loadYamlText(text, file, { server: file })) return;  // not a workflow → toast already shown
+      } catch (e) { toast("Open failed: " + e.message); }
+      done();
+    }));
+  };
+  render("");
+  const f = bg.querySelector("#open-filter");
+  f.addEventListener("input", () => render(f.value));
+  setTimeout(() => f.focus(), 0);
+  bg.addEventListener("mousedown", ev => { if (ev.target === bg) done(); });
+  bg.querySelector("[data-x]").addEventListener("click", done);
+}
 $("#btn-export").addEventListener("click", showExport);
 function showExport() {
   if (!doc) return;
@@ -1777,7 +1903,18 @@ function showExport() {
     ? `<span style="color:var(--danger)">⚠ ${errs.length} problem(s) — the engine will reject this file. Export anyway to keep a draft.</span>`
     : `<span style="color:var(--ok)">✓ No problems found.</span> <span class="note">Verify with: <code>python3 engine/maestroctl.py validate ${esc(ed.fileName)}</code></span>`;
   $("#export-preview").textContent = exportYaml();
-  $("#exp-save").style.display = ed.fileHandle ? "" : "none";
+  // Server mode: offer a Save-to-repo path (defaults to the open file, or workflows/<name>).
+  const row = $("#export-path-row"), save = $("#exp-save");
+  if (window.MAESTRO_SERVER) {
+    row.style.display = "";
+    const current = ed.fileHandle && ed.fileHandle.server;
+    $("#export-path").value = current || ("workflows/" + (doc.name || "workflow") + ".yaml");
+    save.textContent = "Save to repo"; save.style.display = "";
+  } else {
+    row.style.display = "none";
+    save.textContent = "Save in place";
+    save.style.display = ed.fileHandle ? "" : "none";
+  }
   openModal("m-export");
 }
 $("#exp-dl").addEventListener("click", () => {
@@ -1793,8 +1930,18 @@ $("#exp-copy").addEventListener("click", async () => {
 });
 $("#exp-save").addEventListener("click", async () => {
   try {
-    const w = await ed.fileHandle.createWritable();
-    await w.write(exportYaml()); await w.close();
+    if (window.MAESTRO_SERVER) {
+      let path = ($("#export-path").value || "").trim().replace(/^\.?\/+/, "");
+      if (!path) { toast("Enter a file path"); return; }
+      if (!/\.ya?ml$/.test(path)) path += ".yaml";
+      const res = await fetch("/api/workflow?file=" + encodeURIComponent(path),
+        { method: "PUT", body: exportYaml() });
+      if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || res.status); }
+      ed.fileHandle = { server: path }; ed.fileName = path;
+    } else {
+      const w = await ed.fileHandle.createWritable();
+      await w.write(exportYaml()); await w.close();
+    }
     ed.dirty = false; renderAll(); closeModals(); toast(`Saved ${ed.fileName}`);
   } catch (e) { toast("Save failed: " + e.message); }
 });
@@ -2013,7 +2160,322 @@ function boot() {
     doc = blankDoc(); renderAll();
   }
 }
+// Server probe: only when served over http(s) by `maestro ui`. On file:// no request is
+// issued at all, so the offline builder behaves byte-for-byte as before.
+window.MAESTRO_SERVER = false;
+if (/^https?:$/.test(location.protocol)) {
+  fetch("/api/health").then(r => r.ok && r.json())
+    .then(j => {
+      if (j && j.ok) {
+        window.MAESTRO_SERVER = true;
+        const b = document.getElementById("btn-export");
+        if (b) { b.textContent = "Save ⤓"; b.title = "Save to your repo (⌘S)"; }
+      }
+    })
+    .catch(() => {});
+}
 boot();
+</script>
+
+<script>/* ---- Runs view: read-only run status from .maestro/<slug>/state.yaml ---- */
+(function () {
+  const q = s => document.querySelector(s);
+  const COLW = 250, ROWH = 120, NODE_W = 190, NODE_H = 56, PAD_X = 60, PAD_Y = 40;
+  let runs = [];            // [{slug, state, repoHandle?}]
+  let source = null;        // {kind:'dir', handle} — for refresh
+  let selected = null;      // slug
+
+  function notify(msg) { try { toast(msg); } catch (e) { alert(msg); } }
+  const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+  function open() { q("#runs-view").classList.add("show"); }
+  function close() { q("#runs-view").classList.remove("show"); }
+
+  // ---- status derivation ------------------------------------------------
+  function stepsUnder(state, id) {
+    const out = {};
+    const steps = (state && state.steps) || {};
+    for (const k of Object.keys(steps))
+      if (k === id || k.startsWith(id + "/") || k.startsWith(id + "[")) out[k] = steps[k];
+    return out;
+  }
+  function isActive(state, id) {
+    const cur = (state.run && state.run.cursors) || [];
+    return cur.some(c => c === id || c.startsWith(id + "/") || c.startsWith(id + "["));
+  }
+  function nodeStatus(state, id) {
+    if (isActive(state, id)) return "running";
+    const under = stepsUnder(state, id);
+    const keys = Object.keys(under);
+    if (!keys.length) return "pending";
+    const st = keys.map(k => under[k].status);
+    if (st.some(s => s === "running")) return "running";
+    if (st.some(s => s === "failed")) return "failed";
+    if (st.every(s => s === "done" || s === "skipped")) return "done";
+    if (st.some(s => s === "done" || s === "skipped")) return "running";  // partially done
+    return "pending";
+  }
+  function counts(state) {
+    const steps = (state && state.steps) || {};
+    const all = Object.values(steps);
+    const done = all.filter(s => s.status === "done" || s.status === "skipped").length;
+    return { done, total: all.length };
+  }
+  function overall(state) {
+    const s = (state.run && state.run.status) || "running";
+    return s === "done" || s === "failed" ? s : "running";
+  }
+
+  // ---- reading from disk -------------------------------------------------
+  async function readPath(handle, path) {
+    const parts = path.split("/").filter(Boolean);
+    let h = handle;
+    for (let i = 0; i < parts.length - 1; i++) h = await h.getDirectoryHandle(parts[i]);
+    const fh = await h.getFileHandle(parts[parts.length - 1]);
+    return (await fh.getFile()).text();
+  }
+  async function scanDir(repoHandle) {
+    let maestro;
+    try { maestro = await repoHandle.getDirectoryHandle(".maestro"); }
+    catch (e) { throw new Error("No .maestro/ folder here — pick your project root (the repo where you run /maestro)."); }
+    const found = [];
+    for await (const [name, h] of maestro.entries()) {
+      if (h.kind !== "directory") continue;
+      try {
+        const fh = await h.getFileHandle("state.yaml");
+        const st = jsyaml.load(await (await fh.getFile()).text());
+        if (st && st.run) found.push({ slug: st.slug || name, state: st, repoHandle });
+      } catch (e) { /* no state.yaml in this slug dir — skip */ }
+    }
+    found.sort((a, b) => a.slug.localeCompare(b.slug));
+    return found;
+  }
+
+  async function pickFolder() {
+    if (!window.showDirectoryPicker) {
+      notify("This browser can't open a folder — use “Load state.yaml…” instead (Chrome/Edge for the folder view).");
+      return;
+    }
+    let handle;
+    try { handle = await window.showDirectoryPicker(); }
+    catch (e) { return; }  // user cancelled
+    try {
+      runs = await scanDir(handle);
+      source = { kind: "dir", handle };
+      selected = runs.length ? runs[0].slug : null;
+      renderList(); renderSelected();
+      if (!runs.length) notify("No runs found under .maestro/ yet.");
+    } catch (e) { notify(e.message || String(e)); }
+  }
+
+  async function refresh() {
+    if (window.MAESTRO_SERVER) return loadFromServer(true);
+    if (source && source.kind === "dir") {
+      try { runs = await scanDir(source.handle); renderList(); renderSelected(); notify("Refreshed."); }
+      catch (e) { notify(e.message || String(e)); }
+    } else { notify("Open a project folder first to refresh from disk."); }
+  }
+
+  // Server mode: the backend already knows the repo, so runs load with no folder picker.
+  // /api/runs returns each state as JSON (no js-yaml needed for the list).
+  async function loadFromServer(isRefresh) {
+    let rs;
+    try { rs = await fetch("/api/runs").then(r => r.json()); }
+    catch (e) { notify("Could not reach the server"); return; }
+    const keep = selected;
+    runs = (rs || []).map(x => ({ slug: x.slug, state: x.state, server: true }));
+    runs.sort((a, b) => a.slug.localeCompare(b.slug));
+    selected = (keep && runs.some(r => r.slug === keep)) ? keep : (runs.length ? runs[0].slug : null);
+    renderList(); renderSelected();
+    if (isRefresh) notify("Refreshed.");
+    else if (!runs.length) notify("No runs found under .maestro/ yet.");
+  }
+
+  function loadFiles(fileList) {
+    const files = Array.from(fileList || []);
+    let n = 0;
+    Promise.all(files.map(f => f.text().then(t => {
+      try {
+        const st = jsyaml.load(t);
+        if (st && st.run) {
+          const slug = st.slug || f.name;
+          runs = runs.filter(r => r.slug !== slug);
+          runs.push({ slug, state: st });  // no repoHandle → table view
+          n++;
+        }
+      } catch (e) { /* skip unparseable */ }
+    }))).then(() => {
+      runs.sort((a, b) => a.slug.localeCompare(b.slug));
+      if (!selected && runs.length) selected = runs[0].slug;
+      renderList(); renderSelected();
+      notify(n ? `Loaded ${n} run${n > 1 ? "s" : ""}.` : "No valid state.yaml found in the selection.");
+    });
+  }
+
+  // ---- rendering ---------------------------------------------------------
+  function renderList() {
+    const el = q("#runs-list");
+    if (!runs.length) {
+      el.innerHTML = window.MAESTRO_SERVER
+        ? '<div class="empty">No runs yet under <code>.maestro/</code>.<br><br>Start one from your IDE with <code>/maestro &lt;slug&gt;</code>; each <code>.maestro/&lt;slug&gt;/state.yaml</code> will appear here. Hit <b>⟳ Refresh</b> as it progresses.</div>'
+        : '<div class="empty">No runs loaded.<br><br>Click <b>Open project folder…</b> and pick the repo where you run <code>/maestro</code>. Each <code>.maestro/&lt;slug&gt;/</code> with a <code>state.yaml</code> shows up here.</div>';
+      return;
+    }
+    el.innerHTML = "";
+    for (const r of runs) {
+      const c = counts(r.state), ov = overall(r.state);
+      const pct = c.total ? Math.round(100 * c.done / c.total) : 0;
+      const card = document.createElement("div");
+      card.className = "run-card" + (r.slug === selected ? " sel" : "");
+      card.innerHTML =
+        '<div class="rc-top"><span class="rc-slug">' + esc(r.slug) + '</span>' +
+        '<span class="rbadge ' + ov + '">' + ov + '</span></div>' +
+        '<div class="rc-file">' + esc((r.state.workflow && r.state.workflow.file) || "?") + '</div>' +
+        '<div class="rc-bar"><i style="width:' + pct + '%"></i></div>' +
+        '<div class="rc-meta">' + c.done + ' / ' + c.total + ' steps' +
+        ((r.repoHandle || r.server) ? '' : ' · table only (load folder for graph)') + '</div>';
+      card.onclick = () => { selected = r.slug; renderList(); renderSelected(); };
+      el.appendChild(card);
+    }
+  }
+
+  async function renderSelected() {
+    const graph = q("#runs-graph");
+    const r = runs.find(x => x.slug === selected);
+    if (!r) {
+      graph.innerHTML = '<div class="placeholder">' + (window.MAESTRO_SERVER
+        ? 'No run selected. Runs live under <code>.maestro/</code> in this repo.'
+        : 'Open your project folder to see its active runs.') + '</div>';
+      return;
+    }
+    if ((r.repoHandle || r.server) && r.state.workflow && r.state.workflow.file) {
+      try {
+        const text = r.server
+          ? await fetch("/api/workflow?file=" + encodeURIComponent(r.state.workflow.file)).then(x => x.text())
+          : await readPath(r.repoHandle, r.state.workflow.file);
+        renderGraph(graph, jsyaml.load(text), r.state);
+        return;
+      } catch (e) { /* fall through to table */ }
+    }
+    renderTable(graph, r.state);
+  }
+
+  function forwardTargets(node) {
+    const t = [];
+    if (node.next) t.push(node.next);
+    (node.routes || []).forEach(r => r.to && t.push(r.to));
+    (node.options || []).forEach(o => o.to && t.push(o.to));
+    return t;
+  }
+
+  function renderGraph(container, wf, state) {
+    const nodes = (wf.nodes || []).filter(n => n && n.id);
+    if (!nodes.length) { renderTable(container, state); return; }
+    const byId = {}; nodes.forEach(n => byId[n.id] = n);
+    const start = wf.start || nodes[0].id;
+    const depth = {}; depth[start] = 0;
+    const queue = [start];
+    while (queue.length) {
+      const c = queue.shift(), nd = byId[c];
+      if (!nd) continue;
+      for (const t of forwardTargets(nd))
+        if (byId[t] && depth[t] === undefined) { depth[t] = depth[c] + 1; queue.push(t); }
+    }
+    nodes.forEach(n => { if (depth[n.id] === undefined) depth[n.id] = 0; });
+    // group by depth → assign x,y
+    const byDepth = {};
+    nodes.forEach(n => { (byDepth[depth[n.id]] = byDepth[depth[n.id]] || []).push(n); });
+    const pos = {};
+    let maxRow = 0;
+    Object.keys(byDepth).forEach(d => {
+      byDepth[d].forEach((n, i) => { pos[n.id] = { x: PAD_X + d * COLW, y: PAD_Y + i * ROWH }; maxRow = Math.max(maxRow, i); });
+    });
+    const maxDepth = Math.max(0, ...nodes.map(n => depth[n.id]));
+    const planeW = PAD_X * 2 + maxDepth * COLW + NODE_W;
+    const planeH = PAD_Y * 2 + maxRow * ROWH + NODE_H;
+
+    // edges svg
+    let paths = "";
+    for (const n of nodes) {
+      const a = pos[n.id];
+      for (const t of forwardTargets(n)) {
+        if (!byId[t]) continue;
+        const b = pos[t];
+        const back = depth[t] <= depth[n.id];
+        const x1 = a.x + NODE_W, y1 = a.y + NODE_H / 2, x2 = b.x, y2 = b.y + NODE_H / 2;
+        const mx = (x1 + x2) / 2;
+        if (back) {
+          const dip = Math.max(y1, y2) + 46;
+          paths += '<path class="back" d="M' + x1 + ' ' + y1 + ' C' + (x1 + 40) + ' ' + dip + ' ' + (x2 - 40) + ' ' + dip + ' ' + x2 + ' ' + y2 + '"/>';
+        } else {
+          paths += '<path d="M' + x1 + ' ' + y1 + ' C' + mx + ' ' + y1 + ' ' + mx + ' ' + y2 + ' ' + x2 + ' ' + y2 + '"/>';
+        }
+      }
+    }
+    let html = '<div id="runs-plane" style="width:' + planeW + 'px;height:' + planeH + 'px">';
+    html += '<svg width="' + planeW + '" height="' + planeH + '">' + paths + '</svg>';
+    for (const n of nodes) {
+      const p = pos[n.id], s = nodeStatus(state, n.id), type = n.type || "agent";
+      const under = stepsUnder(state, n.id), keys = Object.keys(under);
+      const isContainer = type === "parallel" || type === "subworkflow";
+      let cnt = "";
+      if (isContainer && keys.length) {
+        const d = keys.filter(k => under[k].status === "done" || under[k].status === "skipped").length;
+        cnt = '<span class="rn-count">' + d + '/' + keys.length + '</span>';
+      } else if (keys.length && under[n.id]) {
+        const v = under[n.id].visits || 0;
+        if (v > 1) cnt = '<span class="rn-count">×' + v + '</span>';
+      }
+      html += '<div class="rnode s-' + s + '" style="left:' + p.x + 'px;top:' + p.y + 'px">' +
+        '<div class="rn-head"><span class="rn-dot"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+        esc(n.label || n.id) + '</span>' + cnt + '</div>' +
+        '<div class="rn-type">' + esc(type) + '</div></div>';
+    }
+    html += "</div>";
+    container.innerHTML = html;
+  }
+
+  function renderTable(container, state) {
+    const steps = (state && state.steps) || {};
+    const keys = Object.keys(steps).sort();
+    let rows = "";
+    for (const k of keys) {
+      const st = steps[k], s = st.status || "pending";
+      const cls = s === "done" || s === "skipped" ? "done" : s === "failed" ? "failed" : s === "running" ? "running" : "pending";
+      const dot = { done: "var(--ok)", failed: "var(--danger)", running: "var(--warn)", pending: "var(--muted)" }[cls];
+      const outs = Object.keys(st.outputs || {}).join(", ") || "—";
+      rows += '<tr><td><span style="display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:7px;background:' + dot + '"></span>' +
+        esc(k) + '</td><td>' + esc(s) + '</td><td style="text-align:center">' + (st.visits || 0) + '</td><td style="color:var(--muted)">' + esc(outs) + '</td></tr>';
+    }
+    container.innerHTML = '<div style="padding:22px;max-width:760px">' +
+      '<h2 style="margin-bottom:4px">' + esc(state.slug || "run") + '</h2>' +
+      '<div style="color:var(--muted);font-size:12px;margin-bottom:16px">' + esc((state.workflow && state.workflow.file) || "") +
+      ' · status: ' + esc(overall(state)) + '</div>' +
+      (keys.length
+        ? '<table style="width:100%;border-collapse:collapse;font-size:12.5px"><thead><tr style="text-align:left;color:var(--muted);border-bottom:1px solid var(--border)">' +
+          '<th style="padding:6px 0">step</th><th>status</th><th style="text-align:center">visits</th><th>outputs</th></tr></thead><tbody>' + rows + '</tbody></table>'
+        : '<div style="color:var(--muted)">No steps recorded yet.</div>') +
+      '<p style="color:var(--muted);font-size:11px;margin-top:16px">Load the whole project folder (Chrome/Edge) to see this run as a graph.</p></div>';
+  }
+
+  // ---- wiring ------------------------------------------------------------
+  q("#btn-runs").addEventListener("click", () => {
+    open();
+    if (window.MAESTRO_SERVER) {
+      // The server already knows the repo — the folder-picker / upload buttons are moot.
+      q("#runs-open").style.display = "none";
+      const lbl = q('label[for="runs-file"]'); if (lbl) lbl.style.display = "none";
+      loadFromServer();
+      return;
+    }
+    if (!runs.length) renderList();
+  });
+  q("#runs-close").addEventListener("click", close);
+  q("#runs-open").addEventListener("click", pickFolder);
+  q("#runs-refresh").addEventListener("click", refresh);
+  q("#runs-file").addEventListener("change", e => loadFiles(e.target.files));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && q("#runs-view").classList.contains("show")) close(); });
+})();
 </script>
 </body>
 </html>

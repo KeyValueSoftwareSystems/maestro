@@ -35,7 +35,10 @@ def main():
     if not path.is_file():
         fail(f"not found: {path}")
 
-    doc = json.loads(path.read_text())
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError) as exc:
+        fail(f"{path} is not readable JSON: {exc}")
     q = next((q for q in doc.get("questions", []) if q.get("id") == qid), None)
     if q is None:
         fail(f"unknown question id: {qid}")
@@ -44,7 +47,7 @@ def main():
         text = answer_text.strip()
         if not text:
             fail(f"question {qid}: 'answer' choice needs non-empty text")
-        opts = q["options"]
+        opts = q.get("options") or []
         if text.isdigit() and 1 <= int(text) <= len(opts):
             resolution = {"kind": "picked", "answer": opts[int(text) - 1]}
         else:

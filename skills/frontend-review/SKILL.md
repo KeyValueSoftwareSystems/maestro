@@ -1,6 +1,6 @@
 ---
 name: frontend-review
-description: Review the frontend implementation AFTER it is built — UI-state completeness, accessibility, security, resilience, forms, performance, responsive/i18n, test gaps. Read-only; writes a review artifact. Front door for /frontend-review.
+description: Review the frontend implementation — UI-state completeness, accessibility, security, resilience, forms, performance, responsive/i18n, test gaps. Read-only; writes a review artifact. Front door for /frontend-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
 tags: [sdlc, review, frontend]
 ---
@@ -68,12 +68,9 @@ blocking: <true if any blocker/major remains>
 
 ## Decide & output
 Sort blocker → major → minor → suggestion; `blocking = true` if any blocker/major remains.
-Write the report to `.maestro/<slug>/frontend/reviews/summary.md` — this skill owns where
-it writes. A blocking result routes back to the frontend
-implementer — the engine's visit cap (`max_visits`, typically 3) bounds that loop, not you.
+Write the report to the artifact path your instructions specify (the orchestrator passes
+it). Running standalone? write to a sensible path you choose and tell the user where.
 
 ## Output contract
-Return `review_path` and `blocking`.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+Return `review_path`, `blocking` (true/false), and `summary` (one line: the headline
+verdict and the count of blocking findings).

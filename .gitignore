@@ -15,3 +15,6 @@
 # Python bytecode (from workflows/*.py helpers + their tests)
 __pycache__/
 *.pyc
+
+# lock file written locally by `npx skills add` (consumer-side artifact)
+skills-lock.json

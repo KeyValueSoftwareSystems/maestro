@@ -1,6 +1,6 @@
 ---
 name: plan
-description: Produce a high-level design (HLD) for a feature — frame the problem, weigh options with trade-offs, choose an approach, define non-functional requirements and risks, and write a standardized hld.md. Read-only (writes only the HLD doc). Use first, before detailed design. Front door for /plan.
+description: Produce a high-level design (HLD) for a feature — frame the problem, weigh options with trade-offs, choose an approach, define non-functional requirements and risks, and write a standardized hld.md. Read-only (writes only the HLD doc). Front door for /plan.
 allowed-tools: Read, Grep, Glob, Bash, Write, AskUserQuestion
 tags: [sdlc, design, hld]
 ---
@@ -9,20 +9,12 @@ tags: [sdlc, design, hld]
 
 Turn a feature request + requirement files into a **high-level design**: the shape of the solution, the
 options considered, the chosen approach, and the risks — enough for a human to approve the
-*direction* before anyone designs APIs or writes code. This is a design artifact, not code.
-
-## When to use / not use
-- **Use** at the very start of a feature, once a requirement/intent exists.
-- **Don't** design APIs, schemas, or code here — that is the design phase (per-stack LLDs +
-  `/api-contract`) after approval.
+*direction*. This is a design artifact, not code — don't design APIs, schemas, or code here.
 
 ## Inputs
-- `feature` — one-line description.  `feature_slug` — kebab-case id for artifact paths.
-- `requirement_dir` — the requirement FOLDER (assumed to exist). **Read every file in it**
-  as the feature requirement (it may hold a PRD, notes, mockups, etc.).
-- **Artifact paths** — you write `.maestro/<slug>/hld.md` and
-  `.maestro/<slug>/open-questions.json`, with `<slug>` = `feature_slug`. The caller
-  does not pass paths; this skill owns where it writes.
+Your instructions name what to read — the requirement FOLDER — and the artifact path(s) to
+write. **Read every file in the folder** as the feature requirement (it may hold a PRD, notes,
+mockups, etc.). Standalone? read the requirement and write to a path you choose (and tell the user where).
 
 ## Steps
 1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
@@ -71,19 +63,18 @@ pressure-test — but **you remain responsible** for the coverage above. Whateve
 skill does, ensure it produced: alternatives with trade-offs, surfaced assumptions, and a
 pre-mortem. If it is not installed, do this yourself.
 ## Output — write these artifacts
-Write two artifacts:
-- `.maestro/<slug>/hld.md` — the HLD with all sections above, including an
-  "Open questions" section (human-readable prose).
-- `.maestro/<slug>/open-questions.json` — the machine-readable mirror of that
-  section, conforming to
+Write two artifacts to the paths your instructions specify:
+- the HLD with all sections above, including an "Open questions" section
+  (human-readable prose).
+- an `open-questions.json` — the machine-readable mirror of that section, conforming to
   `engine/schemas/open-questions.schema.json`. Each question carries `why` it matters
   and 2–4 suggested `options`. Validate it with
-  `python3 engine/validate_open_questions.py .maestro/<slug>/open-questions.json`.
+  `python3 engine/validate_open_questions.py <path>`.
 
 ## Open-question loop (interactive only)
 When run standalone with `AskUserQuestion` available (a developer running `/plan`
-in Claude Code), run the interactive open-question loop yourself; when run as a
-Maestro workflow step, just WRITE `open-questions.json` — the workflow's OQ loop
+in Claude Code), run the interactive open-question loop yourself; when run as an
+orchestrated (non-interactive) step, just WRITE `open-questions.json` — the workflow's OQ loop
 (script serve → human gate → record → refine) drives resolution.
 
 If `AskUserQuestion` is available **and** `open-questions.json` has any `open`
@@ -109,14 +100,13 @@ available, just write the artifacts and stop — resolution happens downstream.
 
 ## Definition of done
 Every section present; ≥2 options with trade-offs; NFRs and risks concrete (not "TBD");
-open questions listed. Do not proceed to detailed design — that is the design phase (LLD +
-`/api-contract`) after human approval.
+open questions listed. Do not proceed to detailed design or implementation — this artifact
+stops at the *direction*.
 
 ## Output contract
-Return `hld_path` and `hld_summary` (2–3 sentences). Do **not** return open
-questions as a separate structured output field — they live in the file (a prior
-attempt to return them as an agent output failed schema validation). The file is
-the single source of truth; the HLD prose section is its human mirror.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one
-JSON object with these fields — short scalar values only, never file contents.
+Return `hld_path` and `hld_summary` (2–3 sentences). When invoked in **refine mode**
+(folding resolved open questions back into an existing HLD), return `refined_summary`
+instead — a one-line note of what changed. Do **not** return open questions as a separate
+structured output field — they live in the file (a prior attempt to return them as an agent
+output failed schema validation). The file is the single source of truth; the HLD prose
+section is its human mirror.

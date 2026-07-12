@@ -1,6 +1,6 @@
 ---
 name: frontend-design
-description: Author the frontend low-level design (LLD) for a feature — read the relevant frontend code to ground the design, then design component/state architecture, routing, the full UI-state matrix, the API it needs to consume, accessibility, performance, i18n, and tests. Writes .maestro/<slug>/lld/frontend.md; never edits app code. Runs in the design phase (parallel with the backend). Front door for /frontend-design.
+description: Author the frontend low-level design (LLD) for a feature — read the relevant frontend code to ground the design, then design component/state architecture, routing, the full UI-state matrix, the API it needs to consume, accessibility, performance, i18n, and tests. Writes the LLD doc; never edits app code. Front door for /frontend-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, design, lld, frontend]
 ---
@@ -9,18 +9,14 @@ tags: [sdlc, design, lld, frontend]
 
 Design the **frontend** for a feature: read enough of the existing UI to ground the design in
 real components and patterns, then write a **buildable frontend LLD**. Design artifact, not
-code — never edit app code. Prefer reuse over reinvention; cite `file:line` for constraints.
-
-## When to use / not use
-- **Use** in the design phase, after the HLD is approved, in parallel with the backend LLD.
-- **Don't** implement, and don't design the backend. The **cross-repo contract** is not
-  written here — you describe the API/data your UI needs to **consume**, and `/api-contract`
-  reconciles the two LLDs into the formal OpenAPI contract afterward.
+code — never edit app code, don't implement, and don't design the backend. Prefer reuse over
+reinvention; cite `file:line` for constraints. The **cross-repo contract** is not written
+here — you describe the API/data your UI needs to **consume**; the two LLDs are reconciled
+into the formal contract separately.
 
 ## Inputs
-- `feature`, `feature_slug`, approved `hld_path`.
-- **Artifact path** — you write `.maestro/<slug>/lld/frontend.md`, with `<slug>` =
-  `feature_slug`. The caller passes no path; this skill owns where it writes.
+Your instructions name what to read — the approved HLD — and the artifact path to write.
+Standalone? read the HLD and write the LLD to a path you choose (and tell the user where).
 
 ## Steps
 1. **Ground in the code (read-only).** Locate the app(s)/routes this feature touches and read
@@ -35,15 +31,15 @@ code — never edit app code. Prefer reuse over reinvention; cite `file:line` fo
 3. **UI-state matrix** — for each view, define **every** state: loading, empty, success,
    partial, error/retry, permission-denied, and offline/slow-network where relevant.
 4. **API to CONSUME** — the endpoints/events and response shapes the UI expects (your side of
-   the contract). `/api-contract` reconciles this with the backend's exposed API.
+   the contract). This is reconciled with the backend's exposed API in the contract step.
 5. **Accessibility strategy** (keyboard, focus, roles/labels, contrast — WCAG AA),
    **performance** (bundle/render, code-splitting on heavy routes), **security** (XSS/CSRF,
    authz in the UI, no secrets in the client), **i18n**, and **resilience** (error boundaries,
    optimistic UI + rollback).
 6. **Test plan** — component + E2E coverage, including the negative UI states.
 7. **Write** the frontend LLD; flag anything that forces a backend/contract change.
-8. **Emit the task DAG** — write `.maestro/<slug>/frontend/tasks.json` (see section below),
-   reusing the code you already read. No re-reading.
+8. **Emit the task DAG** — write a `tasks.json` (see section below), reusing the code you
+   already read. No re-reading.
 
 ## What the frontend LLD must cover (write all)
 Context & constraints (grounded in the code, cited) · component & state design · routing ·
@@ -65,7 +61,7 @@ libraries or patterns — it must return sourced findings you can cite in the LL
 design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
-Write `.maestro/<slug>/frontend/tasks.json` conforming to
+Write a `tasks.json` (to the path your instructions specify) conforming to
 `engine/schemas/tasks.schema.json`. Build it
 from the LLD you just wrote, reusing files you already read (do not re-read the codebase).
 
@@ -85,22 +81,19 @@ Fields:
   `needs_human_gate` (true for auth/permission, prod config, or dependency changes).
 - **Grouping:** two tasks share a `group_id` **iff** one depends on the other OR they write a
   common file; otherwise different groups. Fill `slices[]`, `task_ids` in dependency order.
-- **Validate before returning:** `python3 engine/validate_tasks.py .maestro/<slug>/frontend/tasks.json`
+- **Validate before returning:** `python3 engine/validate_tasks.py <tasks.json path>`
   must print `OK`.
 
 ## Output
-Write `.maestro/<slug>/lld/frontend.md` with the sections above, each constraint citing
-`file:line`. The API-consumed section feeds `/api-contract`.
+Write your LLD to the given artifact path, with the sections above, each constraint citing
+`file:line`. The API-consumed section feeds the contract step.
 
 ## Definition of done
 Every section present; UI-state matrix complete (no state omitted); API-consumed concrete
-enough to formalize; edge cases specified (not "TBD"). Do not implement — that is
-`/frontend-impl` after the contract is approved.
+enough to formalize; edge cases specified (not "TBD"). Do not implement — this is a design
+artifact only.
 
 ## Output contract
-Return `lld_path`, `tasks_path` (`.maestro/<slug>/frontend/tasks.json`), and `contract_notes` —
+Return `lld_path`, `tasks_path`, and `contract_notes` —
 a short list of the **decisions/constraints that shape the contract** (e.g. "data-fetching goes
 through hook X — reuse it"; "needs `GET /searches` returning `{items, nextCursor}`").
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.

@@ -1,20 +1,19 @@
 ---
 name: architecture-review
-description: Review the per-stack LLDs and the cross-repo contract AFTER design, before implementation — analyze architecture gaps, security, scaling, reliability, data model, and contract soundness. Read-only; writes a review artifact. Front door for /architecture-review.
+description: Review the per-stack LLDs and the cross-repo contract — analyze architecture gaps, security, scaling, reliability, data model, and contract soundness. Read-only; writes a review artifact. Front door for /architecture-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
 tags: [sdlc, review]
 ---
 
 # architecture-review
 
-Review the drafted design **before any code is written**, so architecture problems are
-caught while they are cheap to fix. Read-only — never edit code.
+Review the drafted design so architecture problems are caught while they are cheap to fix.
+Read-only — never edit code.
 
 ## Inputs
-`feature`, `feature_slug`; the per-stack LLDs (`.maestro/<slug>/lld/backend.md`,
-`.maestro/<slug>/lld/frontend.md`) and contract (`.maestro/<slug>/openapi.yaml`), with
-`<slug>` = `feature_slug` — cross-checked against the HLD (`.maestro/<slug>/hld.md`),
-acceptance criteria, and architecture rules (`CLAUDE.md`, ADRs).
+Your instructions name what to read — the per-stack LLDs and the cross-repo contract —
+cross-checked against the HLD, acceptance criteria, and the architecture rules (`CLAUDE.md`,
+ADRs).
 
 ## Steps
 1. **Read** the HLD, both LLDs, the contract, and acceptance criteria; note the stated NFRs.
@@ -73,11 +72,8 @@ blocking: <true if any blocker/major remains>
 ## Decide & output
 Sort findings blocker → major → minor → suggestion; `blocking = true` if any blocker/major
 remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write the report
-(summary + findings table) to `.maestro/<slug>/reviews/architecture.md` — this skill owns
-where it writes. Feeds the contract-approval gate; a blocking
-result routes the workflow back to revise the design.
+(summary + findings table) to the artifact path your instructions specify (the orchestrator
+passes it). Running standalone? write to a sensible path you choose and tell the user where.
 
 ## Output contract
-Return `review_path`, `blocking`, `summary`. When invoked as a Maestro workflow step, your
-reply's LAST line must be exactly one JSON object with these fields — short scalar values
-only, never file contents.
+Return `review_path`, `blocking`, `summary`.

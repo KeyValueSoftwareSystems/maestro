@@ -34,7 +34,8 @@ def canned_agent_outputs(step, action):
         "review": {"review_path": "reviews/summary.md", "blocking": False, "summary": "clean"},
         "fix": {"fix_summary": "fixed", "checks_passed": True},
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
-        "review_pack": {"pack_path": "review-pack.md", "summary": "ready"},
+        "review_pack": {"pack_path": "review-pack.md", "recommendation": "ready",
+                        "summary": "ready"},
     }
     outputs = dict(table[node])
     # sanity: canned outputs must cover everything the node declares

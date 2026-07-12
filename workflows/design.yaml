@@ -10,6 +10,7 @@ description: Design a feature end-to-end, from requirement folder to reviewed de
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
 defaults:
   model: haiku
   agent: planner
@@ -32,7 +33,7 @@ nodes:
       questions: write them to BOTH the HLD's "Open questions" section AND
       .maestro/${inputs.slug}/open-questions.json (schema
       engine/schemas/open-questions.schema.json). Do not ask the user anything directly.
-      If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback}
+      If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
     skill: plan
     inputs:
       feature: "${inputs.feature}"

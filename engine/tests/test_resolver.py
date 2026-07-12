@@ -221,8 +221,10 @@ class BackEdgeTest(Sim):
         action = self.drive_round(True)
         self.assertEqual((action["action"], action["step"]), ("run_agent", "work"))
         st = self.state()
-        self.assertEqual(st["steps"]["review"]["status"], "pending")
-        self.assertEqual(st["steps"]["review"]["outputs"], {})
+        # `review` sits upstream of `work` in the cycle (review -> work). Re-entering work
+        # must NOT eagerly wipe it — that would destroy an input before it's regenerated.
+        # It re-runs lazily when the flow reaches it again; its prior verdict survives.
+        self.assertEqual(st["steps"]["review"]["outputs"], {"blocking": True})
         self.assertEqual(st["steps"]["work"]["visits"], 2)
         action = self.drive_round(True)
         # review has now been ENTERED twice (cap 2); after the next work pass, entering
@@ -245,6 +247,80 @@ class BackEdgeTest(Sim):
         st = self.state()
         self.assertEqual(st["run"]["status"], "failed")
         self.assertEqual(st["gates"][-1]["option"], "giveup")
+
+
+# An upstream producer feeds a loop (serve <-> ask); a later gate can revise back to the
+# producer. Re-entering `serve` inside the loop must not cascade around the cycle and wipe
+# the producer's outputs — the exact bug seen live (author_hld.hld_summary went null while
+# the open-questions loop ran).
+CASCADE_UPSTREAM_WF = """\
+version: 1
+name: cascade-upstream
+inputs:
+  slug: {type: string, required: true}
+start: produce
+nodes:
+  - id: produce
+    type: agent
+    instruction: Produce the artifact.
+    outputs: [summary]
+    artifact: ".maestro/${inputs.slug}/out.md"
+    next: serve
+  - id: serve
+    type: agent
+    instruction: Decide what is next.
+    outputs: [state]
+    max_visits: 20
+    routes:
+      - {when: "${steps.serve.outputs.state} == ask", to: ask}
+      - {to: approve}
+  - id: ask
+    type: gate
+    prompt: A question.
+    options:
+      - {id: answer, label: Answer, to: serve}
+  - id: approve
+    type: gate
+    prompt: Approve the produced artifact?
+    options:
+      - {id: ok, label: Approve, to: end}
+      - {id: revise, label: Revise, to: produce}
+"""
+
+
+class CascadeUpstreamTest(Sim):
+    def test_loop_reentry_preserves_upstream_outputs(self):
+        self.start(self.write_wf("c2.yaml", CASCADE_UPSTREAM_WF))
+        action = self.nxt()
+        self.assertEqual(action["step"], "produce")
+        self.touch(".maestro/feat/out.md")
+        action = self.complete("produce", {"summary": "the HLD summary"})
+        self.assertEqual(action["step"], "serve")
+        action = self.complete("serve", {"state": "ask"})
+        self.assertEqual((action["action"], action["step"]), ("ask_gate", "ask"))
+        # back-edge: ask -> serve. This re-enters serve mid-loop.
+        action = self.gate("ask", "answer")
+        self.assertEqual(action["step"], "serve")
+        st = self.state()
+        # THE REGRESSION: produce is upstream of serve; its output must be intact.
+        self.assertEqual(st["steps"]["produce"]["outputs"], {"summary": "the HLD summary"})
+        self.assertEqual(st["steps"]["produce"]["status"], "done")
+        # serve itself did re-run (reset on re-entry)
+        self.assertEqual(st["steps"]["serve"]["visits"], 2)
+
+    def test_revise_regenerates_downstream(self):
+        # The other direction: revising back to `produce` DOES reset the true downstream.
+        self.start(self.write_wf("c2.yaml", CASCADE_UPSTREAM_WF))
+        self.nxt()
+        self.touch(".maestro/feat/out.md")
+        self.complete("produce", {"summary": "v1"})
+        self.complete("serve", {"state": "approve"})
+        action = self.gate("approve", "revise")
+        # re-enters produce; it must be pending again (regenerate)
+        self.assertEqual(action["step"], "produce")
+        st = self.state()
+        self.assertEqual(st["steps"]["produce"]["status"], "pending")
+        self.assertEqual(st["steps"]["produce"]["outputs"], {})
 
 
 class ArtifactTest(Sim):
@@ -481,6 +557,128 @@ nodes:
             resolver.record_gate(run, "ask", "give")  # missing input text
         action = self.gate("ask", "give", input_text="tighten scope")
         self.assertIn("Apply: tighten scope", action["prompt"])
+
+
+SELF_EXHAUST_WF = """\
+version: 1
+name: self-exhaust
+inputs:
+  slug: {type: string, required: true}
+start: loop
+nodes:
+  - id: loop
+    type: agent
+    instruction: Spin.
+    outputs: [again]
+    max_visits: 1
+    on_exhausted: loop
+    routes:
+      - {to: loop}
+"""
+
+CONTAINER_WF = """\
+version: 1
+name: container
+inputs:
+  slug: {type: string, required: true}
+start: fan
+nodes:
+  - id: fan
+    type: parallel
+    join: all
+    branches:
+      - id: a
+        start: a1
+        steps:
+          - id: a1
+            type: agent
+            instruction: Do A.
+            outputs: [ok]
+            next: end
+      - id: b
+        start: b1
+        steps:
+          - id: b1
+            type: agent
+            instruction: Do B.
+            outputs: [ok]
+            next: end
+    next: done_step
+  - id: done_step
+    type: agent
+    instruction: Wrap up.
+    outputs: [ok]
+    next: end
+"""
+
+
+class EngineGuardsTest(Sim):
+    def test_slug_traversal_rejected(self):
+        rel = self.write_wf("w.yaml", BACKEDGE_WF)
+        for bad in ("../evil", "a/b", "..", "UPPER", "-lead"):
+            with self.assertRaises(resolver.RunError) as ctx:
+                resolver.init_run(bad, rel, {}, self.tmp)
+            self.assertEqual(ctx.exception.code, 3)
+            self.assertIn("slug", str(ctx.exception).lower())
+
+    def test_non_scalar_output_rejected(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        self.touch(".maestro/feat/work.md")
+        run = self.run_obj()
+        with self.assertRaises(resolver.RunError) as ctx:
+            resolver.complete_step(run, "work", outputs={"note": ["a", "b"]})
+        self.assertEqual(ctx.exception.code, 4)
+        self.assertIn("scalar", str(ctx.exception))
+
+    def test_on_exhausted_self_loop_does_not_recurse(self):
+        self.start(self.write_wf("w.yaml", SELF_EXHAUST_WF))
+        # entering `loop` the 2nd time exceeds max_visits 1; on_exhausted -> loop (self)
+        # must synthesize the loop-limit gate, not recurse forever.
+        action = self.complete("loop", {"again": True})
+        self.assertEqual(action["action"], "ask_gate")
+        self.assertEqual(action.get("synthesized"), "exhausted")
+
+    def test_reset_container_node_does_not_brick_next(self):
+        self.start(self.write_wf("w.yaml", CONTAINER_WF))
+        # finish the parallel wave
+        self.touch(".maestro/feat/x")
+        resolver_run = self.run_obj()
+        wave = resolver.next_action(resolver_run)
+        self.assertEqual(wave["action"], "run_agents")
+        self.complete("fan[a]/a1", {"ok": True})
+        self.complete("fan[b]/b1", {"ok": True})
+        # now reset the parallel container itself
+        run = self.run_obj()
+        resolver.reset_steps(run, ["fan"])
+        statemod.save("feat", run.state, self.tmp)
+        # next_action must re-serve the branches, not raise "unexpected parallel node"
+        action = resolver.next_action(self.run_obj())
+        self.assertEqual(action["action"], "run_agents")
+
+    def test_resolved_skill_name_in_prompt(self):
+        wf_text = """\
+version: 1
+name: skillpin
+inputs:
+  slug: {type: string, required: true}
+  stack: {type: string, default: backend}
+start: build
+nodes:
+  - id: build
+    type: agent
+    instruction: Build it.
+    skill: "${inputs.stack}-implement"
+    outputs: [ok]
+    next: end
+"""
+        self.start(self.write_wf("w.yaml", wf_text))
+        action = self.nxt()
+        self.assertEqual(action["skill"], "backend-implement")
+        # the rendered prompt must name the RESOLVED skill and not leak the placeholder
+        # or a pack-only skills/<name>/SKILL.md path
+        self.assertIn("backend-implement", action["prompt"])
+        self.assertNotIn("${inputs.stack}", action["prompt"])
+        self.assertNotIn("skills/backend-implement/SKILL.md", action["prompt"])
 
 
 if __name__ == "__main__":

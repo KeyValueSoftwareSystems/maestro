@@ -45,7 +45,9 @@ def loads(text):
         stripped = _strip_comment(raw)
         if not stripped.strip():
             continue
-        if stripped.strip() == "---":
+        if stripped == "---":
+            # A document separator only at column 0. An indented `---` (e.g. a markdown
+            # rule inside a `|` block literal) is consumed by the literal's line range.
             if lines:
                 raise WfError("multi-document files are not supported", no)
             continue
@@ -248,7 +250,9 @@ def _unquote(token):
         body = token[1:-1]
         return re.sub(
             r"\\(.)",
-            lambda m: {"n": "\n", "t": "\t", '"': '"', "\\": "\\"}.get(m.group(1), "\\" + m.group(1)),
+            lambda m: {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}.get(
+                m.group(1), "\\" + m.group(1)
+            ),
             body,
         )
     if len(token) >= 2 and token[0] == "'" and token[-1] == "'":
@@ -381,9 +385,35 @@ def _dump(obj, out, indent):
         out.append(pad + _dump_scalar(obj))
 
 
+def _literal_safe(s):
+    """True if a multi-line string round-trips through a `|`/`|-` block literal.
+
+    The emitter has no indentation-indicator or line-folding, so a string is only
+    literal-safe when the loader can recover it byte-for-byte: no carriage returns
+    (splitlines would split on them), no whitespace-only interior line (reloaded as a
+    blank), and no leading whitespace on the first content line (which would inflate the
+    inferred block indent and truncate later lines). Anything else falls back to a
+    double-quoted scalar with escapes.
+    """
+    if "\r" in s:
+        return False
+    body = s[:-1] if s.endswith("\n") else s
+    seen_content = False
+    for line in body.split("\n"):
+        if not line:
+            continue
+        if line.strip() == "":
+            return False
+        if not seen_content:
+            if line[0] in " \t":
+                return False
+            seen_content = True
+    return True
+
+
 def _dump_entry(prefix, value, out, indent):
     pad = " " * indent
-    if isinstance(value, str) and "\n" in value:
+    if isinstance(value, str) and "\n" in value and _literal_safe(value):
         marker = "|" if value.endswith("\n") else "|-"
         out.append(f"{prefix} {marker}")
         body = value[:-1] if value.endswith("\n") else value
@@ -456,7 +486,13 @@ def _dump_scalar(value):
         or s[0] in "[{#&*!|>%@`'\"~"
     )
     if needs_quote:
-        body = s.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n").replace("\t", "\\t")
+        body = (
+            s.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\t", "\\t")
+        )
         return f'"{body}"'
     return s
 

@@ -10,7 +10,7 @@ a skill to load, and the exact JSON output contract.
 
 Rules:
 
-- If the prompt names a skill, read its `skills/<name>/SKILL.md` fully and follow it —
+- If the prompt names a skill, load and follow that installed skill fully —
   it owns the framework choice, tiering and coverage bar.
 - The functional test-case catalog (`.maestro/<slug>/test-cases.md`) is the source of
   truth for WHAT to test; do not silently drop cases — mark unautomatable ones explicitly.

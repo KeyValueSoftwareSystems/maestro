@@ -1,6 +1,6 @@
 ---
 name: backend-tasks
-description: Split an approved backend scope + contract into a small, ordered, test-first task list with a verification step per task and risk flags. Read-only planning — never edits code. Use after the contract is approved, before /backend-impl (invoked by the backend-implement skill / the backend_impl workflow) — no standalone slash command.
+description: Split an approved backend scope + contract into a small, ordered, test-first task list with a verification step per task and risk flags. Read-only planning — never edits code.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, plan, backend]
 ---
@@ -9,15 +9,14 @@ tags: [sdlc, plan, backend]
 
 Break the approved backend scope into the **smallest ordered set of verifiable tasks** that
 implement the contract. Small tasks keep the implement→verify→fix loop tight and every
-change reviewable. Read-only — produces a task list, not code. This is the **fallback** author: the design phase normally emits `tasks.json` via
-`/backend-design`. Run this only when `.maestro/<slug>/backend/tasks.json` is absent (e.g. a
-standalone `/backend-impl` run with no design phase).
+change reviewable. Read-only — produces a task list, not code.
 
 ## Inputs
-`feature`, `contract_summary` (the contract the backend OWNS), optional `lld_path`.
+Your instructions name what to read — the cross-repo contract and the backend LLD — and the
+artifact path to write. Standalone? read them and write to a path you choose (and tell the user where).
 
 ## Steps
-1. **Read** the contract and the backend LLD (`.maestro/<slug>/lld/backend.md`); read
+1. **Read** the contract and the backend LLD (the inputs your instructions point to); read
    the target service's structure read-only.
 2. **Slice vertically** where possible — a thin end-to-end slice (schema→API→test) before
    breadth, so value is demonstrable early.
@@ -61,14 +60,14 @@ above. If it is not installed, plan in-pack.
 Validate once; if it fails, make one corrective edit and re-validate (repeat only to fix
 validation errors, never to build the file up incrementally).
 
-Write the DAG to `.maestro/<slug>/backend/tasks.json` (`<slug>` = `feature_slug`; this
-skill owns where it writes — the caller passes no path) conforming to
-`engine/schemas/tasks.schema.json` (same shape `/backend-design` emits): `context_manifest`
+Write the DAG to the tasks.json path your instructions specify (the orchestrator passes it;
+run standalone? use a sensible path you choose) conforming to
+`engine/schemas/tasks.schema.json` (the same shape the design step emits): `context_manifest`
 (batched-read files), `tasks[]` (`id`, `group_id`, `title`, `depends_on` intra-group only,
 `reads`, `writes`, `test`, `standards`, `needs_human_gate`), and `slices[]` (one per
 independent group — two tasks share a group iff one depends on the other or they write a
 common file). Validate with
-`python3 engine/validate_tasks.py .maestro/<slug>/backend/tasks.json` (must print `OK`).
+`python3 engine/validate_tasks.py <the tasks.json path>` (must print `OK`).
 
 ## Definition of done
 Every task ≤ ~1 commit, has a test and standards, and is dependency-ordered; migrations are
@@ -76,6 +75,5 @@ expand/contract with rollback; negative paths and observability are represented;
 are flagged; tasks.json validates against the schema (no cross-group edges, disjoint writes across groups).
 
 ## Output contract
-Return `tasks_path`, `slices`, and `risky` (true if any task needs a human gate). When
-invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON object
-with these fields — short scalar values only, never file contents or diffs.
+Return `tasks_path`, `task_count` (integer), `slice_count` (integer), and `risky`
+(true if any task needs a human gate) — all short scalars.

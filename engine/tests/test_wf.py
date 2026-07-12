@@ -125,5 +125,40 @@ class QuoteScanTest(unittest.TestCase):
         self.assertEqual(doc["quoted key"], "v")
 
 
+class RoundTripHardStringsTest(unittest.TestCase):
+    """Strings the engine actually writes into state.yaml (agent outputs, gate input,
+    failure reasons) must survive dump->load. These once silently corrupted a run."""
+
+    def rt(self, obj):
+        back = wf.loads(wf.dumps(obj))
+        self.assertEqual(back, obj, f"round-trip failed:\n{wf.dumps(obj)}")
+
+    def test_markdown_rule_inside_value(self):
+        self.rt({"steps": {"x": {"outputs": {"summary": "Done.\n---\nNotes: extra"}}}})
+
+    def test_markdown_rule_in_instruction_literal(self):
+        # an indented `---` in a block literal is not a document separator
+        doc = wf.loads('i: |\n  Section A\n  ---\n  Section B\n')
+        self.assertEqual(doc["i"], "Section A\n---\nSection B\n")
+
+    def test_carriage_return(self):
+        self.rt({"a": "line1\rline2"})
+        self.rt({"a": "windows\r\nnewlines\r\n"})
+
+    def test_leading_space_first_line(self):
+        self.rt({"i": "  indented first\nflush second"})
+
+    def test_whitespace_only_interior_line(self):
+        self.rt({"i": "a\n  \nb"})
+
+    def test_tabs_and_quotes(self):
+        self.rt({"i": "col1\tcol2\nrow2", "j": 'said "hi"\nbye'})
+
+    def test_leading_doc_sep_allowed_multidoc_rejected(self):
+        self.assertEqual(wf.loads("---\na: 1\n"), {"a": 1})
+        with self.assertRaises(wf.WfError):
+            wf.loads("a: 1\n---\nb: 2\n")
+
+
 if __name__ == "__main__":
     unittest.main()

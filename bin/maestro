@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# =============================================================================
+# maestro — repo-local dev wrapper for the Maestro pack
+# =============================================================================
+# Two subcommands, both dev tooling. This wrapper NEVER drives a run or writes run
+# state (.maestro/**/state.yaml) — the /maestro skill + engine remain the sole
+# execution path and the only state writer.
+#
+#   maestro ui [--port N] [--no-open]   serve the visual builder from THIS repo:
+#                                       auto-loads its workflows/ and .maestro/ runs
+#   maestro install [claude-code|cursor …]   (re)install the pack into this repo
+#   maestro help | version
+#
+# install.sh drops this at your repo root as ./maestro. Run it as `./maestro ui`.
+# =============================================================================
+set -u
+
+# --- resolve our own location (portable readlink -f; macOS/bash-3.2 safe) ----
+resolve() {
+  src="$1"
+  while [ -h "$src" ]; do
+    dir=$(cd -P "$(dirname "$src")" && pwd)
+    src=$(readlink "$src")
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+D=$(resolve "$0")
+
+# MAESTRO_HOME holds engine/, ui/, install.sh. Env override wins; else the wrapper's
+# own dir (consumer: ./maestro at repo root) or its parent (pack repo: bin/maestro).
+if [ -n "${MAESTRO_HOME:-}" ]; then
+  :
+elif [ -f "$D/engine/ui_server.py" ]; then
+  MAESTRO_HOME="$D"
+elif [ -f "$D/../engine/ui_server.py" ]; then
+  MAESTRO_HOME=$(cd "$D/.." && pwd)
+else
+  echo "maestro: cannot locate the pack (no engine/ui_server.py next to $D)." >&2
+  echo "  set MAESTRO_HOME to the repo that holds engine/ and ui/." >&2
+  exit 2
+fi
+
+usage() {
+  sed -n '5,14p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  ui)
+    builder="$MAESTRO_HOME/ui/builder.html"
+    [ -f "$PWD/ui/builder.html" ] && builder="$PWD/ui/builder.html"
+    exec python3 "$MAESTRO_HOME/engine/ui_server.py" \
+      --root "$PWD" --builder "$builder" "$@"
+    ;;
+  install)
+    if [ ! -f "$MAESTRO_HOME/install.sh" ]; then
+      echo "maestro: no install.sh in $MAESTRO_HOME" >&2; exit 2
+    fi
+    DEST="$PWD" exec bash "$MAESTRO_HOME/install.sh" "$@"
+    ;;
+  version|--version|-v)
+    echo "maestro (KeyValue AI-SDLC pack) — home: $MAESTRO_HOME"
+    ;;
+  help|--help|-h)
+    usage
+    ;;
+  *)
+    echo "maestro: unknown command '$cmd'" >&2
+    echo >&2
+    usage >&2
+    exit 2
+    ;;
+esac

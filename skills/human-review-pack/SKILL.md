@@ -1,6 +1,6 @@
 ---
 name: human-review-pack
-description: Assemble a concise, evidence-backed PR/release review pack before approval — what changed and why, impact, the verify proof, reviewer findings (fixed and deferred), and the exact decision needed. Read-only; writes the pack. Front door for /review-pack.
+description: Assemble a concise, evidence-backed PR/release review pack — what changed and why, impact, the verify proof, reviewer findings (fixed and deferred), and the exact decision needed. Read-only; writes the pack. Front door for /human-review-pack.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, review, release]
 ---
@@ -13,10 +13,10 @@ readiness.
 
 ## Steps
 1. **Collect the diff summary** — changed files/areas per stack; new endpoints/migrations/UI.
-2. **Pull the proof** — the `/verify` reports and `.maestro/<slug>/<stack>/last-verify.json` markers per stack;
-   the QA suite result. If proof is missing or `status:"fail"`, say so — do not claim green.
-3. **Pull the reviewer findings** — from `.maestro/<slug>/reviews/architecture.md` and each
-   stack's review (`.maestro/<slug>/<stack>/reviews/summary.md`);
+2. **Pull the proof** — the `/verify` reports and per-stack verify markers; the QA suite
+   result. Read the inputs your instructions point to. If proof is missing or `status:"fail"`,
+   say so — do not claim green.
+3. **Pull the reviewer findings** — from the architecture review and each stack's review;
    separate what was **fixed** from what is **deferred/accepted**.
 4. **Assess risk & release readiness** — migrations, flags, rollout/backout, data impact.
 5. **Write** the pack and state the exact decision required.
@@ -44,13 +44,11 @@ readiness.
 - **Risky migration / irreversible step** — flag as requiring extra human attention.
 
 ## Output
-Write the pack to `.maestro/<slug>/review-pack.md` (`<slug>` = `feature_slug`) — this skill
-owns where it writes. Never claim readiness without
-the proof to back it — the review pack is a decision aid, not a rubber stamp.
+Write the pack to the artifact path your instructions specify (the orchestrator passes it).
+Running standalone? write to a sensible path you choose and tell the user where. Never claim readiness
+without the proof to back it — the review pack is a decision aid, not a rubber stamp.
 
 ## Output contract
-Return `pack_path` and `recommendation` (`ready` | `changes-requested` | `not-ready`,
-mirroring the pack's "Decision needed" section).
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+Return `pack_path`, `recommendation` (`ready` | `changes-requested` | `not-ready`,
+mirroring the pack's "Decision needed" section), and `summary` (one line the human reads
+at the release gate).

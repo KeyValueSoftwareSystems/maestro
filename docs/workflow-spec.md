@@ -68,9 +68,14 @@ Pure string substitution — no templating engine, no filters, no expressions. F
 | `${steps.<id>.branches.<key>.outputs.<field>}` | a parallel-branch result |
 | `${config.<dot.path>}` | value from an optional `maestro.config.yaml` at the repo root (advanced; nothing ships or requires one) |
 
-An unresolvable placeholder is a hard error (validation error when statically checkable,
-runtime error otherwise). Inside a parallel branch, `${steps.<id>…}` resolves branch-local step
-ids first, then workflow-level ids.
+Resolution strictness differs by where the placeholder sits. The validator flags a statically
+unresolvable placeholder (undeclared input, unknown step) at lint time. At runtime, the
+substitutions that feed an LLM or a shell — **agent instructions, gate prompts, agent
+`inputs:`, and script `argv`** — resolve leniently: an unresolved reference becomes the empty
+string rather than aborting the run (an early step may legitimately reference a field a later
+step has not produced yet). The strict-at-runtime cases are the ones that must be correct to
+make progress: **`artifact:` paths** and **`skill:` names**. Inside a parallel branch,
+`${steps.<id>…}` resolves branch-local step ids first, then workflow-level ids.
 
 ## Conditions
 
@@ -135,7 +140,8 @@ The workhorse: the lead agent spawns a subagent for it.
   instruction: |            # REQUIRED — what this step must do, in plain language.
     Write the high-level design for this feature from the requirement folder.
     Surface unresolved decisions as open questions.
-  skill: plan               # optional pin: subagent must load skills/plan/SKILL.md.
+  skill: plan               # optional pin: subagent loads the installed skill named `plan`
+                            # (BY NAME, not a path — could be yours or a 3rd-party pack).
                             # Omit for "auto": harness skill-discovery picks the best match.
   agent: planner            # optional subagent type (agents/planner.md); default defaults.agent
   model: sonnet             # optional; default defaults.model
@@ -145,10 +151,17 @@ The workhorse: the lead agent spawns a subagent for it.
   outputs: [hld_summary]    # fields the subagent must return as last-line JSON (small scalars)
   artifact: ".maestro/${inputs.slug}/hld.md"   # string or list; engine refuses to mark the
                             # step done unless every artifact exists non-empty ("proof, not
-                            # promises")
+                            # promises"). The node owns this path; the engine injects it into
+                            # the prompt so the skill needn't know where to write.
   retries: 1                # re-dispatches on failure before on_fail applies (default 1)
   next: oq_serve
 ```
+
+The node owns *what/where/when* — `instruction`, `inputs`, `artifact`, `outputs`, ordering —
+and the engine renders all of them into the subagent prompt. A `skill` supplies only *how*.
+That split is what makes skills swappable: pin one of ours, one of yours, or a third-party
+skill (Obra, Superpowers, …), or omit `skill:` and let the harness auto-pick — the graph is
+unchanged either way.
 
 ### `gate`
 
@@ -227,6 +240,27 @@ steps are namespaced in state (`design/author_hld`). Maximum nesting depth: 4.
   inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
   next: arch_review
 ```
+
+## Trust & execution model
+
+Workflow files are **trusted code**, on the same footing as a Makefile or a CI config in the
+repo: a `script` node runs an arbitrary `argv`, and values from earlier steps are interpolated
+into later agent prompts and script `argv`. Treat authoring or editing a workflow as a change
+that gets code review, and only run workflows you trust.
+
+Two properties keep interpolation from becoming injection, and both must be preserved:
+
+- **`argv` is a list, never a shell string.** The engine emits `run:` as a JSON array and the
+  lead agent MUST execute it as an argument vector (e.g. `subprocess`-style), never by joining
+  it into a single string handed to a shell. A value like `"; rm -rf /"` is then just one inert
+  argument. (The example pack's stubs use `bash -c "…"` deliberately, with no interpolation
+  inside the command — do not add `${…}` inside a `bash -c` string.)
+- **Conditions are parsed before substitution.** `when:` expressions are parsed into a fixed
+  grammar first, so an interpolated value can only be a comparison operand — it can never
+  introduce a new operator or clause.
+
+`slug` is validated to a single safe path segment (`[a-z0-9][a-z0-9._-]*`, no `/` or `..`) so
+it cannot redirect writes outside `.maestro/<slug>/`.
 
 ## State — `.maestro/<slug>/state.yaml`
 

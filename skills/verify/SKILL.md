@@ -1,6 +1,6 @@
 ---
 name: verify
-description: Run the project's deterministic checks and produce an evidence-backed proof report plus a machine-readable proof marker. Never modifies code (writes only its proof artifacts). Use after any implementation to prove it works. Front door for /verify.
+description: Run the project's deterministic checks and produce an evidence-backed proof report plus a machine-readable proof marker. Never modifies code (writes only its proof artifacts). Front door for /verify.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, qa, verify]
 ---
@@ -19,7 +19,7 @@ proof artifacts below).
 4. **Stop at the first hard failure** for the fast path, but still record what ran.
 5. **Write the report + marker** (below). Set overall `status` = pass only if all required
    checks passed.
-6. If anything failed, hand off to `/fix` — do not fix here.
+6. If anything failed, hand off to `/fix-loop` — do not fix here.
 
 ## Checks to run
 **Backend proof:** lint · typecheck · unit tests · integration tests · migration check
@@ -33,12 +33,13 @@ Storybook/component check (if available) · Playwright E2E · accessibility basi
   summary + suspected root cause · next recommended action.
 
 ## Proof artifacts (this is what makes "done" checkable, not just claimed)
-Also WRITE (under the feature work dir `.maestro/<slug>/`, `<slug>` = `feature_slug`):
-- `.maestro/<slug>/<stack>/verify.md` — the human-readable report above.
-- `.maestro/<slug>/<stack>/last-verify.json` — the marker, e.g.
+Also WRITE, to the artifact path(s) your instructions specify (the orchestrator passes them;
+standalone, use a sensible dir you choose):
+- `verify.md` — the human-readable report above.
+- `last-verify.json` — the marker, e.g.
   `{"status":"pass|fail","date":"<YYYY-MM-DD>","stack":"backend|frontend","checks":[{"cmd":"…","result":"pass|fail"}]}`.
 
-Nothing auto-runs this for you — it's on you (or `/review-pack`) to check the marker exists
+Nothing auto-runs this for you — it's on you (or `/human-review-pack`) to check the marker exists
 and is fresh before treating an implementation as done. **The proof is produced by this
 command**, not assumed.
 
@@ -53,11 +54,8 @@ command**, not assumed.
 
 ## Definition of done
 Never accept "everything works". Overall `status` reflects the weakest required check; the
-marker and report are written; on failure the next action points at `/fix`.
+marker and report are written; on failure the next action points at `/fix-loop`.
 
 ## Output contract
 Return `status` (`pass`|`fail`), `report_path` (the verify.md written), and `failed_cmd`
 (the exact first failing command, empty string on pass).
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.

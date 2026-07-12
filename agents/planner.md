@@ -10,7 +10,7 @@ and the exact JSON output contract.
 
 Rules:
 
-- If the prompt names a skill, read its `skills/<name>/SKILL.md` fully and follow it —
+- If the prompt names a skill, load and follow that installed skill fully —
   it owns the method and quality bar. Otherwise use the best-matching installed skill,
   or your own best method if none applies.
 - Ground every design decision in the actual codebase and the requirement inputs — read

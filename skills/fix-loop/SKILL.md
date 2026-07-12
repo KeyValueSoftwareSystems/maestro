@@ -1,6 +1,6 @@
 ---
 name: fix-loop
-description: Make ONE bounded fix attempt at failing deterministic checks — root-cause first, editing only files related to the failure — then report; the workflow re-invokes per attempt and the engine's visit cap ends the loop before escalating to a human. Front door for /fix.
+description: Make ONE bounded fix attempt at failing deterministic checks — root-cause first, editing only files related to the failure — then report. Front door for /fix-loop.
 allowed-tools: Read, Grep, Glob, Bash, Edit
 tags: [sdlc, fix, debug]
 ---
@@ -8,10 +8,9 @@ tags: [sdlc, fix, debug]
 # fix-loop
 
 **One invocation = one fix attempt.** Diagnose the failure, apply the smallest safe fix,
-re-run the failing checks, and report. Do **NOT** loop internally: the workflow re-invokes
-this skill while checks still fail, and the engine owns the loop bound — the workflow's fix
-nodes carry `max_visits` (typically 3), and that visit cap ends the loop. Run standalone,
-the same rule holds: one attempt, then hand the result back.
+re-run the failing checks, and report. Do **NOT** loop internally: make one attempt, then
+hand the result back — the caller re-invokes while checks still fail and owns the loop
+bound, so a run never spins here. Run standalone, the same rule holds.
 
 **Safety:** never run destructive commands (`rm -rf`, force-push, `DROP`/`TRUNCATE`) or write
 prod config/secrets. Nothing auto-blocks this — you are the backstop, and this rule holds
@@ -56,8 +55,7 @@ decide whether to re-invoke. Escalation is success, not failure.
 
 ## Output contract
 Return `root_cause` (one line, or the hypothesis), `fix_summary` (files changed + what
-changed), `checks_passed` (true/false), and `escalate` (true when a hard-stop trigger above
-was hit).
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+changed), `checks_passed`, and `escalate` (true when a hard-stop trigger above was hit).
+`checks_passed` MUST be the literal JSON boolean `true` or `false` (true only if the targeted
+checks actually ran AND passed after your fix) — never a count or status phrase. The workflow
+routes on it: `true` exits the fix loop, anything else keeps looping, so prose traps the loop.

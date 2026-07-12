@@ -1,6 +1,6 @@
 ---
 name: functional-testcases
-description: Author a FUNCTIONAL test-case catalog (human-readable, black-box) for a feature by deriving cases from the acceptance criteria, the HLD, and the cross-repo contract — one case per behavior a user or client can observe, positive + negative + edge, each traceable to the criterion/operation it verifies. This is the QA source of truth the /qa skill turns into automated E2E; it is NOT automation code. Reads the design artifacts; writes .maestro/<slug>/test-cases.md; never edits app code. Runs in the design phase, after the contract. Front door for /functional-testcases.
+description: Author a FUNCTIONAL test-case catalog (human-readable, black-box) for a feature by deriving cases from the acceptance criteria, the HLD, and the cross-repo contract — one case per behavior a user or client can observe, positive + negative + edge, each traceable to the criterion/operation it verifies. Black-box QA source of truth, NOT automation code. Reads the design artifacts; writes the catalog; never edits app code. Front door for /functional-testcases.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, design, qa]
 ---
@@ -9,29 +9,21 @@ tags: [sdlc, design, qa]
 
 Turn the approved design into a **functional test-case catalog**: black-box cases derived from
 **observable behavior** (the acceptance criteria + the contract's operations), not from the
-implementation. Each case is a plain-language spec a human can execute by hand and that `/qa`
-later automates. Write cases only; never edit app code.
-
-## When to use / not use
-- **Use** in the design phase, after `/api-contract` — once the contract and acceptance
-  criteria exist and the HLD is approved. It closes the design phase and seeds QA.
-- **Don't** write automation code or framework specs (that's `/qa`), and **don't** derive cases
-  from internals — a case must be justified by an acceptance criterion or a contract operation.
+implementation. Each case is a plain-language spec a human can execute by hand and that the QA
+automation step later automates. Write cases only; never edit app code, never write automation
+code or framework specs (that is the automation step's job). Every case must be justified by an
+acceptance criterion or a contract operation — never derive cases from internals.
 
 ## Inputs
-- `feature`, `feature_slug`.
-- `hld_path` — `.maestro/<slug>/hld.md`.
-- `contract_path` — `.maestro/<slug>/openapi.yaml`.
-- `acceptance_path` — `.maestro/<slug>/acceptance-criteria.md` (and/or the `acceptance_criteria`
-  text passed by the caller).
-- **Artifact path** — you write `.maestro/<slug>/test-cases.md`, with `<slug>` =
-  `feature_slug`. The caller passes no output path; this skill owns where it writes.
+Your instructions name what to read — the HLD, the cross-repo contract, and the acceptance
+criteria — and the artifact path to write the catalog. Standalone? read them and write to a
+path you choose (and tell the user where).
 
 ## Steps
 1. **Read** the acceptance criteria, HLD, and contract. List every acceptance criterion and
    every contract operation (method/path or event) — these are the things a case must cover.
 2. **Derive journeys** — group behaviors into user/client journeys. Rank by risk tier
-   (critical / high / normal) so `/qa` knows what to automate first.
+   (critical / high / normal) so the automation step knows what to automate first.
 3. **Write one case per observable behavior** (template below): the primary happy path for each
    journey, then the negative and edge behaviors the contract and acceptance criteria define.
 4. **Trace** every case back to the acceptance criterion id and/or contract operation it
@@ -66,7 +58,7 @@ later automates. Write cases only; never edit app code.
 - **Safe** — seeded test data only; never real secrets or production data.
 
 ## Output — write this artifact
-Write `.maestro/<slug>/test-cases.md`:
+Write the catalog to the path your instructions specify, containing:
 - A short **header**: feature, scope, out-of-scope, data strategy, risk-tier legend.
 - A **coverage matrix** mapping each acceptance criterion / contract operation → the case IDs
   that cover it (prove nothing is uncovered).
@@ -75,12 +67,9 @@ Write `.maestro/<slug>/test-cases.md`:
 ## Definition of done
 Every acceptance criterion and contract operation is covered by ≥1 traceable case; negatives,
 edges, and authz paths are present (not "TBD"); each case is black-box, self-contained, and
-deterministic; scope and out-of-scope stated. Do not automate — `/qa` turns this catalog into
-the executable E2E suite.
+deterministic; scope and out-of-scope stated. Do not automate — the automation step turns this
+catalog into the executable E2E suite.
 
 ## Output contract
 Return `test_cases_path`, `case_count`, and `coverage_summary` (2–3 sentences: journeys
 covered, notable negatives/edges, anything deferred).
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.

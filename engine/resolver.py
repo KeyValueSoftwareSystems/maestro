@@ -20,9 +20,10 @@ import re
 try:
     import condctl
     import state as statemod
+    import validate as validatemod
     import wf
 except ImportError:  # imported as a package (tests)
-    from . import condctl, state as statemod, wf
+    from . import condctl, state as statemod, validate as validatemod, wf
 
 
 class RunError(RuntimeError):
@@ -268,24 +269,32 @@ def _find_branch(node, branch_id):
 
 # ---------------------------------------------------------------- init
 
-def coerce_input(declared, raw):
+def coerce_input(declared, raw, name="input"):
     kind = (declared or {}).get("type", "string")
-    if kind == "number":
-        return float(raw) if "." in str(raw) else int(raw)
-    if kind == "boolean":
-        return str(raw).lower() in ("1", "true", "yes")
-    if kind == "list":
-        if isinstance(raw, list):
-            return raw
-        raw = str(raw)
-        if raw.startswith("["):
-            return json.loads(raw)
-        return [p.strip() for p in raw.split(",") if p.strip()]
+    try:
+        if kind == "number":
+            return float(raw) if "." in str(raw) else int(raw)
+        if kind == "boolean":
+            return str(raw).lower() in ("1", "true", "yes")
+        if kind == "list":
+            if isinstance(raw, list):
+                return raw
+            raw = str(raw)
+            if raw.startswith("["):
+                return json.loads(raw)
+            return [p.strip() for p in raw.split(",") if p.strip()]
+    except (ValueError, TypeError):
+        raise RunError(f"input {name!r} is not a valid {kind}: {raw!r}", code=3)
     return raw
 
 
 def init_run(slug, workflow_file, inputs, root=".", force=False):
     """Create (or no-op onto) the run ledger. Returns (state, created?)."""
+    if not statemod.valid_slug(slug):
+        raise RunError(
+            f"invalid slug {slug!r}: use lowercase letters, digits, '.', '-', '_' "
+            f"(a single path segment, no '/' or '..')", code=3,
+        )
     full = os.path.join(root, workflow_file)
     if not os.path.exists(full):
         raise RunError(f"workflow file not found: {workflow_file}", code=3)
@@ -311,7 +320,7 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
     resolved.update(inputs)
     for name, spec in declared.items():
         if name in resolved:
-            resolved[name] = coerce_input(spec, resolved[name])
+            resolved[name] = coerce_input(spec, resolved[name], name)
         elif spec and spec.get("required"):
             raise RunError(f"missing required input {name!r}", code=3)
     # defaults may reference other inputs; resolve in declaration order
@@ -325,7 +334,7 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
                         return str(res[ref[7:]])
                     return m.group(0)
                 default = _PLACEHOLDER_RE.sub(repl, default)
-            resolved[name] = coerce_input(spec, default)
+            resolved[name] = coerce_input(spec, default, name)
 
     data = statemod.new_state(slug, workflow_file, digest, resolved)
     run = Run(slug, root, state_data=data)
@@ -368,7 +377,9 @@ def _enter(run, frame, node_id, via_gate=False):
         target = node.get("on_exhausted", "ask")
         if target == "abort":
             _frame_abort(run, frame, reason=f"{path}: visit cap {cap} exhausted")
-        elif target == "ask":
+        elif target == "ask" or target == node_id:
+            # `ask` (or an on_exhausted that points at this same node) synthesizes the
+            # loop-limit gate. Routing on_exhausted back to self would recurse forever.
             entry["pending_ask"] = {"kind": "exhausted", "reason": f"visit cap {cap} reached"}
             entry["status"] = "pending"
             _add_cursor(run, path)
@@ -401,8 +412,12 @@ def _enter_inner(run, frame, node):
         full = os.path.join(run.root, rel)
         if not os.path.exists(full):
             raise RunError(f"subworkflow file missing: {rel}", code=3)
+        # missing_ok: a subworkflow input may reference a gate output that only exists on
+        # some paths (e.g. `feedback` from a revise gate) — unset resolves to empty, same
+        # as agent-node inputs (below), rather than aborting the run on first entry.
         child_inputs = {
-            k: run.resolve_value(v, frame) for k, v in (node.get("inputs") or {}).items()
+            k: run.resolve_value(v, frame, missing_ok=True)
+            for k, v in (node.get("inputs") or {}).items()
         }
         child_inputs.setdefault("slug", run.state["inputs"].get("slug", run.slug))
         run.state["frames"][path] = {
@@ -483,9 +498,26 @@ def _reset_step(run, frame, node_id):
             _drop_cursor(run, cursor)
 
 
+def _ancestors(frame, target):
+    """Nodes from which `target` is forward-reachable (target itself excluded)."""
+    return {
+        nid for nid in frame.nodes
+        if nid != target and target in _reachable(frame, nid)
+    }
+
+
 def _cascade_reset(run, frame, node_id):
-    """Re-entry reset: the target plus every terminal-status step reachable from it."""
-    for nid in _reachable(frame, node_id):
+    """Re-entry reset: the target plus every terminal-status step DOWNSTREAM of it.
+
+    "Downstream" = forward-reachable from the target, minus the target's own ancestors.
+    Excluding ancestors is what keeps a back-edge inside a loop (e.g. oq_record ->
+    oq_serve) from cascading around the cycle and wiping the very upstream steps the
+    target consumes (author_hld's HLD). Without it, re-entering a looped node silently
+    resets its inputs; with it, each node still re-runs when the flow reaches it again
+    (entering a done node triggers its own cascade), so nothing is left stale.
+    """
+    downstream = _reachable(frame, node_id) - _ancestors(frame, node_id)
+    for nid in downstream:
         path = frame.path(nid)
         entry = run.state["steps"].get(path)
         if nid == node_id or (entry and entry.get("status") in ("done", "failed", "skipped")):
@@ -762,7 +794,7 @@ def _agent_action(run, frame, node, path):
         "isolate": isolate,
         "outputs": node.get("outputs") or [],
         "artifacts": artifacts,
-        "prompt": render_agent_prompt(run, frame, node, resolved_inputs, artifacts, isolate),
+        "prompt": render_agent_prompt(run, frame, node, resolved_inputs, artifacts, isolate, skill),
     }
 
 
@@ -774,7 +806,7 @@ def _artifact_list(run, frame, node):
     return [run.resolve_text(a, frame) for a in items]
 
 
-def render_agent_prompt(run, frame, node, inputs, artifacts, isolate):
+def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None):
     instruction = run.resolve_text(node["instruction"], frame, missing_ok=True)
     lines = [instruction.strip(), ""]
     if inputs:
@@ -784,11 +816,14 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate):
                 value = json.dumps(value)
             lines.append(f"- {key}: {value}")
         lines.append("")
-    skill = node.get("skill")
     if skill:
+        # Reference the skill by NAME (the harness resolves installed skills from their
+        # frontmatter name). Do NOT hard-code a `skills/<name>/SKILL.md` path — that path
+        # only exists in the pack repo, not in a consumer repo where skills install to
+        # .claude/skills or .cursor/skills.
         lines.append(
-            f"Load and follow the skill `{skill}` (skills/{skill}/SKILL.md) to perform this task. "
-            f"Read it fully before acting; it owns the method and quality bar."
+            f"Load and follow the `{skill}` skill to perform this task — read its SKILL.md "
+            f"fully before acting; it owns the method and quality bar."
         )
     else:
         lines.append(
@@ -797,10 +832,25 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate):
         )
     if isolate == "worktree":
         slug = run.state["inputs"].get("slug", run.slug)
+        # The branch MUST be unique per parallel step, or two worktrees try to check out
+        # the same branch and git refuses. A node's own `branch` input (e.g. a stack-
+        # specific `feature/${inputs.slug}-${inputs.stack}`) is unique by design, so prefer
+        # it. Otherwise derive the name from the FULL step path — the bare node id collides
+        # when the same subworkflow runs in more than one parallel branch (both would be
+        # `.../implement`).
+        branch = (inputs or {}).get("branch")
+        if not branch:
+            safe_path = frame.path(node["id"]).replace("[", "-").replace("]", "").replace("/", "-")
+            branch = f"maestro/{slug}/{safe_path}"
         lines.append(
-            f"Work in an isolated git worktree on branch `maestro/{slug}/{node['id']}` "
-            f"(create it if needed) so parallel steps cannot conflict. Commit your work there; "
-            f"do NOT touch the main working tree."
+            f"ISOLATION IS MANDATORY. Before you edit ANY file, create and enter a git "
+            f"worktree on branch `{branch}`: run `git worktree add -b {branch} "
+            f"<new-dir> HEAD` (or `git worktree add <new-dir> {branch}` if the branch "
+            f"exists) and do all of your work from inside <new-dir>. Verify with `git rev-parse "
+            f"--show-toplevel` that you are NOT in the main working tree before editing. If a "
+            f"worktree cannot be created (e.g. the repo has no commits), STOP and report the "
+            f"failure — do NOT fall back to editing the main working tree, because a parallel "
+            f"step may be writing there. Commit your work on `{branch}` inside the worktree."
         )
     if artifacts:
         lines.append("")
@@ -842,9 +892,18 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None):
         raise RunError(f"complete is only valid for agent/script steps, not {kind}", code=4)
 
     outputs = outputs or {}
-    missing = [f for f in node.get("outputs") or [] if f not in outputs]
+    declared = node.get("outputs") or []
+    missing = [f for f in declared if f not in outputs]
     if missing:
         raise RunError(f"step {path!r}: missing output field(s): {', '.join(missing)}", code=4)
+    nonscalar = [f for f in declared
+                 if not isinstance(outputs[f], (str, int, float, bool))]
+    if nonscalar:
+        raise RunError(
+            f"step {path!r}: output field(s) must be a scalar (string/number/bool), not an "
+            f"array or object: {', '.join(nonscalar)}. Put structured data in an artifact "
+            f"file and return its path instead.", code=4,
+        )
     bad_artifacts = [a for a in _artifact_list(run, frame, node) if not statemod.artifact_ok(a, run.root)]
     if bad_artifacts:
         raise RunError(
@@ -1028,7 +1087,10 @@ def reset_steps(run, paths, cascade=False):
                     _reset_step(run, frame, nid)
         else:
             _reset_step(run, frame, node["id"])
-        _add_cursor(run, path)
+        # Re-enter through _enter_inner so container nodes (parallel / subworkflow) rebuild
+        # their nested state instead of sitting in the cursor frontier as a bare id — a raw
+        # cursor on a container makes next_action raise "unexpected <type> node in cursors".
+        _enter_inner(run, frame, node)
 
 
 def reset_all(run):
@@ -1042,8 +1104,19 @@ def reset_all(run):
 
 
 def rebase(run):
-    """Accept edited workflow files: re-hash everything recorded."""
+    """Accept edited workflow files: re-validate, then re-hash everything recorded."""
     info = run.state["workflow"]
+    # Refuse to rebase onto a broken edit — otherwise the new hash is recorded and every
+    # later command fails deep in the parser instead of here with a clear message.
+    issues = validatemod.validate_file(info["file"], root=run.root)
+    errors = [i for i in issues if i.level == "error"]
+    if errors:
+        first = errors[0]
+        raise RunError(
+            f"cannot rebase: {info['file']} still has {len(errors)} validation error(s), "
+            f"e.g. [{first.code}] {first.msg}. Fix the workflow, then rebase.",
+            code=1,
+        )
     info["sha256"] = statemod.sha256_file(os.path.join(run.root, info["file"]))
     for frame_info in run.state["frames"].values():
         full = os.path.join(run.root, frame_info["workflow"])

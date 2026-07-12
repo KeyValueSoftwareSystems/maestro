@@ -1,6 +1,6 @@
 ---
 name: backend-design
-description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in — component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes .maestro/<slug>/lld/backend.md; never edits app code. Runs in the design phase (parallel with the frontend). Front door for /backend-design.
+description: Author the backend low-level design (LLD) for a feature — read the relevant backend code to ground the design, then design how the feature slots in — component/sequence design, data model + migration plan, the API/events the backend will expose, error handling, security, observability, and test plan. Writes the LLD doc; never edits app code. Front door for /backend-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, design, lld, backend]
 ---
@@ -9,19 +9,14 @@ tags: [sdlc, design, lld, backend]
 
 Design the **backend** for a feature: read enough of the existing code to ground the design
 in real conventions, then write a **buildable backend LLD**. This is a design artifact, not
-code — never edit app code. Accuracy over breadth: cite `file:line` for every constraint you
-rely on; don't guess.
-
-## When to use / not use
-- **Use** in the design phase, after the HLD is approved, in parallel with the frontend LLD.
-- **Don't** implement, and don't design the frontend. The **cross-repo contract** is not
-  written here — you describe the API/events your stack will **expose**, and `/api-contract`
-  reconciles the two LLDs into the formal OpenAPI contract afterward.
+code — never edit app code, don't implement, and don't design the frontend. Accuracy over
+breadth: cite `file:line` for every constraint you rely on; don't guess. The **cross-repo
+contract** is not written here — you describe the API/events your stack will **expose**; the
+two LLDs are reconciled into the formal contract separately.
 
 ## Inputs
-- `feature`, `feature_slug`, approved `hld_path`.
-- **Artifact path** — you write `.maestro/<slug>/lld/backend.md`, with `<slug>` =
-  `feature_slug`. The caller passes no path; this skill owns where it writes.
+Your instructions name what to read — the approved HLD — and the artifact path to write.
+Standalone? read the HLD and write the LLD to a path you choose (and tell the user where).
 
 ## Steps
 1. **Ground in the code (read-only).** Locate the service(s) this feature touches and read
@@ -38,14 +33,14 @@ rely on; don't guess.
    contract): method/path or event/topic, request/response DTOs, status codes, error
    envelope, auth + the exact permission per operation, per-field validation, pagination &
    limits, rate limits (429 + retry-after), idempotency keys, concurrency/versioning,
-   backward-compatibility. `/api-contract` formalizes this into OpenAPI.
+   backward-compatibility. The formal contract is derived from this separately.
 5. **Threat-model** the change (authz per operation, data exposure, abuse); design
    **observability** (logs/metrics/traces for new paths), timeouts/retries/degradation, and
    **performance** considerations.
 6. **Test plan** — unit + integration coverage, including the contract's negative paths.
 7. **Write** the backend LLD; flag every breaking change in plain language.
-8. **Emit the task DAG** — write `.maestro/<slug>/backend/tasks.json` (see section below),
-   reusing the code you already read. No re-reading.
+8. **Emit the task DAG** — write a `tasks.json` (see section below), reusing the code you
+   already read. No re-reading.
 
 ## What the backend LLD must cover (write all)
 Context & constraints (grounded in the code, cited) · component/sequence design · data model
@@ -69,9 +64,10 @@ libraries, protocols, or compliance — it must return sourced findings you can 
 LLD. Otherwise design from the code + HLD.
 
 ## Emit tasks.json (the parallel task DAG)
-Write `.maestro/<slug>/backend/tasks.json` conforming to `engine/schemas/tasks.schema.json`. It is
-the plan the backend impl phase fans out over — build it from the LLD you just wrote, reusing
-the files you already read (do not re-read the codebase).
+Write a `tasks.json` (to the path your instructions specify) conforming to
+`engine/schemas/tasks.schema.json`. It is the plan the backend impl phase fans out over —
+build it from the LLD you just wrote, reusing the files you already read (do not re-read the
+codebase).
 
 **Author it in one shot, then refine once.** Compose the entire tasks.json — manifest, every
 `tasks[]` entry, and `slices[]` — in a single `Write`. Do **not** stub the file and grow it with
@@ -91,20 +87,17 @@ Fields:
   the other OR they write a common file; otherwise put them in different groups. Then fill
   `slices[]` — one entry per group, `task_ids` in dependency order.
 - **Validate before returning:** run
-  `python3 engine/validate_tasks.py .maestro/<slug>/backend/tasks.json` — it must print `OK`.
+  `python3 engine/validate_tasks.py <tasks.json path>` — it must print `OK`.
   Fix any `FAIL` (cross-group edge, shared write, mis-ordered slice) before finishing.
 
 ## Output contract
-Write `.maestro/<slug>/lld/backend.md` with the sections above, each constraint citing
-`file:line`. Return `lld_path`, `tasks_path` (`.maestro/<slug>/backend/tasks.json`), and
+Write your LLD to the given artifact path, with the sections above, each constraint citing
+`file:line`. Return `lld_path`, `tasks_path`, and
 `contract_notes` — a short summary of the **decisions/constraints that shape the contract**
 (e.g. "auth is centralized in X — new endpoints must use it"; "exposes `GET /searches` with
-cursor pagination"). The API/events section feeds `/api-contract`.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+cursor pagination"). The API/events section feeds the contract step.
 
 ## Definition of done
 Every section present; API surface concrete enough to formalize; migration reversible; edge
-cases specified (not "TBD"); breaking changes flagged. Do not implement — that is
-`/backend-impl` after the contract is approved.
+cases specified (not "TBD"); breaking changes flagged. Do not implement — this is a design
+artifact only.

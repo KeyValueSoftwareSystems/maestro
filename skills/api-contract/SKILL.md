@@ -1,6 +1,6 @@
 ---
 name: api-contract
-description: Generate the cross-repo API/event CONTRACT (OpenAPI) by reconciling the per-stack LLDs — the backend LLD (what it exposes) and the frontend LLD (what it consumes) — into the single boundary both build against. Also derives acceptance criteria and the affected stacks. Reads the LLDs; writes the contract; never edits app code. Runs after the per-stack LLDs and before implementation. Front door for /api-contract.
+description: Generate the cross-repo API/event CONTRACT (OpenAPI) by reconciling the per-stack LLDs — the backend LLD (what it exposes) and the frontend LLD (what it consumes) — into the single boundary both build against. Also derives acceptance criteria and the affected stacks. Reads the LLDs; writes the contract; never edits app code. Front door for /api-contract.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, design, contract]
 ---
@@ -11,23 +11,16 @@ The per-stack LLDs each describe one side of the boundary: the **backend LLD** s
 will *expose*; the **frontend LLD** says what it needs to *consume*. This skill reconciles
 them into ONE authoritative **contract** (OpenAPI) that the backend implements and the
 frontend consumes — the boundary that lets each side build and verify alone. Writes the
-contract + acceptance criteria only; no app code.
-
-## When to use / not use
-- **Use** once both per-stack LLDs exist (`.maestro/<slug>/lld/backend.md` and
-  `.../frontend.md`). Runs after the design phase, before implementation.
-- **Don't** design internals (that's the LLDs) or implement. Don't invent operations neither
-  LLD calls for.
+contract + acceptance criteria only; no app code. Don't design internals (that's the LLDs) or
+implement, and don't invent operations neither LLD calls for.
 
 ## Inputs
-- `feature`, `feature_slug`, optional `hld_path`.
-- `backend_lld`, `frontend_lld` — the two per-stack LLD paths.
-- **Artifact paths** — you write `.maestro/<slug>/openapi.yaml` and
-  `.maestro/<slug>/acceptance-criteria.md`, with `<slug>` = `feature_slug`. The caller
-  passes no paths; this skill owns where it writes.
+Your instructions name the concrete files to read — the backend and frontend LLDs, plus the
+HLD if one exists — and the artifact path(s) to write. Standalone? read the LLDs and write the
+contract to a path you choose (and tell the user where).
 
 ## Steps
-1. **Read** both LLDs, any existing `.maestro/<slug>/openapi.yaml`, and the acceptance intent in the HLD.
+1. **Read** the LLDs and HLD your instructions point to, plus any existing contract at the target path.
 2. **Reconcile** the backend's *exposed* API against the frontend's *consumed* API. Where
    they disagree (shape, field, pagination, error), resolve it explicitly — the contract is
    the source of truth — and note which side must adjust its LLD/implementation.
@@ -60,8 +53,9 @@ If a suitable deep-research skill is installed you may delegate to it to researc
 protocol/standard the contract must follow. Otherwise work from the LLDs.
 
 ## Output — write these artifacts
-- `.maestro/<slug>/openapi.yaml` — the contract (source of truth).
-- `.maestro/<slug>/acceptance-criteria.md` — what QA automates (include negative paths).
+Write the artifacts to the paths your instructions specify:
+- the contract, OpenAPI (source of truth).
+- acceptance criteria — what QA automates (include negative paths).
 
 ## Definition of done
 Contract covers every item above (no undefined fields/errors); backend-exposed and
@@ -69,8 +63,6 @@ frontend-consumed APIs reconciled (no silent mismatch); acceptance criteria incl
 paths. End with the human contract-approval ask; do not implement.
 
 ## Output contract
-Return `contract_path`, `contract_summary` (breaking changes flagged), `affected_repos`
-(objects with `name` exactly `backend`/`frontend`), and `acceptance_criteria`.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+Return `contract_path`, `contract_summary` (breaking changes flagged) — both short
+scalars. The affected repos and acceptance criteria belong IN the artifacts, not the JSON
+line; never return arrays or objects.

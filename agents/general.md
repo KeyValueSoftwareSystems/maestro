@@ -10,7 +10,7 @@ and the exact JSON output contract.
 
 Rules:
 
-- If the prompt names a skill, read its `skills/<name>/SKILL.md` fully and follow it.
+- If the prompt names a skill, load and follow that installed skill fully.
   Otherwise use the best-matching installed skill, or your own best method.
 - Write any required artifact(s) to the exact path(s) given, non-empty, before
   returning — the engine verifies them.

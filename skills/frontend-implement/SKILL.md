@@ -1,6 +1,6 @@
 ---
 name: frontend-implement
-description: Implement an approved frontend scope by consuming the cross-repo contract exactly, with all required UI states, meeting the frontend engineering standards (accessibility, performance, security, i18n, resilience). Edits code within scope only. Use only after the contract is stable. Front door for /frontend-impl.
+description: Implement an approved frontend scope by consuming the cross-repo contract exactly, with all required UI states, meeting the frontend engineering standards (accessibility, performance, security, i18n, resilience). Edits code within scope only. Front door for /frontend-implement.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write, Task
 tags: [sdlc, implement, frontend]
 ---
@@ -8,25 +8,30 @@ tags: [sdlc, implement, frontend]
 # frontend-implement
 
 Implement the approved frontend scope. **Consume** the contract exactly as published —
-never invent API shapes. Start only after the contract is stable.
+never invent API shapes, ship happy-path-only UI, or ignore type errors. If invoked to
+plan only, produce the task/UI-state list and stop.
 
-## When to use / not use
-- **Use** after the contract is stable (backend need not be finished — mock to the contract).
-- **Don't** ship happy-path-only UI; don't invent fields; don't ignore type errors.
-- **Plan mode:** if invoked to plan only, produce the task/UI-state list and stop.
+## Isolate first (before any edit)
+If your instructions name a branch / ask you to work in a worktree (parallel runs always do),
+this is a HARD prerequisite, not a suggestion — a sibling step may be writing the main tree
+concurrently:
+1. Create and enter the worktree: `git worktree add -b <branch> <new-dir> HEAD` (or
+   `git worktree add <new-dir> <branch>` if it already exists), then work from `<new-dir>`.
+2. Verify you are isolated: `git rev-parse --show-toplevel` must NOT be the main checkout.
+3. If a worktree cannot be created (e.g. the repo has no commits), **STOP and report it** —
+   never fall back to editing the main working tree.
 
 ## Before editing
-1. Read `CLAUDE.md`, the frontend LLD (`.maestro/<slug>/lld/frontend.md`) — reuse the
-   components/patterns it identified before adding new ones — and the contract
-   (`.maestro/<slug>/openapi.yaml`), with `<slug>` = `feature_slug`.
+1. Read `CLAUDE.md`, the frontend LLD — reuse the components/patterns it identified before
+   adding new ones — and the contract, the inputs your instructions point to.
 2. List pages affected, components to reuse/add, API hooks, form schema/validation,
    analytics, and tests. List files to change.
 
 ## Slice fan-out (owned by this skill)
-This skill owns fanning the task DAG (`.maestro/<slug>/frontend/tasks.json`) out into
+This skill owns fanning the task DAG (the tasks.json your instructions point to) out into
 slices — no orchestrator passes slices or worktrees in.
 
-1. **Validate first** — run `python3 engine/validate_tasks.py .maestro/<slug>/frontend/tasks.json`;
+1. **Validate first** — run `python3 engine/validate_tasks.py <the tasks.json path>`;
    it must print `OK`. Never build from an invalid tasks.json — fix or regenerate it first.
 2. **With the Task tool** (where the harness provides it): spawn one implementer subagent per
    independent slice (`slices[]` group), **at most 3 concurrent**. Each subagent works in its
@@ -56,17 +61,14 @@ This is distinct from **Plan mode** (produce the task/UI-state list and stop). I
 slices as above.
 
 ### Plan mode / fallback authoring (emit tasks.json)
-This is the **fallback** author: the design phase normally emits `tasks.json` via
-`/frontend-design`. Run this only when `.maestro/<slug>/frontend/tasks.json` is absent (e.g. a
-standalone `/frontend-impl` run with no design phase, or when invoked in plan mode).
-
-When invoked in plan mode with no `tasks.json` present, write
-`.maestro/<slug>/frontend/tasks.json` conforming to `engine/schemas/tasks.schema.json`:
+When invoked in plan mode with no `tasks.json` present, write the tasks.json to the path
+your instructions specify (run standalone? use a sensible path you choose)
+conforming to `engine/schemas/tasks.schema.json`:
 `context_manifest` (batched-read files), `tasks[]` (`id`, `group_id`, `title`, `depends_on`
 intra-group only, `reads`, `writes`, `test`, `standards`, `needs_human_gate`), and `slices[]`
 (one entry per independent group — two tasks share a group iff one depends on the other OR
 they write a common file). Validate with
-`python3 engine/validate_tasks.py .maestro/<slug>/frontend/tasks.json` (must print `OK`).
+`python3 engine/validate_tasks.py <the tasks.json path>` (must print `OK`).
 Return `tasks_path`, `slices`.
 
 ## Steps
@@ -77,7 +79,7 @@ Return `tasks_path`, `slices`.
 5. **Error handling & resilience** — retries, messaging, optimistic-update rollback.
 6. **Accessibility & i18n** pass.
 7. **Tests** — component + the critical E2E flow; then Storybook if present.
-8. Run `/verify`; on failure `/fix`.
+8. Run `/verify`; on failure `/fix-loop`.
 
 ## Required UI states (build AND test each)
 loading · empty · success · validation error · API error · permission denied ·
@@ -119,7 +121,7 @@ backstop.
 
 ## Verification
 Invoke `/verify` (lint, typecheck, unit/component, build, Playwright E2E, a11y basics). On
-failure invoke `/fix` (one attempt per invocation — the workflow's `max_visits` on the fix
+failure invoke `/fix-loop` (one attempt per invocation — the workflow's `max_visits` on the fix
 node, typically 3, bounds the overall loop).
 
 ## Definition of done
@@ -128,7 +130,6 @@ handled; no TypeScript errors; reuses existing components; contract consumed exa
 
 ## Output contract
 Return `branch`, `summary`, `tests_passed`. In plan mode, return `tasks_path` and `slices`
-instead.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+instead. `tests_passed` MUST be the literal JSON boolean `true` or `false` (true only if every
+test actually ran AND passed) — never a count, status phrase, or other prose. A workflow routes
+on it, so prose reads as "not passing".

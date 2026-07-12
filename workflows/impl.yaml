@@ -27,7 +27,7 @@ nodes:
       dependencies only and disjoint writes across groups (schema
       engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
       reported.
-    skill: backend-tasks
+    skill: "${inputs.stack}-tasks"
     agent: planner
     inputs: {slug: "${inputs.slug}", stack: "${inputs.stack}"}
     outputs: [task_count, slice_count]
@@ -88,9 +88,17 @@ nodes:
     artifact: ".maestro/${inputs.slug}/${inputs.stack}/reviews/summary.md"
     max_visits: 5
     on_exhausted: impl_gate
+    # The loop-exit guards must read values that UPDATE inside the fix->review loop.
+    # `review.blocking` and `fix.checks_passed` are re-emitted each pass; the frozen
+    # `implement.tests_passed` is only the first-pass trigger (implement never re-runs in
+    # the loop), and the `fix.checks_passed == true` guard above it short-circuits to end
+    # as soon as a fix goes green — so the loop actually converges instead of grinding to
+    # on_exhausted. Guards use `== true`/`== false` (literal booleans), never `!= true`,
+    # so honest prose in an output can never trap the loop.
     routes:
       - {when: "${steps.review.outputs.blocking} == true", to: fix}
-      - {when: "${steps.implement.outputs.tests_passed} != true", to: fix}
+      - {when: "${steps.fix.outputs.checks_passed} == true", to: end}
+      - {when: "${steps.implement.outputs.tests_passed} == false", to: fix}
       - {to: end}
 
   - id: fix

@@ -1,6 +1,6 @@
 ---
 name: qa-automation
-description: Author critical-journey E2E / UI-automation tests from the acceptance criteria (not from the implementation), run them in a clean env, and report. Meets QA standards (risk-tiering, isolation, determinism, no weakened assertions). Edits test files only. Front door for /qa.
+description: Author critical-journey E2E / UI-automation tests from the acceptance criteria (not from the implementation), run them in a clean env, and report. Meets QA standards (risk-tiering, isolation, determinism, no weakened assertions). Edits test files only. Front door for /qa-automation.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 tags: [sdlc, qa]
 ---
@@ -11,15 +11,13 @@ Author end-to-end / UI-automation tests derived from the **acceptance criteria**
 the implementation. Cover risk-tier **critical journeys** plus their key negative paths —
 not every path.
 
-## When to use / not use
-- **Use** once acceptance criteria exist (from `/api-contract`) and an env can be brought up.
-- **Don't** test against the implementation's internals, and **never weaken assertions** to
-  make a test pass.
+Test against observable behavior, not the implementation's internals, and **never weaken
+assertions** to make a test pass.
 
 ## Inputs
-`feature`, `acceptance_criteria`, optional `contract_summary` (for cross-service journeys), and
-optional `test_cases_path` — the design-phase functional test-case catalog
-(`.maestro/<slug>/test-cases.md`, from `/functional-testcases`).
+Your instructions name what to read — the acceptance criteria, the functional test-case
+catalog, and (for cross-service journeys) the contract — and the artifact path to write.
+Standalone? read them and write to a path you choose (and tell the user where).
 
 ## Steps
 1. **Pick the framework** — default **Playwright** (use the project's existing E2E framework
@@ -33,7 +31,7 @@ optional `test_cases_path` — the design-phase functional test-case catalog
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
 4. **Author tests** with stable selectors (roles/test-ids), explicit waits on conditions,
    and assertions that verify observable behavior + the contract's outcomes.
-5. **Emit the scenario DAG** — write `.maestro/<slug>/qa/tasks.json` (see section below) so the
+5. **Emit the scenario DAG** — write a `tasks.json` (see section below) so the
    suite can be authored in parallel.
 6. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
    always runs).
@@ -65,7 +63,7 @@ the output must still meet the standards above (isolation, determinism, real ass
 risk-tiering). Otherwise author in-pack.
 
 ## Emit tasks.json (parallel scenario authoring)
-Write `.maestro/<slug>/qa/tasks.json` (under the QA suite dir `.maestro/<slug>/qa/`) conforming to
+Write a `tasks.json` under your QA suite artifact dir conforming to
 `engine/schemas/tasks.schema.json`, with `"stack": "qa"`. Scenarios are independent, so each
 scenario is its **own single-task group**.
 
@@ -83,25 +81,22 @@ Fields:
   `depends_on`, `reads` (extra fixtures), `writes` (the spec file it creates), `test` (the
   scenario id), `standards` (e.g. `["risk-tiered","determinism","isolation"]`),
   `needs_human_gate: false`. `slices[]` = one group per scenario.
-- **Validate before returning:** `python3 engine/validate_tasks.py .maestro/<slug>/qa/tasks.json`
+- **Validate before returning:** `python3 engine/validate_tasks.py <the tasks.json you wrote>`
   must print `OK`.
 
 **Scenario mode:** when invoked with a `group_id` and `tasks_path`, author only that one
 scenario's spec file (batch-load the fixture manifest once) and return `spec_path`.
 
 ## Output
-All outputs go under the QA suite dir `.maestro/<slug>/qa/`, with `<slug>` = `feature_slug` —
-this skill owns where it writes; the caller passes no paths. Write a coverage note to
-`.maestro/<slug>/qa/suite.md` (journeys covered, negatives covered, out-of-scope, data
-strategy), the run report to `.maestro/<slug>/qa/report.md`, and `.maestro/<slug>/qa/tasks.json`.
+Write these to the artifact path(s) your instructions specify (the orchestrator passes them;
+standalone, use a sensible dir you choose): a coverage note (journeys covered,
+negatives covered, out-of-scope, data strategy), the run report, and the `tasks.json`.
 
 ## Definition of done
 Critical journeys + key negatives automated and green in a clean env; tests isolated and
 deterministic; failures produce artifacts; nothing weakened to pass.
 
 ## Output contract
-Return `suite_path`, `tasks_path`, `slices` (the `slices` array from tasks.json), and
-`tests_passed`. In scenario mode, return `spec_path`.
-
-When invoked as a Maestro workflow step, your reply's LAST line must be exactly one JSON
-object with these fields — short scalar values only, never file contents.
+Return `report_path`, `passed` (true/false — did the whole suite pass), `failed_count`
+(integer), and `summary` (one line: totals and the headline failure, if any) — all short
+scalars.
