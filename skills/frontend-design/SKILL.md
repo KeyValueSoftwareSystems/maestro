@@ -93,12 +93,6 @@ Every section present; UI-state matrix complete (no state omitted); API-consumed
 enough to formalize; edge cases specified (not "TBD"). Do not implement — this is a design
 artifact only.
 
-## Prior lessons
-Your inputs may include a `lessons` value — corroborated patterns this codebase has shown
-across past runs, injected by the workflow. Weigh them as strong heuristics (not hard rules)
-and prefer them when they apply. They are advisory context, not part of the deliverable: do
-not copy them into your output, and do not assume where they came from.
-
 ## Output contract
 Return `lld_path`, `tasks_path`, and `contract_notes` —
 a short list of the **decisions/constraints that shape the contract** (e.g. "data-fetching goes

@@ -103,13 +103,6 @@ Every section present; ≥2 options with trade-offs; NFRs and risks concrete (no
 open questions listed. Do not proceed to detailed design or implementation — this artifact
 stops at the *direction*.
 
-## Prior lessons
-Your inputs may include `codebase_lessons` (shared conventions/facts) and `lessons`
-(planning-specific patterns) — corroborated knowledge from past runs on this codebase,
-injected by the workflow. Use them to ground the design's direction. Weigh them as strong
-heuristics, not hard rules; they are advisory context, not part of the HLD, and you should
-not assume where they came from.
-
 ## Output contract
 Return `hld_path` and `hld_summary` (2–3 sentences). When invoked in **refine mode**
 (folding resolved open questions back into an existing HLD), return `refined_summary`

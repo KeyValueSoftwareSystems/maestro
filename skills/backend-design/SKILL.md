@@ -90,12 +90,6 @@ Fields:
   `python3 engine/validate_tasks.py <tasks.json path>` — it must print `OK`.
   Fix any `FAIL` (cross-group edge, shared write, mis-ordered slice) before finishing.
 
-## Prior lessons
-Your inputs may include a `lessons` value — corroborated patterns this codebase has shown
-across past runs, injected by the workflow. Weigh them as strong heuristics (not hard rules)
-and prefer them when they apply. They are advisory context, not part of the deliverable: do
-not copy them into your output, and do not assume where they came from.
-
 ## Output contract
 Write your LLD to the given artifact path, with the sections above, each constraint citing
 `file:line`. Return `lld_path`, `tasks_path`, and

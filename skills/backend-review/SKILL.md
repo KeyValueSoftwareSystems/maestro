@@ -71,12 +71,6 @@ Auth/permission or contract changes are never `safe_for_ai_fix` — escalate. Wr
 to the artifact path your instructions specify (the orchestrator passes it). Running
 standalone? write to a sensible path you choose and tell the user where.
 
-## Prior lessons
-Your inputs may include a `lessons` value — corroborated patterns this codebase has shown
-across past runs, injected by the workflow. Weigh them as strong heuristics (not hard rules)
-and prefer them when they apply. They are advisory context, not part of the deliverable: do
-not copy them into your output, and do not assume where they came from.
-
 ## Output contract
 Return `review_path`, `blocking` (true/false), and `summary` (one line: the headline
 verdict and the count of blocking findings).
