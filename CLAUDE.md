@@ -175,6 +175,18 @@ whole suite — the parser underpins everything.
 - `install.sh` uses `set -uo pipefail` (not `-e`) on purpose — one failed skill
   install must not abort the rest.
 
+## The memory store — `.maestro/memory/`
+
+Repo/umbrella-level, git-tracked, shared across slugs. Three tiers: `incoming/<slug>.md`
+(per-run retrospective drops, race-free), `candidates/<domain>.md` (accruing, counted, NOT
+injected), `knowledge/<domain>.md` (promoted + injected via `${memory.knowledge.<domain>}`).
+A lesson promotes from candidates to knowledge only after **≥3 distinct runs** corroborate it
+(the `consolidate-memory` skill; `build-knowledge` bootstrap and humans write knowledge
+directly). The engine only READS the knowledge tier, once, at `init`, freezing a per-run
+`memory-snapshot.json` (`engine/memory.py`) — every WRITE is done by the `build-knowledge` /
+`retrospect` / `consolidate-memory` skills, never engine code. The pre-merge `archive` phase
+of `sdlc-main.yaml` runs the harvest by default. Full conventions: `docs/memory.md`.
+
 ## Editing this repo's prose
 
 Docs here are dense and deliberately worded (README, config comments, SKILL bodies,

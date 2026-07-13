@@ -233,8 +233,13 @@ The engine is generic; the SDLC pack is just one workflow. To make it yours:
   passed to the harness as-is (`haiku` / `sonnet` / `opus` work in Claude Code).
 - **Loop bounds** — per node `max_visits` (+ `on_exhausted`), backstopped by
   `defaults.max_visits` (default 10).
-- The merge/contract-check/archive scripts in the example pack are **POC stubs** —
+- The merge/contract-check/publish scripts in the example pack are **POC stubs** —
   wire them to your real runners.
+- **Memory (improves over time).** Run `/build-knowledge` once per workspace to seed
+  `.maestro/memory/knowledge/` from your codebase; the design and review steps read it,
+  frozen at init. After a feature, the pre-merge archival phase distills lessons and
+  consolidates them — a lesson becomes trusted (and injected into future runs) only once ≥3
+  runs corroborate it. See [docs/memory.md](docs/memory.md).
 
 ## Checks
 
