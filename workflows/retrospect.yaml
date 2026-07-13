@@ -1,0 +1,48 @@
+# Harvest a finished run into memory: distill lessons (staged) then consolidate.
+# Standalone off-cycle harvest: /maestro <slug> workflows/retrospect.yaml
+# Also reused as the harvest half of workflows/archive.yaml.
+version: 1
+name: retrospect
+description: Distill a finished run into lessons, then consolidate the memory store.
+inputs:
+  slug: {type: string, required: true, description: the finished feature to harvest}
+  feature: {type: string, default: "${inputs.slug}"}
+defaults:
+  model: haiku
+  agent: analyst
+start: retrospect
+nodes:
+  - id: retrospect
+    type: agent
+    label: Distill lessons
+    instruction: |
+      Distill durable lessons from the finished run for feature "${inputs.slug}". Read its
+      ledger .maestro/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance
+      text; per-step visits/attempts/status showing loops and retries) and the run's
+      review/QA artifacts under .maestro/${inputs.slug}/. Write short, actionable,
+      provenance-tagged lessons to .maestro/memory/incoming/${inputs.slug}.md, bucketed by
+      the consuming domain (plan, backend-design, backend-review, ...). Do NOT write
+      knowledge/ or candidates/ — only the incoming drop.
+    skill: retrospect
+    inputs: {slug: "${inputs.slug}"}
+    outputs: [incoming_path, lessons_count, summary]
+    artifact: ".maestro/memory/incoming/${inputs.slug}.md"
+    next: consolidate
+
+  - id: consolidate
+    type: agent
+    label: Consolidate memory
+    instruction: |
+      Consolidate the memory store. Fold every lesson in .maestro/memory/incoming/* into
+      .maestro/memory/candidates/<domain>.md, incrementing each lesson's observation count
+      and appending the DISTINCT source slug (a lesson repeated within one slug counts once).
+      Promote any candidate seen in at least 3 distinct slugs into
+      .maestro/memory/knowledge/<domain>.md (use config.memory.promote_threshold if the user
+      set one, else 3). Dedup and prune superseded lessons, enforce a per-file size cap so
+      injected knowledge stays small, age out candidates that never corroborate, rewrite
+      .maestro/memory/index.md, then clear the incoming drops you folded. Bootstrap-authored
+      and human-authored knowledge lessons are authoritative — keep them.
+    skill: consolidate-memory
+    outputs: [promoted, candidates, summary]
+    artifact: ".maestro/memory/index.md"
+    next: end

@@ -1,0 +1,32 @@
+# Bootstrap domain knowledge by scanning the codebase into .maestro/memory/knowledge/.
+# Run once per workspace (recommended before your first feature): /build-knowledge
+# Re-runnable — it MERGES, never clobbers human edits or accrued lessons.
+version: 1
+name: build-knowledge
+description: Seed initial domain knowledge from the existing codebase.
+inputs:
+  slug: {type: string, default: bootstrap, description: throwaway run id for the bootstrap}
+  feature: {type: string, default: knowledge-bootstrap}
+defaults:
+  model: haiku
+  agent: analyst
+start: build
+nodes:
+  - id: build
+    type: agent
+    label: Build domain knowledge
+    instruction: |
+      Scan this workspace and write initial domain knowledge under .maestro/memory/knowledge/.
+      Read the repos under codebase/ (or the single repo), each repo's CLAUDE.md /
+      .cursor/rules, and the centralised docs/. Write knowledge/codebase.md (shared
+      architecture facts, stacks, build/test commands, conventions, gotchas) and one file per
+      consuming SDLC role — knowledge/plan.md, knowledge/backend-design.md,
+      knowledge/frontend-design.md, knowledge/backend-review.md, knowledge/frontend-review.md,
+      knowledge/architecture-review.md — each with the recurring standards/pitfalls a step in
+      that role should know. Tag every entry "_(bootstrap)_". Then write/refresh
+      .maestro/memory/index.md (one line per knowledge file). If knowledge files already
+      exist, MERGE — do not clobber human edits or accrued lessons.
+    skill: build-knowledge
+    outputs: [domains_written, summary]
+    artifact: ".maestro/memory/index.md"
+    next: end
