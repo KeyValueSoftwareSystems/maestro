@@ -1,9 +1,11 @@
-# Harvest a finished run into memory: distill lessons (staged) then consolidate.
+# Harvest a finished run into memory: distill lessons (a skill's judgement) then consolidate
+# (the engine's deterministic reduce step — NOT a skill, so swapping the retrospect skill
+# cannot change how corroboration/promotion works).
 # Standalone off-cycle harvest: /maestro <slug> workflows/retrospect.yaml
 # Also reused as the harvest half of workflows/archive.yaml.
 version: 1
 name: retrospect
-description: Distill a finished run into lessons, then consolidate the memory store.
+description: Distill a finished run into staged lessons, then consolidate the memory store.
 inputs:
   slug: {type: string, required: true, description: the finished feature to harvest}
   feature: {type: string, default: "${inputs.slug}"}
@@ -19,30 +21,23 @@ nodes:
       Distill durable lessons from the finished run for feature "${inputs.slug}". Read its
       ledger .maestro/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance
       text; per-step visits/attempts/status showing loops and retries) and the run's
-      review/QA artifacts under .maestro/${inputs.slug}/. Write short, actionable,
-      provenance-tagged lessons to .maestro/memory/incoming/${inputs.slug}.md, bucketed by
-      the consuming domain (plan, backend-design, backend-review, ...). Do NOT write
-      knowledge/ or candidates/ — only the incoming drop.
+      review/QA artifacts under .maestro/${inputs.slug}/. Write a STRUCTURED drop to
+      .maestro/memory/incoming/${inputs.slug}.json as JSON:
+      {"slug": "${inputs.slug}", "lessons": [{"domain": "<role>", "key": "<stable-kebab-key>",
+      "text": "<one actionable sentence>"}, ...]}. Choose each `key` so another run seeing the
+      same pattern picks the SAME key (that is how the engine corroborates). Do NOT set
+      authoritative. Do NOT write knowledge/ or candidates/ — the engine renders those.
     skill: retrospect
     inputs: {slug: "${inputs.slug}"}
     outputs: [incoming_path, lessons_count, summary]
-    artifact: ".maestro/memory/incoming/${inputs.slug}.md"
+    artifact: ".maestro/memory/incoming/${inputs.slug}.json"
     next: consolidate
 
   - id: consolidate
-    type: agent
-    label: Consolidate memory
-    instruction: |
-      Consolidate the memory store. Fold every lesson in .maestro/memory/incoming/* into
-      .maestro/memory/candidates/<domain>.md, incrementing each lesson's observation count
-      and appending the DISTINCT source slug (a lesson repeated within one slug counts once).
-      Promote any candidate seen in at least 3 distinct slugs into
-      .maestro/memory/knowledge/<domain>.md (use config.memory.promote_threshold if the user
-      set one, else 3). Dedup and prune superseded lessons, enforce a per-file size cap so
-      injected knowledge stays small, age out candidates that never corroborate, rewrite
-      .maestro/memory/index.md, then clear the incoming drops you folded. Bootstrap-authored
-      and human-authored knowledge lessons are authoritative — keep them.
-    skill: consolidate-memory
-    outputs: [promoted, candidates, summary]
-    artifact: ".maestro/memory/index.md"
+    type: script
+    label: Consolidate memory (engine)
+    # Deterministic reduce step: fold incoming/* into candidates/, count DISTINCT runs,
+    # promote past the threshold (config memory.promote_threshold, else 3) into knowledge/,
+    # prune/cap, rewrite index.md, clear incoming. Owned by the engine, not a skill.
+    run: [python3, engine/mem_consolidate.py, ".maestro/memory"]
     next: end

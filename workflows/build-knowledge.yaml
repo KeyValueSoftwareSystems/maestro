@@ -1,6 +1,7 @@
-# Bootstrap domain knowledge by scanning the codebase into .maestro/memory/knowledge/.
+# Bootstrap domain knowledge by scanning the codebase. A skill emits authoritative structured
+# lessons; the engine (mem_consolidate.py) renders them into .maestro/memory/knowledge/*.md.
 # Run once per workspace (recommended before your first feature): /build-knowledge
-# Re-runnable — it MERGES, never clobbers human edits or accrued lessons.
+# Re-runnable — the engine merges by lesson key, so re-runs update rather than duplicate.
 version: 1
 name: build-knowledge
 description: Seed initial domain knowledge from the existing codebase.
@@ -16,17 +17,22 @@ nodes:
     type: agent
     label: Build domain knowledge
     instruction: |
-      Scan this workspace and write initial domain knowledge under .maestro/memory/knowledge/.
-      Read the repos under codebase/ (or the single repo), each repo's CLAUDE.md /
-      .cursor/rules, and the centralised docs/. Write knowledge/codebase.md (shared
-      architecture facts, stacks, build/test commands, conventions, gotchas) and one file per
-      consuming SDLC role — knowledge/plan.md, knowledge/backend-design.md,
-      knowledge/frontend-design.md, knowledge/backend-review.md, knowledge/frontend-review.md,
-      knowledge/architecture-review.md — each with the recurring standards/pitfalls a step in
-      that role should know. Tag every entry "_(bootstrap)_". Then write/refresh
-      .maestro/memory/index.md (one line per knowledge file). If knowledge files already
-      exist, MERGE — do not clobber human edits or accrued lessons.
+      Scan this workspace and produce initial domain knowledge as a STRUCTURED drop. Read the
+      repos under codebase/ (or the single repo), each repo's CLAUDE.md / .cursor/rules, and
+      the centralised docs/. Write .maestro/memory/incoming/bootstrap.json as JSON:
+      {"slug": "bootstrap", "lessons": [{"domain": "<role>", "key": "<stable-kebab-key>",
+      "text": "<one actionable sentence>", "authoritative": true}, ...]}. Bucket by consuming
+      role: codebase (shared architecture facts, stacks, build/test commands, conventions,
+      gotchas) plus plan, backend-design, frontend-design, backend-review, frontend-review,
+      architecture-review. Set authoritative:true on EVERY bootstrap lesson. Do NOT write
+      knowledge/ or candidates/ — the engine renders those.
     skill: build-knowledge
     outputs: [domains_written, summary]
-    artifact: ".maestro/memory/index.md"
+    artifact: ".maestro/memory/incoming/bootstrap.json"
+    next: consolidate
+
+  - id: consolidate
+    type: script
+    label: Render knowledge (engine)
+    run: [python3, engine/mem_consolidate.py, ".maestro/memory"]
     next: end

@@ -177,15 +177,21 @@ whole suite — the parser underpins everything.
 
 ## The memory store — `.maestro/memory/`
 
-Repo/umbrella-level, git-tracked, shared across slugs. Three tiers: `incoming/<slug>.md`
-(per-run retrospective drops, race-free), `candidates/<domain>.md` (accruing, counted, NOT
-injected), `knowledge/<domain>.md` (promoted + injected via `${memory.knowledge.<domain>}`).
-A lesson promotes from candidates to knowledge only after **≥3 distinct runs** corroborate it
-(the `consolidate-memory` skill; `build-knowledge` bootstrap and humans write knowledge
-directly). The engine only READS the knowledge tier, once, at `init`, freezing a per-run
-`memory-snapshot.json` (`engine/memory.py`) — every WRITE is done by the `build-knowledge` /
-`retrospect` / `consolidate-memory` skills, never engine code. The pre-merge `archive` phase
-of `sdlc-main.yaml` runs the harvest by default. Full conventions: `docs/memory.md`.
+Repo/umbrella-level, git-tracked, shared across slugs. Three tiers: `incoming/<slug>.json`
+(per-run structured drops, race-free), `candidates/<domain>.json` (the engine-owned ledger:
+lessons + distinct source slugs, NOT injected), `knowledge/<domain>.md` (engine-RENDERED,
+injected via `${memory.knowledge.<domain>}`). A lesson promotes into knowledge only after
+**≥3 distinct runs** corroborate it (bootstrap lessons are `authoritative` and render
+immediately).
+
+**The load-bearing separation (swappable skills):** the consolidation *functionality* —
+counting distinct runs, the threshold, promotion, pruning, rendering — is deterministic
+engine code in `engine/mem_consolidate.py`, invoked as a **`script` node**. Skills
+(`build-knowledge`, `retrospect`) only PRODUCE the structured `incoming/*.json` (their LLM
+judgement); swapping a skill cannot change how corroboration works. Reads: the resolver only
+READS the knowledge tier, once, at `init`, freezing a per-run `memory-snapshot.json`
+(`engine/memory.py`). The pre-merge `archive` phase of `sdlc-main.yaml` runs the harvest by
+default. Full conventions: `docs/memory.md`.
 
 ## Editing this repo's prose
 
