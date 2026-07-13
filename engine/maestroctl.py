@@ -13,7 +13,7 @@ The lead agent's whole protocol:
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, reset (--step/--all, --cascade), rebase, graph.
+Also: status, reset (--step/--all, --cascade), rebase, graph, note (capture out-of-band input).
 
 Exit codes: 0 ok · 1 validation errors · 2 internal error · 3 setup/hash problem ·
 4 invalid transition (wrong step, missing outputs/artifacts, unknown option).
@@ -134,6 +134,15 @@ def cmd_rebase(args):
     return _mutate(args, fn)
 
 
+def cmd_note(args):
+    with statemod.locked(args.slug, args.root):
+        run = resolver.Run(args.slug, args.root)
+        resolver.record_note(run, args.text, step=args.step)
+        statemod.save(args.slug, run.state, args.root)
+    _print({"ok": True, "notes": len(run.state.get("notes") or [])})
+    return 0
+
+
 def cmd_status(args):
     data = statemod.load(args.slug, args.root)
     if data is None:
@@ -249,6 +258,12 @@ def build_parser():
     p.add_argument("--slug", required=True)
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_rebase)
+
+    p = sub.add_parser("note", help="append an out-of-band user instruction to the ledger")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--text", required=True, help="the user's instruction, verbatim")
+    p.add_argument("--step", help="step it relates to (default: the active step[s])")
+    p.set_defaults(fn=cmd_note)
 
     p = sub.add_parser("status", help="human-readable run status")
     p.add_argument("--slug", required=True)

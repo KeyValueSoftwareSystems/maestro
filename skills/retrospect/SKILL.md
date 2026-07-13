@@ -21,12 +21,13 @@ wrong while running** — because both are where a future run can do better from
 
 ## Method
 1. **Capture the user's requested changes.** This is the primary signal. Walk the gate
-   history in `state.yaml`: every revise/rework request and review finding the human raised,
-   the `feedback`/`guidance` text they gave, and anything they had to correct so the output
-   finally matched the requirement. Read the requirement itself (under
-   `.maestro/<slug>/requirement/`) to frame each as the gap it closed. Turn each into
-   forward-looking guidance so the NEXT run gets it right the first time — e.g. "list
-   endpoints must paginate — requested at contract review on add-orders".
+   history in `state.yaml` (`gates`): every revise/rework request and review finding the
+   human raised, the `feedback`/`guidance` text they gave, and anything they had to correct
+   so the output finally matched the requirement. Also read `state.yaml`'s `notes` — the
+   out-of-band instructions the user gave mid-run — they are requested changes too. Read the
+   requirement itself (under `.maestro/<slug>/requirement/`) to frame each as the gap it
+   closed. Turn each into forward-looking guidance so the NEXT run gets it right the first
+   time — e.g. "list endpoints must paginate — requested at contract review on add-orders".
 2. **Capture the issues faced while running.** Operational problems during the run: steps
    that failed or retried, loops that hit their visit cap, contract-check / QA / build
    breakages, worktree or merge trouble — anything (from `visits`/`attempts`/`status`,

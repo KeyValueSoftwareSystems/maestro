@@ -992,6 +992,23 @@ def _register_failure(run, frame, node, path, entry, reason):
     _apply_on_fail(run, frame, node, reason)
 
 
+def record_note(run, text, step=None):
+    """Append an out-of-band user instruction to the ledger (no routing change).
+
+    Gates and the requirement folder are the engine's structured inputs; this captures
+    anything the human tells the lead agent IN CHAT outside a gate (a correction, a scope
+    change) so `retrospect` can learn from it. Timestamped and tagged with the step(s) active
+    when it was said (or an explicit `step`).
+    """
+    note = {
+        "at": statemod.now_iso(),
+        "text": text,
+        "at_steps": [step] if step else list(run.state["run"].get("cursors") or []),
+    }
+    run.state.setdefault("notes", []).append(note)
+    return note
+
+
 def record_gate(run, path, option_id, input_text=None):
     _require_cursor(run, path)
     frame, node = run.node_at(path)

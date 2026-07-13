@@ -11,9 +11,10 @@ runs:
    workspace every subagent already sees.
 2. **The corroborated lessons (`.maestro/memory/`)** — terse learnings **injected** into
    future steps via `${memory.knowledge.*}`, drawn from two things each run reveals: **what
-   the user asked to change** (revise/review requests and gate feedback — where the run had
-   to be corrected to meet the requirement) and **the issues faced while running** (failed/
-   retried steps, loops that hit their cap, contract/QA/build breakages). A lesson is only
+   the user asked to change** (revise/review requests and gate feedback, plus any out-of-band
+   instructions captured in the ledger's `notes` — where the run had to be corrected to meet
+   the requirement) and **the issues faced while running** (failed/retried steps, loops that
+   hit their cap, contract/QA/build breakages). A lesson is only
    trusted once **≥3 distinct runs** corroborate it, and the surface is frozen at `init` so
    runs stay reproducible.
 

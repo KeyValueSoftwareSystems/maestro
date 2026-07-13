@@ -34,8 +34,9 @@ nodes:
          JSON: {"slug": "${inputs.slug}", "lessons": [{"domain": "<role>",
          "key": "<stable-kebab-key>", "text": "<one actionable sentence>"}, ...]}. Draw the
          lessons from TWO sources: (a) the changes the USER requested — every revise/review
-         request and gate feedback/guidance, i.e. where the run had to be corrected to meet
-         the requirement (read .maestro/${inputs.slug}/requirement/ to frame the gap); and
+         request and gate feedback/guidance, PLUS the out-of-band instructions in the
+         ledger's `notes`, i.e. where the run had to be corrected to meet the requirement
+         (read .maestro/${inputs.slug}/requirement/ to frame the gap); and
          (b) the ISSUES faced while running — failed/retried steps, loops that hit their cap,
          contract/QA/build breakages. Phrase each as forward-looking guidance so the next run
          gets it right first time. Choose each `key` so another run seeing the same pattern

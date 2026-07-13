@@ -766,5 +766,24 @@ nodes:
         self.assertTrue(st["memory"]["sha256"])
 
 
+class NotesTest(Sim):
+    def test_record_note_appends_with_active_step(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        run = self.run_obj()
+        resolver.record_note(run, "also handle the empty-cart case")
+        statemod.save("feat", run.state, self.tmp)
+        notes = self.state()["notes"]
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["text"], "also handle the empty-cart case")
+        self.assertEqual(notes[0]["at_steps"], ["work"])  # the step active at the time
+        self.assertIn("at", notes[0])
+
+    def test_record_note_explicit_step(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        run = self.run_obj()
+        resolver.record_note(run, "tighten validation", step="review")
+        self.assertEqual(run.state["notes"][0]["at_steps"], ["review"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -207,7 +207,7 @@ agents/      subagent definitions (planner, implementer, reviewer, qa, analyst, 
 commands/    the /maestro slash-command shim (individual steps are invoked as skills)
 workflows/   the example pack: sdlc-main / design / impl / qa  — customize or replace
 engine/      the deterministic engine (validate · init · next · complete · gate-record
-             · fail · reset · rebase · status · graph) + ui_server.py + schemas + validators
+             · fail · reset · rebase · status · graph · note) + ui_server.py + schemas + validators
 ui/          builder.html (single-file visual editor) + embed.py
 maestro      repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install`
 .maestro/<slug>/      everything for one feature: requirement/ + all artifacts + state.yaml

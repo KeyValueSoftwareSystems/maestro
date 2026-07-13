@@ -23,7 +23,7 @@ runtime. It ships:
   pipeline — that lives in the workflow node.
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · init · next · complete · gate-record · fail · reset
-  · rebase · status · graph`. The resolver serves exactly ONE next action as JSON; the
+  · rebase · status · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec (`docs/workflow-spec.md`, machine contract
