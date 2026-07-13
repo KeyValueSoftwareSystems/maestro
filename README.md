@@ -172,6 +172,12 @@ Prefer manual control? Every step is also a skill you can invoke on its own — 
 command is the skill's own name: `/plan`, `/backend-design`, `/backend-implement`,
 `/qa-automation`, … — same skills, no orchestration.
 
+The **memory skills** run the same way: `/build-knowledge` scans the codebase and builds the
+`docs/` knowledge base (per-domain technical + functional docs and a Mermaid
+`docs/architecture.md`); `/retrospect <slug>` harvests a finished run — refreshing those docs
+and distilling lessons the engine consolidates into the injected memory store. See
+[docs/memory.md](docs/memory.md).
+
 ## Working as a team
 
 The run ledger `.maestro/<slug>/state.yaml` is written **only by the engine** and is
@@ -202,7 +208,8 @@ git-tracked on purpose (so a run resumes on any machine). Two consequences for a
 ## Layout
 
 ```
-skills/      one SKILL.md per SDLC step + skills/maestro (the lead agent)
+skills/      one SKILL.md per SDLC step + skills/maestro (the lead agent) + the memory
+             skills (build-knowledge, retrospect)
 agents/      subagent definitions (planner, implementer, reviewer, qa, analyst, general)
 commands/    the /maestro slash-command shim (individual steps are invoked as skills)
 workflows/   the example pack: sdlc-main / design / impl / qa  — customize or replace
