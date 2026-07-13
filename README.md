@@ -112,6 +112,12 @@ nodes:
 
 ## Prerequisites
 
+- **Recommended: an umbrella workspace.** For the best SDLC output, don't run Maestro inside one
+  isolated service repo — stand up a **parent/umbrella repo** per project, clone the service repos
+  you're changing (gitignored) underneath it, and install Maestro + `workflows/` into that parent.
+  The lead agent then sees the whole stack at once. Full setup:
+  [docs/umbrella-workspace.md](docs/umbrella-workspace.md). A single repo works too; the umbrella
+  just gives better cross-repo results.
 - **python3 ≥ 3.8** (stdlib only — nothing to `pip install`). Check: `python3 --version`.
 - **git** and, to install, **bash** + **curl**. Your project must be an initialized git
   repository with at least one commit before the implementation phase — the per-stack
