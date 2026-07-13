@@ -36,6 +36,9 @@ def canned_agent_outputs(step, action):
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
         "review_pack": {"pack_path": "review-pack.md", "recommendation": "ready",
                         "summary": "ready"},
+        "retrospect": {"incoming_path": ".maestro/memory/incoming/demo.md",
+                       "lessons_count": 2, "summary": "distilled"},
+        "consolidate": {"promoted": 0, "candidates": 2, "summary": "staged"},
     }
     outputs = dict(table[node])
     # sanity: canned outputs must cover everything the node declares
