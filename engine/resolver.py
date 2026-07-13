@@ -19,11 +19,12 @@ import re
 
 try:
     import condctl
+    import memory as memorymod
     import state as statemod
     import validate as validatemod
     import wf
 except ImportError:  # imported as a package (tests)
-    from . import condctl, state as statemod, validate as validatemod, wf
+    from . import condctl, memory as memorymod, state as statemod, validate as validatemod, wf
 
 
 class RunError(RuntimeError):
@@ -52,7 +53,8 @@ def wf_start(workflow):
     nodes = workflow.get("nodes") or []
     return nodes[0]["id"] if nodes else None
 
-_PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
+_PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
+_MAX_SUBST_PASSES = 5
 
 
 # ---------------------------------------------------------------- frames
@@ -91,6 +93,7 @@ class Run:
         if self.state is None:
             raise RunError(f"no run found for slug {slug!r} — run `init` first", code=3)
         self._wf_cache = {}
+        self._memory_cache = None
 
     # -- workflow loading ------------------------------------------------
 
@@ -174,7 +177,16 @@ class Run:
                 return json.dumps(value)
             return str(value)
 
-        return _PLACEHOLDER_RE.sub(repl, str(text))
+        text = str(text)
+        # Innermost-first regex + bounded loop resolves nested placeholders
+        # (e.g. ${memory.knowledge.${inputs.stack}-review}) inside-out. The cap prevents a
+        # resolved value that itself contains ${...} from looping forever.
+        for _ in range(_MAX_SUBST_PASSES):
+            new = _PLACEHOLDER_RE.sub(repl, text)
+            if new == text:
+                break
+            text = new
+        return text
 
     def resolve_ref(self, ref, frame, missing_ok=False):
         parts = ref.split(".")
@@ -191,6 +203,8 @@ class Run:
                 for p in parts[1:]:
                     value = value[p]
                 return value
+            if parts[0] == "memory" and len(parts) == 3 and parts[1] == "knowledge":
+                return self._memory_knowledge()[parts[2]]
             if parts[0] == "steps" and len(parts) >= 3:
                 step_id = parts[1]
                 entry = self._lookup_step(step_id, frame)
@@ -215,6 +229,12 @@ class Run:
                 return entry
             f = f.parent
         return self.state["steps"].get(step_id)
+
+    def _memory_knowledge(self):
+        """The frozen memory snapshot for this run (loaded once, cached)."""
+        if self._memory_cache is None:
+            self._memory_cache = memorymod.load_snapshot(self.slug, self.root)
+        return self._memory_cache
 
     def resolve_value(self, value, frame, missing_ok=False):
         if isinstance(value, str):
@@ -337,6 +357,13 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
             resolved[name] = coerce_input(spec, default, name)
 
     data = statemod.new_state(slug, workflow_file, digest, resolved)
+    # Freeze the memory knowledge snapshot for this run — read ONCE here, never re-read
+    # live (keeps the run reproducible and immune to concurrent consolidation elsewhere).
+    snap_path = memorymod.write_snapshot(slug, root, memorymod.read_knowledge(root))
+    data["memory"] = {
+        "snapshot": os.path.basename(snap_path),
+        "sha256": statemod.sha256_file(snap_path),
+    }
     run = Run(slug, root, state_data=data)
     frame = run.main_frame()
     _enter(run, frame, wf_start(workflow))

@@ -106,6 +106,7 @@ def new_state(slug, workflow_file, workflow_hash, inputs):
         "slug": slug,
         "workflow": {"file": workflow_file, "sha256": workflow_hash},
         "frames": {},  # path -> {workflow, sha256, inputs} for entered subworkflows
+        "memory": {},  # {snapshot, sha256} — the frozen knowledge snapshot for this run
         "created_at": now_iso(),
         "updated_at": now_iso(),
         "inputs": inputs,
