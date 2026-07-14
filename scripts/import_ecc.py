@@ -150,7 +150,8 @@ def import_skill(name, stack, report):
         "---\n\n"
         f"{body}\n"
     )
-    dst = os.path.join(ROOT, "skills", name)
+    # per-stack reference skills live under skills/stacks/<stack>/ in the organized tree
+    dst = os.path.join(ROOT, "skills", "stacks", stack, name)
     os.makedirs(dst, exist_ok=True)
     with open(os.path.join(dst, "SKILL.md"), "w", encoding="utf-8") as fh:
         fh.write(new)
