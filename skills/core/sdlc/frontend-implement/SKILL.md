@@ -71,6 +71,99 @@ they write a common file). Validate with
 `python3 engine/validate_tasks.py <the tasks.json path>` (must print `OK`).
 Return `tasks_path`, `slices`.
 
+## Consuming tech stack decisions
+Before implementing, read the frontend LLD's **"Tech Stack Decisions"** section. The design
+phase has already chosen:
+
+- **State management** library & store structure
+- **Data-fetching & caching** approach (library, cache strategy, pagination)
+- **Styling & design tokens** approach (Tailwind? CSS Modules? styled-components?)
+- **Testing frameworks** (unit, component, E2E, mocking)
+- **Form validation** library & schema approach
+- **API client** generation strategy (generated from OpenAPI? hand-written?)
+- **Error tracking & logging** tool (Sentry? LogRocket? none?)
+- **Analytics** tool & events to track
+- **Build & bundling** approach (Next.js? Vite? Webpack?)
+- **Performance targets** (Lighthouse scores, Core Web Vitals, bundle size)
+- **Accessibility testing** approach (automated? manual? WCAG level?)
+- **i18n & localization** (languages, library, RTL support)
+- **Authentication & authorization** method (JWT? Sessions? Token storage?)
+- **Platform-specific considerations** (web only? React Native? Flutter?)
+
+**Do not deviate from these decisions.** If a choice seems suboptimal, escalate to the design
+step before implementing — don't improvise or substitute a different library mid-feature.
+
+## Tech stack setup checklist
+Complete these **before** implementing features — blocking setup tasks, not feature work.
+
+### State Management
+- [ ] Store structure created or confirmed from design
+- [ ] Async middleware/effects setup (thunks, sagas, effects, or equivalent)
+- [ ] Selector/getter patterns defined and tested
+- [ ] Store connected to app root
+- [ ] DevTools integrated (Redux DevTools, Zustand dev tools, etc.)
+
+### Data-Fetching & Caching
+- [ ] API client created or generated from contract
+- [ ] Cache keys naming convention established
+- [ ] Cache invalidation strategy implemented
+- [ ] Retry/backoff logic configured
+- [ ] Query/data hooks wired and exported
+- [ ] Race condition handling (AbortController, request deduplication)
+
+### Styling & Design Tokens
+- [ ] Design token files created and imported
+- [ ] Theme provider setup (if using CSS-in-JS or theme system)
+- [ ] Dark mode toggle tested (if supported)
+- [ ] Responsive breakpoints confirmed in config
+- [ ] Component styling patterns established (how to apply styles to components)
+
+### Testing Infrastructure
+- [ ] Unit test runner configured (Jest, Vitest)
+- [ ] Component testing library setup (React Testing Library)
+- [ ] E2E framework initialized (Playwright, Cypress, WebdriverIO)
+- [ ] API mocking setup (MSW, Mirage, Prism, or similar)
+- [ ] Fixture/factory library for mock data
+- [ ] Test utilities (custom render, test helpers) created
+
+### Form Validation
+- [ ] Validation library installed (react-hook-form, Formik, etc.)
+- [ ] Validation schema created matching contract
+- [ ] Form submission handler pattern established
+- [ ] Async validation (if any) tested
+- [ ] Error message display pattern confirmed
+
+### API Client & Types
+- [ ] If generating: generator run, types synced, verified in strict mode
+- [ ] If hand-written: client file structure created, types documented
+- [ ] Request interceptors in place (auth token injection, request logging)
+- [ ] Response interceptors in place (error handling, logging)
+- [ ] TypeScript strict mode verified (no `any`, no `@ts-ignore`)
+
+### Build & Environment
+- [ ] Build tool configured (.env.local strategy, build cache)
+- [ ] Code-splitting points confirmed (which routes lazy-load)
+- [ ] Feature flags initialized (if used)
+- [ ] Environment variables documented and injected
+- [ ] Build output validated (bundle size vs. targets)
+
+### Error Handling & Logging
+- [ ] Error tracking service initialized (if used)
+- [ ] Error boundaries placed at designed points
+- [ ] PII scrubbing configured in logger
+- [ ] Error capture tested (throw and verify it's logged)
+- [ ] User-facing error messages reviewed
+
+### Analytics & Events
+- [ ] Analytics library initialized (if used)
+- [ ] Event tracking helper/wrapper created
+- [ ] Event structure and naming convention documented
+- [ ] Test event captured and verified in analytics dashboard
+- [ ] PII handling verified (no user emails, phone numbers, etc. in events)
+
+**Do not start feature implementation until ALL setup tasks are complete.** They unblock
+everything else.
+
 ## Steps
 1. **Types/API client** from the contract (generate or hand-write; single source of truth).
 2. **State & data-fetching** via the existing layer; define cache keys & invalidation.
@@ -125,8 +218,11 @@ failure invoke `/fix-loop` (one attempt per invocation — the workflow's `max_v
 node, typically 3, bounds the overall loop).
 
 ## Definition of done
-All required UI states built and tested; every slice merged; standards addressed; edge cases
-handled; no TypeScript errors; reuses existing components; contract consumed exactly.
+**Setup phase:** tech stack setup checklist complete (all boxes checked); no "TBD" setup tasks.
+
+**Feature phase:** all required UI states built and tested; every slice merged; standards
+addressed; edge cases handled; no TypeScript errors; reuses existing components; contract
+consumed exactly.
 
 ## Output contract
 Return `branch`, `summary`, `tests_passed`. In plan mode, return `tasks_path` and `slices`

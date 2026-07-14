@@ -125,7 +125,7 @@ curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/m
   | bash -s -- claude-code cursor        # pick your IDE(s)
 ```
 
-Installs: our skills/commands/agents into `.claude/` / `.cursor/`, and the engine + `workflows/` + `ui/` + `docs/` all under a single **`.maestro/`** parent in your repo (so your repo root stays clean and nothing collides with your own `engine/`/`docs/`/`ui/` dirs). The engine is stdlib-only python3 — no CLI, no config file, nothing else to install. The installer prints a recommended `.gitignore` and what to commit; **upgrade** by re-running the same command (it re-fetches and overwrites `.maestro/engine/`/`.maestro/ui/`). *(Private-repo fork? The piped `curl` can't authenticate — clone it and run `./install.sh` from the checkout.)*
+Installs: our skills/commands/agents into `.claude/` / `.cursor/`, and the engine + `workflows/` + `ui/` + `docs/` all under a single **`.maestro/`** parent in your repo (so your repo root stays clean and nothing collides with your own `engine/`/`docs/`/`ui/` dirs). The engine is stdlib-only python3 — no CLI, no config file, nothing else to install. When it finishes it prints a short next-steps notice pointing at `/maestro-init` and **`./maestro help`** — the full guide (getting started, the recommended `.gitignore` + what to commit, upgrade/uninstall). **Upgrade** by re-running the same command (it re-fetches and overwrites `.maestro/engine/`/`.maestro/ui/`). *(Private-repo fork? The piped `curl` can't authenticate — clone it and run `./install.sh` from the checkout.)*
 
 ### Finish setup: `/maestro-init` (recommended)
 
@@ -217,7 +217,7 @@ After install, in your project repo:
   docs/       workflow-spec.md (the workflow spec)
   memory/     knowledge/ (seeded by /build-knowledge)
   runs/<slug>/  everything for one feature: requirement/ + all artifacts + state.yaml
-maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install`
+maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install` + `maestro help`
 ```
 
 ## Customizing / bring your own
