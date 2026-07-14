@@ -6,56 +6,71 @@
 <title>Maestro Workflow Builder</title>
 <style>
 :root {
-  --bg: #f6f7fb; --panel: #ffffff; --panel2: #f0f2f8; --border: #dde1ec;
-  --text: #1b2233; --muted: #6b7385; --accent: #4f6bf5; --accent-soft: #e8ecff;
-  --danger: #d64550; --warn: #d69a2d; --ok: #2f9e6e;
-  --agent: #4f6bf5; --gate: #d69a2d; --script: #2f9e6e; --parallel: #9a5df0; --subworkflow: #d6558e;
-  --shadow: 0 2px 10px rgba(20,28,60,.08), 0 1px 3px rgba(20,28,60,.06);
-  --shadow-lg: 0 12px 40px rgba(20,28,60,.16);
-  --radius: 10px; --font: ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --bg: #f6f7fb; --panel: #ffffff; --panel2: #f1f3f9; --border: #e4e7f0; --border-strong: #d6dae7;
+  --text: #1b2233; --muted: #727a8c; --faint: #9aa1b2; --accent: #4f6bf5; --accent-soft: #eef1ff;
+  --danger: #d64550; --warn: #c98a1e; --ok: #2f9e6e; --edge: #c3c8d6;
+  --agent: #4f6bf5; --gate: #c98a1e; --script: #2f9e6e; --parallel: #9a5df0; --subworkflow: #d6558e;
+  --shadow-sm: 0 1px 2px rgba(20,28,60,.07);
+  --shadow: 0 4px 20px rgba(20,28,60,.09), 0 1px 3px rgba(20,28,60,.06);
+  --shadow-lg: 0 18px 50px rgba(20,28,60,.16);
+  --radius: 12px;
+  --serif: "Newsreader", Georgia, "Times New Roman", serif;
+  --font: "Hanken Grotesk", ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 :root[data-theme="dark"] {
-  --bg: #12151f; --panel: #1a1f2e; --panel2: #161a26; --border: #2a3145;
-  --text: #e6e9f2; --muted: #8b93a8; --accent: #7288ff; --accent-soft: #232c4d;
-  --danger: #ef6b74; --warn: #e5b45b; --ok: #4dbd8f;
-  --agent: #7288ff; --gate: #e5b45b; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
-  --shadow: 0 2px 10px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.3);
-  --shadow-lg: 0 12px 40px rgba(0,0,0,.5);
+  --bg: #111318; --panel: #191b21; --panel2: #15171c; --border: #2a2d36; --border-strong: #363a47;
+  --text: #e8eaf0; --muted: #8b909e; --faint: #616675; --accent: #7288ff; --accent-soft: #20264a;
+  --danger: #ef6b74; --warn: #e0aa54; --ok: #4dbd8f; --edge: #3a3f4c;
+  --agent: #7288ff; --gate: #e0aa54; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+  --shadow: 0 4px 20px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.4);
+  --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg: #12151f; --panel: #1a1f2e; --panel2: #161a26; --border: #2a3145;
-    --text: #e6e9f2; --muted: #8b93a8; --accent: #7288ff; --accent-soft: #232c4d;
-    --danger: #ef6b74; --warn: #e5b45b; --ok: #4dbd8f;
-    --agent: #7288ff; --gate: #e5b45b; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
-    --shadow: 0 2px 10px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.3);
-    --shadow-lg: 0 12px 40px rgba(0,0,0,.5);
+    --bg: #111318; --panel: #191b21; --panel2: #15171c; --border: #2a2d36; --border-strong: #363a47;
+    --text: #e8eaf0; --muted: #8b909e; --faint: #616675; --accent: #7288ff; --accent-soft: #20264a;
+    --danger: #ef6b74; --warn: #e0aa54; --ok: #4dbd8f; --edge: #3a3f4c;
+    --agent: #7288ff; --gate: #e0aa54; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
+    --shadow: 0 4px 20px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.4);
+    --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
   }
 }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes pulseRing { 0%, 100% { box-shadow: 0 0 0 0 rgba(201,138,30,.35); } 50% { box-shadow: 0 0 0 6px rgba(201,138,30,0); } }
 * { box-sizing: border-box; margin: 0; }
 html, body { height: 100%; overflow: hidden; }
 body { font-family: var(--font); font-size: 13px; color: var(--text); background: var(--bg); }
 button, input, select, textarea { font: inherit; color: inherit; }
 
 /* ---- layout ---- */
-#app { display: grid; grid-template-rows: 46px 1fr; grid-template-columns: 216px 1fr 320px; height: 100%; }
-#toolbar { grid-column: 1 / 4; display: flex; align-items: center; gap: 6px; padding: 0 12px;
+#app { display: grid; grid-template-rows: 58px 1fr; grid-template-columns: 220px 1fr 344px; height: 100%; }
+#toolbar { grid-column: 1 / 4; display: flex; align-items: center; gap: 7px; padding: 0 16px;
   background: var(--panel); border-bottom: 1px solid var(--border); z-index: 30; }
 #palette { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; }
 #canvas-wrap { position: relative; overflow: hidden; background: var(--bg);
   background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 22px 22px; }
-#inspector { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 14px; }
+#inspector { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 20px; }
 
 /* ---- toolbar ---- */
-.logo { font-weight: 700; font-size: 14px; letter-spacing: .2px; margin-right: 6px; }
-.logo b { color: var(--accent); }
-.tb { border: 1px solid var(--border); background: var(--panel); border-radius: 7px; padding: 5px 11px;
+.logo { font-family: var(--serif); font-weight: 600; font-size: 20px; letter-spacing: .2px; margin-right: 2px; }
+.logo b { font-weight: 600; color: inherit; }
+.logo-badge { font-family: var(--mono); font-size: 10px; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 2px 7px; margin-right: 4px; }
+.seg { display: flex; gap: 3px; background: var(--panel2); border: 1px solid var(--border); border-radius: 11px; padding: 4px; }
+.seg > button { display: flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--muted);
+  border-radius: 8px; padding: 6px 15px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font); }
+.seg > button.active { background: var(--panel); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 600; }
+.tb { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 6px 12px;
   cursor: pointer; color: var(--text); transition: background .12s; white-space: nowrap; }
 .tb:hover { background: var(--panel2); }
 .tb.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .tb.primary:hover { filter: brightness(1.08); }
 .tb:disabled { opacity: .45; cursor: default; }
+.tb-icon { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 9px; color: var(--muted); }
 .tb-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
 #crumbs { display: flex; gap: 4px; align-items: center; margin-left: 8px; font-weight: 600; }
 #crumbs .crumb { cursor: pointer; padding: 3px 8px; border-radius: 6px; }
@@ -64,42 +79,71 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #crumbs .sep { color: var(--muted); }
 .spacer { flex: 1; }
 #dirty-dot { color: var(--warn); font-size: 18px; visibility: hidden; }
+.tb-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
+.tb-center { display: flex; align-items: center; justify-content: center; flex: none; }
+.tb-right { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; justify-content: flex-end; }
+.tb-right #crumbs { margin-left: 0; margin-right: 2px; font-weight: 600; overflow: hidden; }
+/* overflow menu */
+.menu { position: relative; }
+.menu-panel { position: absolute; top: calc(100% + 6px); right: 0; min-width: 216px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; z-index: 60; display: none; }
+.menu-panel.show { display: block; animation: fadeUp .15s ease both; }
+.menu-item { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; text-align: left;
+  border: none; background: transparent; color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+  cursor: pointer; font-family: var(--font); }
+.menu-item:hover { background: var(--panel2); }
+.menu-item:disabled { opacity: .4; cursor: default; }
+.menu-item kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); background: var(--panel2);
+  border: 1px solid var(--border); border-radius: 5px; padding: 1px 5px; }
+.menu-sep { height: 1px; background: var(--border); margin: 5px 4px; }
+/* editor-only controls: hidden on the Runs and Library views (irrelevant there) */
+#editor-actions { display: flex; align-items: center; gap: 7px; }
+body[data-view="runs"] #editor-actions, body[data-view="library"] #editor-actions { display: none; }
+/* "← Workflows" back button: only in server mode (where the library exists) and only in the Builder editor */
+#btn-library { display: none; margin-left: 6px; }
+body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-items: center; gap: 5px; }
 
 /* ---- palette ---- */
-.pal-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 4px 6px; }
-.pal-item { display: flex; align-items: center; gap: 9px; padding: 8px 9px; border: 1px solid var(--border);
-  border-radius: 9px; margin-bottom: 6px; cursor: grab; background: var(--panel); transition: box-shadow .12s, transform .12s; }
+#palette { padding: 16px 14px; }
+.pal-h { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); margin: 2px 4px 10px; }
+.pal-h + .pal-h, .pal-item + .pal-h { margin-top: 20px; }
+.pal-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border);
+  border-radius: 11px; margin-bottom: 7px; cursor: grab; background: var(--panel); transition: box-shadow .15s, transform .15s; }
 .pal-item:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-.pal-item .ico { width: 26px; height: 26px; border-radius: 7px; display: flex; align-items: center;
-  justify-content: center; color: #fff; font-size: 13px; flex: none; }
-.pal-item .nm { font-weight: 600; }
+.pal-item .ico { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center;
+  justify-content: center; font-family: var(--mono); font-size: 13px; flex: none; }
+.pal-item .ico.letter { font-weight: 600; font-size: 12px; }
+.pal-item .nm { font-weight: 600; font-size: 12.5px; }
 .pal-item .ds { color: var(--muted); font-size: 11px; }
-.hint { color: var(--muted); font-size: 11px; padding: 6px 4px; line-height: 1.5; }
+.hint { color: var(--faint); font-size: 11px; padding: 14px 4px 4px; line-height: 1.55; }
 
 /* ---- canvas ---- */
 #viewport { position: absolute; inset: 0; transform-origin: 0 0; }
 #edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-#edges path.edge { fill: none; stroke: var(--muted); stroke-width: 1.8; pointer-events: stroke; cursor: pointer; }
-#edges path.edge.back { stroke-dasharray: 7 5; stroke: var(--parallel); }
+#edges path.edge { fill: none; stroke: var(--edge); stroke-width: 1.7; pointer-events: stroke; cursor: pointer; }
+#edges path.edge.back { stroke-dasharray: 6 5; stroke: var(--parallel); }
 #edges path.edge.selected { stroke: var(--accent); stroke-width: 2.6; }
 #edges path.hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
-#edges text { font-size: 10.5px; fill: var(--muted); font-family: var(--font); pointer-events: none; }
-#edges .arrow { fill: var(--muted); }
+#edges text { font-size: 10.5px; fill: var(--muted); font-family: var(--mono); pointer-events: none; }
+#edges .arrow { fill: var(--edge); }
 #edges .arrow.back { fill: var(--parallel); }
 #edges .arrow.selected { fill: var(--accent); }
 #edges .cap-badge { font-size: 9.5px; fill: var(--parallel); font-weight: 700; }
-.node { position: absolute; width: 190px; background: var(--panel); border: 1.5px solid var(--border);
-  border-radius: var(--radius); box-shadow: var(--shadow); cursor: grab; user-select: none; }
-.node:hover { box-shadow: var(--shadow-lg); }
-.node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-lg); }
-.node .head { display: flex; align-items: center; gap: 7px; padding: 8px 10px; border-bottom: 1px solid var(--border);
-  border-radius: var(--radius) var(--radius) 0 0; }
-.node .ico { width: 22px; height: 22px; border-radius: 6px; color: #fff; display: flex; align-items: center;
-  justify-content: center; font-size: 12px; flex: none; }
-.node .ttl { font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node .body { padding: 7px 10px 9px; display: flex; flex-wrap: wrap; gap: 4px; min-height: 20px; }
-.chip { font-size: 10.5px; background: var(--panel2); border: 1px solid var(--border); border-radius: 20px;
-  padding: 1.5px 8px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.node { position: absolute; width: 190px; background: var(--panel); border: 1.5px solid var(--border-strong);
+  border-radius: 13px; box-shadow: var(--shadow-sm); cursor: grab; user-select: none; transition: box-shadow .15s, border-color .15s; }
+.node:hover { box-shadow: var(--shadow); }
+.node.selected { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow); }
+.node .head { display: flex; align-items: center; gap: 9px; padding: 11px 12px 6px; }
+.node .ico { width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center;
+  justify-content: center; font-family: var(--mono); font-size: 13px; flex: none; }
+.node .ttl { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.node .node-del { flex: none; width: 20px; height: 20px; padding: 0; border: none; background: transparent; color: var(--faint);
+  border-radius: 6px; cursor: pointer; font-size: 14px; line-height: 1; opacity: 0; transition: opacity .12s, background .12s, color .12s; }
+.node:hover .node-del, .node.selected .node-del { opacity: 1; }
+.node .node-del:hover { background: var(--panel2); color: var(--danger); }
+.node .body { padding: 0 12px 11px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 8px; }
+.chip { font-size: 10.5px; font-family: var(--mono); background: var(--panel2); border: 1px solid var(--border); border-radius: 7px;
+  padding: 2px 8px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chip.skill { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
 .node .err-badge { position: absolute; top: -7px; right: -7px; width: 17px; height: 17px; border-radius: 50%;
   background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center;
@@ -111,25 +155,36 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .port.in { left: -7px; right: auto; border-color: var(--muted); cursor: default; }
 .port-label { position: absolute; right: 10px; font-size: 9.5px; color: var(--muted); transform: translateY(-1px);
   pointer-events: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node.n-agent .ico, .pal-item.n-agent .ico { background: var(--agent); }
-.node.n-gate .ico, .pal-item.n-gate .ico { background: var(--gate); }
-.node.n-script .ico, .pal-item.n-script .ico { background: var(--script); }
-.node.n-parallel .ico, .pal-item.n-parallel .ico { background: var(--parallel); }
-.node.n-subworkflow .ico, .pal-item.n-subworkflow .ico { background: var(--subworkflow); }
-.node.n-terminal { width: 110px; opacity: .92; }
-.node.n-terminal .head { border-bottom: none; justify-content: center; }
+.node.n-agent .ico, .pal-item.n-agent .ico { background: color-mix(in srgb, var(--agent) 15%, transparent); color: var(--agent); }
+.node.n-gate .ico, .pal-item.n-gate .ico { background: color-mix(in srgb, var(--gate) 15%, transparent); color: var(--gate); }
+.node.n-script .ico, .pal-item.n-script .ico { background: color-mix(in srgb, var(--script) 15%, transparent); color: var(--script); }
+.node.n-parallel .ico, .pal-item.n-parallel .ico { background: color-mix(in srgb, var(--parallel) 15%, transparent); color: var(--parallel); }
+.node.n-subworkflow .ico, .pal-item.n-subworkflow .ico { background: color-mix(in srgb, var(--subworkflow) 15%, transparent); color: var(--subworkflow); }
+.pal-item .ico.letter { background: var(--accent-soft); color: var(--accent); }
+.node.n-terminal { width: 118px; opacity: .95; }
+.node.n-terminal .head { justify-content: center; padding-bottom: 11px; }
+.node.n-terminal .ico { color: #fff; }
 .node .open-btn { font-size: 11px; color: var(--accent); cursor: pointer; padding: 1.5px 8px;
   border: 1px solid var(--accent-soft); background: var(--accent-soft); border-radius: 20px; }
 #temp-edge { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 #temp-edge path { stroke: var(--accent); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
-#empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; align-items: center;
+#empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; align-items: center;
   justify-content: center; color: var(--muted); pointer-events: none; }
-#empty-state .big { font-size: 17px; font-weight: 600; }
+#empty-state .big { font-family: var(--serif); font-size: 21px; font-weight: 600; }
+#zoom-dock { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center;
+  gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 5px; z-index: 15; }
+#zoom-dock button { border: none; background: transparent; color: var(--text); border-radius: 8px; cursor: pointer;
+  height: 30px; font-family: var(--font); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+#zoom-dock button:hover { background: var(--panel2); }
+#zoom-dock .zb-round { width: 30px; font-size: 17px; }
+#zoom-dock .zb-txt { padding: 0 11px; font-size: 12px; }
+#zoom-dock .zsep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+#zoom-label { min-width: 46px; text-align: center; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
 
 /* ---- inspector ---- */
-#inspector h3 { font-size: 13px; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
-#inspector h3 .ico { width: 20px; height: 20px; border-radius: 6px; color: #fff; display: flex;
-  align-items: center; justify-content: center; font-size: 11px; }
+#inspector h3 { font-family: var(--serif); font-weight: 600; font-size: 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 11px; }
+#inspector h3 .ico { width: 34px; height: 34px; border-radius: 9px; color: #fff; display: flex;
+  align-items: center; justify-content: center; font-size: 15px; flex: none; }
 .f { margin-bottom: 10px; }
 .f label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
 .f input[type=text], .f input[type=number], .f select, .f textarea { width: 100%; border: 1px solid var(--border);
@@ -158,7 +213,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .note { color: var(--muted); font-size: 11px; line-height: 1.5; }
 
 /* ---- issues panel ---- */
-#issues { position: absolute; left: 226px; bottom: 10px; right: 330px; max-height: 150px; overflow-y: auto;
+#issues { position: absolute; left: 14px; bottom: 62px; right: 14px; max-height: 150px; overflow-y: auto;
   background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
   z-index: 20; display: none; }
 #issues.show { display: block; }
@@ -209,18 +264,20 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .st-row.fail { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 
 /* ---- runs view ---- */
-#runs-view { position: fixed; inset: 0; background: var(--bg); z-index: 400; display: none; flex-direction: column; }
+#runs-view { position: fixed; inset: 58px 0 0 0; background: var(--bg); z-index: 400; display: none; flex-direction: column;
+  animation: fadeUp .4s ease both; }
 #runs-view.show { display: flex; }
-#runs-top { height: 46px; flex: none; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+#runs-top { height: 52px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px;
   background: var(--panel); border-bottom: 1px solid var(--border); }
-#runs-top .logo { margin-right: 4px; }
-#runs-body { flex: 1; display: grid; grid-template-columns: 288px 1fr; min-height: 0; }
-#runs-list { border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; background: var(--panel); }
+.runs-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin-right: 2px; }
+.runs-tag { font-family: var(--mono); font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; }
+#runs-body { flex: 1; display: grid; grid-template-columns: 344px 1fr; min-height: 0; }
+#runs-list { border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; background: var(--panel); }
 #runs-list .empty { color: var(--muted); font-size: 12px; line-height: 1.6; padding: 8px 4px; }
-.run-card { border: 1.5px solid var(--border); border-radius: 10px; padding: 10px 11px; margin-bottom: 8px; cursor: pointer;
-  transition: box-shadow .12s, border-color .12s; background: var(--panel); }
+.run-card { border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 13px; margin-bottom: 8px; cursor: pointer;
+  transition: box-shadow .15s, border-color .15s; background: var(--panel); border-left: 3px solid transparent; }
 .run-card:hover { box-shadow: var(--shadow); }
-.run-card.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.run-card.sel { border-color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
 .run-card .rc-top { display: flex; align-items: center; gap: 7px; }
 .run-card .rc-slug { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-card .rc-file { color: var(--muted); font-size: 11px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -241,14 +298,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 #runs-graph svg path { fill: none; stroke: var(--muted); stroke-width: 1.8; }
 #runs-graph svg path.back { stroke-dasharray: 7 5; stroke: var(--parallel); }
 #runs-graph svg .arrow { fill: var(--muted); }
-.rnode { position: absolute; width: 190px; border-radius: 10px; border: 1.5px solid var(--border); background: var(--panel);
-  box-shadow: var(--shadow); overflow: hidden; }
+.rnode { position: absolute; width: 190px; border-radius: 13px; border: 1.5px solid var(--border); background: var(--panel);
+  box-shadow: var(--shadow-sm); overflow: hidden; }
 .rnode .rn-head { display: flex; align-items: center; gap: 7px; padding: 7px 10px; font-weight: 650; }
 .rnode .rn-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
 .rnode .rn-type { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 4px 10px 8px; }
 .rnode.s-done { border-color: var(--ok); } .rnode.s-done .rn-dot { background: var(--ok); }
 .rnode.s-done .rn-head { background: color-mix(in srgb, var(--ok) 12%, transparent); }
-.rnode.s-running { border-color: var(--warn); } .rnode.s-running .rn-dot { background: var(--warn); animation: pulse 1.3s infinite; }
+.rnode.s-running { border-color: var(--warn); animation: pulseRing 1.8s ease-out infinite; } .rnode.s-running .rn-dot { background: var(--warn); }
 .rnode.s-running .rn-head { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .rnode.s-failed { border-color: var(--danger); } .rnode.s-failed .rn-dot { background: var(--danger); }
 .rnode.s-failed .rn-head { background: color-mix(in srgb, var(--danger) 12%, transparent); }
@@ -256,44 +313,76 @@ button, input, select, textarea { font: inherit; color: inherit; }
 @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
 #runs-legend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--muted); margin-left: 6px; }
 #runs-legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+
+/* ---- library ---- */
+#library-view { position: fixed; inset: 58px 0 0 0; background: var(--bg); z-index: 350; display: none; overflow-y: auto;
+  animation: fadeUp .4s ease both; }
+#library-view.show { display: block; }
+.lib-wrap { max-width: 940px; margin: 0 auto; padding: 44px 32px 60px; }
+.lib-head { display: flex; align-items: flex-end; gap: 12px; }
+.lib-title { font-family: var(--serif); font-size: 31px; font-weight: 600; }
+.lib-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
+.lib-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 28px; }
+.lib-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex;
+  flex-direction: column; gap: 11px; cursor: pointer; transition: box-shadow .15s, transform .15s; }
+.lib-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
+.lib-file { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 7px; padding: 4px 9px; }
+.lib-name { font-size: 13px; color: var(--text); line-height: 1.5; font-weight: 600; }
+.lib-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.lib-foot { font-size: 11.5px; color: var(--faint); margin-top: 22px; font-family: var(--mono); }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="toolbar">
-    <span class="logo">Maestro <b>Builder</b></span>
-    <button class="tb" id="btn-new" title="Start a fresh workflow">✚ New</button>
-    <button class="tb" id="btn-open" title="Open a workflow.yaml (⌘O)">Open</button>
-    <button class="tb" id="btn-paste" title="Paste YAML">Paste</button>
-    <span class="tb-sep"></span>
-    <button class="tb primary" id="btn-export" title="Export YAML (⌘S)">Export ⤓</button>
-    <span class="tb-sep"></span>
-    <button class="tb" id="btn-undo" title="Undo (⌘Z)">↩</button>
-    <button class="tb" id="btn-redo" title="Redo (⇧⌘Z)">↪</button>
-    <button class="tb" id="btn-layout" title="Auto-arrange nodes">Auto-layout</button>
-    <button class="tb" id="btn-fit" title="Fit to view (F)">Fit</button>
-    <div id="crumbs"></div>
-    <span class="spacer"></span>
-    <button class="tb" id="btn-runs" title="View live run status of your .maestro runs">▶ Runs</button>
-    <span id="dirty-dot" title="Unsaved changes">●</span>
-    <span class="tb" id="lint-pill">…</span>
-    <button class="tb" id="btn-theme" title="Toggle theme">◐</button>
-    <button class="tb" id="btn-help" title="Help">?</button>
+    <div class="tb-left">
+      <span class="logo">Maestro</span>
+      <span class="logo-badge">orchestrator</span>
+      <button class="tb" id="btn-library" title="Back to all workflows"><span style="font-size:13px">←</span> Workflows</button>
+    </div>
+    <div class="tb-center">
+      <div class="seg" id="view-seg">
+        <button id="seg-builder" class="active" title="Workflow builder"><span style="font-size:14px">⊞</span> Builder</button>
+        <button id="btn-runs" title="View live run status of your .maestro runs"><span style="font-size:12px">▷</span> Runs</button>
+      </div>
+    </div>
+    <div class="tb-right">
+      <div id="editor-actions">
+        <div id="crumbs"></div>
+        <span id="dirty-dot" title="Unsaved changes">●</span>
+        <span class="tb" id="lint-pill">…</span>
+        <button class="tb primary" id="btn-export" title="Export / Save (⌘S)">Export ⤓</button>
+        <div class="menu" id="wf-menu">
+          <button class="tb tb-icon" id="menu-btn" title="Workflow actions" aria-haspopup="true">⋯</button>
+          <div class="menu-panel" id="menu-panel" role="menu">
+            <button class="menu-item" id="btn-new" role="menuitem"><span>✚&nbsp; New workflow</span></button>
+            <button class="menu-item" id="btn-open" role="menuitem"><span>Open…</span><kbd>⌘O</kbd></button>
+            <button class="menu-item" id="btn-paste" role="menuitem"><span>Paste YAML</span></button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" id="btn-undo" role="menuitem"><span>Undo</span><kbd>⌘Z</kbd></button>
+            <button class="menu-item" id="btn-redo" role="menuitem"><span>Redo</span><kbd>⇧⌘Z</kbd></button>
+            <div class="menu-sep"></div>
+            <button class="menu-item" id="menu-help" role="menuitem"><span>Help &amp; shortcuts</span><kbd>?</kbd></button>
+          </div>
+        </div>
+      </div>
+      <button class="tb tb-icon" id="btn-theme" title="Toggle theme">☾</button>
+    </div>
   </div>
 
   <div id="palette">
-    <div class="pal-h">Presets</div>
-    <div class="pal-item n-agent" draggable="true" data-preset="planner"><span class="ico">✎</span><span><div class="nm">Planner</div><div class="ds">designs &amp; plans</div></span></div>
-    <div class="pal-item n-agent" draggable="true" data-preset="implementer"><span class="ico">⚒</span><span><div class="nm">Implementer</div><div class="ds">writes the code</div></span></div>
-    <div class="pal-item n-agent" draggable="true" data-preset="reviewer"><span class="ico">🔍</span><span><div class="nm">Reviewer</div><div class="ds">reviews changes</div></span></div>
-    <div class="pal-item n-agent" draggable="true" data-preset="qa"><span class="ico">✓</span><span><div class="nm">QA</div><div class="ds">tests the feature</div></span></div>
     <div class="pal-h">Nodes</div>
-    <div class="pal-item n-agent" draggable="true" data-preset="agent"><span class="ico">🤖</span><span><div class="nm">Agent</div><div class="ds">AI step</div></span></div>
-    <div class="pal-item n-gate" draggable="true" data-preset="gate"><span class="ico">👤</span><span><div class="nm">Gate</div><div class="ds">human decision</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="agent"><span class="ico">✦</span><span><div class="nm">Agent</div><div class="ds">AI step</div></span></div>
+    <div class="pal-item n-gate" draggable="true" data-preset="gate"><span class="ico">◈</span><span><div class="nm">Gate</div><div class="ds">human decision</div></span></div>
     <div class="pal-item n-script" draggable="true" data-preset="script"><span class="ico">$</span><span><div class="nm">Script</div><div class="ds">run a command</div></span></div>
-    <div class="pal-item n-parallel" draggable="true" data-preset="parallel"><span class="ico">⫘</span><span><div class="nm">Parallel</div><div class="ds">fork &amp; join</div></span></div>
-    <div class="pal-item n-subworkflow" draggable="true" data-preset="subworkflow"><span class="ico">⧉</span><span><div class="nm">Subworkflow</div><div class="ds">another file</div></span></div>
-    <div class="hint">Drag onto the canvas.<br>Drag from a node's ⚪ port to another node to connect — arrows may point <b>back</b> to earlier steps to create loops.</div>
+    <div class="pal-item n-parallel" draggable="true" data-preset="parallel"><span class="ico">⋔</span><span><div class="nm">Parallel</div><div class="ds">fork &amp; join</div></span></div>
+    <div class="pal-item n-subworkflow" draggable="true" data-preset="subworkflow"><span class="ico">⧉</span><span><div class="nm">Subworkflow</div><div class="ds">nested flow</div></span></div>
+    <div class="pal-h">Presets</div>
+    <div class="pal-item n-agent" draggable="true" data-preset="planner"><span class="ico letter">P</span><span><div class="nm">Planner</div><div class="ds">designs &amp; plans</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="implementer"><span class="ico letter">I</span><span><div class="nm">Implementer</div><div class="ds">writes the code</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="reviewer"><span class="ico letter">R</span><span><div class="nm">Reviewer</div><div class="ds">reviews changes</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="qa"><span class="ico letter">Q</span><span><div class="nm">QA</div><div class="ds">tests the feature</div></span></div>
+    <div class="hint">Drag a node onto the canvas to add it. Drag from a node's ⚪ port to another node to connect — arrows may point <b>back</b> to earlier steps to create loops.</div>
   </div>
 
   <div id="canvas-wrap">
@@ -304,6 +393,16 @@ button, input, select, textarea { font: inherit; color: inherit; }
     </div>
     <svg id="temp-edge"></svg>
     <div id="issues"><div class="ih"><span id="issues-title">Problems</span><span class="spacer"></span><button class="tb" id="issues-close" style="padding:1px 8px">×</button></div><div id="issues-body"></div></div>
+    <div id="zoom-dock">
+      <button class="zb-round" id="btn-zoom-out" title="Zoom out">−</button>
+      <div id="zoom-label">100%</div>
+      <button class="zb-round" id="btn-zoom-in" title="Zoom in">+</button>
+      <span class="zsep"></span>
+      <button class="zb-txt" id="btn-fit" title="Fit to view (F)">Fit</button>
+      <span class="zsep"></span>
+      <button class="zb-txt" id="btn-layout" title="Auto-layout, left to right"><span style="font-size:13px">⇢</span> Layout</button>
+      <button class="zb-txt" id="btn-layout-v" title="Auto-layout, top to bottom"><span style="font-size:13px">⇣</span> Layout</button>
+    </div>
   </div>
 
   <div id="inspector"></div>
@@ -348,9 +447,27 @@ button, input, select, textarea { font: inherit; color: inherit; }
 <div class="toast" id="toast"></div>
 <div id="selftest-view"><h1>Builder self-test</h1><div id="st-results"></div></div>
 
+<div id="library-view">
+  <div class="lib-wrap">
+    <div class="lib-head">
+      <div>
+        <div class="lib-title">Workflows</div>
+        <div class="lib-sub">Every workflow in this repo. Open one to edit, or start fresh.</div>
+      </div>
+      <span class="spacer"></span>
+      <button class="tb primary" id="lib-new"><span style="font-size:15px">＋</span> New workflow</button>
+      <button class="tb tb-icon" id="lib-close" title="Back to editor">✕</button>
+    </div>
+    <div class="lib-grid" id="library-grid"></div>
+    <div class="lib-foot">found in workflows/ · maestro workflows are tagged</div>
+  </div>
+</div>
+
 <div id="runs-view">
   <div id="runs-top">
-    <span class="logo">Maestro <b>Runs</b></span>
+    <span class="runs-title">Runs</span>
+    <span class="runs-tag">read-only</span>
+    <span class="tb-sep"></span>
     <button class="tb primary" id="runs-open">Open project folder…</button>
     <label class="tb" for="runs-file" title="Load one or more .maestro/&lt;slug&gt;/state.yaml files">Load state.yaml…</label>
     <input id="runs-file" type="file" accept=".yaml,.yml" multiple style="display:none">
@@ -909,7 +1026,7 @@ const SCHEMA = JSON.parse($("#workflow-schema").textContent);
 const LINT_RULES = JSON.parse($("#lint-rules").textContent);
 const RESERVED = ["end", "abort"];
 const NODE_TYPES = ["agent", "gate", "script", "parallel", "subworkflow"];
-const ICONS = { agent: "🤖", gate: "👤", script: "$", parallel: "⫘", subworkflow: "⧉" };
+const ICONS = { agent: "✦", gate: "◈", script: "$", parallel: "⋔", subworkflow: "⧉" };
 const SKILL_CATALOG = ["plan","backend-design","frontend-design","api-contract","functional-testcases",
   "backend-tasks","backend-implement","frontend-implement","qa-automation","architecture-review",
   "backend-review","frontend-review","verify","fix-loop","human-review-pack"];
@@ -1012,7 +1129,7 @@ function layoutOrder(nodes) {         // longest-path layer per node id from sta
   for (const n of nodes) if (!(n.id in layer)) layer[n.id] = ++extra + Math.max(0, ...Object.values(layer));
   return layer;
 }
-function autoLayout(nodes, force) {
+function autoLayout(nodes, force, dir) {
   const layer = layoutOrder(nodes);
   const byLayer = {};
   nodes.forEach(n => { (byLayer[layer[n.id]] = byLayer[layer[n.id]] || []).push(n); });
@@ -1020,7 +1137,9 @@ function autoLayout(nodes, force) {
   for (const [l, group] of Object.entries(byLayer)) {
     group.forEach((n, i) => {
       if (force || !n.ui || n.ui.x == null) {
-        n.ui = Object.assign({}, n.ui, { x: 40 + l * COLW, y: 40 + i * ROWH });
+        const x = dir === "v" ? 40 + i * COLW : 40 + l * COLW;
+        const y = dir === "v" ? 40 + l * ROWH : 40 + i * ROWH;
+        n.ui = Object.assign({}, n.ui, { x, y });
       }
     });
   }
@@ -1097,7 +1216,18 @@ function renderAll() {
   $("#dirty-dot").style.visibility = ed.dirty ? "visible" : "hidden";
   try { localStorage.setItem("maestro-builder-doc", JSON.stringify(doc)); } catch (e) {}
 }
-function applyTransform() { vp.style.transform = `translate(${ed.pan.x}px, ${ed.pan.y}px) scale(${ed.zoom})`; }
+function applyTransform() {
+  vp.style.transform = `translate(${ed.pan.x}px, ${ed.pan.y}px) scale(${ed.zoom})`;
+  const zl = $("#zoom-label"); if (zl) zl.textContent = Math.round(ed.zoom * 100) + "%";
+}
+function zoomBy(factor) {
+  const r = wrap.getBoundingClientRect();
+  const mx = r.width / 2, my = r.height / 2;
+  const nz = Math.min(2.2, Math.max(0.25, ed.zoom * factor));
+  ed.pan.x = mx - (mx - ed.pan.x) * (nz / ed.zoom);
+  ed.pan.y = my - (my - ed.pan.y) * (nz / ed.zoom);
+  ed.zoom = nz; applyTransform();
+}
 function renderCrumbs() {
   const c = $("#crumbs"); c.innerHTML = "";
   const mk = (label, depth) => {
@@ -1166,8 +1296,11 @@ function nodeEl(n, issues) {
     chips.push(`<span class="chip" style="font-family:var(--mono)">${esc(n.workflow || "?")}</span>`);
   }
   if (n.ui && n.ui.note) chips.push(`<span class="chip" title="${esc(n.ui.note)}">🗒</span>`);
-  el.innerHTML = `<div class="head"><span class="ico">${ICONS[n.type] || "?"}</span><span class="ttl">${esc(n.label || n.id)}</span></div>
+  el.innerHTML = `<div class="head"><span class="ico">${ICONS[n.type] || "?"}</span><span class="ttl">${esc(n.label || n.id)}</span><button class="node-del" title="Delete node">×</button></div>
     <div class="body">${chips.join("")}</div><div class="port in"></div><div class="port out" style="top: 14px"></div>`;
+  const del = el.querySelector(".node-del");
+  del.addEventListener("mousedown", ev => ev.stopPropagation());
+  del.addEventListener("click", ev => { ev.stopPropagation(); deleteNode(n.id); });
   if (issues && issues.length) {
     const worst = issues.some(i => i.level === "error") ? "" : " warn";
     const b = document.createElement("div");
@@ -1836,7 +1969,7 @@ function orderedDoc(d) {
 }
 $("#btn-open").addEventListener("click", openFile);
 async function openFile() {
-  if (window.MAESTRO_SERVER) return openFromServer();
+  if (window.MAESTRO_SERVER) return openLibrary();
   if (window.showOpenFilePicker) {
     try {
       const [h] = await window.showOpenFilePicker({ types: [{ description: "YAML", accept: { "text/yaml": [".yaml", ".yml"] } }] });
@@ -1895,6 +2028,48 @@ async function openFromServer() {
   bg.addEventListener("mousedown", ev => { if (ev.target === bg) done(); });
   bg.querySelector("[data-x]").addEventListener("click", done);
 }
+// Server mode: the redesign's landing — a card grid of every workflow in the repo.
+// Reuses /api/workflows (same source as the picker) and /api/workflow to open one.
+async function openLibrary() {
+  let list;
+  try { list = await fetch("/api/workflows").then(r => r.json()); }
+  catch (e) { toast("Could not reach the server"); return; }
+  const wfs = (list || []).filter(w => w.workflow);
+  const shown = wfs.length ? wfs : (list || []);
+  const grid = $("#library-grid");
+  grid.innerHTML = shown.length ? "" : '<div class="note" style="grid-column:1/3">No workflows found under this repo.</div>';
+  for (const w of shown) {
+    const card = document.createElement("div");
+    card.className = "lib-card";
+    const bad = w.workflow && !w.valid ? ' · <span style="color:var(--danger)">⚠ invalid</span>' : '';
+    card.innerHTML =
+      '<div style="display:flex;align-items:center;gap:10px"><span class="lib-file">' + esc(w.file) + '</span></div>' +
+      '<div class="lib-name">' + esc(w.name || w.file) + '</div>' +
+      '<div class="lib-meta">' + (w.workflow ? 'maestro workflow' : 'yaml') + bad + '</div>';
+    card.onclick = async () => {
+      try {
+        const text = await fetch("/api/workflow?file=" + encodeURIComponent(w.file)).then(r => r.text());
+        if (loadYamlText(text, w.file, { server: w.file })) closeLibrary();
+      } catch (e) { toast("Open failed: " + e.message); }
+    };
+    grid.appendChild(card);
+  }
+  $("#library-view").classList.add("show");
+  updateChrome();
+}
+function closeLibrary() { $("#library-view").classList.remove("show"); updateChrome(); }
+// Editor-only controls (valid pill, Save, ⋯, crumbs) show only in the Builder editor —
+// not on the Runs or Library views. Drives body[data-view] which CSS keys off.
+function updateChrome() {
+  const runs = $("#runs-view").classList.contains("show");
+  const lib = $("#library-view").classList.contains("show");
+  document.body.dataset.view = runs ? "runs" : (lib ? "library" : "builder");
+}
+window.updateChrome = updateChrome;
+$("#lib-new").addEventListener("click", () => { newBlank(); closeLibrary(); });
+$("#lib-close").addEventListener("click", closeLibrary);
+$("#btn-library").addEventListener("click", openLibrary);
+
 $("#btn-export").addEventListener("click", showExport);
 function showExport() {
   if (!doc) return;
@@ -1974,19 +2149,33 @@ function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.classList.add("show");
   clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2400);
 }
-$("#btn-theme").addEventListener("click", () => {
-  const cur = document.documentElement.dataset.theme
+function curTheme() {
+  return document.documentElement.dataset.theme
     || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
-  const next = cur === "dark" ? "light" : "dark";
+}
+function syncThemeGlyph() { $("#btn-theme").textContent = curTheme() === "dark" ? "☀" : "☾"; }
+$("#btn-theme").addEventListener("click", () => {
+  const next = curTheme() === "dark" ? "light" : "dark";
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem("maestro-builder-theme", next); } catch (e) {}
+  syncThemeGlyph();
 });
 try { const th = localStorage.getItem("maestro-builder-theme"); if (th) document.documentElement.dataset.theme = th; } catch (e) {}
-$("#btn-help").addEventListener("click", () => openModal("m-help"));
+syncThemeGlyph();
+
+/* ---------------- overflow menu ---------------- */
+const menuPanel = $("#menu-panel");
+$("#menu-btn").addEventListener("click", (e) => { e.stopPropagation(); menuPanel.classList.toggle("show"); });
+$$("#menu-panel .menu-item").forEach(b => b.addEventListener("click", () => menuPanel.classList.remove("show")));
+document.addEventListener("mousedown", (e) => { if (!$("#wf-menu").contains(e.target)) menuPanel.classList.remove("show"); });
+$("#menu-help").addEventListener("click", () => openModal("m-help"));
 $("#btn-undo").addEventListener("click", undo);
 $("#btn-redo").addEventListener("click", redo);
-$("#btn-layout").addEventListener("click", () => commit("layout", () => autoLayout(ctxNodes(), true)) || fitView());
+$("#btn-layout").addEventListener("click", () => commit("layout", () => autoLayout(ctxNodes(), true, "h")) || fitView());
+$("#btn-layout-v").addEventListener("click", () => commit("layout", () => autoLayout(ctxNodes(), true, "v")) || fitView());
 $("#btn-fit").addEventListener("click", fitView);
+$("#btn-zoom-in").addEventListener("click", () => zoomBy(1.12));
+$("#btn-zoom-out").addEventListener("click", () => zoomBy(1 / 1.12));
 
 /* ---------------- keyboard ---------------- */
 window.addEventListener("keydown", ev => {
@@ -2016,7 +2205,7 @@ window.addEventListener("keydown", ev => {
     else if (ed.sel.kind === "edge") deleteEdge(ed.sel.edge);
   }
   else if (ev.key === "f" && !inField && !mod) fitView();
-  else if (ev.key === "Escape") { closeModals(); $("#issues").classList.remove("show"); }
+  else if (ev.key === "Escape") { closeModals(); $("#issues").classList.remove("show"); menuPanel.classList.remove("show"); if (doc && doc.nodes) $("#library-view").classList.remove("show"); }
 });
 
 /* ---------------- selftest ---------------- */
@@ -2150,14 +2339,17 @@ function makeDatalists() {
 }
 function boot() {
   makeDatalists();
+  updateChrome();
   if (location.hash === "#selftest") { runSelftest(); return; }
   let restored = null;
   try { restored = JSON.parse(localStorage.getItem("maestro-builder-doc") || "null"); } catch (e) {}
   if (restored && Array.isArray(restored.nodes) && restored.nodes.length) {
     doc = normalizeDoc(restored); renderAll(); fitView();
+    window.__restoredReal = true;
     toast("Restored your last session — ✚ New starts fresh");
   } else {
     doc = blankDoc(); renderAll();
+    window.__restoredReal = false;
   }
 }
 // Server probe: only when served over http(s) by `maestro ui`. On file:// no request is
@@ -2168,8 +2360,10 @@ if (/^https?:$/.test(location.protocol)) {
     .then(j => {
       if (j && j.ok) {
         window.MAESTRO_SERVER = true;
+        document.body.classList.add("has-server");    // reveals "← Workflows"
         const b = document.getElementById("btn-export");
         if (b) { b.textContent = "Save ⤓"; b.title = "Save to your repo (⌘S)"; }
+        if (!window.__restoredReal) openLibrary();   // land on the workflow library
       }
     })
     .catch(() => {});
@@ -2188,8 +2382,13 @@ boot();
   function notify(msg) { try { toast(msg); } catch (e) { alert(msg); } }
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-  function open() { q("#runs-view").classList.add("show"); }
-  function close() { q("#runs-view").classList.remove("show"); }
+  function setSeg(showRuns) {
+    const b = q("#seg-builder"), r = q("#btn-runs");
+    if (b) b.classList.toggle("active", !showRuns);
+    if (r) r.classList.toggle("active", showRuns);
+  }
+  function open() { q("#runs-view").classList.add("show"); setSeg(true); if (window.updateChrome) window.updateChrome(); }
+  function close() { q("#runs-view").classList.remove("show"); setSeg(false); if (window.updateChrome) window.updateChrome(); }
 
   // ---- status derivation ------------------------------------------------
   function stepsUnder(state, id) {
@@ -2471,6 +2670,7 @@ boot();
     if (!runs.length) renderList();
   });
   q("#runs-close").addEventListener("click", close);
+  { const sb = q("#seg-builder"); if (sb) sb.addEventListener("click", () => { if (q("#runs-view").classList.contains("show")) close(); }); }
   q("#runs-open").addEventListener("click", pickFolder);
   q("#runs-refresh").addEventListener("click", refresh);
   q("#runs-file").addEventListener("change", e => loadFiles(e.target.files));
