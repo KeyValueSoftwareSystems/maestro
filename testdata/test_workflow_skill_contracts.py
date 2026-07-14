@@ -33,9 +33,23 @@ def expand_skill(name):
     return [name]
 
 
+def _index_skills():
+    """Map skill name -> SKILL.md path. The source tree groups skills into category
+    folders (core/, stacks/<x>/, maestro), so locate each by walking, not a fixed depth.
+    The skill's identity is its directory name (== frontmatter name), unique across the tree."""
+    index = {}
+    for dirpath, _dirs, files in os.walk(SKILLS_DIR):
+        if "SKILL.md" in files:
+            index[os.path.basename(dirpath)] = os.path.join(dirpath, "SKILL.md")
+    return index
+
+
+_SKILL_INDEX = _index_skills()
+
+
 def output_contract_text(skill_name):
-    path = os.path.join(SKILLS_DIR, skill_name, "SKILL.md")
-    if not os.path.exists(path):
+    path = _SKILL_INDEX.get(skill_name)
+    if path is None or not os.path.exists(path):
         return None
     with open(path, encoding="utf-8") as fh:
         lines = fh.read().splitlines()
@@ -74,7 +88,7 @@ def main():
                 text = output_contract_text(skill_name)
                 if text is None:
                     problems.append(f"{fname}:{node['id']} pins skill '{skill_name}' "
-                                    f"but skills/{skill_name}/SKILL.md does not exist")
+                                    f"but no skills/**/{skill_name}/SKILL.md exists")
                     continue
                 for field in outputs:
                     if field in ALLOW_MISSING:

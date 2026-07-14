@@ -218,9 +218,11 @@ git-tracked on purpose (so a run resumes on any machine). Two consequences for a
 ## Layout
 
 ```
-skills/      one SKILL.md per SDLC step + skills/maestro (the lead agent);
-             bootstrap skills (detect-stack, maestro-init, build-knowledge, retrospect);
-             per-stack reference packs tagged stack:<x>
+skills/      organized into category folders (install flattens them into .claude/skills):
+             skills/maestro          the lead agent
+             skills/core/sdlc/       one SKILL.md per SDLC step
+             skills/core/bootstrap/  detect-stack, maestro-init, build-knowledge, retrospect
+             skills/stacks/<stack>/  per-stack reference packs, grouped by stack:<x> tag
 agents/      core subagents (planner, implementer, reviewer, qa, analyst, general)
              + per-stack reviewers tagged stack:<x>
 commands/    /maestro and /maestro-init slash-command shims (steps are invoked as skills)
@@ -246,7 +248,7 @@ The engine is generic; the SDLC pack is just one workflow. To make it yours:
   fields at runtime, a skill only has to describe *how* to do its job — so swapping one
   for another is a one-line `skill:` change, or omit `skill:` entirely and let the
   harness auto-pick from installed skills by description.
-- **Change a shipped step's behaviour** — edit its skill (`skills/*/SKILL.md`); the flow
+- **Change a shipped step's behaviour** — edit its skill (`skills/**/SKILL.md`); the flow
   is untouched.
 - **Models** — per node (`model: sonnet`) or per workflow (`defaults.model`); values are
   passed to the harness as-is (`haiku` / `sonnet` / `opus` work in Claude Code).
