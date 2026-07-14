@@ -39,13 +39,13 @@ class UiServerTest(unittest.TestCase):
         self.builder = os.path.join(self.tmp, "builder.html")
         with open(self.builder, "w") as fh:
             fh.write("<!doctype html><title>b</title>")
-        # a real run ledger under .maestro/<slug>/state.yaml
+        # a real run ledger under .maestro/runs/<slug>/state.yaml
         st = statemod.new_state("my-feat", "workflows/demo.yaml", "abc", {})
         st["steps"]["plan"] = {"status": "done", "visits": 1, "outputs": {}}
-        os.makedirs(os.path.join(self.tmp, ".maestro", "my-feat"))
-        wfmod.dump_file(os.path.join(self.tmp, ".maestro", "my-feat", "state.yaml"), st)
+        os.makedirs(os.path.join(self.tmp, ".maestro", "runs", "my-feat"))
+        wfmod.dump_file(os.path.join(self.tmp, ".maestro", "runs", "my-feat", "state.yaml"), st)
         # a stray non-slug / non-run dir that must be ignored
-        os.makedirs(os.path.join(self.tmp, ".maestro", "Bad Name"))
+        os.makedirs(os.path.join(self.tmp, ".maestro", "runs", "Bad Name"))
 
         ui_server.Handler.ROOT = os.path.abspath(self.tmp)
         ui_server.Handler.BUILDER = self.builder
@@ -135,9 +135,9 @@ class UiServerTest(unittest.TestCase):
         self.assertTrue(os.path.isfile(os.path.join(self.tmp, "sub", "dir", "fresh.yaml")))
 
     def test_put_into_maestro_rejected(self):
-        code, _ = self._req("PUT", "/api/workflow?file=.maestro/my-feat/x.yaml", WF)
+        code, _ = self._req("PUT", "/api/workflow?file=.maestro/runs/my-feat/x.yaml", WF)
         self.assertIn(code, (400, 404))
-        self.assertFalse(os.path.isfile(os.path.join(self.tmp, ".maestro", "my-feat", "x.yaml")))
+        self.assertFalse(os.path.isfile(os.path.join(self.tmp, ".maestro", "runs", "my-feat", "x.yaml")))
 
     def test_runs_list(self):
         code, obj = self._get_json("/api/runs")

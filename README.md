@@ -51,7 +51,7 @@ resumes exactly where it stopped.
   `subworkflow`), per-node routes with tiny conditions, and **back-edges for loops**
   (an arrow to any earlier step; the engine cascade-resets downstream work and enforces
   a per-node visit cap so loops can't run away). Spec: [docs/workflow-spec.md](docs/workflow-spec.md).
-- **`.maestro/<slug>/state.yaml`** — the run ledger. Only the engine writes it. Resume,
+- **`.maestro/runs/<slug>/state.yaml`** — the run ledger. Only the engine writes it. Resume,
   revise-cascades, gate history, parallel-join bookkeeping all live here.
 - **The lead agent never interprets the graph.** The deterministic resolver serves one
   fully-rendered action at a time; the LLM just dispatches it. That is what makes an
@@ -74,7 +74,7 @@ fall back to the browser File System API). Either way:
   repo — recursively, tagged so maestro workflows stand out — with a filter box; **Paste**
   loads YAML text;
 - **Save** (the toolbar button, `⌘S`) writes to a path you choose under the repo —
-  defaults to `workflows/<name>.yaml` for a new file, or the file you opened. The workflow's
+  defaults to `.maestro/workflows/<name>.yaml` for a new file, or the file you opened. The workflow's
   **name/description/inputs** live in the **Workflow settings** panel (click empty canvas
   to deselect a node and it appears in the inspector);
 - **instruction-first node editing** — describe the step; skill defaults to *Auto*
@@ -84,7 +84,7 @@ fall back to the browser File System API). Either way:
 - gates' options *are* their outgoing edges; parallel branches edit via drill-in;
 - live validation with friendly messages; one-click export that the engine accepts
   (positions persist in a `ui:` key the engine ignores);
-- **Runs** (top-right) — reads every `.maestro/<slug>/state.yaml` and shows each run as a
+- **Runs** (top-right) — reads every `.maestro/runs/<slug>/state.yaml` and shows each run as a
   live status board: pick a slug and the graph colours in as it progresses — **green** done,
   **orange** in progress, **red** failed, grey pending. Read-only. Under `./maestro ui` it
   loads straight from your repo in any browser; opened as `file://` the folder view needs
@@ -142,11 +142,12 @@ curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/m
   | bash -s -- claude-code cursor        # pick your IDE(s)
 ```
 
-Installs: our skills/commands/agents into `.claude/` / `.cursor/`, the six external
-Superpowers skills the flow delegates to, and `engine/` + `workflows/` + `ui/` into your
-repo. The engine is stdlib-only python3 — no CLI, no config file, nothing else to install.
+Installs: our skills/commands/agents into `.claude/` / `.cursor/`, and the engine +
+`workflows/` + `ui/` + `docs/` all under a single **`.maestro/`** parent in your repo (so
+your repo root stays clean and nothing collides with your own `engine/`/`docs/`/`ui/` dirs).
+The engine is stdlib-only python3 — no CLI, no config file, nothing else to install.
 The installer prints a recommended `.gitignore` and what to commit; **upgrade** by re-running
-the same command (it re-fetches and overwrites `engine/`/`ui/`). *(Private-repo fork? The
+the same command (it re-fetches and overwrites `.maestro/engine/`/`.maestro/ui/`). *(Private-repo fork? The
 piped `curl` can't authenticate — clone it and run `./install.sh` from the checkout.)*
 
 **Per-stack packs.** Alongside the core SDLC skills, the pack ships per-stack reference
@@ -167,20 +168,20 @@ installs every stack.
 Everything happens inside your IDE — no CLI:
 
 ```
-/maestro my-feature                          # full pipeline (workflows/sdlc-main.yaml)
-/maestro my-feature workflows/design.yaml    # just one phase
+/maestro my-feature                          # full pipeline (.maestro/workflows/sdlc-main.yaml)
+/maestro my-feature .maestro/workflows/design.yaml    # just one phase
 ```
 
-On first run the lead agent scaffolds `.maestro/my-feature/requirement/` and asks you to
+On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/` and asks you to
 drop requirement files in (PRDs, tickets, notes — every file is read). Then it validates,
 starts or resumes the run, spawns a subagent per step, asks you at gates, and reports
 where every artifact landed. Under the hood it drives the engine, which you can also poke
 directly:
 
 ```bash
-python3 engine/maestroctl.py status --slug my-feature      # step table, gates, active steps
-python3 engine/maestroctl.py validate workflows/my.yaml    # lint any workflow
-python3 engine/maestroctl.py reset --slug my-feature --step review --cascade
+python3 .maestro/engine/maestroctl.py status --slug my-feature      # step table, gates, active steps
+python3 .maestro/engine/maestroctl.py validate .maestro/workflows/my.yaml    # lint any workflow
+python3 .maestro/engine/maestroctl.py reset --slug my-feature --step review --cascade
 ```
 
 Prefer manual control? Every step is also a skill you can invoke on its own — the slash
@@ -189,14 +190,14 @@ command is the skill's own name: `/plan`, `/backend-design`, `/backend-implement
 
 ## Working as a team
 
-The run ledger `.maestro/<slug>/state.yaml` is written **only by the engine** and is
+The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is
 git-tracked on purpose (so a run resumes on any machine). Two consequences for a team:
 
 - **One owner per slug at a time.** Two people driving the same `<slug>` in parallel will
   produce conflicting edits to an engine-owned file. Pick distinct slugs, or hand a run off
-  by committing/pushing `.maestro/<slug>/` and letting the next person resume it.
+  by committing/pushing `.maestro/runs/<slug>/` and letting the next person resume it.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. Take one side, then run
-  `python3 engine/maestroctl.py status --slug <slug>` to see where it stands and continue,
+  `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue,
   or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
 - If you edit a **workflow file** mid-run, the engine halts on the next command with a hash
   mismatch. Accept the edit with `maestroctl rebase --slug <slug>` (it re-validates first)
@@ -204,14 +205,14 @@ git-tracked on purpose (so a run resumes on any machine). Two consequences for a
 
 ## Upgrade / uninstall / troubleshooting
 
-- **Upgrade:** re-run the install one-liner. It overwrites `engine/` and `ui/`; your
-  `workflows/` and `.maestro/` are left alone.
+- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your
+  `.maestro/workflows/` and `.maestro/runs/` are left alone.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`,
-  `.cursor/…`, `engine/`, `ui/`). Keep `.maestro/<slug>/` — that's your work.
+  `.cursor/…`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` — that's your work.
 - **"workflow changed" halt:** see *Working as a team* above (`rebase` or `reset`).
 - **A step won't complete (exit 4):** the engine refuses to advance without the declared
   artifact (non-empty) and output fields — re-run the step or `maestroctl fail` it.
-- **`status` any time:** `python3 engine/maestroctl.py status --slug <slug>` prints the
+- **`status` any time:** `python3 .maestro/engine/maestroctl.py status --slug <slug>` prints the
   step table, visit counts, and gate history.
 
 ## Layout
@@ -228,7 +229,7 @@ engine/      the deterministic engine (validate · init · next · complete · g
              · fail · reset · rebase · status · graph · note) + ui_server.py + schemas + validators
 ui/          builder.html (single-file visual editor) + embed.py
 maestro      repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install`
-.maestro/<slug>/      everything for one feature: requirement/ + all artifacts + state.yaml
+.maestro/runs/<slug>/      everything for one feature: requirement/ + all artifacts + state.yaml
 ```
 
 ## Customizing / bring your own

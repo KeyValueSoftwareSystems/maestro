@@ -42,7 +42,7 @@ runtime. It ships:
 - **Agents** (`agents/*.md`) — subagent definitions (tools + role prompt) installed
   into `.claude/agents/`.
 - **The builder UI** (`ui/builder.html`) — single-file visual workflow editor, plus a
-  read-only **Runs** view that reads `.maestro/<slug>/state.yaml` and colours each run's
+  read-only **Runs** view that reads `.maestro/runs/<slug>/state.yaml` and colours each run's
   graph by step status (done/running/failed/pending). Works offline from `file://` (browser
   File System API) OR folder-aware behind `engine/ui_server.py` when served by `maestro ui`
   (probes `/api/health`; then loads runs/workflows over HTTP — see the branch points guarded
@@ -60,7 +60,16 @@ runtime. It ships:
   `--stack go,react` filter: it copies the core skills/agents plus only those whose
   frontmatter `tags:` carry a matching `stack:<x>` token (parses the `tags:` line directly —
   no YAML dep). No flag / `--stack all` = everything. Skills/agents are the only filtered
-  trees; commands and the runtime files always copy whole.
+  trees; commands and the runtime files always copy whole. **Install layout:** everything
+  Maestro ships nests under one `.maestro/` parent in the consumer repo —
+  `.maestro/{engine,ui}` (regenerated), `.maestro/{workflows,docs}` (committed), plus the
+  engine-created `.maestro/memory/` and `.maestro/runs/<slug>/`. Only the `maestro` wrapper
+  and `install.sh` sit at the repo root. Workflow files reference sibling workflows and
+  engine scripts by the installed path (`.maestro/workflows/…`, `.maestro/engine/…`), so
+  **this pack repo — whose source lives at `engine/`, `workflows/`, `ui/`, `docs/` at root —
+  mirrors the installed layout via committed symlinks (`.maestro/engine → ../engine`, etc.)**
+  so `validate .maestro/workflows/…` and dogfood runs resolve here too. The e2e test builds
+  the same layout in a tmp dir.
 
 There is **no headless runner and no API-key dependency** — workflows execute inside
 the user's interactive session (Claude Code, Cursor). Conductor is gone.
@@ -82,7 +91,7 @@ the user's interactive session (Claude Code, Cursor). Conductor is gone.
   the last-line-JSON output contract into the subagent prompt). `complete_step`,
   `record_gate`, `init` live here too.
 - **`state.py`** — the ledger: load/save with `fcntl` lock + atomic tmp/rename, `step_entry`,
-  `sha256_file`, `new_state`. The ONLY writer of `.maestro/<slug>/state.yaml`.
+  `sha256_file`, `new_state`. The ONLY writer of `.maestro/runs/<slug>/state.yaml`.
 - **`validate.py`** — schema check + graph lint (start/route-target existence, reachability,
   default-route-on-branches, placeholder resolvability, subworkflow depth, cycle lint).
 - **`condctl.py`** — the ~4-form route-condition grammar (`==`, `!=`, `in […]`, truthy);
@@ -145,7 +154,7 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
   support only `==`, `!=`, truthy, `in [a, b]` (`engine/condctl.py`).
 - **Artifacts gate completion**: `complete` refuses to mark an agent step done unless
   its `artifact:` files exist non-empty ("proof, not promises").
-- **Only the engine writes `.maestro/<slug>/state.yaml`** (fcntl-locked, atomic). The
+- **Only the engine writes `.maestro/runs/<slug>/state.yaml`** (fcntl-locked, atomic). The
   workflow file's sha256 is recorded; edits mid-run halt until `rebase` or `reset`.
 
 ## The YAML subset — engine/wf.py
@@ -164,7 +173,7 @@ whole suite — the parser underpins everything.
   only *how* to do the job — they must NOT hardcode artifact paths or pipeline sequencing
   ("runs after X", "in parallel with Y"). The workflow node supplies the artifact path,
   inputs and output fields; the engine renders them into the prompt (`render_agent_prompt`
-  in `resolver.py`). A step skill must NOT name Maestro's `.maestro/<slug>/…` layout at all
+  in `resolver.py`). A step skill must NOT name Maestro's `.maestro/runs/<slug>/…` layout at all
   (not even as a fallback — that couples a swappable skill to this orchestrator); when a
   standalone `/skill` run has no path from its instructions, tell it to write to "a sensible
   path you choose (and tell the user where)". A step skill also must NOT restate the engine's
@@ -196,7 +205,7 @@ whole suite — the parser underpins everything.
   the harness as-is (haiku/sonnet/opus).
 - The workflow merge-for-test / contract-check / archive script steps are **POC stubs**
   (`echo` + exit 0) — a downstream user wires them to their real runners.
-- `.maestro/<slug>/` holds a feature's requirement input **and** all generated
+- `.maestro/runs/<slug>/` holds a feature's requirement input **and** all generated
   artifacts + the state ledger. Git-tracked on purpose.
 - `install.sh` uses `set -uo pipefail` (not `-e`) on purpose — one failed skill
   install must not abort the rest.

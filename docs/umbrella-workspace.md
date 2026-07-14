@@ -12,9 +12,12 @@ setup you do manually — the pack doesn't scaffold it for you (yet).
 ```
 my-project/                 ← umbrella repo (git init once; this is where you run /maestro)
 ├── maestro                 ← the ./maestro wrapper           ┐  installed by install.sh
-├── engine/  workflows/  ui/  docs/                           ┘  (regenerated on upgrade)
 ├── .claude/  .cursor/      ← skills / commands / agents      ┘
-├── .maestro/<slug>/        ← per-feature requirement + artifacts + run ledger
+├── .maestro/               ← everything Maestro ships lives here:
+│   ├── engine/  ui/          ← runtime (regenerated on upgrade)
+│   ├── workflows/  docs/     ← committed, customize freely
+│   ├── memory/               ← cross-slug knowledge store
+│   └── runs/<slug>/          ← per-feature requirement + artifacts + run ledger
 ├── codebase/               ← service repos, each cloned here, each GITIGNORED
 │   ├── frontend/           ← independent repo: own branches, PRs, CI
 │   │   └── CLAUDE.md        ← that repo's conventions (or .cursor/rules/*.mdc)
@@ -46,7 +49,7 @@ my-project/                 ← umbrella repo (git init once; this is where you 
 
 - **Install Maestro into the umbrella root.** Run the installer (or `./maestro install`) from the
   umbrella, not inside a service repo. That drops `engine/`, `workflows/`, `ui/`, the `maestro`
-  wrapper and the skills into the parent, and every run's `.maestro/<slug>/` — requirement input
+  wrapper and the skills into the parent, and every run's `.maestro/runs/<slug>/` — requirement input
   and all generated artifacts — lives there. The umbrella is the agent's working surface; the child
   repos under `codebase/` are what it edits.
 
@@ -58,7 +61,7 @@ my-project/                 ← umbrella repo (git init once; this is where you 
 - **Git prerequisite still applies per child repo.** The per-stack implement steps run in isolated
   `git worktree`s, so each service repo you touch must be an initialised git repo with at least one
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so
-  the run ledger (`.maestro/<slug>/`) is tracked and a run resumes on any machine.
+  the run ledger (`.maestro/runs/<slug>/`) is tracked and a run resumes on any machine.
 
 - **Docs + tests centralised in the umbrella.** Keep the per-feature docs tree
   (`docs/technical`, `docs/functional`, `docs/business`) and the cross-repo integration +
@@ -138,4 +141,4 @@ every artifact under `.maestro/my-feature/` — while editing the actual service
 > Maestro does not perform the merge itself.
 
 > The umbrella is a per-project convention, not something this pack ships. Set it up manually; the
-> pack installs into it and every feature lives under `.maestro/<slug>/` inside it.
+> pack installs into it and every feature lives under `.maestro/runs/<slug>/` inside it.

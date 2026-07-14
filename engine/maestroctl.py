@@ -279,7 +279,7 @@ def build_parser():
     p.add_argument("workflow")
     p.set_defaults(fn=cmd_graph)
 
-    p = sub.add_parser("runs", help="list every run under .maestro/ as JSON (read-only)")
+    p = sub.add_parser("runs", help="list every run under .maestro/runs/ as JSON (read-only)")
     p.set_defaults(fn=cmd_runs)
     return parser
 
@@ -287,7 +287,7 @@ def build_parser():
 def main(argv=None):
     args = build_parser().parse_args(argv)
     # Validate the slug at the CLI boundary, before any command touches the filesystem
-    # (the lock context creates .maestro/<slug>/ — a bad slug must be rejected first).
+    # (the lock context creates .maestro/runs/<slug>/ — a bad slug must be rejected first).
     slug = getattr(args, "slug", None)
     if slug is not None and not statemod.valid_slug(slug):
         print(f"error: invalid slug {slug!r}: use lowercase letters, digits, '.', '-', "

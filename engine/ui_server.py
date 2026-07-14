@@ -6,13 +6,13 @@ launched in, so the builder no longer needs the browser File System Access API:
 
     GET  /                     the builder page
     GET  /api/health           {"ok": true, "root": ...}   (the client's server probe)
-    GET  /api/workflows        [{"file","name"}] under <root>/workflows
-    GET  /api/workflow?file=X  raw YAML source of <root>/workflows/X
+    GET  /api/workflows        [{"file","name"}] under <root>/.maestro/workflows
+    GET  /api/workflow?file=X  raw YAML source of <root>/.maestro/workflows/X
     PUT  /api/workflow?file=X   overwrite that workflow (source only, atomic)
-    GET  /api/runs             [{"slug","state"}] from <root>/.maestro/*/state.yaml
+    GET  /api/runs             [{"slug","state"}] from <root>/.maestro/runs/*/state.yaml
 
 This is dev tooling: it reads/serves and writes workflow SOURCE only. It never touches
-.maestro/**/state.yaml and never drives a run — the /maestro skill + engine remain the
+.maestro/runs/**/state.yaml and never drives a run — the /maestro skill + engine remain the
 sole execution path and the only writer of run state. Bound to 127.0.0.1 exclusively.
 """
 
@@ -34,10 +34,16 @@ PORT_SCAN = 20              # how many ports to try past the default before givi
 MAX_BODY = 1 << 20         # 1 MiB cap on a PUT body
 MAX_SCAN = 2000            # ceiling on files listed, a runaway backstop
 
-# Directories never walked for the list, and never written to. .maestro is run state
-# (engine-only); .git is history; the rest are noise / vendored trees.
-SKIP_DIRS = {".git", ".maestro", ".claude", ".cursor", "node_modules",
+# Directories never walked for the list. .git is history; the rest are noise / vendored
+# trees. .maestro is NOT skipped wholesale anymore — the pack now lives there
+# (.maestro/workflows is the workflow source the builder reads/edits) — but its
+# engine-owned subtrees below ARE pruned.
+SKIP_DIRS = {".git", ".claude", ".cursor", "node_modules",
              "__pycache__", ".venv", "venv", ".idea", ".vscode", ".mypy_cache"}
+# Engine-owned subtrees under .maestro/: run state, shared memory, and the copied
+# runtime. Never listed as workflow source and never written to. (.maestro/workflows +
+# .maestro/docs are the human-facing trees and stay walkable.)
+MAESTRO_PROTECTED = {"runs", "memory", "engine", "ui"}
 
 
 # ---------------------------------------------------------------- data helpers
@@ -47,8 +53,8 @@ def _safe_repo_yaml(root, file, for_write=False):
 
     realpath first so a symlink can't tunnel out; commonpath rejects '..' and absolute
     paths that escape the repo. Reads may target any YAML under root except .git; writes
-    additionally refuse .maestro (run state is engine-only). This is a localhost dev tool
-    on the user's own repo — the same authority their editor has.
+    additionally refuse .maestro's engine-owned subtrees (run state / memory / runtime).
+    This is a localhost dev tool on the user's own repo — the same authority their editor has.
     """
     if not file:
         return None
@@ -61,7 +67,8 @@ def _safe_repo_yaml(root, file, for_write=False):
     rel_parts = os.path.relpath(cand, root_real).split(os.sep)
     if ".git" in rel_parts:
         return None
-    if for_write and ".maestro" in rel_parts:
+    if for_write and rel_parts[:1] == [statemod.MAESTRO_DIR] and (
+            len(rel_parts) < 2 or rel_parts[1] in MAESTRO_PROTECTED):
         return None
     return cand
 
@@ -71,9 +78,9 @@ def _is_workflow(doc):
 
 
 def _sort_workflows(entries):
-    # maestro workflows first, then the canonical workflows/ dir, then by path
+    # maestro workflows first, then the canonical .maestro/workflows/ dir, then by path
     def key(e):
-        under_wf = not e["file"].replace(os.sep, "/").startswith("workflows/")
+        under_wf = not e["file"].replace(os.sep, "/").startswith(".maestro/workflows/")
         return (not e["workflow"], under_wf, e["file"])
     return sorted(entries, key=key)
 
@@ -88,6 +95,10 @@ def list_workflows(root):
     out = []
     for dirpath, dirnames, filenames in os.walk(root_real):
         dirnames[:] = [d for d in dirnames if d not in SKIP_DIRS]
+        # inside .maestro/, keep only the human-facing trees (workflows, docs);
+        # prune the engine-owned subtrees (run state, memory, copied runtime).
+        if os.path.relpath(dirpath, root_real) == statemod.MAESTRO_DIR:
+            dirnames[:] = [d for d in dirnames if d not in MAESTRO_PROTECTED]
         for name in sorted(filenames):
             if not name.endswith((".yaml", ".yml")):
                 continue
@@ -110,7 +121,7 @@ def list_workflows(root):
 
 
 def list_runs(root):
-    base = os.path.join(root, statemod.MAESTRO_DIR)
+    base = statemod.runs_dir(root)
     out = []
     try:
         names = sorted(os.listdir(base))

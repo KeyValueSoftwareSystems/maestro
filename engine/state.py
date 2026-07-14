@@ -1,4 +1,4 @@
-"""Per-feature run ledger: .maestro/<slug>/state.yaml.
+"""Per-feature run ledger: .maestro/runs/<slug>/state.yaml.
 
 Only engine code writes this file — the lead agent never edits it (LLMs corrupt
 hand-edited state). Writes go through an fcntl lock plus tmp+rename, both carried over
@@ -61,10 +61,11 @@ except ImportError:  # pragma: no cover - platform-specific
 _LOCK_WARNED = False
 
 MAESTRO_DIR = ".maestro"
+RUNS_DIR = "runs"          # per-slug run ledgers live under .maestro/runs/<slug>/
 STATE_VERSION = 1
 
-# A slug becomes a directory name under .maestro/; keep it a single safe path segment so a
-# stray `/` or `..` can never scatter state outside the feature folder.
+# A slug becomes a directory name under .maestro/runs/; keep it a single safe path segment so
+# a stray `/` or `..` can never scatter state outside the feature folder.
 _SLUG_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 
 
@@ -72,8 +73,12 @@ def valid_slug(slug):
     return bool(isinstance(slug, str) and _SLUG_RE.match(slug) and ".." not in slug)
 
 
+def runs_dir(root="."):
+    return os.path.join(root, MAESTRO_DIR, RUNS_DIR)
+
+
 def feature_dir(slug, root="."):
-    return os.path.join(root, MAESTRO_DIR, slug)
+    return os.path.join(runs_dir(root), slug)
 
 
 def state_path(slug, root="."):
@@ -143,13 +148,13 @@ def load(slug, root="."):
 
 
 def list_runs(root="."):
-    """Enumerate every run under .maestro/ (read-only, newest-updated first).
+    """Enumerate every run under .maestro/runs/ (read-only, newest-updated first).
 
     Returns a lightweight summary per run — never the full ledger; the slug picker
     and `maestroctl runs` only need to name and describe runs. Mirrors the discovery
     recipe in ui_server.list_runs (which returns full state for the UI graph).
     """
-    base = os.path.join(root, MAESTRO_DIR)
+    base = runs_dir(root)
     runs = []
     try:
         names = os.listdir(base)

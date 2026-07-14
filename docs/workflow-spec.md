@@ -266,9 +266,9 @@ Two properties keep interpolation from becoming injection, and both must be pres
   introduce a new operator or clause.
 
 `slug` is validated to a single safe path segment (`[a-z0-9][a-z0-9._-]*`, no `/` or `..`) so
-it cannot redirect writes outside `.maestro/<slug>/`.
+it cannot redirect writes outside `.maestro/runs/<slug>/`.
 
-## State — `.maestro/<slug>/state.yaml`
+## State — `.maestro/runs/<slug>/state.yaml`
 
 Written **only** by `engine/maestroctl.py` (fcntl-locked, atomic tmp+rename). Records workflow
 file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run status + cursor

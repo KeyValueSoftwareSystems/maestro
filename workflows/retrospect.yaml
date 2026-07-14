@@ -19,9 +19,9 @@ nodes:
     label: Distill lessons
     instruction: |
       Harvest the finished run for feature "${inputs.slug}". Read its ledger
-      .maestro/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance text;
+      .maestro/runs/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance text;
       per-step visits/attempts/status showing loops and retries) and the run's review/QA
-      artifacts under .maestro/${inputs.slug}/. Then do BOTH:
+      artifacts under .maestro/runs/${inputs.slug}/. Then do BOTH:
       1. Add to / refresh the living docs — technical, functional AND architectural — for the
          domains this feature touched. CREATE docs/technical/<domain>.md and
          docs/functional/<domain>.md for any NEW domain the feature introduced, else update
@@ -36,7 +36,7 @@ nodes:
          lessons from TWO sources: (a) the changes the USER requested — every revise/review
          request and gate feedback/guidance, PLUS the out-of-band instructions in the
          ledger's `notes`, i.e. where the run had to be corrected to meet the requirement
-         (read .maestro/${inputs.slug}/requirement/ to frame the gap); and
+         (read .maestro/runs/${inputs.slug}/requirement/ to frame the gap); and
          (b) the ISSUES faced while running — failed/retried steps, loops that hit their cap,
          contract/QA/build breakages. Phrase each as forward-looking guidance so the next run
          gets it right first time. Choose each `key` so another run seeing the same pattern
@@ -54,5 +54,5 @@ nodes:
     # Deterministic reduce step: fold incoming/* into candidates/, count DISTINCT runs,
     # promote past the threshold (config memory.promote_threshold, else 3) into knowledge/,
     # prune/cap, rewrite index.md, clear incoming. Owned by the engine, not a skill.
-    run: [python3, engine/mem_consolidate.py, ".maestro/memory"]
+    run: [python3, .maestro/engine/mem_consolidate.py, ".maestro/memory"]
     next: end

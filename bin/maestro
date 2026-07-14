@@ -7,7 +7,7 @@
 # execution path and the only state writer.
 #
 #   maestro ui [--port N] [--no-open]   serve the visual builder from THIS repo:
-#                                       auto-loads its workflows/ and .maestro/ runs
+#                                       auto-loads .maestro/workflows and .maestro/runs
 #   maestro install [claude-code|cursor …]   (re)install the pack into this repo
 #   maestro help | version
 #
@@ -27,17 +27,21 @@ resolve() {
 }
 D=$(resolve "$0")
 
-# MAESTRO_HOME holds engine/, ui/, install.sh. Env override wins; else the wrapper's
-# own dir (consumer: ./maestro at repo root) or its parent (pack repo: bin/maestro).
+# MAESTRO_HOME holds engine/ + ui/. Env override wins; else the installed consumer
+# layout (.maestro/ next to the wrapper at repo root), then a tree given directly, then
+# the pack-repo layout (wrapper at bin/, engine/ui at the parent). install.sh is NOT
+# under MAESTRO_HOME in a consumer — it sits at the repo root beside the wrapper.
 if [ -n "${MAESTRO_HOME:-}" ]; then
   :
+elif [ -f "$D/.maestro/engine/ui_server.py" ]; then
+  MAESTRO_HOME="$D/.maestro"
 elif [ -f "$D/engine/ui_server.py" ]; then
   MAESTRO_HOME="$D"
 elif [ -f "$D/../engine/ui_server.py" ]; then
   MAESTRO_HOME=$(cd "$D/.." && pwd)
 else
-  echo "maestro: cannot locate the pack (no engine/ui_server.py next to $D)." >&2
-  echo "  set MAESTRO_HOME to the repo that holds engine/ and ui/." >&2
+  echo "maestro: cannot locate the pack (no engine/ui_server.py under $D/.maestro or $D)." >&2
+  echo "  set MAESTRO_HOME to the dir that holds engine/ and ui/." >&2
   exit 2
 fi
 
@@ -51,15 +55,21 @@ cmd="${1:-help}"
 case "$cmd" in
   ui)
     builder="$MAESTRO_HOME/ui/builder.html"
+    [ -f "$PWD/.maestro/ui/builder.html" ] && builder="$PWD/.maestro/ui/builder.html"
     [ -f "$PWD/ui/builder.html" ] && builder="$PWD/ui/builder.html"
     exec python3 "$MAESTRO_HOME/engine/ui_server.py" \
       --root "$PWD" --builder "$builder" "$@"
     ;;
   install)
-    if [ ! -f "$MAESTRO_HOME/install.sh" ]; then
-      echo "maestro: no install.sh in $MAESTRO_HOME" >&2; exit 2
+    # install.sh lives beside the wrapper at the repo root (consumer) or beside engine/
+    # (pack repo) — check MAESTRO_HOME, then its parent, then the wrapper's own dir.
+    inst="$MAESTRO_HOME/install.sh"
+    [ -f "$inst" ] || inst="$MAESTRO_HOME/../install.sh"
+    [ -f "$inst" ] || inst="$D/install.sh"
+    if [ ! -f "$inst" ]; then
+      echo "maestro: no install.sh near $MAESTRO_HOME" >&2; exit 2
     fi
-    DEST="$PWD" exec bash "$MAESTRO_HOME/install.sh" "$@"
+    DEST="$PWD" exec bash "$inst" "$@"
     ;;
   version|--version|-v)
     echo "maestro (KeyValue AI-SDLC pack) — home: $MAESTRO_HOME"

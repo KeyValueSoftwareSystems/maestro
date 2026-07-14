@@ -65,10 +65,10 @@ class SdlcE2E(unittest.TestCase):
         self.tmp = tempfile.mkdtemp(prefix="maestro-e2e-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         # the run root needs the real workflows + engine helpers + config
-        shutil.copytree(os.path.join(REPO, "workflows"), os.path.join(self.tmp, "workflows"))
-        shutil.copytree(os.path.join(REPO, "engine"), os.path.join(self.tmp, "engine"),
+        shutil.copytree(os.path.join(REPO, "workflows"), os.path.join(self.tmp, ".maestro", "workflows"))
+        shutil.copytree(os.path.join(REPO, "engine"), os.path.join(self.tmp, ".maestro", "engine"),
                         ignore=shutil.ignore_patterns("tests", "__pycache__"))
-        req = os.path.join(self.tmp, ".maestro", "demo", "requirement")
+        req = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement")
         os.makedirs(req)
         with open(os.path.join(req, "requirement.md"), "w") as fh:
             fh.write("Build the demo feature.\n")
@@ -82,7 +82,7 @@ class SdlcE2E(unittest.TestCase):
         gate_ptr = {}
         overrides = agent_overrides or {}
         with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", "workflows/sdlc-main.yaml", {"feature": "Demo"}, self.tmp)
+            resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml", {"feature": "Demo"}, self.tmp)
         for _ in range(max_steps):
             run = resolver.Run("demo", self.tmp)
             action = resolver.next_action(run)
@@ -140,7 +140,7 @@ class SdlcE2E(unittest.TestCase):
                            "depends_on": [], "reads": [], "writes": [f"src/{stack}/x"],
                            "test": "unit", "standards": [], "needs_human_gate": False}],
             }
-            path = os.path.join(self.tmp, ".maestro", "demo", stack, "tasks.json")
+            path = os.path.join(self.tmp, ".maestro", "runs", "demo", stack, "tasks.json")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as fh:
                 json.dump(doc, fh)
@@ -157,7 +157,7 @@ class SdlcE2E(unittest.TestCase):
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
-        self.assertEqual(action["outputs"]["hld"], ".maestro/demo/hld.md")
+        self.assertEqual(action["outputs"]["hld"], ".maestro/runs/demo/hld.md")
         self.assertEqual(action["outputs"]["backend_branch"], "feature/x")
         steps = [s for _, s in trace]
         # both stacks implemented through the nested subworkflow-in-branch
@@ -257,14 +257,14 @@ class SdlcE2E(unittest.TestCase):
                 "options": ["10", "100"], "status": "open", "resolution": None,
             }],
         }
-        oq_path = os.path.join(self.tmp, ".maestro", "demo", "open-questions.json")
+        oq_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "open-questions.json")
         os.makedirs(os.path.dirname(oq_path), exist_ok=True)
         with open(oq_path, "w") as fh:
             json.dump(oq, fh)
 
         # drive design.yaml standalone
         with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", "workflows/design.yaml", {"feature": "Demo"}, self.tmp)
+            resolver.init_run("demo", ".maestro/workflows/design.yaml", {"feature": "Demo"}, self.tmp)
         asked = []
         for _ in range(60):
             run = resolver.Run("demo", self.tmp)
@@ -328,13 +328,13 @@ class SdlcE2E(unittest.TestCase):
         author the PRD via the real oq_serve/oq_record scripts (on requirement-questions.json)
         -> reach author_hld. The PRD loop mirrors the design OQ loop."""
         # start from an EMPTY requirement folder (undo setUp's seed file)
-        req_dir = os.path.join(self.tmp, ".maestro", "demo", "requirement")
+        req_dir = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement")
         for name in os.listdir(req_dir):
             os.remove(os.path.join(req_dir, name))
-        rq_path = os.path.join(self.tmp, ".maestro", "demo", "requirement-questions.json")
+        rq_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement-questions.json")
 
         with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", "workflows/design.yaml", {"feature": "Demo"}, self.tmp)
+            resolver.init_run("demo", ".maestro/workflows/design.yaml", {"feature": "Demo"}, self.tmp)
 
         seen = []
         asked = []

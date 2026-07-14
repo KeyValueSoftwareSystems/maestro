@@ -45,6 +45,6 @@ nodes:
     type: script
     label: Render seeded lessons (engine)
     # Folds any authoritative lessons build-knowledge seeded into the memory store. No-op if
-    # none were seeded. Deterministic engine step — see engine/mem_consolidate.py.
-    run: [python3, engine/mem_consolidate.py, ".maestro/memory"]
+    # none were seeded. Deterministic engine step — see .maestro/engine/mem_consolidate.py.
+    run: [python3, .maestro/engine/mem_consolidate.py, ".maestro/memory"]
     next: end

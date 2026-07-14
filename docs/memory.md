@@ -50,7 +50,7 @@ docs/
 ## Surface 2 — the corroborated lessons (`.maestro/memory/`)
 
 The injected store lives at `.maestro/memory/` (the repo/umbrella root, alongside
-`.maestro/<slug>/`). It is git-tracked and shared across every feature slug in that
+`.maestro/runs/<slug>/`). It is git-tracked and shared across every feature slug in that
 workspace.
 
 ## The three tiers
@@ -135,7 +135,7 @@ Workflow steps pull their slice of memory via a placeholder, e.g.
 **subagent** prompt — the lead agent's context stays empty.
 
 The rule that keeps runs reproducible: **memory is read once, at `init`, snapshotted into the
-run (`.maestro/<slug>/memory-snapshot.json`, hash recorded in `state.memory`), and resolved
+run (`.maestro/runs/<slug>/memory-snapshot.json`, hash recorded in `state.memory`), and resolved
 from that snapshot for the whole run — never re-read from the live store mid-run.** So a run
 is a pure function of its `state.yaml` + the pinned workflow + the frozen snapshot, and a
 concurrent run consolidating the shared store cannot perturb a run already in flight. Learning
@@ -177,7 +177,7 @@ release approved ──► ARCHIVAL PHASE (before merge to master):
         retrospect skill (refresh docs/ for touched domains + architecture.md;
                           this run → incoming/<slug>.json)
           → mem_consolidate.py (incoming/* → candidates/*, promote ≥3 → knowledge/*.md)
-          → publish curated docs (.maestro/<slug>/ → committed docs/)
+          → publish curated docs (.maestro/runs/<slug>/ → committed docs/)
         │
         ▼
 human merges the feature branch to master

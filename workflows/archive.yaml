@@ -15,14 +15,14 @@ nodes:
   - id: harvest
     type: subworkflow
     label: Harvest lessons into memory
-    workflow: workflows/retrospect.yaml
+    workflow: .maestro/workflows/retrospect.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     next: publish
 
   - id: publish
     type: script
     label: Publish curated docs (stub)
-    # POC stub — wire to your doc-publishing convention: curate .maestro/<slug>/ docs into
+    # POC stub — wire to your doc-publishing convention: curate .maestro/runs/<slug>/ docs into
     # the committed docs/technical|functional/ tree.
-    run: [bash, -c, "echo 'publish stub: curate .maestro/${inputs.slug}/ docs into committed docs/ here'; exit 0"]
+    run: [bash, -c, "echo 'publish stub: curate .maestro/runs/${inputs.slug}/ docs into committed docs/ here'; exit 0"]
     next: end

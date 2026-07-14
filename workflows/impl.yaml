@@ -22,16 +22,16 @@ nodes:
     label: Task DAG
     instruction: |
       Produce the parallel task DAG for the ${inputs.stack} stack from its LLD at
-      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group
+      .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
+      .maestro/runs/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
-      engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
+      .maestro/engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
       reported.
     skill: "${inputs.stack}-tasks"
     agent: planner
     inputs: {slug: "${inputs.slug}", stack: "${inputs.stack}"}
     outputs: [task_count, slice_count]
-    artifact: ".maestro/${inputs.slug}/${inputs.stack}/tasks.json"
+    artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
     max_visits: 3
     on_exhausted: abort
     next: validate_tasks
@@ -39,7 +39,7 @@ nodes:
   - id: validate_tasks
     type: script
     label: Validate task DAG
-    run: [python3, engine/validate_tasks.py, ".maestro/${inputs.slug}/${inputs.stack}/tasks.json"]
+    run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"]
     max_visits: 3
     on_fail: tasks
     next: implement
@@ -49,16 +49,16 @@ nodes:
     label: Implement slices
     instruction: |
       Implement the ${inputs.stack} stack for this feature from
-      .maestro/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
+      .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
       skill owns slice fan-out and worktree hygiene. Work against the LLD at
-      .maestro/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/${inputs.slug}/openapi.yaml. Report tests honestly.
+      .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
+      .maestro/runs/${inputs.slug}/openapi.yaml. Report tests honestly.
     skill: "${inputs.stack}-implement"
     isolate: worktree
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
-      tasks_path: ".maestro/${inputs.slug}/${inputs.stack}/tasks.json"
+      tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
       branch: "feature/${inputs.slug}-${inputs.stack}"
     outputs: [branch, summary, tests_passed]
     retries: 1
@@ -86,7 +86,7 @@ nodes:
       branch: "${steps.implement.outputs.branch}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
     outputs: [review_path, blocking, summary]
-    artifact: ".maestro/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+    artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
     max_visits: 5
     on_exhausted: impl_gate
     # The loop-exit guards must read values that UPDATE inside the fix->review loop.

@@ -9,16 +9,16 @@ allowed-tools: Task, Bash, AskUserQuestion, Read
 
 You are the **lead agent** for one feature's workflow run. You do NOT plan, design,
 implement, review, or interpret the workflow graph. The deterministic engine
-(`engine/maestroctl.py`) decides everything; your job is a dispatch loop:
+(`.maestro/engine/maestroctl.py`) decides everything; your job is a dispatch loop:
 
 > ask the engine for the next action → carry it out (spawn a subagent / run a script /
 > ask the human) → report the result back to the engine → repeat until done.
 
 ## Inputs
 
-- `slug` (kebab-case feature id, the folder `.maestro/<slug>/`). If omitted, run the
+- `slug` (kebab-case feature id, the folder `.maestro/runs/<slug>/`). If omitted, run the
   **Selecting a slug** step below to pick or create one — never invent one silently.
-- `workflow` (optional): workflow file path. Default `workflows/sdlc-main.yaml`.
+- `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
 
 ## Selecting a slug (only when none was given)
@@ -26,7 +26,7 @@ implement, review, or interpret the workflow graph. The deterministic engine
 Do NOT guess a slug. Ask the engine what runs exist, then let the human pick:
 
 ```bash
-python3 engine/maestroctl.py runs        # read-only JSON: [{slug, status, workflow, active, ...}]
+python3 .maestro/engine/maestroctl.py runs        # read-only JSON: [{slug, status, workflow, active, ...}]
 ```
 
 Present the choice with AskUserQuestion (labels are yours, but the slugs come **verbatim**
@@ -40,7 +40,7 @@ plus **"Start a new feature"**. The auto-added *Other* lets the human type any s
 
 ## Hard rules — read twice
 
-1. **Never edit `.maestro/<slug>/state.yaml`** or decide routing yourself. Only
+1. **Never edit `.maestro/runs/<slug>/state.yaml`** or decide routing yourself. Only
    `maestroctl` mutates state; only `maestroctl next` chooses what happens next.
    **YOU run every `maestroctl` command** (`validate/init/next/complete/gate-record/fail/
    rebase/reset/status/…`) — never hand the user an engine command to type. The human's
@@ -57,8 +57,8 @@ plus **"Start a new feature"**. The auto-added *Other* lets the human type any s
 ## Setup
 
 ```bash
-python3 engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
-python3 engine/maestroctl.py init --slug <slug> --workflow <workflow> \
+python3 .maestro/engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
+python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
     [--input feature="..." ...]
 ```
 
@@ -66,10 +66,10 @@ python3 engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   "resuming" and continue).
 - If it exits 3 with a "workflow changed" message: STOP and ask the user to DECIDE between
   "accept the edit and continue" and "start over (discards all progress)". Never pick for
-  them — but once they choose, YOU run the command (`python3 engine/maestroctl.py rebase
+  them — but once they choose, YOU run the command (`python3 .maestro/engine/maestroctl.py rebase
   --slug <slug>` or `... reset --all`) and continue the loop. Do not hand the user a command
   to type: the human supplies decisions, the lead agent runs every `maestroctl` invocation.
-- Ensure the requirement folder exists (`mkdir -p .maestro/<slug>/requirement/`) so the
+- Ensure the requirement folder exists (`mkdir -p .maestro/runs/<slug>/requirement/`) so the
   user has somewhere to drop files, but do NOT block on it — the **workflow** owns what
   happens next. In the shipped pack, every run builds a **PRD** (`requirement/prd.md`)
   before the HLD: if the folder is empty it offers a gate ("add files & re-check /
@@ -83,7 +83,7 @@ python3 engine/maestroctl.py init --slug <slug> --workflow <workflow> \
 ## The loop
 
 ```bash
-python3 engine/maestroctl.py next --slug <slug>       # add --serial in inline mode (below)
+python3 .maestro/engine/maestroctl.py next --slug <slug>       # add --serial in inline mode (below)
 ```
 
 `next` prints ONE JSON action. Dispatch on its `action` field, then loop. Every
@@ -101,7 +101,7 @@ Spawn ONE subagent:
   it and record:
 
 ```bash
-python3 engine/maestroctl.py complete --slug <slug> --step <step> --outputs '<that json>'
+python3 .maestro/engine/maestroctl.py complete --slug <slug> --step <step> --outputs '<that json>'
 ```
 
 - If the subagent errored, returned no parseable JSON line, or `complete` exits 4
@@ -109,7 +109,7 @@ python3 engine/maestroctl.py complete --slug <slug> --step <step> --outputs '<th
   a one-line reminder of the JSON contract. If it fails again:
 
 ```bash
-python3 engine/maestroctl.py fail --slug <slug> --step <step> --reason '<one line>'
+python3 .maestro/engine/maestroctl.py fail --slug <slug> --step <step> --reason '<one line>'
 ```
 
 The engine owns retries and failure routing — never loop on a step yourself.
@@ -128,7 +128,7 @@ quoting each element so an interpolated value can never break out of its argumen
 concatenate the elements into a raw command or `eval` them.
 
 ```bash
-python3 engine/maestroctl.py complete --slug <slug> --step <step> \
+python3 .maestro/engine/maestroctl.py complete --slug <slug> --step <step> \
     --exit-code <N> --stdout '<captured stdout>'
 ```
 
@@ -143,7 +143,7 @@ reply — never guess, never default, re-ask on ambiguity. If the chosen option 
 `input` field, collect that free text too. Then:
 
 ```bash
-python3 engine/maestroctl.py gate-record --slug <slug> --step <step> \
+python3 .maestro/engine/maestroctl.py gate-record --slug <slug> --step <step> \
     --option <chosen-id> [--input '<free text>']
 ```
 
@@ -153,8 +153,8 @@ continue/abort) — treat them exactly the same.
 ### `done` / `failed`
 
 Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reason`
-(failed), and where the artifacts live (`.maestro/<slug>/`). Suggest
-`python3 engine/maestroctl.py status --slug <slug>` for the full step table.
+(failed), and where the artifacts live (`.maestro/runs/<slug>/`). Suggest
+`python3 .maestro/engine/maestroctl.py status --slug <slug>` for the full step table.
 
 ## Harness degradation — inline mode
 
@@ -178,7 +178,7 @@ new constraint, a scope change — record it to the ledger BEFORE acting, so mem
 from it:
 
 ```bash
-python3 engine/maestroctl.py note --slug <slug> --text '<the user request, verbatim>'
+python3 .maestro/engine/maestroctl.py note --slug <slug> --text '<the user request, verbatim>'
 ```
 
 This changes no routing; it appends a timestamped note (tagged with the active step) to the

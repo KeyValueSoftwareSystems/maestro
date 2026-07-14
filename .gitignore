@@ -1,7 +1,7 @@
 # keyvalue-skills — ignored, regenerable/local
 # NOTE: git has no inline comments — keep each pattern on its own line.
 
-# NOTE: .maestro/<slug>/ (feature requirement + all generated artifacts) is
+# NOTE: .maestro/runs/<slug>/ (feature requirement + all generated artifacts) is
 # intentionally NOT ignored — it is git-tracked for now.
 
 # installed copies (Claude Code / Cursor). Sources of truth are ./skills/,

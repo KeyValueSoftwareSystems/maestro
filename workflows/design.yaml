@@ -20,13 +20,13 @@ nodes:
   - id: assert_requirement
     type: script
     label: Requirement present?
-    run: [python3, engine/requirement_serve.py, ".maestro/${inputs.slug}/requirement"]
+    run: [python3, .maestro/engine/requirement_serve.py, ".maestro/runs/${inputs.slug}/requirement"]
     routes:
       - {when: "${steps.assert_requirement.outputs.state} == have", to: collect_references}
       - {to: requirement_intake}
 
   # ---- PRD phase: intake -> collect references -> author/refine the PRD -> Q&A loop ----
-  # ALWAYS produces .maestro/<slug>/requirement/prd.md before the HLD. If the user provided
+  # ALWAYS produces .maestro/runs/<slug>/requirement/prd.md before the HLD. If the user provided
   # a complete requirement it is consolidated into prd.md with no questions; otherwise the
   # gated Q&A loop (reusing the oq_* scripts on requirement-questions.json) fills the gaps.
   # requirement_intake is reached only when the folder is empty.
@@ -34,7 +34,7 @@ nodes:
     type: gate
     label: No requirement found
     prompt: |
-      No requirement files in .maestro/${inputs.slug}/requirement/.
+      No requirement files in .maestro/runs/${inputs.slug}/requirement/.
 
       How do you want to supply the requirement for "${inputs.feature}"?
     options:
@@ -58,14 +58,14 @@ nodes:
     label: Author / refine the PRD
     instruction: |
       Produce the product requirement doc (PRD) for "${inputs.feature}" at
-      .maestro/${inputs.slug}/requirement/prd.md. Read EVERY file already in
-      .maestro/${inputs.slug}/requirement/ (a PRD, notes, mockups — may be empty) and fold in
+      .maestro/runs/${inputs.slug}/requirement/prd.md. Read EVERY file already in
+      .maestro/runs/${inputs.slug}/requirement/ (a PRD, notes, mockups — may be empty) and fold in
       the provided references: ${steps.collect_references.outputs.refs}
       For local file paths, read them; for Figma/URLs/tickets you cannot open, record the link
       in the PRD's References section and (only if its content is decision-critical) raise it
       as a question — never invent its contents.
 
-      Then write requirement-questions.json (schema engine/schemas/open-questions.schema.json)
+      Then write requirement-questions.json (schema .maestro/engine/schemas/open-questions.schema.json)
       with ONLY the remaining HIGH-LEVEL product/feature gaps — problem, users, scope, goals,
       constraints, acceptance — each with why it matters and 2-4 options. Do NOT ask
       design/technical/implementation questions (API, schema, components, tech choices) — those
@@ -76,17 +76,17 @@ nodes:
     inputs:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
-      requirement_dir: ".maestro/${inputs.slug}/requirement"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       references: "${steps.collect_references.outputs.refs}"
     outputs: [draft_summary]
-    artifact: ".maestro/${inputs.slug}/requirement/prd.md"
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     max_visits: 3
     next: rq_serve
 
   - id: rq_serve
     type: script
     label: Next requirement question?
-    run: [python3, engine/oq_serve.py, ".maestro/${inputs.slug}/requirement-questions.json"]
+    run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/requirement-questions.json"]
     max_visits: 40
     on_exhausted: author_hld
     routes:
@@ -116,8 +116,8 @@ nodes:
     label: Record answer
     run:
       - python3
-      - engine/oq_record.py
-      - ".maestro/${inputs.slug}/requirement-questions.json"
+      - .maestro/engine/oq_record.py
+      - ".maestro/runs/${inputs.slug}/requirement-questions.json"
       - "${steps.rq_serve.outputs.qid}"
       - "${steps.rq_ask.outputs.choice}"
       - "${steps.rq_ask.outputs.answer}"
@@ -130,15 +130,15 @@ nodes:
     label: Fold answers into the PRD
     instruction: |
       Resolved requirement questions await folding. Apply each resolved answer to
-      .maestro/${inputs.slug}/requirement/prd.md ('you-decide' resolutions: pick a
+      .maestro/runs/${inputs.slug}/requirement/prd.md ('you-decide' resolutions: pick a
       sensible default and record the choice), then mark those questions status "folded" in
-      .maestro/${inputs.slug}/requirement-questions.json and re-validate it with
-      python3 engine/validate_open_questions.py.
+      .maestro/runs/${inputs.slug}/requirement-questions.json and re-validate it with
+      python3 .maestro/engine/validate_open_questions.py.
     skill: brainstorm
     inputs:
       slug: "${inputs.slug}"
     outputs: [refined_summary]
-    artifact: ".maestro/${inputs.slug}/requirement/prd.md"
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     max_visits: 20
     next: rq_serve
 
@@ -149,18 +149,18 @@ nodes:
       Write the high-level design for this feature. Read EVERY file in the requirement
       folder as the requirement. Surface unresolved product/technical decisions as open
       questions: write them to BOTH the HLD's "Open questions" section AND
-      .maestro/${inputs.slug}/open-questions.json (schema
-      engine/schemas/open-questions.schema.json). Do not ask the user anything directly.
+      .maestro/runs/${inputs.slug}/open-questions.json (schema
+      .maestro/engine/schemas/open-questions.schema.json). Do not ask the user anything directly.
       If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
     skill: plan
     inputs:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
-      requirement_dir: ".maestro/${inputs.slug}/requirement"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
-    artifact: ".maestro/${inputs.slug}/hld.md"
+    artifact: ".maestro/runs/${inputs.slug}/hld.md"
     max_visits: 5
     next: oq_serve
 
@@ -168,7 +168,7 @@ nodes:
   - id: oq_serve
     type: script
     label: Next open question?
-    run: [python3, engine/oq_serve.py, ".maestro/${inputs.slug}/open-questions.json"]
+    run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/open-questions.json"]
     max_visits: 40
     on_exhausted: hld_approval
     routes:
@@ -198,8 +198,8 @@ nodes:
     label: Record answer
     run:
       - python3
-      - engine/oq_record.py
-      - ".maestro/${inputs.slug}/open-questions.json"
+      - .maestro/engine/oq_record.py
+      - ".maestro/runs/${inputs.slug}/open-questions.json"
       - "${steps.oq_serve.outputs.qid}"
       - "${steps.oq_ask.outputs.choice}"
       - "${steps.oq_ask.outputs.answer}"
@@ -212,15 +212,15 @@ nodes:
     label: Fold answers into HLD
     instruction: |
       Resolved open questions await folding into the HLD. Apply each resolved answer to
-      .maestro/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default
+      .maestro/runs/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default
       and record the choice), then mark those questions status "folded" in
-      .maestro/${inputs.slug}/open-questions.json and re-validate it with
-      python3 engine/validate_open_questions.py.
+      .maestro/runs/${inputs.slug}/open-questions.json and re-validate it with
+      python3 .maestro/engine/validate_open_questions.py.
     skill: plan
     inputs:
       slug: "${inputs.slug}"
     outputs: [refined_summary]
-    artifact: ".maestro/${inputs.slug}/hld.md"
+    artifact: ".maestro/runs/${inputs.slug}/hld.md"
     max_visits: 20
     next: oq_serve
 
@@ -228,7 +228,7 @@ nodes:
     type: gate
     label: HLD approval
     prompt: |
-      HLD ready at .maestro/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
+      HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
 
       Review the document, then choose.
     options:
@@ -249,11 +249,11 @@ nodes:
             type: agent
             instruction: |
               Write the backend low-level design from the approved HLD at
-              .maestro/${inputs.slug}/hld.md.
+              .maestro/runs/${inputs.slug}/hld.md.
             skill: backend-design
             inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.backend-design}"}
             outputs: [lld_path, contract_notes]
-            artifact: ".maestro/${inputs.slug}/lld/backend.md"
+            artifact: ".maestro/runs/${inputs.slug}/lld/backend.md"
             next: end
       - id: frontend
         start: frontend_design
@@ -262,11 +262,11 @@ nodes:
             type: agent
             instruction: |
               Write the frontend low-level design from the approved HLD at
-              .maestro/${inputs.slug}/hld.md.
+              .maestro/runs/${inputs.slug}/hld.md.
             skill: frontend-design
             inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.frontend-design}"}
             outputs: [lld_path, contract_notes]
-            artifact: ".maestro/${inputs.slug}/lld/frontend.md"
+            artifact: ".maestro/runs/${inputs.slug}/lld/frontend.md"
             next: end
     next: contract
 
@@ -274,12 +274,12 @@ nodes:
     type: agent
     label: API contract
     instruction: |
-      Reconcile the backend and frontend LLDs under .maestro/${inputs.slug}/lld/ into a
+      Reconcile the backend and frontend LLDs under .maestro/runs/${inputs.slug}/lld/ into a
       single OpenAPI contract. Flag any mismatch you had to resolve.
     skill: api-contract
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [contract_summary]
-    artifact: ".maestro/${inputs.slug}/openapi.yaml"
+    artifact: ".maestro/runs/${inputs.slug}/openapi.yaml"
     next: test_cases
 
   - id: test_cases
@@ -291,12 +291,12 @@ nodes:
     skill: functional-testcases
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [test_cases_path, case_count]
-    artifact: ".maestro/${inputs.slug}/test-cases.md"
+    artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
     next: end
 
 outputs:
   hld_summary: "${steps.author_hld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
-  hld_path: ".maestro/${inputs.slug}/hld.md"
-  contract_path: ".maestro/${inputs.slug}/openapi.yaml"
-  test_cases_path: ".maestro/${inputs.slug}/test-cases.md"
+  hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+  contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"

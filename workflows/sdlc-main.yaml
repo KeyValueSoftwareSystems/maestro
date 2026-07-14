@@ -4,7 +4,7 @@
 #   (impl.yaml per branch) -> merge (stub) -> qa (sub-wf) -> review pack -> release
 #   gate -> archive (stub)
 #
-# Every producing step writes an artifact under .maestro/<slug>/ and the engine gates
+# Every producing step writes an artifact under .maestro/runs/<slug>/ and the engine gates
 # on it ("proof, not promises"). Human gates own every irreversible decision; their
 # revise options are back-edges that cascade-reset everything downstream.
 version: 1
@@ -22,7 +22,7 @@ nodes:
   - id: design
     type: subworkflow
     label: Design phase
-    workflow: workflows/design.yaml
+    workflow: .maestro/workflows/design.yaml
     # `feedback` carries a revise gate's note back into the design phase so a regenerated
     # design knows WHY it was sent back. Empty on the first pass (resolves to "").
     inputs:
@@ -37,13 +37,13 @@ nodes:
     label: Architecture review
     instruction: |
       Review the full design set for this feature (HLD, both LLDs, contract, test
-      cases under .maestro/${inputs.slug}/) for soundness, consistency and risk.
+      cases under .maestro/runs/${inputs.slug}/) for soundness, consistency and risk.
       Findings need evidence; set blocking=true only for must-fix issues.
     skill: architecture-review
     agent: reviewer
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.architecture-review}"}
     outputs: [review_path, blocking, summary]
-    artifact: ".maestro/${inputs.slug}/reviews/architecture.md"
+    artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
     max_visits: 4
     routes:
       - {when: "${steps.arch_review.outputs.blocking} == true", to: arch_gate}
@@ -85,7 +85,7 @@ nodes:
         steps:
           - id: impl
             type: subworkflow
-            workflow: workflows/impl.yaml
+            workflow: .maestro/workflows/impl.yaml
             inputs: {slug: "${inputs.slug}", stack: backend, feature: "${inputs.feature}"}
             next: end
       - id: frontend
@@ -93,7 +93,7 @@ nodes:
         steps:
           - id: impl
             type: subworkflow
-            workflow: workflows/impl.yaml
+            workflow: .maestro/workflows/impl.yaml
             inputs: {slug: "${inputs.slug}", stack: frontend, feature: "${inputs.feature}"}
             next: end
     next: merge_for_test
@@ -111,7 +111,7 @@ nodes:
   - id: qa
     type: subworkflow
     label: QA phase
-    workflow: workflows/qa.yaml
+    workflow: .maestro/workflows/qa.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     max_visits: 3
     next: review_pack
@@ -122,13 +122,13 @@ nodes:
     instruction: |
       Assemble the release review pack for this feature: what was built (per stack),
       review outcomes, QA results, open risks, and how to verify locally. Digest the
-      artifacts under .maestro/${inputs.slug}/ — the pack is what the human reads at
+      artifacts under .maestro/runs/${inputs.slug}/ — the pack is what the human reads at
       the release gate.
     skill: human-review-pack
     agent: analyst
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [pack_path, recommendation, summary]
-    artifact: ".maestro/${inputs.slug}/review-pack.md"
+    artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
     next: release_approval
 
   - id: release_approval
@@ -150,7 +150,7 @@ nodes:
     label: Archival (harvest + publish)
     # Runs AFTER release approval and BEFORE the human merges the feature branch to master:
     # folds this run's lessons into domain memory, then publishes curated docs.
-    workflow: workflows/archive.yaml
+    workflow: .maestro/workflows/archive.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     next: end
 
