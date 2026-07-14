@@ -68,7 +68,9 @@
   <!-- ================= right panel ================= -->
   <rect x="700" y="124" width="452" height="452" rx="12" fill="#0F131B" stroke="#1E2530" stroke-width="1"/>
   <line x1="700" y1="166" x2="1152" y2="166" stroke="#141922" stroke-width="1"/>
-  <circle cx="720" cy="146" r="3" fill="#EBB24A"/>
+  <circle cx="720" cy="146" r="3" fill="#EBB24A">
+    <animate attributeName="opacity" dur="1.8s" repeatCount="indefinite" values="1;0.35;1"/>
+  </circle>
   <text x="732" y="150" font-size="10.5" font-weight="600" letter-spacing="1.4" fill="#EBB24A">RUNNING</text>
 
   <!-- workflow graph (static resting state) -->
@@ -80,9 +82,19 @@
     <path d="M190 286 V314" stroke="#1E2530" stroke-width="1.4" fill="none"/>
     <path d="M190 360 V388" stroke="#1E2530" stroke-width="1.4" fill="none"/>
 
-    <!-- back-edge loop: qa -> implement -->
-    <path d="M70 337 C22 337 22 189 70 189" stroke="#EBB24A" stroke-width="1.3" fill="none" stroke-dasharray="5 5" opacity="0.75"/>
+    <!-- back-edge loop: qa -> implement (marching dashes) -->
+    <path d="M70 337 C22 337 22 189 70 189" stroke="#EBB24A" stroke-width="1.3" fill="none" stroke-dasharray="5 5" opacity="0.75">
+      <animate attributeName="stroke-dashoffset" dur="1.6s" repeatCount="indefinite" values="0;-40"/>
+    </path>
     <text transform="rotate(-90 16 268)" x="16" y="268" text-anchor="middle" font-size="10" letter-spacing="0.5" fill="#EBB24A" opacity="0.9">back-edge · loop</text>
+
+    <!-- signal flowing down the resolved spine -->
+    <g opacity="0">
+      <animateMotion dur="3.4s" repeatCount="indefinite" path="M190 58 L190 392"/>
+      <animate attributeName="opacity" dur="3.4s" repeatCount="indefinite" values="0;1;1;1;0" keyTimes="0;0.05;0.5;0.95;1"/>
+      <circle r="7" fill="#EBB24A" opacity="0.16"/>
+      <circle r="2.6" fill="#EBB24A"/>
+    </g>
 
     <!-- prd (done) -->
     <rect x="70" y="18" width="240" height="46" rx="9" fill="#0D1117" stroke="#57B784" stroke-opacity="0.55" stroke-width="1"/>
@@ -97,7 +109,9 @@
     <text x="278" y="119" font-size="10.5" text-anchor="end" letter-spacing="0.5" fill="#57B784">DONE</text>
 
     <!-- implement (running) -->
-    <rect x="64" y="160" width="252" height="58" rx="12" fill="#EBB24A" opacity="0.16"/>
+    <rect x="64" y="160" width="252" height="58" rx="12" fill="#EBB24A" opacity="0.16">
+      <animate attributeName="opacity" dur="2.1s" repeatCount="indefinite" values="0.10;0.24;0.10"/>
+    </rect>
     <rect x="70" y="166" width="240" height="46" rx="9" fill="#241E12" stroke="#EBB24A" stroke-width="1.5"/>
     <circle cx="294" cy="189" r="4" fill="#EBB24A"/>
     <text x="88" y="194" font-size="13" fill="#D6DCE5">implement</text>
