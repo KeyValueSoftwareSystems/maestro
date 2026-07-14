@@ -19,6 +19,13 @@
 #
 # Bare words are IDE targets: claude-code (default) and/or cursor.
 #
+# Stack filter (optional):
+#   --stack go,react   install core SDLC skills/agents + ONLY those tagged stack:go /
+#                      stack:react. Repeatable and comma-separated. `--stack all` (or no
+#                      flag) installs everything. Items with no `stack:` tag are CORE and
+#                      always installed. /maestro-init passes this automatically after
+#                      detecting your repo's stack.
+#
 # Env overrides:
 #   KV_SKILLS_REPO   pack's GitHub slug      (default KeyValueSoftwareSystems/kv-skills)
 #   KV_SKILLS_REF    git ref for the tarball (default main)
@@ -31,17 +38,66 @@ REF="${KV_SKILLS_REF:-main}"
 DEST="${DEST:-$PWD}"
 
 AGENTS=""
-for a in "$@"; do
-  case "$a" in
-    -*) echo "unknown flag: $a" >&2; exit 2 ;;
-    *)  AGENTS="$AGENTS $a" ;;
+STACKS=""              # empty => install everything (back-compat)
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --stack)   shift; STACKS="$STACKS ${1:-}" ;;
+    --stack=*) STACKS="$STACKS ${1#*=}" ;;
+    -*) echo "unknown flag: $1" >&2; exit 2 ;;
+    *)  AGENTS="$AGENTS $1" ;;
   esac
+  shift
 done
 AGENTS="${AGENTS# }"
 [ -n "$AGENTS" ] || AGENTS="claude-code"
+# normalise the stack filter: commas -> spaces, collapse whitespace, `all` clears it
+STACKS="$(printf '%s' "$STACKS" | tr ',' ' ')"
+STACKS="$(echo $STACKS)"
+case " $STACKS " in *" all "*) STACKS="" ;; esac
 
 say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
 note() { printf '  %s\n' "$*"; }
+
+# --- stack filtering -------------------------------------------------------
+# Stack tokens declared on an item's frontmatter `tags:` line, e.g. "go react".
+# Empty output => the item is stack-agnostic CORE and is always installed.
+frontmatter_stacks() { # $1 = .md file
+  grep -m1 '^tags:' "$1" 2>/dev/null \
+    | grep -oE 'stack:[A-Za-z0-9_+-]+' \
+    | sed 's/^stack://' \
+    | tr '\n' ' '
+}
+# want_item <md-file> — true if this item should be installed under the current filter.
+want_item() {
+  [ -z "$STACKS" ] && return 0                     # no filter -> everything
+  st="$(frontmatter_stacks "$1")"
+  [ -z "$st" ] && return 0                          # core -> always
+  for s in $st; do
+    for w in $STACKS; do
+      [ "$s" = "$w" ] && return 0
+    done
+  done
+  return 1
+}
+copy_skills() { # $1 = dst dir — filtered by --stack
+  mkdir -p "$1"; kept=0; skipped=0
+  for d in "$SRC"/skills/*/; do
+    [ -f "$d/SKILL.md" ] || continue
+    # strip the trailing slash: `cp -R foo/ dst/` copies CONTENTS on BSD cp; we want the dir
+    if want_item "$d/SKILL.md"; then cp -R "${d%/}" "$1/" && kept=$((kept+1))
+    else skipped=$((skipped+1)); fi
+  done
+  note "skills -> $1 ($kept installed, $skipped skipped by --stack)"
+}
+copy_agents() { # $1 = dst dir — filtered by --stack
+  mkdir -p "$1"; kept=0; skipped=0
+  for f in "$SRC"/agents/*.md; do
+    [ -f "$f" ] || continue
+    if want_item "$f"; then cp "$f" "$1/" && kept=$((kept+1))
+    else skipped=$((skipped+1)); fi
+  done
+  note "agents -> $1 ($kept installed, $skipped skipped by --stack)"
+}
 
 # ---------------------------------------------------------------- source dir
 # From a REAL checkout: use the files next to this script. Piped (curl | bash): fetch the
@@ -88,14 +144,14 @@ copy_tree() { # copy_tree <src-subdir> <dst-dir>
 for agent in $AGENTS; do
   case "$agent" in
     claude-code)
-      say "Installing skills + commands + agents for Claude Code"
-      copy_tree skills   "$DEST/.claude/skills"
+      say "Installing skills + commands + agents for Claude Code${STACKS:+ (stacks: $STACKS)}"
+      copy_skills        "$DEST/.claude/skills"
       copy_tree commands "$DEST/.claude/commands"
-      copy_tree agents   "$DEST/.claude/agents"
+      copy_agents        "$DEST/.claude/agents"
       ;;
     cursor)
-      say "Installing skills + commands for Cursor"
-      copy_tree skills   "$DEST/.cursor/skills"
+      say "Installing skills + commands for Cursor${STACKS:+ (stacks: $STACKS)}"
+      copy_skills        "$DEST/.cursor/skills"
       copy_tree commands "$DEST/.cursor/commands"
       # Cursor has no subagent registry; the /maestro skill degrades to inline mode.
       ;;

@@ -84,6 +84,7 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       branch: "${steps.implement.outputs.branch}"
+      lessons: "${memory.knowledge.${inputs.stack}-review}"
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/${inputs.slug}/${inputs.stack}/reviews/summary.md"
     max_visits: 5

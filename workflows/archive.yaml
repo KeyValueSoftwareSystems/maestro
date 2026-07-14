@@ -1,0 +1,28 @@
+# Pre-merge archival phase (invoked by sdlc-main.yaml before the human merges to master):
+# harvest this run's lessons into memory, then publish curated docs.
+#   harvest (retrospect -> consolidate)  ->  publish (stub)
+version: 1
+name: archive
+description: Harvest the finished feature into memory, then publish its curated docs.
+inputs:
+  slug: {type: string, required: true}
+  feature: {type: string, default: "${inputs.slug}"}
+defaults:
+  model: haiku
+  agent: analyst
+start: harvest
+nodes:
+  - id: harvest
+    type: subworkflow
+    label: Harvest lessons into memory
+    workflow: workflows/retrospect.yaml
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    next: publish
+
+  - id: publish
+    type: script
+    label: Publish curated docs (stub)
+    # POC stub — wire to your doc-publishing convention: curate .maestro/<slug>/ docs into
+    # the committed docs/technical|functional/ tree.
+    run: [bash, -c, "echo 'publish stub: curate .maestro/${inputs.slug}/ docs into committed docs/ here'; exit 0"]
+    next: end

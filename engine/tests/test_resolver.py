@@ -681,5 +681,109 @@ nodes:
         self.assertNotIn("skills/backend-implement/SKILL.md", action["prompt"])
 
 
+class NestedPlaceholderTest(Sim):
+    NESTED_WF = """\
+version: 1
+name: nested
+inputs:
+  slug: {type: string, required: true}
+  stack: {type: string, default: backend}
+start: work
+nodes:
+  - id: work
+    type: agent
+    instruction: "flat=${inputs.stack} nested=[${inputs.stack}-review]"
+    outputs: [note]
+    artifact: ".maestro/${inputs.slug}/work.md"
+    next: end
+"""
+
+    def test_flat_placeholder_unchanged(self):
+        self.start(self.write_wf("n.yaml", self.NESTED_WF))
+        prompt = self.nxt()["prompt"]
+        self.assertIn("flat=backend", prompt)
+        self.assertIn("nested=[backend-review]", prompt)
+
+    def test_bounded_loop_terminates(self):
+        self.start(self.write_wf("n.yaml", self.NESTED_WF))
+        run = self.run_obj()
+        frame = run.main_frame()
+        self.assertEqual(run.resolve_text("${inputs.stack}", frame), "backend")
+
+
+class MemoryInjectionTest(Sim):
+    MEM_WF = """\
+version: 1
+name: mem
+inputs:
+  slug: {type: string, required: true}
+  stack: {type: string, default: backend}
+start: work
+nodes:
+  - id: work
+    type: agent
+    instruction: Do the ${inputs.stack} work.
+    inputs:
+      general: "${memory.knowledge.codebase}"
+      scoped: "${memory.knowledge.${inputs.stack}-review}"
+      absent: "${memory.knowledge.nope}"
+    outputs: [note]
+    artifact: ".maestro/${inputs.slug}/work.md"
+    next: end
+"""
+
+    def seed(self, domain, text):
+        d = os.path.join(self.tmp, ".maestro", "memory", "knowledge")
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, domain + ".md"), "w") as fh:
+            fh.write(text)
+
+    def test_injected_shared_nested_and_absent(self):
+        self.seed("codebase", "SHARED-LESSON")
+        self.seed("backend-review", "BE-REVIEW-LESSON")
+        self.start(self.write_wf("m.yaml", self.MEM_WF))
+        action = self.nxt()
+        self.assertEqual(action["action"], "run_agent")
+        prompt = action["prompt"]
+        self.assertIn("SHARED-LESSON", prompt)          # ${memory.knowledge.codebase}
+        self.assertIn("BE-REVIEW-LESSON", prompt)       # nested per-stack key
+        self.assertNotIn("${memory", prompt)            # no leftover placeholder
+        self.assertIn("absent:", prompt)                # absent domain -> blank value
+
+    def test_frozen_at_init(self):
+        self.seed("codebase", "ORIGINAL")
+        self.start(self.write_wf("m.yaml", self.MEM_WF))
+        self.seed("codebase", "CHANGED-AFTER-INIT")     # mutate the live store post-init
+        prompt = self.nxt()["prompt"]
+        self.assertIn("ORIGINAL", prompt)
+        self.assertNotIn("CHANGED-AFTER-INIT", prompt)
+
+    def test_snapshot_recorded_in_state(self):
+        self.seed("codebase", "X")
+        self.start(self.write_wf("m.yaml", self.MEM_WF))
+        st = self.state()
+        self.assertEqual(st["memory"]["snapshot"], "memory-snapshot.json")
+        self.assertTrue(st["memory"]["sha256"])
+
+
+class NotesTest(Sim):
+    def test_record_note_appends_with_active_step(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        run = self.run_obj()
+        resolver.record_note(run, "also handle the empty-cart case")
+        statemod.save("feat", run.state, self.tmp)
+        notes = self.state()["notes"]
+        self.assertEqual(len(notes), 1)
+        self.assertEqual(notes[0]["text"], "also handle the empty-cart case")
+        self.assertEqual(notes[0]["at_steps"], ["work"])  # the step active at the time
+        self.assertIn("at", notes[0])
+
+    def test_record_note_explicit_step(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        run = self.run_obj()
+        resolver.record_note(run, "tighten validation", step="review")
+        self.assertEqual(run.state["notes"][0]["at_steps"], ["review"])
+
+
 if __name__ == "__main__":
     unittest.main()

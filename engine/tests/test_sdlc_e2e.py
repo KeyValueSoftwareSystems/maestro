@@ -36,6 +36,8 @@ def canned_agent_outputs(step, action):
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
         "review_pack": {"pack_path": "review-pack.md", "recommendation": "ready",
                         "summary": "ready"},
+        "retrospect": {"incoming_path": ".maestro/memory/incoming/demo.json",
+                       "lessons_count": 2, "summary": "distilled"},
     }
     outputs = dict(table[node])
     # sanity: canned outputs must cover everything the node declares
@@ -102,7 +104,8 @@ class SdlcE2E(unittest.TestCase):
                     resolver.complete_step(run, step, outputs=outputs)
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
-                    if "oq_serve" in step or "validate_tasks" in step:
+                    if ("oq_serve" in step or "validate_tasks" in step
+                            or any("mem_consolidate" in a for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
                         code, out = proc.returncode, proc.stdout

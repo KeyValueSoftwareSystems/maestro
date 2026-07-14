@@ -35,7 +35,7 @@ RESERVED = ("end", "abort")
 
 _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
-_PLACEHOLDER_RE = re.compile(r"\$\{([^}]+)\}")
+_PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 
 _TOP_KEYS = {"version", "name", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"}
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
@@ -319,6 +319,10 @@ def _validate_node(node, ids, declared_inputs, where):
                                         f"${{{ref}}}: no node {parts[1]!r} in this scope", w))
             elif parts[0] == "config":
                 pass
+            elif parts[0] == "memory":
+                if not (len(parts) == 3 and parts[1] == "knowledge"):
+                    issues.append(Issue("error", "bad-placeholder",
+                                        f"memory ref must be ${{memory.knowledge.<domain>}}: ${{{ref}}}", w))
             else:
                 issues.append(Issue("error", "bad-placeholder", f"malformed placeholder ${{{ref}}}", w))
     return issues

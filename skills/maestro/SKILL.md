@@ -147,6 +147,21 @@ per-step models are ignored (everything runs on this session's model)."*
   outputs; do not keep artifact contents in mind — re-read from disk in the step that
   needs them.
 
+## Capturing out-of-band input
+
+Gates and the requirement folder are the engine's structured inputs. If the user tells you
+something IN CHAT outside a gate that changes or adds to what gets built — a correction, a
+new constraint, a scope change — record it to the ledger BEFORE acting, so memory can learn
+from it:
+
+```bash
+python3 engine/maestroctl.py note --slug <slug> --text '<the user request, verbatim>'
+```
+
+This changes no routing; it appends a timestamped note (tagged with the active step) to the
+run. It does NOT replace gates — a genuinely irreversible or out-of-scope ask should still be
+surfaced as a decision, not silently actioned.
+
 ## Progress narration
 
 Between dispatches keep the user oriented with one-liners: which step is running, what

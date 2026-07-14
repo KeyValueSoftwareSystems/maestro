@@ -41,7 +41,7 @@ nodes:
       Findings need evidence; set blocking=true only for must-fix issues.
     skill: architecture-review
     agent: reviewer
-    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.architecture-review}"}
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/${inputs.slug}/reviews/architecture.md"
     max_visits: 4
@@ -146,11 +146,12 @@ nodes:
       - {id: reject, label: Reject — abort, to: abort}
 
   - id: archive
-    type: script
-    label: Archive (stub)
-    # POC stub — reserved for publishing curated docs from .maestro/<slug>/ into
-    # committed docs/technical|functional/.
-    run: [bash, -c, "echo 'archive stub: publish .maestro/${inputs.slug}/ docs here'; exit 0"]
+    type: subworkflow
+    label: Archival (harvest + publish)
+    # Runs AFTER release approval and BEFORE the human merges the feature branch to master:
+    # folds this run's lessons into domain memory, then publishes curated docs.
+    workflow: workflows/archive.yaml
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     next: end
 
 outputs:

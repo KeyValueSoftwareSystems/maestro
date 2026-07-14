@@ -76,5 +76,31 @@ class FixtureTest(unittest.TestCase):
             self.assertIn("subworkflow-cycle", {i.code for i in issues})
 
 
+class MemoryPlaceholderTest(unittest.TestCase):
+    def _doc(self, ref):
+        return {
+            "version": 1, "name": "mem", "start": "work",
+            "nodes": [{
+                "id": "work", "type": "agent", "instruction": "go",
+                "inputs": {"lessons": ref}, "outputs": ["note"],
+                "artifact": ".maestro/x/work.md", "next": "end",
+            }],
+        }
+
+    def test_memory_ref_ok(self):
+        issues = validate.validate_doc(self._doc("${memory.knowledge.backend-review}"))
+        self.assertFalse([i for i in issues if i.code == "bad-placeholder"],
+                         [str(i) for i in issues])
+
+    def test_memory_nested_ref_ok(self):
+        issues = validate.validate_doc(self._doc("${memory.knowledge.${inputs.slug}-review}"))
+        self.assertFalse([i for i in issues if i.code == "bad-placeholder"],
+                         [str(i) for i in issues])
+
+    def test_memory_ref_malformed(self):
+        issues = validate.validate_doc(self._doc("${memory.oops}"))
+        self.assertTrue(any(i.code == "bad-placeholder" for i in issues))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -50,6 +50,11 @@ my-project/                 ← umbrella repo (git init once; this is where you 
   and all generated artifacts — lives there. The umbrella is the agent's working surface; the child
   repos under `codebase/` are what it edits.
 
+- **Seed domain knowledge.** After installing, run `/build-knowledge` once from the umbrella
+  root to populate `.maestro/memory/knowledge/` from the cloned repos + their `CLAUDE.md` and
+  the centralised `docs/`. Feature runs read this (frozen at init) to ground their designs and
+  reviews; it's re-runnable and merges. See [memory.md](memory.md).
+
 - **Git prerequisite still applies per child repo.** The per-stack implement steps run in isolated
   `git worktree`s, so each service repo you touch must be an initialised git repo with at least one
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so
@@ -127,6 +132,10 @@ From the umbrella root, exactly as in a single repo:
 The lead agent scaffolds `.maestro/my-feature/requirement/`, reads the whole workspace, and writes
 every artifact under `.maestro/my-feature/` — while editing the actual service repos under
 `codebase/` in their own worktrees.
+
+> Release ordering: **approve release → archival (harvest lessons into memory + publish
+> curated docs) → merge the feature branch to master.** Archival is the last automated phase;
+> Maestro does not perform the merge itself.
 
 > The umbrella is a per-project convention, not something this pack ships. Set it up manually; the
 > pack installs into it and every feature lives under `.maestro/<slug>/` inside it.

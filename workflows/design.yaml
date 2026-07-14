@@ -39,6 +39,8 @@ nodes:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/${inputs.slug}/requirement"
+      codebase_lessons: "${memory.knowledge.codebase}"
+      lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
     artifact: ".maestro/${inputs.slug}/hld.md"
     max_visits: 5
@@ -131,7 +133,7 @@ nodes:
               Write the backend low-level design from the approved HLD at
               .maestro/${inputs.slug}/hld.md.
             skill: backend-design
-            inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+            inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.backend-design}"}
             outputs: [lld_path, contract_notes]
             artifact: ".maestro/${inputs.slug}/lld/backend.md"
             next: end
@@ -144,7 +146,7 @@ nodes:
               Write the frontend low-level design from the approved HLD at
               .maestro/${inputs.slug}/hld.md.
             skill: frontend-design
-            inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+            inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.frontend-design}"}
             outputs: [lld_path, contract_notes]
             artifact: ".maestro/${inputs.slug}/lld/frontend.md"
             next: end

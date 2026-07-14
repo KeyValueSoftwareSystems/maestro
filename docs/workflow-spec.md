@@ -59,7 +59,7 @@ placeholders over other inputs).
 
 ## Placeholders
 
-Pure string substitution — no templating engine, no filters, no expressions. Four namespaces:
+Pure string substitution — no templating engine, no filters, no expressions. Five namespaces:
 
 | Placeholder | Meaning |
 |---|---|
@@ -67,6 +67,12 @@ Pure string substitution — no templating engine, no filters, no expressions. F
 | `${steps.<id>.outputs.<field>}` | recorded output of a completed step |
 | `${steps.<id>.branches.<key>.outputs.<field>}` | a parallel-branch result |
 | `${config.<dot.path>}` | value from an optional `maestro.config.yaml` at the repo root (advanced; nothing ships or requires one) |
+| `${memory.knowledge.<domain>}` | a lesson file from the memory store, frozen at init (see [memory.md](memory.md)) — resolves leniently to empty when absent |
+
+Placeholders may **nest**: `${memory.knowledge.${inputs.stack}-review}` resolves inner-first
+(bounded to a few passes). `${memory.knowledge.*}` is read once at `init` from a per-run
+snapshot and never re-read mid-run, so a run stays reproducible even as the shared memory
+store changes between runs.
 
 Resolution strictness differs by where the placeholder sits. The validator flags a statically
 unresolvable placeholder (undeclared input, unknown step) at lint time. At runtime, the

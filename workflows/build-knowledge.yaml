@@ -1,0 +1,50 @@
+# Build the codebase knowledge base by scanning the code: per-domain technical + functional
+# docs under docs/, plus docs/architecture.md (Mermaid) showing how the services connect.
+# Also (optionally) seeds cross-cutting review lessons into the memory store, which the engine
+# consolidates. Run once per workspace (recommended before your first feature): /build-knowledge
+# Re-runnable — refresh in place.
+version: 1
+name: build-knowledge
+description: Build docs/ (technical + functional per domain + architecture) from the codebase.
+inputs:
+  slug: {type: string, default: bootstrap, description: throwaway run id for the bootstrap}
+  feature: {type: string, default: knowledge-bootstrap}
+defaults:
+  model: haiku
+  agent: analyst
+start: build
+nodes:
+  - id: build
+    type: agent
+    label: Build the knowledge base
+    instruction: |
+      Scan this workspace and build its living knowledge base under docs/. Read the repos
+      under codebase/ (or the single repo), each repo's CLAUDE.md / .cursor/rules, and any
+      existing docs/. Then:
+      1. Identify the domains / bounded contexts the code is organised around (kebab-case,
+         e.g. auth, order-management, catalog, payments).
+      2. For EACH domain write docs/technical/<domain>.md (key modules, data model & schemas,
+         APIs exposed/consumed, storage, jobs, build/test commands) and
+         docs/functional/<domain>.md (what it does, business rules, primary flows, edge cases).
+      3. Write docs/architecture.md: one or more ```mermaid diagrams with every service/
+         component as a node and every connection as an edge, PLUS a "How services connect"
+         section giving, per edge, the protocol (REST/gRPC/GraphQL/event/queue/shared DB),
+         direction, sync vs async, the data that flows, and how calls are authenticated
+         between services; note which datastore each service owns.
+      4. Optionally seed cross-cutting REVIEW lessons (not domain docs) as an authoritative
+         drop to .maestro/memory/incoming/bootstrap.json
+         ({"slug":"bootstrap","lessons":[{"domain":"backend-review","key":"<kebab>","text":"...",
+         "authoritative":true}]}) — the engine renders those; do not write knowledge/ yourself.
+      Re-run = refresh in place; keep human edits.
+    skill: build-knowledge
+    outputs: [domains_written, architecture_path, summary]
+    artifact: "docs/architecture.md"
+    next: consolidate
+
+  - id: consolidate
+    type: script
+    label: Render seeded lessons (engine)
+    # Folds any authoritative lessons build-knowledge seeded into the memory store. No-op if
+    # none were seeded. Deterministic engine step — see engine/mem_consolidate.py.
+    run: [python3, engine/mem_consolidate.py, ".maestro/memory"]
+    next: end
