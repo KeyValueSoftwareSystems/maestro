@@ -151,6 +151,7 @@ class SdlcE2E(unittest.TestCase):
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
@@ -174,6 +175,7 @@ class SdlcE2E(unittest.TestCase):
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None), ("none", None)],
+            "design/prd_approval": [("approve", None), ("approve", None)],
             "design/hld_approval": [("approve", None), ("approve", None)],
             "contract_approval": [("revise", "tighten the API"), ("approve", None)],
             "release_approval": [("approve", None)],
@@ -185,10 +187,29 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("design/author_hld"), 2)
         self.assertEqual(steps.count("design/contract"), 2)
 
+    def test_revise_cascade_from_prd_gate(self):
+        """Revising at the PRD approval gate re-enters brainstorm_draft, whose cascade-reset
+        re-runs the whole PRD/Q&A phase before it is confirmed again and the HLD is authored."""
+        self.prep_tasks_json()
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("revise", "sharpen the scope"), ("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
+        }
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        # PRD authored twice (revise looped back), HLD authored once (revise was before it)
+        self.assertEqual(steps.count("design/brainstorm_draft"), 2)
+        self.assertEqual(steps.count("design/author_hld"), 1)
+
     def test_blocking_arch_review_gate_waive(self):
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
             "arch_gate": [("waive", None)],
             "contract_approval": [("approve", None)],
@@ -234,6 +255,7 @@ class SdlcE2E(unittest.TestCase):
         try:
             gates = {
                 "design/collect_references": [("none", None)],
+                "design/prd_approval": [("approve", None)],
                 "design/hld_approval": [("approve", None)],
                 "contract_approval": [("approve", None)],
                 "release_approval": [("approve", None)],
@@ -309,6 +331,8 @@ class SdlcE2E(unittest.TestCase):
                     asked.append(action["prompt"])
                     self.assertIn("Quota per user?", action["prompt"])
                     resolver.record_gate(run, step, "answer", input_text="2")
+                elif step == "prd_approval":
+                    resolver.record_gate(run, step, "approve")
                 elif step == "hld_approval":
                     resolver.record_gate(run, step, "approve")
                 else:
@@ -395,6 +419,8 @@ class SdlcE2E(unittest.TestCase):
                 elif step == "rq_ask":
                     asked.append(action["prompt"])
                     resolver.record_gate(run, step, "answer", input_text="2")
+                elif step == "prd_approval":
+                    resolver.record_gate(run, step, "approve")
                 else:
                     self.fail(f"unexpected gate {step}")
             statemod.save("demo", run.state, self.tmp)

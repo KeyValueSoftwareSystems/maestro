@@ -22,7 +22,10 @@ HLD's/LLD's job downstream.
 
 You run in one of two modes; your instructions say which:
 
-- **Author/refine mode** — build or update the PRD + the question set from the inputs.
+- **Author/refine mode** — build or update the PRD + the question set from the inputs. If your
+  instructions carry **revision feedback** (a product-review note asking for changes), treat it as
+  a product-level revision request: update `prd.md` to address it and re-open questions as needed,
+  staying at product altitude — do NOT make design/technical changes.
 - **Fold mode** — resolved answers exist → apply them to the PRD and mark them folded.
 
 ## Inputs
@@ -53,7 +56,13 @@ gives you and write to a sensible path you choose (and tell them where).
 If the provided inputs already form a **complete PRD** (every section below answered, no
 material product ambiguity), just **consolidate them into `prd.md` and write an EMPTY
 questions set** (`{"questions": []}` per the schema). Do **not** manufacture questions to
-justify a loop — the workflow then proceeds straight to the HLD.
+justify a loop — the workflow then proceeds straight to PRD confirmation.
+
+Hold this bar strictly: write an empty set **only** when the PRD is genuinely complete. Every
+real gap in problem, users, scope, goals, constraints, or acceptance MUST become an open
+question — an empty set is a claim that none exist, not a shortcut. A downstream human
+confirmation gate reviews the PRD, but it is a backstop, not a substitute for enumerating gaps
+here.
 
 ### Altitude — what counts as a PRD question
 In scope (ask these): problem/motivation, target users & jobs-to-be-done, scope & non-goals,

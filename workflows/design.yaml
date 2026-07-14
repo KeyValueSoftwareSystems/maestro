@@ -72,12 +72,14 @@ nodes:
       belong to the HLD downstream. If the inputs already form a COMPLETE PRD, just consolidate
       them into prd.md and write an EMPTY questions set (no fabricated questions). Assert
       nothing the user has not confirmed; do not ask the user anything directly.
+      If a previous review left feedback, honour it (product-level only): ${steps.prd_approval.outputs.feedback}
     skill: brainstorm
     inputs:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       references: "${steps.collect_references.outputs.refs}"
+      feedback: "${steps.prd_approval.outputs.feedback}"
     outputs: [draft_summary]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     max_visits: 3
@@ -88,11 +90,11 @@ nodes:
     label: Next requirement question?
     run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/requirement-questions.json"]
     max_visits: 40
-    on_exhausted: author_hld
+    on_exhausted: prd_approval
     routes:
       - {when: "${steps.rq_serve.outputs.state} == ask", to: rq_ask}
       - {when: "${steps.rq_serve.outputs.state} == refine", to: rq_fold}
-      - {to: author_hld}
+      - {to: prd_approval}
 
   - id: rq_ask
     type: gate
@@ -141,6 +143,23 @@ nodes:
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     max_visits: 20
     next: rq_serve
+
+  # ---- PRD approval: confirm the PRD (after every open question is asked + answered)
+  # before authoring the HLD. 'revise' is a back-edge into brainstorm_draft, whose re-entry
+  # cascade-resets the PRD + its whole Q&A loop; the human is the loop bound.
+  - id: prd_approval
+    type: gate
+    label: PRD approval
+    prompt: |
+      PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
+      Open questions & any deferred assumptions: .maestro/runs/${inputs.slug}/requirement-questions.json
+
+      Confirm the product requirement (problem, users, scope, constraints, acceptance) is
+      complete, then choose. Design/technical concerns are handled later at the HLD/LLD.
+    options:
+      - {id: approve, label: Approve — author the HLD, to: author_hld}
+      - {id: revise, label: Request PRD revisions (regenerates the PRD + its Q&A), to: brainstorm_draft, input: feedback}
+      - {id: reject, label: Reject — abort the run, to: abort}
 
   - id: author_hld
     type: agent
