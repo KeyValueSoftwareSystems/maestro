@@ -142,6 +142,37 @@ def load(slug, root="."):
     return data
 
 
+def list_runs(root="."):
+    """Enumerate every run under .maestro/ (read-only, newest-updated first).
+
+    Returns a lightweight summary per run — never the full ledger; the slug picker
+    and `maestroctl runs` only need to name and describe runs. Mirrors the discovery
+    recipe in ui_server.list_runs (which returns full state for the UI graph).
+    """
+    base = os.path.join(root, MAESTRO_DIR)
+    runs = []
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return runs
+    for name in names:
+        if not valid_slug(name) or not os.path.isdir(os.path.join(base, name)):
+            continue
+        data = load(name, root)
+        if data is None:
+            continue
+        run = data.get("run") or {}
+        runs.append({
+            "slug": name,
+            "status": run.get("status"),
+            "workflow": (data.get("workflow") or {}).get("file"),
+            "active": run.get("cursors") or [],
+            "updated_at": data.get("updated_at"),
+        })
+    runs.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
+    return runs
+
+
 def save(slug, state, root="."):
     state["updated_at"] = now_iso()
     path = state_path(slug, root)

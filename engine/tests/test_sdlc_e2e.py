@@ -50,6 +50,9 @@ def canned_script(step):
     node = step.rsplit("/", 1)[-1]
     if node == "oq_serve":
         return 0, json.dumps({"state": "approve"})
+    if node == "assert_requirement":
+        # setUp populates the requirement folder -> the "have" path (author the HLD).
+        return 0, json.dumps({"state": "have"})
     return 0, "ok"
 
 
@@ -308,6 +311,90 @@ class SdlcE2E(unittest.TestCase):
         # answered with option index 2 -> "100", then refine folded it
         self.assertEqual(doc["questions"][0]["status"], "folded")
         self.assertEqual(doc["questions"][0]["resolution"]["answer"], "100")
+
+    def test_brainstorm_path_when_requirement_empty(self):
+        """Empty requirement folder -> intake gate -> brainstorm the requirement via the
+        real oq_serve/oq_record scripts (pointed at requirement-questions.json) -> reach
+        author_hld. The requirement loop mirrors the design OQ loop."""
+        # start from an EMPTY requirement folder (undo setUp's seed file)
+        req_dir = os.path.join(self.tmp, ".maestro", "demo", "requirement")
+        for name in os.listdir(req_dir):
+            os.remove(os.path.join(req_dir, name))
+        rq_path = os.path.join(self.tmp, ".maestro", "demo", "requirement-questions.json")
+
+        with statemod.locked("demo", self.tmp):
+            resolver.init_run("demo", "workflows/design.yaml", {"feature": "Demo"}, self.tmp)
+
+        seen = []
+        asked = []
+        reached_hld = False
+        for _ in range(80):
+            run = resolver.Run("demo", self.tmp)
+            action = resolver.next_action(run)
+            if action["action"] == "done":
+                break
+            run = resolver.Run("demo", self.tmp)
+            step = action.get("step")
+            if action["action"] == "run_agent":
+                seen.append(step.rsplit("/", 1)[-1])
+                for rel in action.get("artifacts", []):
+                    full = os.path.join(self.tmp, rel)
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    open(full, "w").write("x")
+                node = step.rsplit("/", 1)[-1]
+                if node == "brainstorm_draft":
+                    # simulate the brainstorm skill emitting one open question
+                    doc = {"schema_version": 1, "feature_slug": "demo", "questions": [{
+                        "id": "r1", "question": "Who is the primary user?", "why": "scope",
+                        "options": ["Admins", "End users"], "status": "open", "resolution": None,
+                    }]}
+                    with open(rq_path, "w") as fh:
+                        json.dump(doc, fh)
+                    outputs = {"draft_summary": "drafted; 1 open question"}
+                elif node == "rq_fold":
+                    with open(rq_path) as fh:
+                        doc = json.load(fh)
+                    for q in doc["questions"]:
+                        if q["status"] == "resolved":
+                            q["status"] = "folded"
+                    with open(rq_path, "w") as fh:
+                        json.dump(doc, fh)
+                    outputs = {"refined_summary": "folded 1 answer"}
+                elif node == "author_hld":
+                    reached_hld = True
+                    resolver.complete_step(run, step, outputs={"hld_summary": "ok"})
+                    statemod.save("demo", run.state, self.tmp)
+                    break
+                else:
+                    outputs = canned_agent_outputs(step, action)
+                resolver.complete_step(run, step, outputs=outputs)
+            elif action["action"] == "run_script":
+                proc = subprocess.run(action["argv"], cwd=self.tmp, capture_output=True,
+                                      text=True, timeout=30)
+                resolver.complete_step(run, step, exit_code=proc.returncode,
+                                       stdout=proc.stdout)
+            elif action["action"] == "ask_gate":
+                if step == "requirement_intake":
+                    resolver.record_gate(run, step, "brainstorm")
+                elif step == "rq_ask":
+                    asked.append(action["prompt"])
+                    resolver.record_gate(run, step, "answer", input_text="2")
+                else:
+                    self.fail(f"unexpected gate {step}")
+            statemod.save("demo", run.state, self.tmp)
+        else:
+            self.fail("brainstorm path did not reach author_hld")
+
+        self.assertTrue(reached_hld, "never reached author_hld")
+        self.assertIn("brainstorm_draft", seen)
+        self.assertIn("rq_fold", seen)
+        self.assertEqual(len(asked), 1)
+        self.assertIn("Who is the primary user?", asked[0])
+        with open(rq_path) as fh:
+            doc = json.load(fh)
+        # answered option index 2 -> "End users", then rq_fold folded it
+        self.assertEqual(doc["questions"][0]["status"], "folded")
+        self.assertEqual(doc["questions"][0]["resolution"]["answer"], "End users")
 
 
 if __name__ == "__main__":

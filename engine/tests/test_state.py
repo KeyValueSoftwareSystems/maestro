@@ -61,6 +61,33 @@ class StateTest(unittest.TestCase):
         files = os.listdir(os.path.dirname(statemod.state_path("s", self.tmp)))
         self.assertNotIn("state.yaml.tmp", files)
 
+    def test_list_runs_empty(self):
+        self.assertEqual(statemod.list_runs(self.tmp), [])
+
+    def test_list_runs_enumerates_and_summarises(self):
+        first = statemod.new_state("alpha", "workflows/design.yaml", "h1", {})
+        statemod.save("alpha", first, self.tmp)
+        second = statemod.new_state("beta", "workflows/sdlc-main.yaml", "h2", {})
+        second["run"]["cursors"] = ["author_hld"]
+        statemod.save("beta", second, self.tmp)
+
+        runs = statemod.list_runs(self.tmp)
+        self.assertEqual({r["slug"] for r in runs}, {"alpha", "beta"})
+        by_slug = {r["slug"]: r for r in runs}
+        self.assertEqual(by_slug["alpha"]["workflow"], "workflows/design.yaml")
+        self.assertEqual(by_slug["beta"]["status"], "running")
+        self.assertEqual(by_slug["beta"]["active"], ["author_hld"])
+        # every entry is a lightweight summary, never the full ledger
+        self.assertEqual(set(runs[0]),
+                         {"slug", "status", "workflow", "active", "updated_at"})
+
+    def test_list_runs_skips_non_run_dirs(self):
+        # a stray directory that isn't a run (no valid state.yaml) is ignored
+        os.makedirs(os.path.join(self.tmp, statemod.MAESTRO_DIR, "memory"))
+        good = statemod.new_state("real", "w.yaml", "h", {})
+        statemod.save("real", good, self.tmp)
+        self.assertEqual([r["slug"] for r in statemod.list_runs(self.tmp)], ["real"])
+
 
 if __name__ == "__main__":
     unittest.main()

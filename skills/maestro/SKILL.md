@@ -16,9 +16,27 @@ implement, review, or interpret the workflow graph. The deterministic engine
 
 ## Inputs
 
-- `slug` (required): kebab-case feature id. The feature folder is `.maestro/<slug>/`.
+- `slug` (kebab-case feature id, the folder `.maestro/<slug>/`). If omitted, run the
+  **Selecting a slug** step below to pick or create one — never invent one silently.
 - `workflow` (optional): workflow file path. Default `workflows/sdlc-main.yaml`.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
+
+## Selecting a slug (only when none was given)
+
+Do NOT guess a slug. Ask the engine what runs exist, then let the human pick:
+
+```bash
+python3 engine/maestroctl.py runs        # read-only JSON: [{slug, status, workflow, active, ...}]
+```
+
+Present the choice with AskUserQuestion (labels are yours, but the slugs come **verbatim**
+from that output — never from memory): one option per existing run (`resume <slug> — <status>`)
+plus **"Start a new feature"**. The auto-added *Other* lets the human type any slug directly.
+
+- **Resume** → use the chosen slug and continue to Setup (init is a no-op resume).
+- **Start new** (or the list was empty) → ask for a kebab-case slug **and a one-line
+  description** of the feature, then init with `--input feature="<that one-liner>"`. That
+  one-liner is the seed the workflow's brainstorm step expands if no requirement files exist.
 
 ## Hard rules — read twice
 
@@ -51,11 +69,14 @@ python3 engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   them — but once they choose, YOU run the command (`python3 engine/maestroctl.py rebase
   --slug <slug>` or `... reset --all`) and continue the loop. Do not hand the user a command
   to type: the human supplies decisions, the lead agent runs every `maestroctl` invocation.
-- If the requirement folder `.maestro/<slug>/requirement/` is missing or empty and the
-  workflow needs it, create it yourself: `mkdir -p .maestro/<slug>/requirement/` and write a
-  stub `requirement.md` there telling the user what to drop in (PRD, notes, mockups — every
-  file in the folder is read as the requirement). Then STOP and ask the user to fill it in
-  before continuing.
+- Ensure the requirement folder exists (`mkdir -p .maestro/<slug>/requirement/`) so the
+  user has somewhere to drop files, but do NOT block on it — the **workflow** owns what
+  happens when it's empty. The shipped pack surfaces a gate ("add files & re-check /
+  brainstorm it with me / abort") and, if the user chooses, brainstorms the requirement
+  through gated Q&A before authoring the HLD. If you already know the user has a PRD/notes to
+  paste, point them at that folder first; otherwise just init and run the loop — the gate
+  will ask. (A workflow that has no such handling will simply abort on an empty requirement;
+  relay that.)
 
 ## The loop
 

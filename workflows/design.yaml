@@ -20,9 +20,107 @@ nodes:
   - id: assert_requirement
     type: script
     label: Requirement present?
-    run: [bash, -c, "find .maestro/${inputs.slug}/requirement -type f -size +1c 2>/dev/null | grep -q ."]
+    run: [python3, engine/requirement_serve.py, ".maestro/${inputs.slug}/requirement"]
+    routes:
+      - {when: "${steps.assert_requirement.outputs.state} == have", to: author_hld}
+      - {to: requirement_intake}
+
+  # ---- requirement intake + brainstorm (only reached when the folder is empty) ----
+  # Mirrors the open-questions cycle below, but gathers the REQUIREMENT (not design
+  # answers) via gated Q&A and reuses the same engine scripts, pointed at a separate
+  # requirement-questions.json.
+  - id: requirement_intake
+    type: gate
+    label: No requirement found
+    prompt: |
+      No requirement files in .maestro/${inputs.slug}/requirement/.
+
+      How do you want to supply the requirement for "${inputs.feature}"?
+    options:
+      - {id: add-files, label: I'll add files now — re-check, to: assert_requirement}
+      - {id: brainstorm, label: Brainstorm it with me, to: brainstorm_draft}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: brainstorm_draft
+    type: agent
+    label: Draft requirement + questions
+    instruction: |
+      There is no written requirement for "${inputs.feature}" yet. From the one-line seed
+      (and anything already in .maestro/${inputs.slug}/requirement/), draft an initial
+      requirement at .maestro/${inputs.slug}/requirement/brainstorm.md and enumerate the
+      essential unknowns needed to design it as questions in
+      .maestro/${inputs.slug}/requirement-questions.json (schema
+      engine/schemas/open-questions.schema.json), each with why it matters and 2-4 options.
+      Assert nothing the user has not confirmed — capture every assumption as an open
+      question. Do not ask the user anything directly.
+    skill: brainstorm
+    inputs:
+      feature: "${inputs.feature}"
+      slug: "${inputs.slug}"
+      requirement_dir: ".maestro/${inputs.slug}/requirement"
+    outputs: [draft_summary]
+    artifact: ".maestro/${inputs.slug}/requirement/brainstorm.md"
+    max_visits: 3
+    next: rq_serve
+
+  - id: rq_serve
+    type: script
+    label: Next requirement question?
+    run: [python3, engine/oq_serve.py, ".maestro/${inputs.slug}/requirement-questions.json"]
+    max_visits: 40
+    on_exhausted: author_hld
+    routes:
+      - {when: "${steps.rq_serve.outputs.state} == ask", to: rq_ask}
+      - {when: "${steps.rq_serve.outputs.state} == refine", to: rq_fold}
+      - {to: author_hld}
+
+  - id: rq_ask
+    type: gate
+    label: Requirement question
+    prompt: |
+      **${steps.rq_serve.outputs.question}**
+
+      Why it matters: ${steps.rq_serve.outputs.why}
+
+      ${steps.rq_serve.outputs.options_md}
+
+      Answer with an option number or free text.
+    max_visits: 40
+    options:
+      - {id: answer, label: Answer it, to: rq_record, input: answer}
+      - {id: you-decide, label: You decide (pick a sensible default), to: rq_record}
+      - {id: skip, label: Skip — leave as an assumption, to: rq_record}
+
+  - id: rq_record
+    type: script
+    label: Record answer
+    run:
+      - python3
+      - engine/oq_record.py
+      - ".maestro/${inputs.slug}/requirement-questions.json"
+      - "${steps.rq_serve.outputs.qid}"
+      - "${steps.rq_ask.outputs.choice}"
+      - "${steps.rq_ask.outputs.answer}"
+    max_visits: 40
     on_fail: abort
-    next: author_hld
+    next: rq_serve
+
+  - id: rq_fold
+    type: agent
+    label: Fold answers into requirement
+    instruction: |
+      Resolved requirement questions await folding. Apply each resolved answer to
+      .maestro/${inputs.slug}/requirement/brainstorm.md ('you-decide' resolutions: pick a
+      sensible default and record the choice), then mark those questions status "folded" in
+      .maestro/${inputs.slug}/requirement-questions.json and re-validate it with
+      python3 engine/validate_open_questions.py.
+    skill: brainstorm
+    inputs:
+      slug: "${inputs.slug}"
+    outputs: [refined_summary]
+    artifact: ".maestro/${inputs.slug}/requirement/brainstorm.md"
+    max_visits: 20
+    next: rq_serve
 
   - id: author_hld
     type: agent

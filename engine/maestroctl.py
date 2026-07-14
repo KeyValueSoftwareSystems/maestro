@@ -173,6 +173,11 @@ def cmd_status(args):
     return 0
 
 
+def cmd_runs(args):
+    _print({"runs": statemod.list_runs(args.root)})
+    return 0
+
+
 def cmd_graph(args):
     import wf as wfmod
 
@@ -273,6 +278,9 @@ def build_parser():
     p = sub.add_parser("graph", help="nodes+edges JSON for a workflow file (UI helper)")
     p.add_argument("workflow")
     p.set_defaults(fn=cmd_graph)
+
+    p = sub.add_parser("runs", help="list every run under .maestro/ as JSON (read-only)")
+    p.set_defaults(fn=cmd_runs)
     return parser
 
 
