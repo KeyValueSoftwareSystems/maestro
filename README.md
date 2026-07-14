@@ -146,9 +146,11 @@ Installs: our skills/commands/agents into `.claude/` / `.cursor/`, and the engin
 `workflows/` + `ui/` + `docs/` all under a single **`.maestro/`** parent in your repo (so
 your repo root stays clean and nothing collides with your own `engine/`/`docs/`/`ui/` dirs).
 The engine is stdlib-only python3 — no CLI, no config file, nothing else to install.
-The installer prints a recommended `.gitignore` and what to commit; **upgrade** by re-running
-the same command (it re-fetches and overwrites `.maestro/engine/`/`.maestro/ui/`). *(Private-repo fork? The
-piped `curl` can't authenticate — clone it and run `./install.sh` from the checkout.)*
+When it finishes it prints a short next-steps notice pointing at `/maestro-init` (onboard the
+repo) and **`./maestro help`** — the full guide (getting started, the recommended `.gitignore`
++ what to commit, upgrade/uninstall). **Upgrade** by re-running the same command (it re-fetches
+and overwrites `.maestro/engine/`/`.maestro/ui/`). *(Private-repo fork? The piped `curl` can't
+authenticate — clone it and run `./install.sh` from the checkout.)*
 
 **Per-stack packs.** Alongside the core SDLC skills, the pack ships per-stack reference
 skills + reviewers (Go, Java/Spring, Kotlin, Python/Django, React, Vue, Angular, Node,
@@ -230,7 +232,7 @@ workflows/   the example pack: sdlc-main / design / impl / qa  — customize or 
 engine/      the deterministic engine (validate · init · next · complete · gate-record
              · fail · reset · rebase · status · graph · note) + ui_server.py + schemas + validators
 ui/          builder.html (single-file visual editor) + embed.py
-maestro      repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install`
+maestro      repo-local dev wrapper: `maestro ui` (serve the builder) · `maestro install` · `maestro help`
 .maestro/runs/<slug>/      everything for one feature: requirement/ + all artifacts + state.yaml
 ```
 
