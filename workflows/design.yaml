@@ -12,7 +12,7 @@ inputs:
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
 defaults:
-  model: haiku
+  model: opus
   agent: planner
   max_visits: 10
 start: assert_requirement

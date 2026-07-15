@@ -7,7 +7,7 @@ inputs:
   slug: {type: string, required: true}
   feature: {type: string, default: "${inputs.slug}"}
 defaults:
-  model: haiku
+  model: sonnet
   agent: qa
   max_visits: 10
 start: qa_run

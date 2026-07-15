@@ -12,7 +12,7 @@ inputs:
   stack: {type: string, required: true, description: backend | frontend}
   feature: {type: string, default: "${inputs.slug}"}
 defaults:
-  model: haiku
+  model: sonnet
   agent: implementer
   max_visits: 10
 start: tasks
@@ -81,6 +81,7 @@ nodes:
       Findings need file:line evidence; set blocking=true only for must-fix issues.
     skill: "${inputs.stack}-review"
     agent: reviewer
+    model: opus
     inputs:
       slug: "${inputs.slug}"
       branch: "${steps.implement.outputs.branch}"

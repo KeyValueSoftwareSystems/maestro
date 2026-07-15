@@ -41,6 +41,7 @@ nodes:
       Findings need evidence; set blocking=true only for must-fix issues.
     skill: architecture-review
     agent: reviewer
+    model: opus
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.architecture-review}"}
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
@@ -126,6 +127,7 @@ nodes:
       the release gate.
     skill: human-review-pack
     agent: analyst
+    model: opus
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [pack_path, recommendation, summary]
     artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
