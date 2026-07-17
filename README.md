@@ -150,7 +150,9 @@ Installs: our skills/commands/agents into `.claude/` / `.cursor/`, and the engin
 The one-liner above installs the core pack. To finish setting the repo up, open your IDE and run **`/maestro-init`** once — the easy button that onboards a repo in one shot. It:
 
 1. **detects your stack** (`detect-stack`) and re-runs the installer with the matching `--stack …`, so only the core pack + the per-stack skills/agents your code actually uses get installed;
-2. **builds the living-docs knowledge base** (`build-knowledge`) — per-domain technical + functional docs and an architecture diagram under `docs/`, which the design and review steps read as context.
+2. **builds the living-docs knowledge base** (`build-knowledge`) — per-domain technical + functional docs and an architecture diagram under `docs/`, plus a per-repo **`docs/codebase-map.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
+
+The codebase map is **commit-tracked and incremental**: the engine (`codebase_scan.py`) records the git commit each `docs/codebase-map.md` reflects, so re-running (and the post-feature refresh in the archive phase) only re-examines the diff since that commit — not the whole repo. In an umbrella workspace each repo keeps its own map, committed and pushed in that repo.
 
 ```bash
 /maestro-init                 # detect stack → install matching packs → build docs
@@ -250,6 +252,7 @@ After install, in your project repo:
   engine/     the deterministic engine (validate · init · next · complete · gate-record
               · fail · reset · rebase · status · graph · note · runs) + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
+              + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
   workflows/  the example pack: sdlc-main / design / impl / qa, plus archive /
               build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)

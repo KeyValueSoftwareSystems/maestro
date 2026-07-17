@@ -23,9 +23,6 @@ def canned_agent_outputs(step, action):
     table = {
         "brainstorm_draft": {"draft_summary": "PRD drafted; 0 open questions"},
         "rq_fold": {"refined_summary": "folded 1 answer"},
-        "explore_codebase": {"map_path": "codebase-map.md",
-                             "map_summary": "mapped the flow; 3 execution modes",
-                             "modes_found": 3},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
         "refine_hld": {"refined_summary": "folded 1 answer"},
         "backend_design": {"lld_path": "lld/backend.md", "contract_notes": "rest+cursor"},
@@ -171,9 +168,6 @@ class SdlcE2E(unittest.TestCase):
         # the PRD phase always runs (even with a requirement already present) before the HLD
         self.assertIn("design/brainstorm_draft", steps)
         self.assertLess(steps.index("design/brainstorm_draft"), steps.index("design/author_hld"))
-        # the codebase is mapped BEFORE the HLD is authored (grounds the design in real code)
-        self.assertIn("design/explore_codebase", steps)
-        self.assertLess(steps.index("design/explore_codebase"), steps.index("design/author_hld"))
         # the LLDs are approved by a human before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
         self.assertIn("design/lld_approval", gate_steps)
@@ -195,11 +189,10 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # design phase ran twice end-to-end
+        # design phase ran twice end-to-end (HLD + LLDs regenerated on the second pass)
         self.assertEqual(steps.count("design/author_hld"), 2)
         self.assertEqual(steps.count("design/contract"), 2)
-        # the codebase was re-mapped and the LLDs re-approved on the second design pass
-        self.assertEqual(steps.count("design/explore_codebase"), 2)
+        self.assertEqual(steps.count("design/lld_approval"), 2)
 
     def test_revise_cascade_from_prd_gate(self):
         """Revising at the PRD approval gate re-enters brainstorm_draft, whose cascade-reset

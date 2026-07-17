@@ -24,7 +24,9 @@ via Task; otherwise follow them inline.
    core SDLC pack + the matching per-stack skills/agents are installed. Capture the detected
    `stacks` and `installed_count`.
 2. **Build the knowledge base** — load and follow the **`build-knowledge`** skill: read the
-   code and write the per-domain technical + functional docs and the architecture diagram.
+   code and write the per-domain technical + functional docs, the architecture diagram, and a
+   per-repo `docs/codebase-map.md` (the standing grounding each HLD reads; the engine records
+   the commit each map reflects, so later refreshes only process the diff).
    Capture `domains_written` and `architecture_path`.
 3. **Summarize + next step.** Report the stacks installed and the docs written, then tell the
    user that newly installed skills/agents become active after their IDE reloads the config,
