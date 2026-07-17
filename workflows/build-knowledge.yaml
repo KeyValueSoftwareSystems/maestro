@@ -31,7 +31,14 @@ nodes:
          section giving, per edge, the protocol (REST/gRPC/GraphQL/event/queue/shared DB),
          direction, sync vs async, the data that flows, and how calls are authenticated
          between services; note which datastore each service owns.
-      4. Optionally seed cross-cutting REVIEW lessons (not domain docs) as an authoritative
+      4. For EACH repo write docs/codebase-map.md — the standing per-repo grounding the HLD
+         reads: entry points, key modules, the primary flows and EVERY distinct execution mode
+         each runs in (single-turn/multi-turn, sync/async, batch/streaming, …) and what selects
+         it, the data model, APIs exposed/consumed, auth pattern and conventions, cited to
+         file:line. Run `python3 .maestro/engine/codebase_scan.py plan` to see which repos to
+         map (bootstrap = full). Do NOT write the `<!-- maestro-codebase-map commit=… -->`
+         marker — the engine stamps it next.
+      5. Optionally seed cross-cutting REVIEW lessons (not domain docs) as an authoritative
          drop to .maestro/memory/incoming/bootstrap.json
          ({"slug":"bootstrap","lessons":[{"domain":"backend-review","key":"<kebab>","text":"...",
          "authoritative":true}]}) — the engine renders those; do not write knowledge/ yourself.
@@ -39,6 +46,15 @@ nodes:
     skill: build-knowledge
     outputs: [domains_written, architecture_path, summary]
     artifact: "docs/architecture.md"
+    next: record_maps
+
+  - id: record_maps
+    type: script
+    label: Record codebase-map commits (engine)
+    # Stamp each repo's current HEAD into its docs/codebase-map.md marker, so the next
+    # build-knowledge / retrospect run refreshes only the diff. Owned by the engine, not the
+    # skill — swapping build-knowledge can't change how incremental tracking works.
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, .]
     next: consolidate
 
   - id: consolidate

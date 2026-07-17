@@ -153,6 +153,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
+            "design/lld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
         }
@@ -167,6 +168,10 @@ class SdlcE2E(unittest.TestCase):
         # the PRD phase always runs (even with a requirement already present) before the HLD
         self.assertIn("design/brainstorm_draft", steps)
         self.assertLess(steps.index("design/brainstorm_draft"), steps.index("design/author_hld"))
+        # the LLDs are approved by a human before any implementation begins
+        gate_steps = [s for a, s in trace if a == "ask_gate"]
+        self.assertIn("design/lld_approval", gate_steps)
+        self.assertLess(steps.index("design/lld_approval"), steps.index("implement[backend]/impl/implement"))
         # design ran before implementation, qa after
         self.assertLess(steps.index("design/author_hld"), steps.index("arch_review"))
         self.assertLess(steps.index("merge_for_test"), steps.index("qa/qa_run"))
@@ -177,15 +182,17 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None), ("none", None)],
             "design/prd_approval": [("approve", None), ("approve", None)],
             "design/hld_approval": [("approve", None), ("approve", None)],
+            "design/lld_approval": [("approve", None), ("approve", None)],
             "contract_approval": [("revise", "tighten the API"), ("approve", None)],
             "release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # design phase ran twice end-to-end
+        # design phase ran twice end-to-end (HLD + LLDs regenerated on the second pass)
         self.assertEqual(steps.count("design/author_hld"), 2)
         self.assertEqual(steps.count("design/contract"), 2)
+        self.assertEqual(steps.count("design/lld_approval"), 2)
 
     def test_revise_cascade_from_prd_gate(self):
         """Revising at the PRD approval gate re-enters brainstorm_draft, whose cascade-reset
@@ -195,6 +202,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("revise", "sharpen the scope"), ("approve", None)],
             "design/hld_approval": [("approve", None)],
+            "design/lld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
         }
@@ -211,6 +219,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
+            "design/lld_approval": [("approve", None)],
             "arch_gate": [("waive", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
@@ -257,6 +266,7 @@ class SdlcE2E(unittest.TestCase):
                 "design/collect_references": [("none", None)],
                 "design/prd_approval": [("approve", None)],
                 "design/hld_approval": [("approve", None)],
+                "design/lld_approval": [("approve", None)],
                 "contract_approval": [("approve", None)],
                 "release_approval": [("approve", None)],
             }
@@ -334,6 +344,8 @@ class SdlcE2E(unittest.TestCase):
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
                 elif step == "hld_approval":
+                    resolver.record_gate(run, step, "approve")
+                elif step == "lld_approval":
                     resolver.record_gate(run, step, "approve")
                 else:
                     self.fail(f"unexpected gate {step}")

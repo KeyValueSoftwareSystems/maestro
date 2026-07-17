@@ -29,7 +29,12 @@ nodes:
          connection or data flow was added or changed — add the new node(s)/edge(s) to the
          Mermaid diagram(s) and the matching "How services connect" entry. Create missing
          files; edit existing ones in place (never duplicate); skip only a surface the feature
-         genuinely did not affect.
+         genuinely did not affect. ALSO refresh each affected repo's docs/codebase-map.md: run
+         `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed
+         since the map was last recorded — update ONLY those areas (new/changed flows,
+         execution modes, APIs, conventions); a repo reported `current` is unchanged, skip it.
+         Do NOT touch the `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps
+         it next.
       2. Write a STRUCTURED lessons drop to .maestro/memory/incoming/${inputs.slug}.json as
          JSON: {"slug": "${inputs.slug}", "lessons": [{"domain": "<role>",
          "key": "<stable-kebab-key>", "text": "<one actionable sentence>"}, ...]}. Draw the
@@ -46,6 +51,16 @@ nodes:
     inputs: {slug: "${inputs.slug}"}
     outputs: [incoming_path, lessons_count, summary]
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
+    next: record_maps
+
+  - id: record_maps
+    type: script
+    label: Record codebase-map commits (engine)
+    # Stamp each repo's current HEAD into its docs/codebase-map.md marker so the NEXT feature
+    # refreshes only the diff. Engine-owned (not the skill) so swapping retrospect can't change
+    # how incremental tracking works. The refreshed maps are committed + pushed per repo by the
+    # archive phase's publish step.
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, .]
     next: consolidate
 
   - id: consolidate

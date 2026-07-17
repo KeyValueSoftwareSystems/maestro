@@ -49,6 +49,26 @@ Standalone with no paths given? Write to `docs/` and tell the user.
    `{"slug": "bootstrap", "lessons": [{"domain": "backend-review", "key": "<kebab>",
    "text": "...", "authoritative": true}]}`. The engine renders these; you do not.
 
+## Per-repo codebase map (the HLD's primary grounding)
+For EACH repo — in an umbrella workspace, each repo under `codebase/`; single repo, the repo
+itself — write **`docs/codebase-map.md`**, the standing, per-repo description a designer reads
+before authoring an HLD (so it grounds the design in real code instead of the prompt):
+
+- entry points and key modules; how the repo is built/tested/run;
+- the primary end-to-end flows, and — critically — **every distinct execution mode** each runs
+  in (single-turn / multi-turn, sync / async, batch / streaming, first-request /
+  idempotent-retry, single- / multi-tenant, …), *what selects each mode*, and where it lives,
+  cited to `file:line`;
+- the data model, the APIs it exposes/consumes, the auth/guard pattern, the error envelope, and
+  the conventions a change must respect.
+
+Run `python3 .maestro/engine/codebase_scan.py plan` first to see which repos to map and their
+scope — at bootstrap every repo is `full` (write the whole map); on a refresh a repo is
+`incremental` (update only the areas its `changed_files` touch) or `current` (skip). Do **not**
+write or edit the `<!-- maestro-codebase-map commit=… -->` marker line — the engine stamps the
+commit after you write, and that recorded commit is what makes the next refresh incremental.
+Each map is git-tracked in its own repo.
+
 ## Standards
 - Document what the code **actually does today**, not aspirations. A wrong doc is worse than
   a missing one.
@@ -58,8 +78,9 @@ Standalone with no paths given? Write to `docs/` and tell the user.
   human edits.
 
 ## Safety
-- Read-only against application code; write only under the docs root (and the optional memory
-  incoming drop) named in your instruction. Never edit application code here.
+- Read-only against application code; write only the docs (the central docs root AND each
+  repo's `docs/codebase-map.md`) and the optional memory incoming drop named in your
+  instruction. Never edit application code here.
 
 ## Output contract
 Return `domains_written` (count of domains documented), `architecture_path` (the

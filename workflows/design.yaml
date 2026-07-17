@@ -166,11 +166,17 @@ nodes:
     label: Author HLD
     instruction: |
       Write the high-level design for this feature. Read EVERY file in the requirement
-      folder as the requirement. Surface unresolved product/technical decisions as open
-      questions: write them to BOTH the HLD's "Open questions" section AND
-      .maestro/runs/${inputs.slug}/open-questions.json (schema
-      .maestro/engine/schemas/open-questions.schema.json). Do not ask the user anything directly.
-      If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
+      folder as the requirement, AND the maintained codebase map(s) — docs/codebase-map.md
+      in each repo the feature touches (umbrella layout: codebase/<repo>/docs/codebase-map.md;
+      single repo: ./docs/codebase-map.md). The map is the standing description of the real
+      modules, flows and execution modes; ground the design in it. Explore the actual source
+      further ONLY where the feature needs context the map does not cover. Your chosen
+      approach MUST accommodate every execution mode relevant to the feature; if one cannot
+      be supported, say so explicitly and constrain scope rather than assuming the happy path.
+      Surface unresolved product/technical decisions as open questions: write them to BOTH the
+      HLD's "Open questions" section AND .maestro/runs/${inputs.slug}/open-questions.json
+      (schema .maestro/engine/schemas/open-questions.schema.json). Do not ask the user anything
+      directly. If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
     skill: plan
     inputs:
       feature: "${inputs.feature}"
@@ -268,7 +274,9 @@ nodes:
             type: agent
             instruction: |
               Write the backend low-level design from the approved HLD at
-              .maestro/runs/${inputs.slug}/hld.md.
+              .maestro/runs/${inputs.slug}/hld.md, grounded in the maintained codebase map
+              (docs/codebase-map.md in the backend repo) and the real code it cites.
+              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
             skill: backend-design
             inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.backend-design}"}
             outputs: [lld_path, contract_notes]
@@ -281,13 +289,33 @@ nodes:
             type: agent
             instruction: |
               Write the frontend low-level design from the approved HLD at
-              .maestro/runs/${inputs.slug}/hld.md.
+              .maestro/runs/${inputs.slug}/hld.md, grounded in the maintained codebase map
+              (docs/codebase-map.md in the frontend repo) and the real code it cites.
+              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
             skill: frontend-design
             inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.frontend-design}"}
             outputs: [lld_path, contract_notes]
             artifact: ".maestro/runs/${inputs.slug}/lld/frontend.md"
             next: end
-    next: contract
+    next: lld_approval
+
+  # ---- LLD approval: the human reviews BOTH detailed designs before any implementation.
+  # 'revise' is a back-edge into the parallel node — re-entry cascade-resets both LLDs plus
+  # everything downstream (contract, test cases). A design change never reaches implementation
+  # without passing back through this gate.
+  - id: lld_approval
+    type: gate
+    label: LLD approval
+    prompt: |
+      Detailed designs ready for review:
+        backend:  ${steps.author_llds.branches.backend.outputs.lld_path}
+        frontend: ${steps.author_llds.branches.frontend.outputs.lld_path}
+
+      Review both LLDs. Any change to an LLD must be approved here before implementation.
+    options:
+      - {id: approve, label: Approve — reconcile the contract, to: contract}
+      - {id: revise, label: Request LLD revisions (regenerates both LLDs + downstream), to: author_llds, input: feedback}
+      - {id: reject, label: Reject — abort the run, to: abort}
 
   - id: contract
     type: agent

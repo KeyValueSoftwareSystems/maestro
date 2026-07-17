@@ -58,6 +58,15 @@ my-project/                 ← umbrella repo (git init once; this is where you 
   the centralised `docs/`. Feature runs read this (frozen at init) to ground their designs and
   reviews; it's re-runnable and merges. See [memory.md](memory.md).
 
+- **Per-repo codebase map.** `build-knowledge` also writes a **`docs/codebase-map.md` inside
+  each repo under `codebase/`** — the standing, per-repo description of that repo's modules,
+  flows and execution modes that the HLD step reads before choosing an architecture. Each map
+  is git-tracked in its own repo; the engine (`codebase_scan.py`) records the commit it
+  reflects, so re-running `/build-knowledge` and the post-feature refresh (in the archive
+  phase) only re-examine the diff since that commit, then commit + push the updated map back to
+  each repo. Keeping the maps per repo is why they stay accurate as each service evolves
+  independently.
+
 - **Git prerequisite still applies per child repo.** The per-stack implement steps run in isolated
   `git worktree`s, so each service repo you touch must be an initialised git repo with at least one
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so
@@ -132,9 +141,9 @@ From the umbrella root, exactly as in a single repo:
 /maestro my-feature workflows/design.yaml    # just one phase
 ```
 
-The lead agent scaffolds `.maestro/my-feature/requirement/`, reads the whole workspace, and writes
-every artifact under `.maestro/my-feature/` — while editing the actual service repos under
-`codebase/` in their own worktrees.
+The lead agent scaffolds `.maestro/runs/my-feature/requirement/`, reads the whole workspace, and
+writes every artifact under `.maestro/runs/my-feature/` — while editing the actual service repos
+under `codebase/` in their own worktrees.
 
 > Release ordering: **approve release → archival (harvest lessons into memory + publish
 > curated docs) → merge the feature branch to master.** Archival is the last automated phase;

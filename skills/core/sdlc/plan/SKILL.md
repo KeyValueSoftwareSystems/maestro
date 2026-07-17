@@ -19,7 +19,16 @@ mockups, etc.). Standalone? read the requirement and write to a path you choose 
 ## Steps
 1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
    Identify the users, the job-to-be-done, and hard constraints (deadlines, platforms,
-   compliance, budget).
+   compliance, budget). **Then ground in the real code, cheaply**: the maintained codebase
+   map — `docs/codebase-map.md` in each repo the feature touches (umbrella:
+   `codebase/<repo>/docs/codebase-map.md`; single repo: `./docs/codebase-map.md`) — is the
+   standing description of the modules, flows and **execution modes** that already exist; read
+   it first and treat it as the baseline. Then read the **actual source** only where the feature
+   needs context the map does not cover — the specific flow you are extending and any mode it
+   touches. Designing from the prompt alone is the failure this prevents: an approach that fits
+   the happy path but breaks an existing mode (multi-turn, async, batch, streaming) is a wrong
+   HLD. If no map exists and the code is nontrivial, survey the relevant flow yourself before
+   choosing an approach.
 2. **Clarify unknowns** — list assumptions explicitly; ask the human when a business rule,
    SLA, or data-ownership question is genuinely ambiguous. Do not silently guess.
 3. **Diverge** — generate 2–3 genuinely different approaches (delegating to the
@@ -100,8 +109,10 @@ available, just write the artifacts and stop — resolution happens downstream.
 
 ## Definition of done
 Every section present; ≥2 options with trade-offs; NFRs and risks concrete (not "TBD");
-open questions listed. Do not proceed to detailed design or implementation — this artifact
-stops at the *direction*.
+open questions listed; **the chosen approach demonstrably handles every execution mode the
+codebase map (or your own survey) enumerated** — if one mode can't be supported, that is
+stated as an explicit scope constraint, not glossed over. Do not proceed to detailed design or
+implementation — this artifact stops at the *direction*.
 
 ## Output contract
 Return `hld_path` and `hld_summary` (2–3 sentences). When invoked in **refine mode**
