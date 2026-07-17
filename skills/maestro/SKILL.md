@@ -90,6 +90,12 @@ python3 .maestro/engine/maestroctl.py next --slug <slug>       # add --serial in
 mutating command below itself prints the FOLLOWING action, so use its output directly
 as the next iteration — call `next` only when you need to re-read the current action.
 
+**Keep the loop moving.** After every `complete`/`gate-record`/`fail`, immediately act on
+the FOLLOWING action it printed — do NOT end your turn between a report and the next
+dispatch. The loop terminates ONLY on `done` or `failed`. A turn that ends mid-run (long
+subagent, harness limit, human stepping away) is not a failure and loses nothing — the
+engine ledger is the source of truth. When you regain the turn, just resume (below).
+
 ### `run_agent`
 
 Spawn ONE subagent:
@@ -156,6 +162,17 @@ Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reas
 (failed), and where the artifacts live (`.maestro/runs/<slug>/`). Suggest
 `python3 .maestro/engine/maestroctl.py status --slug <slug>` for the full step table.
 
+## Resuming a run
+
+A run does NOT need to finish in one turn, and an interrupted turn is normal — the engine
+ledger holds all progress. To resume after ANY interruption (turn ended, session closed, you
+came back later), just re-invoke `/maestro <slug>` or call `next` and continue the loop from
+whatever action it serves: `init` on an existing run is a no-op that says "resuming", and
+`next` always returns the one action the run is currently waiting on (often a gate you left
+open). Never restart from scratch and never re-run completed steps — the state ledger, not
+your memory of where you were, decides what happens next. If the user asks "where did we leave
+off?", run `status --slug <slug>` and tell them, then resume.
+
 ## Harness degradation — inline mode
 
 No Task tool (Cursor and most non-Claude-Code harnesses)? Switch to **inline mode** and
@@ -184,6 +201,16 @@ python3 .maestro/engine/maestroctl.py note --slug <slug> --text '<the user reque
 This changes no routing; it appends a timestamped note (tagged with the active step) to the
 run. It does NOT replace gates — a genuinely irreversible or out-of-scope ask should still be
 surfaced as a decision, not silently actioned.
+
+**A change to an already-produced design artifact re-enters its gate.** If the user asks in
+chat to change something already written and approved — the PRD, HLD, an LLD, the contract —
+do NOT edit the artifact and carry on, and do NOT let the change flow into implementation
+unreviewed. Record the request as a `note`, then route it through that artifact's approval
+gate using the gate's **revise** option (`brainstorm_draft`/PRD, `author_hld`/HLD,
+`lld_approval`/LLDs, `contract_approval`/contract) so the artifact is regenerated with the
+feedback and the human re-approves the result. The revise back-edge cascade-resets everything
+downstream — that is the point. If the run is past the relevant gate, the correct move is a
+revise at the nearest enclosing gate, never a silent hand-edit.
 
 ## Progress narration
 

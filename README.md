@@ -24,7 +24,8 @@ The trick: your interactive Claude Code / Cursor session is the *lead agent*, bu
 ## 30-second quickstart
 
 ```bash
-# from the root of your git repo (needs python3 ≥ 3.8, stdlib only)
+# from your git repo root — or, for a multi-repo feature, an umbrella workspace (see below).
+# needs python3 ≥ 3.8, stdlib only
 curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/main/install.sh \
   | bash -s -- claude-code            # or: cursor
 
@@ -34,6 +35,23 @@ curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/m
 ```
 
 Drop your requirement files (PRDs, tickets, notes) into the folder it scaffolds, and it runs: PRD → design → review → implement → QA → release, pausing at each human gate. That's it — no key to provision, nothing to `pip install`.
+
+## Recommended layout: an umbrella workspace
+
+**If your feature spans more than one repo — e.g. a frontend and a backend — do not install Maestro inside one of them.** A design is only as good as what the agent can see: run it from inside a single service repo and it designs blind to the others (choosing an architecture the frontend allows but the backend can't serve, missing a flow that lives across the boundary). The fix is a **parent/umbrella repo** that holds Maestro and the service repos side by side, so the lead agent sees the whole stack at once:
+
+```
+my-project/                 ← umbrella repo — git init here; run /maestro from here
+├── maestro  .claude/  .maestro/   ← Maestro installs here (engine, workflows, runs/<slug>/…)
+├── codebase/               ← the service repos, each cloned here and GITIGNORED
+│   ├── frontend/  └─ CLAUDE.md     ← independent repo: own branches, PRs, CI
+│   ├── backend/   └─ CLAUDE.md
+│   └── payments-service/
+├── docs/                   ← centralised cross-repo docs
+└── test/                   ← cross-repo integration + UI-automation suites
+```
+
+Set it up once per project, then install Maestro into the umbrella root and run every feature from there — artifacts land in `.maestro/runs/<slug>/` while the agent edits the real service repos under `codebase/` in their own worktrees. A single repo still works; the umbrella is what makes multi-repo features design correctly. **Full walkthrough (child-repo `CLAUDE.md` files, `/build-knowledge`, one-command local stack): [docs/umbrella-workspace.md](docs/umbrella-workspace.md).**
 
 ## Why Maestro instead of…
 
@@ -178,6 +196,26 @@ If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --s
 
 Prefer manual control? Every step is also a skill you can invoke on its own — the slash command is the skill's own name: `/brainstorm` (author a PRD), `/plan`, `/backend-design`, `/backend-implement`, `/qa-automation`, … — same skills, no orchestration.
 
+### Pausing & resuming a run
+
+A run is durable and does **not** have to finish in one turn. All progress lives in the engine ledger (`.maestro/runs/<slug>/state.yaml`), so you can close the session anytime and pick up later — resume with `/maestro <slug>` (or `/maestro` to choose from the list) and it continues from the exact step, re-running nothing.
+
+Sometimes the lead agent ends its turn *mid-run* — after a long step, or because the harness ended the turn. That's normal and loses nothing; just resume. Whether the loop **auto-continues** past such a pause depends on your harness:
+
+- **Claude Code — auto-continue with an opt-in Stop hook.** Maestro ships `.maestro/engine/stop_hook.py`: while a run still has autonomous work pending it keeps the loop going, and it steps aside (lets the turn end) at every human gate and when the run finishes — the human stays in charge at gates. It's read-only and **off by default**. Enable it by adding to `.claude/settings.json`:
+
+  ```json
+  {
+    "hooks": {
+      "Stop": [
+        { "hooks": [ { "type": "command", "command": "python3 .maestro/engine/stop_hook.py" } ] }
+      ]
+    }
+  }
+  ```
+
+- **Cursor — resume manually.** Cursor has no hook system, so the loop can't auto-continue; when it pauses, just re-run the `/maestro <slug>` command. Tip: run **phase-by-phase** (`/maestro <slug> .maestro/workflows/design.yaml`, then implementation) to keep each session short — a long single-session run is the most common cause of a mid-run stop.
+
 ## Working as a team
 
 Maestro is a shared, paved road, not a per-developer toy: keep the flows in a central, PR-reviewed repo owned by your leads/platform team (changes go through review, same as code), and governance falls out of the graph — route the "approve for release" gate to a lead while anyone runs the steps up to it, no extra RBAC layer needed.
@@ -211,6 +249,7 @@ After install, in your project repo:
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
               · fail · reset · rebase · status · graph · note · runs) + ui_server.py + schemas
+              + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
   workflows/  the example pack: sdlc-main / design / impl / qa, plus archive /
               build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)

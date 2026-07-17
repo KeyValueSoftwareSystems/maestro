@@ -132,9 +132,9 @@ From the umbrella root, exactly as in a single repo:
 /maestro my-feature workflows/design.yaml    # just one phase
 ```
 
-The lead agent scaffolds `.maestro/my-feature/requirement/`, reads the whole workspace, and writes
-every artifact under `.maestro/my-feature/` — while editing the actual service repos under
-`codebase/` in their own worktrees.
+The lead agent scaffolds `.maestro/runs/my-feature/requirement/`, reads the whole workspace, and
+writes every artifact under `.maestro/runs/my-feature/` — while editing the actual service repos
+under `codebase/` in their own worktrees.
 
 > Release ordering: **approve release → archival (harvest lessons into memory + publish
 > curated docs) → merge the feature branch to master.** Archival is the last automated phase;

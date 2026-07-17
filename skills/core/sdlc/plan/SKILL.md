@@ -19,7 +19,13 @@ mockups, etc.). Standalone? read the requirement and write to a path you choose 
 ## Steps
 1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
    Identify the users, the job-to-be-done, and hard constraints (deadlines, platforms,
-   compliance, budget).
+   compliance, budget). **Then ground in the real code**: read the codebase map if one was
+   provided (it enumerates the existing execution modes the feature must handle), and read the
+   actual source of the flow you are extending — every mode/branch it runs in, not just the one
+   the prompt names. Designing from the prompt alone is the failure mode this step prevents: an
+   approach that only fits the happy path but breaks an existing mode (multi-turn, async, batch,
+   streaming) is a wrong HLD. If no map was provided and the code is nontrivial, do this survey
+   yourself before choosing an approach.
 2. **Clarify unknowns** — list assumptions explicitly; ask the human when a business rule,
    SLA, or data-ownership question is genuinely ambiguous. Do not silently guess.
 3. **Diverge** — generate 2–3 genuinely different approaches (delegating to the
@@ -100,8 +106,10 @@ available, just write the artifacts and stop — resolution happens downstream.
 
 ## Definition of done
 Every section present; ≥2 options with trade-offs; NFRs and risks concrete (not "TBD");
-open questions listed. Do not proceed to detailed design or implementation — this artifact
-stops at the *direction*.
+open questions listed; **the chosen approach demonstrably handles every execution mode the
+codebase map (or your own survey) enumerated** — if one mode can't be supported, that is
+stated as an explicit scope constraint, not glossed over. Do not proceed to detailed design or
+implementation — this artifact stops at the *direction*.
 
 ## Output contract
 Return `hld_path` and `hld_summary` (2–3 sentences). When invoked in **refine mode**
