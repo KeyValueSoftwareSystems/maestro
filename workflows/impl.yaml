@@ -52,7 +52,11 @@ nodes:
       .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
       skill owns slice fan-out and worktree hygiene. Work against the LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml. Report tests honestly.
+      .maestro/runs/${inputs.slug}/openapi.yaml, grounded in the maintained codebase map
+      (docs/codebase-map.md in the ${inputs.stack} repo — umbrella layout:
+      codebase/<repo>/docs/codebase-map.md; single repo: ./docs/codebase-map.md). Explore
+      the live source further only where the map or LLD doesn't cover what a slice
+      touches. Report tests honestly.
     skill: "${inputs.stack}-implement"
     isolate: worktree
     inputs:
@@ -77,8 +81,10 @@ nodes:
     label: Code review
     instruction: |
       Review the ${inputs.stack} implementation on branch
-      ${steps.implement.outputs.branch} against the LLD, contract and standards.
-      Findings need file:line evidence; set blocking=true only for must-fix issues.
+      ${steps.implement.outputs.branch} against the LLD, contract, standards and the
+      maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
+      map to check blast radius, not just the diff in isolation. Findings need file:line
+      evidence; set blocking=true only for must-fix issues.
     skill: "${inputs.stack}-review"
     agent: reviewer
     model: opus
