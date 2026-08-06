@@ -157,9 +157,65 @@ nodes:
       Confirm the product requirement (problem, users, scope, constraints, acceptance) is
       complete, then choose. Design/technical concerns are handled later at the HLD/LLD.
     options:
-      - {id: approve, label: Approve — author the HLD, to: author_hld}
+      - {id: approve, label: Approve — author the HLD, to: check_codebase_map}
       - {id: revise, label: Request PRD revisions (regenerates the PRD + its Q&A), to: brainstorm_draft, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
+
+  # ---- Codebase-map freshness gate: catches drift from commits made OUTSIDE Maestro
+  # (a manual implementation) since the map was last recorded. Staleness is a deterministic
+  # git-diff check (engine/codebase_scan.py), never a model's guess, so it can't be skipped
+  # by swapping a skill. Zero added cost on a clean map — it only routes to a human gate
+  # when there is real drift, and only pays the resync cost if the human opts in.
+  - id: check_codebase_map
+    type: script
+    label: Codebase map freshness check
+    run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
+    routes:
+      - {when: "${steps.check_codebase_map.outputs.stale} == true", to: map_stale_gate}
+      - {to: author_hld}
+
+  - id: map_stale_gate
+    type: gate
+    label: Codebase map may be stale
+    prompt: |
+      Code has changed since the maintained codebase map was last recorded for:
+      ${steps.check_codebase_map.outputs.stale_repos_csv}
+
+      This usually means work happened outside Maestro (e.g. a manual commit). The HLD is
+      about to be grounded in docs/codebase-map.md — resync it first, or proceed with what's there?
+    options:
+      - {id: resync, label: Resync the map first, to: resync_map}
+      - {id: proceed, label: Proceed with the existing map, to: author_hld}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: resync_map
+    type: agent
+    label: Resync codebase map
+    instruction: |
+      The maintained codebase map is stale for: ${steps.check_codebase_map.outputs.stale_repos_csv}.
+      Run `python3 .maestro/engine/codebase_scan.py plan --root .` to see exactly which files
+      changed, per repo, since each one's map was last recorded. For EACH stale repo, update
+      ONLY its docs/codebase-map.md (umbrella layout: codebase/<repo>/docs/codebase-map.md;
+      single repo: ./docs/codebase-map.md) — re-explore just the changed files and fold in
+      new/changed modules, flows, execution modes, APIs and conventions; leave unaffected
+      sections as they are. Do NOT touch docs/technical/, docs/functional/, docs/architecture.md,
+      or the `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps it next.
+      Write a short summary of what was refreshed to
+      .maestro/runs/${inputs.slug}/codebase-map-resync.md.
+    skill: build-knowledge
+    inputs: {slug: "${inputs.slug}"}
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/codebase-map-resync.md"
+    next: record_map_commit
+
+  - id: record_map_commit
+    type: script
+    label: Record codebase-map commits (engine)
+    # Stamps each refreshed repo's current HEAD into its map marker, so the NEXT freshness
+    # check reports current. Engine-owned, not the skill, so swapping resync_map's skill
+    # can't skip or fake this.
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, .]
+    next: author_hld
 
   - id: author_hld
     type: agent

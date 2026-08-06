@@ -76,6 +76,10 @@ class SingleRepo(unittest.TestCase):
         prev = cs.read_marker(map_abs) if os.path.exists(map_abs) else None
         self.assertIsNone(prev)
         self.assertIsNotNone(head)
+        # no map at all -> the freshness gate must treat this repo as stale
+        plan = self._plan(self.tmp)
+        self.assertTrue(plan["stale"])
+        self.assertEqual(plan["stale_repos"], [name])
 
     def test_incremental_after_commit_then_current(self):
         repo = self.tmp
@@ -85,10 +89,12 @@ class SingleRepo(unittest.TestCase):
         recorded_sha = cs.read_marker(os.path.join(repo, cs.DEFAULT_MAP_REL))
         self.assertEqual(recorded_sha, cs._head(repo))
 
-        # nothing changed -> current
+        # nothing changed -> current, and the freshness gate reports not stale
         entry = self._plan_entry(repo)
         self.assertEqual(entry["mode"], "current")
         self.assertEqual(entry["changed_count"], 0)
+        self.assertFalse(self._plan(repo)["stale"])
+        self.assertEqual(self._plan(repo)["stale_repos"], [])
 
         # a new commit -> incremental, listing exactly the changed file
         commit(repo, "src/b.py", "print(2)\n", "add b")
@@ -98,11 +104,16 @@ class SingleRepo(unittest.TestCase):
         self.assertNotIn("src/a.py", entry["changed_files"])
         self.assertEqual(entry["prev_commit"], recorded_sha)
         self.assertEqual(entry["head_commit"], cs._head(repo))
+        # a real code change since the last recorded map -> the gate must fire
+        plan = self._plan(repo)
+        self.assertTrue(plan["stale"])
+        self.assertEqual(plan["stale_repos"], [entry["name"]])
 
-        # record again -> marker advances to the new HEAD, back to current
+        # record again -> marker advances to the new HEAD, back to current/not stale
         write_map(repo)
         quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
         self.assertEqual(self._plan_entry(repo)["mode"], "current")
+        self.assertFalse(self._plan(repo)["stale"])
 
     def test_full_when_recorded_commit_is_gone(self):
         write_map(repo := self.tmp)
@@ -110,9 +121,13 @@ class SingleRepo(unittest.TestCase):
         cs.write_marker(os.path.join(repo, cs.DEFAULT_MAP_REL), "0" * 40)
         entry = self._plan_entry(repo)
         self.assertEqual(entry["mode"], "full")
+        self.assertTrue(self._plan(repo)["stale"])
+
+    def _plan(self, repo):
+        return quiet(cs.cmd_plan, repo, cs.DEFAULT_MAP_REL)
 
     def _plan_entry(self, repo):
-        return quiet(cs.cmd_plan, repo, cs.DEFAULT_MAP_REL)["repos"][0]
+        return self._plan(repo)["repos"][0]
 
 
 class UmbrellaRepos(unittest.TestCase):
@@ -145,6 +160,21 @@ class UmbrellaRepos(unittest.TestCase):
         result = quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL)
         self.assertEqual([r["name"] for r in result["recorded"]], ["backend"])
         self.assertEqual([s["name"] for s in result["skipped"]], ["frontend"])
+
+    def test_stale_flags_only_the_drifted_repo(self):
+        # both repos mapped + recorded -> nothing stale
+        for name in ("backend", "frontend"):
+            write_map(os.path.join(self.tmp, "codebase", name))
+        quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL)
+        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAP_REL)
+        self.assertFalse(plan["stale"])
+        self.assertEqual(plan["stale_repos"], [])
+
+        # a manual commit in just one repo (simulating work done outside Maestro)
+        commit(os.path.join(self.tmp, "codebase", "backend"), "y.txt", "manual change", "manual")
+        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAP_REL)
+        self.assertTrue(plan["stale"])
+        self.assertEqual(plan["stale_repos"], ["backend"])
 
 
 if __name__ == "__main__":
