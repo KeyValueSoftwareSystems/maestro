@@ -179,7 +179,7 @@ nodes:
     label: Codebase map may be stale
     prompt: |
       Code has changed since the maintained codebase map was last recorded for:
-      ${steps.check_codebase_map.outputs.stale_repos}
+      ${steps.check_codebase_map.outputs.stale_repos_csv}
 
       This usually means work happened outside Maestro (e.g. a manual commit). The HLD is
       about to be grounded in docs/codebase-map.md — resync it first, or proceed with what's there?
@@ -192,7 +192,7 @@ nodes:
     type: agent
     label: Resync codebase map
     instruction: |
-      The maintained codebase map is stale for: ${steps.check_codebase_map.outputs.stale_repos}.
+      The maintained codebase map is stale for: ${steps.check_codebase_map.outputs.stale_repos_csv}.
       Run `python3 .maestro/engine/codebase_scan.py plan --root .` to see exactly which files
       changed, per repo, since each one's map was last recorded. For EACH stale repo, update
       ONLY its docs/codebase-map.md (umbrella layout: codebase/<repo>/docs/codebase-map.md;

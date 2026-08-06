@@ -152,13 +152,19 @@ def cmd_plan(root, map_rel):
             entry["changed_truncated"] = True
         repos_out.append(entry)
     stale_repos = [r["name"] for r in repos_out if r["mode"] != "current"]
+    # Single-line, un-indented: a workflow script node's `complete --stdout` only parses
+    # the LAST line of stdout as JSON and keeps only scalar fields (resolver._complete_script)
+    # — a pretty-printed multi-line object's last line is just "}", so `stale`/`stale_repos`
+    # would silently never reach the workflow. stale_repos (list) is dropped by that same
+    # scalar-only filter, so also emit stale_repos_csv for route/prompt placeholders to use.
     print(json.dumps({
         "root": root,
         "map_rel": map_rel,
         "repos": repos_out,
         "stale": bool(stale_repos),
         "stale_repos": stale_repos,
-    }, indent=2))
+        "stale_repos_csv": ",".join(stale_repos),
+    }))
     return 0
 
 
@@ -176,7 +182,9 @@ def cmd_record(root, map_rel):
             continue
         write_marker(map_abs, head)
         recorded.append({"name": name, "map_path": _rel(map_abs, root), "commit": head})
-    print(json.dumps({"recorded": recorded, "skipped": skipped}, indent=2))
+    # Single-line for the same reason as cmd_plan — a workflow script node's last stdout
+    # line must itself be the whole JSON object.
+    print(json.dumps({"recorded": recorded, "skipped": skipped}))
     return 0
 
 
