@@ -18,6 +18,9 @@ Commands
         * incremental — map exists: emit the files changed since the recorded commit
                         so the skill re-explores only those.
         * current     — HEAD == recorded commit: nothing changed, skip.
+      Also emits top-level `stale` (bool — any repo not `current`) and `stale_repos`
+      (names of those repos), so a workflow `script` node can route on a plain scalar
+      without inspecting the per-repo array (used by design.yaml's pre-HLD freshness gate).
       Read-only (git reads + file reads). Prints a JSON plan on stdout.
 
   record [--root .] [--map-rel docs/codebase-map.md]
@@ -148,7 +151,14 @@ def cmd_plan(root, map_rel):
         if len(changed) > MAX_CHANGED:
             entry["changed_truncated"] = True
         repos_out.append(entry)
-    print(json.dumps({"root": root, "map_rel": map_rel, "repos": repos_out}, indent=2))
+    stale_repos = [r["name"] for r in repos_out if r["mode"] != "current"]
+    print(json.dumps({
+        "root": root,
+        "map_rel": map_rel,
+        "repos": repos_out,
+        "stale": bool(stale_repos),
+        "stale_repos": stale_repos,
+    }, indent=2))
     return 0
 
 
