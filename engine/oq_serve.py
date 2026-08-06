@@ -4,9 +4,16 @@
 Reads open-questions.json and prints a JSON object to stdout describing what the
 workflow should do next:
 
-  {"state": "ask", "qid", "question", "why", "options_md"}  -> a question is open
-  {"state": "refine"}                                        -> answers await folding
-  {"state": "approve"}                                       -> nothing left to do
+  {"state": "ask", "count", "qids_csv", "questions_md"}  -> 1+ questions are open,
+                                                             ALL served together
+  {"state": "refine"}                                    -> answers await folding
+  {"state": "approve"}                                   -> nothing left to do
+
+ALL open questions are served in one batch (not one at a time) so the human answers
+every open question in a SINGLE gate turn instead of one round-trip per question —
+oq_record_batch.py applies the combined reply back. qids_csv/questions_md are strings
+(not the per-repo list) on purpose: `complete --stdout` (resolver._complete_script)
+only parses the LAST line of stdout as JSON and keeps only scalar output fields.
 
 The design workflow's script node routes on the `state` output field — the canonical
 example of the "script stdout JSON becomes routable outputs" pattern.
@@ -45,20 +52,26 @@ def main() -> None:
 
     questions = doc.get("questions", [])
 
-    # 1. Any open question -> ask the first one.
-    for q in questions:
-        if q.get("status") == "open":
+    # 1. Any open questions -> ask ALL of them in one batch, most-decisive-first
+    # (the order the skill already writes them in) — one gate turn, not N.
+    open_qs = [q for q in questions if q.get("status") == "open"]
+    if open_qs:
+        blocks = []
+        for i, q in enumerate(open_qs, start=1):
             options_md = "\n".join(
-                f"{i}. {opt}" for i, opt in enumerate(q["options"], start=1)
+                f"   {j}. {opt}" for j, opt in enumerate(q["options"], start=1)
             )
-            print(json.dumps({
-                "state": "ask",
-                "qid": q["id"],
-                "question": q["question"],
-                "why": q["why"],
-                "options_md": options_md,
-            }))
-            return
+            blocks.append(
+                f"{i}. **{q['question']}** (id: {q['id']})\n"
+                f"   Why: {q['why']}\n{options_md}"
+            )
+        print(json.dumps({
+            "state": "ask",
+            "count": len(open_qs),
+            "qids_csv": ",".join(q["id"] for q in open_qs),
+            "questions_md": "\n\n".join(blocks),
+        }))
+        return
 
     # 2. Any resolved-but-unfolded answer -> refine the HLD.
     if any(q.get("status") == "resolved" for q in questions):

@@ -340,7 +340,7 @@ class SdlcE2E(unittest.TestCase):
                 elif step == "oq_ask":
                     asked.append(action["prompt"])
                     self.assertIn("Quota per user?", action["prompt"])
-                    resolver.record_gate(run, step, "answer", input_text="2")
+                    resolver.record_gate(run, step, "answer-all", input_text="2")
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
                 elif step == "hld_approval":
@@ -430,7 +430,7 @@ class SdlcE2E(unittest.TestCase):
                                          input_text="https://figma.com/file/demo")
                 elif step == "rq_ask":
                     asked.append(action["prompt"])
-                    resolver.record_gate(run, step, "answer", input_text="2")
+                    resolver.record_gate(run, step, "answer-all", input_text="2")
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
                 else:

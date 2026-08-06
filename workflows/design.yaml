@@ -87,7 +87,7 @@ nodes:
 
   - id: rq_serve
     type: script
-    label: Next requirement question?
+    label: Next requirement questions?
     run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/requirement-questions.json"]
     max_visits: 40
     on_exhausted: prd_approval
@@ -96,33 +96,35 @@ nodes:
       - {when: "${steps.rq_serve.outputs.state} == refine", to: rq_fold}
       - {to: prd_approval}
 
+  # All open requirement questions are asked in ONE gate turn (not one round-trip per
+  # question) — oq_serve.py batches them; oq_record.py applies the combined reply.
   - id: rq_ask
     type: gate
-    label: Requirement question
+    label: Requirement questions
     prompt: |
-      **${steps.rq_serve.outputs.question}**
+      ${steps.rq_serve.outputs.count} open question(s):
 
-      Why it matters: ${steps.rq_serve.outputs.why}
+      ${steps.rq_serve.outputs.questions_md}
 
-      ${steps.rq_serve.outputs.options_md}
-
-      Answer with an option number or free text.
+      To answer, reply with ONE line per question, IN THE SAME ORDER as above — each
+      line a number to pick that option, free text for a custom answer, "skip", or
+      "you decide". Keep each answer on a single line.
     max_visits: 40
     options:
-      - {id: answer, label: Answer it, to: rq_record, input: answer}
-      - {id: you-decide, label: You decide (pick a sensible default), to: rq_record}
-      - {id: skip, label: Skip — leave as an assumption, to: rq_record}
+      - {id: answer-all, label: Answer these, to: rq_record, input: answers_blob}
+      - {id: decide-all, label: You decide all (pick sensible defaults for everything), to: rq_record}
+      - {id: skip-all, label: Skip all — leave as assumptions, to: rq_record}
 
   - id: rq_record
     type: script
-    label: Record answer
+    label: Record answers
     run:
       - python3
       - .maestro/engine/oq_record.py
       - ".maestro/runs/${inputs.slug}/requirement-questions.json"
-      - "${steps.rq_serve.outputs.qid}"
+      - "${steps.rq_serve.outputs.qids_csv}"
       - "${steps.rq_ask.outputs.choice}"
-      - "${steps.rq_ask.outputs.answer}"
+      - "${steps.rq_ask.outputs.answers_blob}"
     max_visits: 40
     on_fail: abort
     next: rq_serve
@@ -246,9 +248,11 @@ nodes:
     next: oq_serve
 
   # ---- open-questions cycle: serve -> ask -> record -> serve (back-edges) ----
+  # All open questions are asked in ONE gate turn (not one round-trip per question) —
+  # oq_serve.py batches them; oq_record.py applies the combined reply.
   - id: oq_serve
     type: script
-    label: Next open question?
+    label: Next open questions?
     run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/open-questions.json"]
     max_visits: 40
     on_exhausted: hld_approval
@@ -259,31 +263,31 @@ nodes:
 
   - id: oq_ask
     type: gate
-    label: Open question
+    label: Open questions
     prompt: |
-      **${steps.oq_serve.outputs.question}**
+      ${steps.oq_serve.outputs.count} open question(s):
 
-      Why it matters: ${steps.oq_serve.outputs.why}
+      ${steps.oq_serve.outputs.questions_md}
 
-      ${steps.oq_serve.outputs.options_md}
-
-      Answer with an option number or free text.
+      To answer, reply with ONE line per question, IN THE SAME ORDER as above — each
+      line a number to pick that option, free text for a custom answer, "skip", or
+      "you decide". Keep each answer on a single line.
     max_visits: 40
     options:
-      - {id: answer, label: Answer it, to: oq_record, input: answer}
-      - {id: you-decide, label: You decide (pick a sensible default), to: oq_record}
-      - {id: skip, label: Skip — defer to LLD, to: oq_record}
+      - {id: answer-all, label: Answer these, to: oq_record, input: answers_blob}
+      - {id: decide-all, label: You decide all (pick sensible defaults for everything), to: oq_record}
+      - {id: skip-all, label: Skip all — defer to LLD, to: oq_record}
 
   - id: oq_record
     type: script
-    label: Record answer
+    label: Record answers
     run:
       - python3
       - .maestro/engine/oq_record.py
       - ".maestro/runs/${inputs.slug}/open-questions.json"
-      - "${steps.oq_serve.outputs.qid}"
+      - "${steps.oq_serve.outputs.qids_csv}"
       - "${steps.oq_ask.outputs.choice}"
-      - "${steps.oq_ask.outputs.answer}"
+      - "${steps.oq_ask.outputs.answers_blob}"
     max_visits: 40
     on_fail: abort
     next: oq_serve
