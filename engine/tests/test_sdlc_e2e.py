@@ -25,8 +25,10 @@ def canned_agent_outputs(step, action):
         "rq_fold": {"refined_summary": "folded 1 answer"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
         "refine_hld": {"refined_summary": "folded 1 answer"},
-        "backend_design": {"lld_path": "lld/backend.md", "contract_notes": "rest+cursor"},
-        "frontend_design": {"lld_path": "lld/frontend.md", "contract_notes": "uses GET /searches"},
+        "slot_1_design": {"lld_path": "lld/x.md", "contract_notes": "rest+cursor"},
+        "slot_2_design": {"lld_path": "lld/x.md", "contract_notes": "uses GET /searches"},
+        "slot_3_design": {"lld_path": "lld/x.md", "contract_notes": "n/a"},
+        "slot_4_design": {"lld_path": "lld/x.md", "contract_notes": "n/a"},
         "contract": {"contract_summary": "5 endpoints"},
         "test_cases": {"test_cases_path": "test-cases.md", "case_count": 12},
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
@@ -72,6 +74,13 @@ class SdlcE2E(unittest.TestCase):
         os.makedirs(req)
         with open(os.path.join(req, "requirement.md"), "w") as fh:
             fh.write("Build the demo feature.\n")
+        # lld_repo_pool.py discovers repos under codebase/* — give it exactly backend+frontend
+        # so the real script (run for real below, not stubbed) matches every other assumption
+        # in this file (backend.md/frontend.md artifacts, per-stack tasks/impl/review).
+        for stack in ("backend", "frontend"):
+            path = os.path.join(self.tmp, "codebase", stack)
+            os.makedirs(path)
+            subprocess.run(["git", "init", "-q"], cwd=path, check=True)
 
     # -- driver ----------------------------------------------------------
 
@@ -110,7 +119,8 @@ class SdlcE2E(unittest.TestCase):
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
-                            or any("mem_consolidate" in a for a in act.get("argv", []))):
+                            or any("mem_consolidate" in a or "lld_repo_pool" in a
+                                   for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
                         code, out = proc.returncode, proc.stdout
@@ -153,6 +163,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
             "design/lld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
@@ -182,6 +193,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None), ("none", None)],
             "design/prd_approval": [("approve", None), ("approve", None)],
             "design/hld_approval": [("approve", None), ("approve", None)],
+            "design/lld_scope": [("all", None), ("all", None)],
             "design/lld_approval": [("approve", None), ("approve", None)],
             "contract_approval": [("revise", "tighten the API"), ("approve", None)],
             "release_approval": [("approve", None)],
@@ -202,6 +214,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("revise", "sharpen the scope"), ("approve", None)],
             "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
             "design/lld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
@@ -219,6 +232,7 @@ class SdlcE2E(unittest.TestCase):
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
             "design/lld_approval": [("approve", None)],
             "arch_gate": [("waive", None)],
             "contract_approval": [("approve", None)],
@@ -266,6 +280,7 @@ class SdlcE2E(unittest.TestCase):
                 "design/collect_references": [("none", None)],
                 "design/prd_approval": [("approve", None)],
                 "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
                 "design/lld_approval": [("approve", None)],
                 "contract_approval": [("approve", None)],
                 "release_approval": [("approve", None)],
@@ -343,8 +358,15 @@ class SdlcE2E(unittest.TestCase):
                     resolver.record_gate(run, step, "answer-all", input_text="2")
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
+                elif step == "map_stale_gate":
+                    # this test runs every script for real (unlike drive()'s selective
+                    # stubbing), and setUp's codebase/backend+frontend are freshly `git init`'d
+                    # with no map yet — genuinely stale, so the gate genuinely fires.
+                    resolver.record_gate(run, step, "proceed")
                 elif step == "hld_approval":
                     resolver.record_gate(run, step, "approve")
+                elif step == "lld_scope":
+                    resolver.record_gate(run, step, "all")
                 elif step == "lld_approval":
                     resolver.record_gate(run, step, "approve")
                 else:
@@ -433,6 +455,10 @@ class SdlcE2E(unittest.TestCase):
                     resolver.record_gate(run, step, "answer-all", input_text="2")
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
+                elif step == "map_stale_gate":
+                    # runs every script for real; setUp's codebase/ repos are freshly
+                    # `git init`'d with no map yet, so this genuinely fires.
+                    resolver.record_gate(run, step, "proceed")
                 else:
                     self.fail(f"unexpected gate {step}")
             statemod.save("demo", run.state, self.tmp)
