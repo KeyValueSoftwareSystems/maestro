@@ -117,7 +117,8 @@ def run(root, slug, workflow, inputs, auto, max_steps):
             # that ALSO takes it (same slug+root) would self-deadlock.
             if act["action"] == "run_agent":
                 outputs = _stub_agent(root, act)
-                _log(f"[agent ] {step} (stubbed) -> {outputs}")
+                _log(f"[agent ] {step} (model={act.get('model')}, skill={act.get('skill')}, "
+                     f"stubbed) -> {outputs}")
             elif act["action"] == "run_script":
                 proc = subprocess.run(act["argv"], cwd=root, capture_output=True,
                                       text=True, timeout=act.get("timeout", 300))
