@@ -1,4 +1,4 @@
-# The full KeyValue AI-SDLC pipeline — the default workflow behind `/maestro <slug>`.
+# The full KeyValue AI-SDLC pipeline — the default workflow behind the Maestro skill.
 #
 #   design -> architecture review -> gates -> repo implementation pool -> verified
 #   test-context manifest -> QA -> review pack -> release

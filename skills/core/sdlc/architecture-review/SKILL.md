@@ -12,7 +12,7 @@ Read-only — never edit code.
 
 ## Inputs
 Your instructions name what to read — the per-stack LLDs and the cross-repo contract —
-cross-checked against the HLD, acceptance criteria, and the architecture rules (`CLAUDE.md`,
+cross-checked against the HLD, acceptance criteria, and the architecture rules (`AGENTS.md`, `CLAUDE.md`,
 ADRs).
 
 ## Steps
@@ -21,7 +21,7 @@ ADRs).
 2. **Trace each acceptance criterion** to a design element — flag anything unmet (a gap).
 3. **Deep, evidence-backed pass** over every dimension in the checklist below. For a more
    independent read you MAY spawn a fresh read-only sub-agent (via the Task tool) that follows
-   this same skill — do this where your harness supports it (e.g. Claude Code). Otherwise
+   this same skill — do this where your harness supports it (e.g. Claude Code or Codex). Otherwise
    perform the pass **inline**. Either way: **read-only — never edit code.** You are the
    read-only backstop; nothing is skipped.
 4. **Consolidate** findings; sort by severity; decide `blocking`.

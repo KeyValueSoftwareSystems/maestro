@@ -22,7 +22,7 @@ concurrently:
    never fall back to editing the main working tree.
 
 ## Before editing
-1. Read `CLAUDE.md`, the frontend LLD — reuse the components/patterns it identified before
+1. Read `AGENTS.md`/`CLAUDE.md`, the frontend LLD — reuse the components/patterns it identified before
    adding new ones — and the contract, the inputs your instructions point to.
 2. List pages affected, components to reuse/add, API hooks, form schema/validation,
    analytics, and tests. List files to change.

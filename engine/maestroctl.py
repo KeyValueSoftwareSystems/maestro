@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""maestroctl — the deterministic engine CLI behind the /maestro lead agent.
+"""maestroctl — the deterministic engine CLI behind the Maestro lead agent.
 
 The lead agent's whole protocol:
 

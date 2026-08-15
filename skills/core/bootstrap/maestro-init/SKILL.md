@@ -1,6 +1,6 @@
 ---
 name: maestro-init
-description: One-shot onboarding for a repo — detect its tech stack and install the matching skills/agents (detect-stack), then build the living-docs knowledge base (build-knowledge). Run once when adopting Maestro in a codebase. Front door for /maestro-init.
+description: One-shot onboarding for a repo — detect its tech stack and install the matching skills/agents (detect-stack), then build the living-docs knowledge base (build-knowledge). Run once when adopting Maestro in a codebase. Front door for /maestro-init or $maestro-init.
 allowed-tools: Read, Grep, Glob, Bash, Write, Task, AskUserQuestion
 tags: [maestro, bootstrap]
 ---
@@ -17,8 +17,9 @@ The first time you adopt Maestro in a repo (or after a big stack change). Safe t
 both underlying skills are idempotent (refresh, don't duplicate).
 
 ## Steps
-Run these **in order**, in this session. On Claude Code you may dispatch each as a subagent
-via Task; otherwise follow them inline.
+Run these **in order**, in this session. On Claude Code or Codex you may dispatch a step to
+a subagent when that keeps bulky scanning out of the lead context; otherwise follow it
+inline. Never parallelize these steps because each consumes the previous step's result.
 
 1. **Fetch + consolidated sync gate** — run
    `python3 .maestro/engine/workspace_sync.py plan --root . --remote-only --out .maestro/index/workspace-sync-init-plan.json`.
@@ -40,11 +41,11 @@ via Task; otherwise follow them inline.
 4. **Record exact provenance** — after knowledge authoring succeeds, run
    `python3 .maestro/engine/codebase_scan.py record --root .`, then
    `python3 .maestro/engine/workspace_sync.py record-knowledge --root . --evidence <architecture_path>`.
-   This makes later `/maestro` starts a fast fetch + local SHA comparison with zero model call
+   This makes later `/maestro` or `$maestro` starts a fast fetch + local SHA comparison with zero model call
    when nothing changed.
 5. **Summarize + next step.** Report the stacks installed and the docs written, then tell the
-   user that newly installed skills/agents become active after their IDE reloads the config,
-   and that they can start a feature with `/maestro <slug>`.
+   user that newly installed skills/agents become active after their host reloads the config,
+   and that they can start a feature with `/maestro <slug>` or `$maestro <slug>`.
 
 ## Standards
 - Do not re-implement detection or doc-generation here — delegate to the two skills so their
@@ -52,7 +53,7 @@ via Task; otherwise follow them inline.
 - If step 1 detects no stack, still run step 2; report that no per-stack skills were added.
 
 ## Safety
-- Writes are installer output into IDE config dirs (`.claude/`, `.cursor/`), documentation,
+- Writes are installer output into harness config dirs (`.claude/`, `.cursor/`, `.agents/`), documentation,
   codebase-map markers, and engine-owned `.maestro/index/` provenance. Never edit application
   code; never touch `.maestro/runs/` state. Repository updates are explicit-user-approved,
   verified fast-forwards only.

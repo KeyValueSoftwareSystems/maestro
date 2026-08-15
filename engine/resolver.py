@@ -888,7 +888,7 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
         # Reference the skill by NAME (the harness resolves installed skills from their
         # frontmatter name). Do NOT hard-code a `skills/<name>/SKILL.md` path — that path
         # only exists in the pack repo, not in a consumer repo where skills install to
-        # .claude/skills or .cursor/skills.
+        # .claude/skills, .cursor/skills, or .agents/skills.
         lines.append(
             f"Load and follow the `{skill}` skill to perform this task — read its SKILL.md "
             f"fully before acting; it owns the method and quality bar."

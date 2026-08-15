@@ -1,7 +1,7 @@
 # Maestro workflow spec — v1
 
 A workflow is a directed graph of **nodes** described in one YAML file. It is executed by the
-**lead agent** (the user's interactive session running `/maestro <slug>`), which never interprets
+**lead agent** (the user's interactive session running `/maestro <slug>` or `$maestro <slug>`), which never interprets
 the graph itself: the deterministic resolver (`engine/maestroctl.py next`) reads the workflow +
 the per-feature state ledger and serves exactly one next action as JSON.
 

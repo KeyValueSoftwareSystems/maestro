@@ -31,7 +31,7 @@ You run in one of two modes; your instructions say which:
 ## Inputs
 Your instructions name the artifact path to write, the requirement folder to read, and any
 **references** the user provided. Read every file already in the requirement folder plus
-`CLAUDE.md` and obviously-related docs. Standalone (`/brainstorm`)? Work from what the user
+`AGENTS.md`/`CLAUDE.md` and obviously-related docs. Standalone (`/brainstorm`)? Work from what the user
 gives you and write to a sensible path you choose (and tell them where).
 
 ### Handling references (file links, Figma, URLs, tickets)

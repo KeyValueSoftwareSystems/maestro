@@ -116,6 +116,18 @@ class UiServerTest(unittest.TestCase):
         # workflows sort before non-workflows
         self.assertTrue(obj[0]["workflow"])
 
+    def test_workflows_list_skips_host_skill_directories(self):
+        for dirname in (".claude", ".cursor", ".agents", ".codex"):
+            nested = os.path.join(self.tmp, dirname, "skills", "noise")
+            os.makedirs(nested)
+            with open(os.path.join(nested, "not-a-workflow.yaml"), "w") as fh:
+                fh.write(WF)
+
+        code, obj = self._get_json("/api/workflows")
+        self.assertEqual(code, 200)
+        files = {entry["file"] for entry in obj}
+        self.assertFalse(any("not-a-workflow.yaml" in path for path in files))
+
     def test_workflow_read(self):
         code, body = self._get("/api/workflow?file=workflows/demo.yaml")
         self.assertEqual(code, 200)
