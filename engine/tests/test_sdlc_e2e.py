@@ -14,6 +14,8 @@ import unittest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
+import codebase_scan  # noqa: E402
+import workspace_sync  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
@@ -89,6 +91,28 @@ class SdlcE2E(unittest.TestCase):
                 fh.write(f"{stack}\n")
             subprocess.run(["git", "add", "README.md"], cwd=path, check=True)
             subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=path, check=True)
+            map_path = os.path.join(path, "docs", "codebase-map.md")
+            os.makedirs(os.path.dirname(map_path), exist_ok=True)
+            with open(map_path, "w") as fh:
+                fh.write(f"# {stack} map\n")
+            head = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"], check=True,
+                                  capture_output=True, text=True).stdout.strip()
+            codebase_scan.write_marker(map_path, head)
+        # Simulate the normal /maestro-init result so the happy path proves the new sync
+        # checkpoint is zero-agent/no-gate when code and knowledge are already current.
+        os.makedirs(os.path.join(self.tmp, "docs"), exist_ok=True)
+        with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
+            fh.write("# Architecture\n")
+        for surface in ("technical", "functional"):
+            directory = os.path.join(self.tmp, "docs", surface)
+            os.makedirs(directory)
+            with open(os.path.join(directory, "demo.md"), "w") as fh:
+                fh.write(f"# Demo {surface}\n")
+        evidence = os.path.join(self.tmp, ".maestro", "bootstrap-evidence.md")
+        with open(evidence, "w") as fh:
+            fh.write("Indexed test workspace.\n")
+        with __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
+            self.assertEqual(workspace_sync.cmd_record_knowledge(self.tmp, evidence), 0)
 
     def write_agent_artifact(self, rel, step):
         full = os.path.join(self.tmp, rel)
@@ -157,7 +181,7 @@ class SdlcE2E(unittest.TestCase):
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
-                                   or "implementation_pool" in a
+                                   or "implementation_pool" in a or "workspace_sync" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -172,7 +196,15 @@ class SdlcE2E(unittest.TestCase):
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
                     option, text = decisions[i]
                     gate_ptr[step] = i + 1
-                    resolver.record_gate(run, step, option, input_text=text)
+                    selected = next(o for o in act["options"] if o["id"] == option)
+                    resolver.record_gate(run, step, option)
+                    if selected.get("input"):
+                        self.assertIsNotNone(text, f"{step}/{option} requires scripted input")
+                        pending = resolver.next_action(run)
+                        self.assertEqual(pending["action"], "ask_input")
+                        self.assertEqual(pending["field"], selected["input"])
+                        trace.append(("ask_input", step))
+                        resolver.record_gate_input(run, step, text)
                 statemod.save("demo", run.state, self.tmp)
         self.fail("pipeline did not terminate within max_steps")
 
@@ -212,6 +244,11 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["outputs"]["implementation_manifest"],
                          ".maestro/runs/demo/implementation-manifest.json")
         steps = [s for _, s in trace]
+        self.assertIn("workspace_sync_initial/plan", steps)
+        self.assertIn("workspace_sync_initial/lock", steps)
+        self.assertIn("workspace_sync_pre_impl/plan", steps)
+        self.assertIn("workspace_sync_pre_impl/lock", steps)
+        self.assertNotIn("workspace_sync_initial/refresh_knowledge", steps)
         # both selected repos implemented through runtime claims, not hard-coded stacks
         impl_steps = [s for s in steps if s.endswith("/impl/implement")]
         review_steps = [s for s in steps if s.endswith("/impl/review")]
@@ -266,6 +303,31 @@ class SdlcE2E(unittest.TestCase):
         # PRD authored twice (revise looped back), HLD authored once (revise was before it)
         self.assertEqual(steps.count("design/brainstorm_draft"), 2)
         self.assertEqual(steps.count("design/author_hld"), 1)
+
+    def test_lld_revise_requires_feedback_action_before_regeneration(self):
+        self.prep_tasks_json()
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None), ("all", None)],
+            "design/lld_approval": [
+                ("revise", "Backend: rotate refresh tokens.\nFrontend: show expiry state."),
+                ("approve", None),
+            ],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
+        }
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        lld_events = [(kind, step) for kind, step in trace
+                      if step == "design/lld_approval"]
+        self.assertIn(("ask_input", "design/lld_approval"), lld_events)
+        state = statemod.load("demo", self.tmp)
+        revisions = [g for g in state["gates"]
+                     if g["step"] == "design/lld_approval" and g["option"] == "revise"]
+        self.assertEqual(len(revisions), 1)
+        self.assertIn("rotate refresh tokens", revisions[0]["input"])
 
     def test_blocking_arch_review_gate_waive(self):
         self.prep_tasks_json()

@@ -79,6 +79,7 @@ def _stub_agent(root, act):
                     fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "
                              f"— this step's real agent was never dispatched.\n")
     if (step.endswith("resync_map") or step.endswith("/build")
+            or step.endswith("refresh_knowledge")
             or step.endswith("/retrospect")):
         for _name, repo in codebase_scan.discover_repos(root):
             map_path = os.path.join(repo, codebase_scan.DEFAULT_MAP_REL)
@@ -88,6 +89,12 @@ def _stub_agent(root, act):
             os.makedirs(os.path.dirname(map_path), exist_ok=True)
             with open(map_path, "a", encoding="utf-8") as fh:
                 fh.write("\n# Simulated map refresh\n")
+    if step.endswith("refresh_knowledge"):
+        for surface in ("technical", "functional"):
+            path = os.path.join(root, "docs", surface, "simulated.md")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(f"# Simulated {surface} knowledge\n")
     bool_values = {"blocking": False, "tests_passed": True, "passed": True,
                    "checks_passed": True, "risky": False}
     numeric_fields = {"task_count", "slice_count", "case_count", "failed_count",
@@ -106,8 +113,7 @@ def _stub_agent(root, act):
 def _choose_gate_option(act, auto):
     options = act["options"]
     if auto:
-        return options[0], (f"[auto] placeholder for {options[0].get('input')}"
-                             if options[0].get("input") else None)
+        return options[0]
     _log(f"\n--- gate: {act['step']} ---")
     _log(act["prompt"].rstrip())
     for i, opt in enumerate(options):
@@ -122,10 +128,19 @@ def _choose_gate_option(act, auto):
         if match:
             break
         _log(f"unrecognized choice {raw!r}, try again")
-    text = None
-    if match.get("input"):
-        text = input(f"  free text for '{match['input']}': ")
-    return match, text
+    return match
+
+
+def _collect_input(act, auto):
+    if auto:
+        return f"[auto] placeholder for {act['field']}"
+    _log(f"\n--- required input: {act['step']} ---")
+    _log(act["prompt"].rstrip())
+    while True:
+        value = input(f"{act['field']}: ")
+        if value.strip():
+            return value
+        _log("input cannot be blank")
 
 
 MAX_REPEATED_AUTO_CHOICE = 3
@@ -182,8 +197,8 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                 if proc.returncode and proc.stderr.strip():
                     _log(f"         stderr: {proc.stderr.strip()[:500]}")
             elif act["action"] == "ask_gate":
-                option, text = _choose_gate_option(act, auto)
-                _log(f"[gate  ] {step} -> {option['id']}" + (f" ({text})" if text else ""))
+                option = _choose_gate_option(act, auto)
+                _log(f"[gate  ] {step} -> {option['id']}")
                 if auto:
                     key = (step, option["id"])
                     auto_repeat[key] = auto_repeat.get(key, 0) + 1
@@ -195,6 +210,9 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                             f"the simulator can't perform. Re-run without --auto to answer "
                             f"it yourself.", code=1,
                         )
+            elif act["action"] == "ask_input":
+                text = _collect_input(act, auto)
+                _log(f"[input ] {step} ({act['field']})")
 
             with statemod.locked(slug, root):
                 run_obj = resolver.Run(slug, root)
@@ -204,7 +222,9 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                     resolver.complete_step(run_obj, step, exit_code=proc.returncode,
                                            stdout=proc.stdout)
                 elif act["action"] == "ask_gate":
-                    resolver.record_gate(run_obj, step, option["id"], input_text=text)
+                    resolver.record_gate(run_obj, step, option["id"])
+                elif act["action"] == "ask_input":
+                    resolver.record_gate_input(run_obj, step, text)
                 statemod.save(slug, run_obj.state, root)
     _log(f"\n[stopped] hit --max-steps ({max_steps}) without finishing")
     return {"action": "stopped"}

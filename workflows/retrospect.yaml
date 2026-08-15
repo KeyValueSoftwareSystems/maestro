@@ -68,7 +68,7 @@ nodes:
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
-      - {to: consolidate}
+      - {to: record_knowledge}
 
   - id: record_maps
     type: script
@@ -79,6 +79,13 @@ nodes:
     # archive phase's publish step.
     run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/retrospect-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
     on_fail: retrospect
+    next: record_knowledge
+
+  - id: record_knowledge
+    type: script
+    label: Record living-doc provenance (engine)
+    run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ., --evidence, ".maestro/memory/incoming/${inputs.slug}.json"]
+    on_fail: abort
     next: consolidate
 
   - id: consolidate
