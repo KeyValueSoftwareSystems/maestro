@@ -11,15 +11,13 @@ Choices (the ask gate options in workflows/design.yaml):
   answer-all  -> parse `blob`, ONE LINE PER QID, in the SAME ORDER as qids_csv. Each
                  line is itself one of: a bare integer (picks that option), "skip",
                  "you decide"/"default" (case-insensitive), or free text (stored
-                 verbatim). Fail-soft: a missing line (fewer lines than qids) resolves
-                 that question as you-decide rather than erroring — a Q&A formatting
-                 slip should never abort the whole design run.
+                 verbatim). A missing or blank line leaves that question open. Only an
+                 explicit "you decide" delegates a product decision to the planner.
   decide-all  -> every qid resolved as you-decide; no blob needed.
   skip-all    -> every qid deferred; no blob needed.
 
 Usage: python3 engine/oq_record.py <path> <qids_csv> <choice> [blob]
-Exit 0 = OK; exit 1 = FAIL (reason on stderr) — only for structural problems (bad path,
-unknown qid, unknown choice), never for a line-count mismatch in `blob`.
+Exit 0 = OK; exit 1 = FAIL (reason on stderr).
 """
 import json
 import sys
@@ -61,7 +59,9 @@ def apply_choice(q, choice, answer_text=""):
 def _parse_line(line):
     """One blob line -> (choice, answer_text) for apply_choice."""
     text = line.strip()
-    if not text or text.lower() == "skip":
+    if not text:
+        return "open", ""
+    if text.lower() == "skip":
         return "skip", ""
     if text.lower() in ("you decide", "you-decide", "default"):
         return "you-decide", ""
@@ -101,16 +101,12 @@ def main():
     elif choice == "answer-all":
         lines = blob.splitlines()
         for i, qid in enumerate(qids):
-            if i < len(lines):
-                line_choice, text = _parse_line(lines[i])
-            else:
-                # fewer lines than questions -> fail-soft default, never abort the run
-                line_choice, text = "you-decide", ""
-            try:
-                apply_choice(by_id[qid], line_choice, text)
-            except ValueError:
-                # an "answer" line that was empty after strip -> same fail-soft default
-                apply_choice(by_id[qid], "you-decide")
+            if i >= len(lines):
+                continue
+            line_choice, text = _parse_line(lines[i])
+            if line_choice == "open":
+                continue
+            apply_choice(by_id[qid], line_choice, text)
             recorded.append(qid)
     else:
         fail(f"unknown choice: {choice}")
@@ -121,7 +117,14 @@ def main():
         fail(f"would produce an invalid file: {error}")
     path.write_text(json.dumps(doc, indent=2) + "\n")
 
-    print(json.dumps({"recorded_count": len(recorded), "recorded_csv": ",".join(recorded)}))
+    remaining_open = [q.get("id") for q in doc.get("questions", [])
+                      if q.get("status") == "open"]
+    print(json.dumps({
+        "recorded_count": len(recorded),
+        "recorded_csv": ",".join(recorded),
+        "remaining_open": len(remaining_open),
+        "remaining_open_csv": ",".join(remaining_open),
+    }))
 
 
 if __name__ == "__main__":

@@ -1,10 +1,8 @@
 """oq_serve.py / oq_record.py — the batched open-questions loop (workflows/design.yaml's
 rq_*/oq_* cycles share these scripts on two different files).
 
-Proves the batch contract: ALL open questions are served in one turn (not one at a
-time), the combined reply is applied positionally, and a malformed/short reply degrades
-to a sensible default rather than aborting the run (fail-soft, matching this file
-family's existing convention)."""
+Proves the batch contract: ALL open questions are served in one turn, malformed ledgers
+fail closed, and omitted answers remain open rather than becoming implicit decisions."""
 import io
 import json
 import os
@@ -42,8 +40,13 @@ def write_doc(path, questions):
 
 
 def question(qid, status="open", options=("A", "B", "C")):
+    resolution = None
+    if status in ("resolved", "folded"):
+        resolution = {"kind": "picked", "answer": options[0]}
+    elif status == "deferred":
+        resolution = {"kind": "skip", "answer": "Deferred to LLD"}
     return {"id": qid, "question": f"Q for {qid}?", "why": "because",
-            "options": list(options), "status": status, "resolution": None}
+            "options": list(options), "status": status, "resolution": resolution}
 
 
 class OqServeTest(unittest.TestCase):
@@ -52,10 +55,21 @@ class OqServeTest(unittest.TestCase):
         self.addCleanup(__import__("shutil").rmtree, self.tmp, ignore_errors=True)
         self.path = os.path.join(self.tmp, "open-questions.json")
 
-    def test_missing_file_approves(self):
+    def test_missing_file_fails_closed(self):
         code, out = run(oq_serve, [os.path.join(self.tmp, "nope.json")])
-        self.assertEqual(code, 0)
-        self.assertEqual(out["state"], "approve")
+        self.assertEqual(code, 1)
+
+    def test_malformed_file_fails_closed(self):
+        with open(self.path, "w") as fh:
+            fh.write("not-json")
+        code, _ = run(oq_serve, [self.path])
+        self.assertEqual(code, 1)
+
+    def test_schema_invalid_file_fails_closed(self):
+        with open(self.path, "w") as fh:
+            json.dump({"questions": []}, fh)
+        code, _ = run(oq_serve, [self.path])
+        self.assertEqual(code, 1)
 
     def test_no_open_questions_approves(self):
         write_doc(self.path, [question("q1", status="folded")])
@@ -116,15 +130,25 @@ class OqRecordTest(unittest.TestCase):
         self.assertEqual(q["status"], "deferred")
         self.assertEqual(q["resolution"]["kind"], "skip")
 
-    def test_fewer_lines_than_questions_defaults_missing_to_you_decide(self):
-        # a Q&A formatting slip (short reply) must never abort the whole design run
+    def test_fewer_lines_than_questions_keeps_omitted_open(self):
         write_doc(self.path, [question("q1"), question("q2"), question("q3")])
         code, out = run(oq_record, [self.path, "q1,q2,q3", "answer-all", "1"])
         self.assertEqual(code, 0)
+        self.assertEqual(out["recorded_count"], 1)
+        self.assertEqual(out["remaining_open"], 2)
         qs = {q["id"]: q for q in self._questions()}
         self.assertEqual(qs["q1"]["resolution"], {"kind": "picked", "answer": "A"})
-        self.assertEqual(qs["q2"]["resolution"]["kind"], "you-decide")
-        self.assertEqual(qs["q3"]["resolution"]["kind"], "you-decide")
+        self.assertEqual(qs["q2"]["status"], "open")
+        self.assertIsNone(qs["q2"]["resolution"])
+        self.assertEqual(qs["q3"]["status"], "open")
+
+    def test_blank_line_keeps_question_open(self):
+        write_doc(self.path, [question("q1"), question("q2")])
+        code, out = run(oq_record, [self.path, "q1,q2", "answer-all", "\n2"])
+        self.assertEqual(code, 0)
+        qs = {q["id"]: q for q in self._questions()}
+        self.assertEqual(qs["q1"]["status"], "open")
+        self.assertEqual(qs["q2"]["resolution"], {"kind": "picked", "answer": "B"})
 
     def test_decide_all(self):
         write_doc(self.path, [question("q1"), question("q2")])

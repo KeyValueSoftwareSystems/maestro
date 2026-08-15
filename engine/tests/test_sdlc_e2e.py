@@ -4,6 +4,7 @@ scripted gate decisions, artifacts touched on disk. This is the proof that the e
 pack and the engine agree."""
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,7 +35,8 @@ def canned_agent_outputs(step, action):
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
                         "summary": "sound"},
         "tasks": {"task_count": 4, "slice_count": 2},
-        "implement": {"branch": "feature/x", "summary": "built", "tests_passed": True},
+        "implement": {"branch": "feature/x", "worktree": "/tmp/simulated",
+                      "commit": "0" * 40, "summary": "built", "tests_passed": True},
         "review": {"review_path": "reviews/summary.md", "blocking": False, "summary": "clean"},
         "fix": {"fix_summary": "fixed", "checks_passed": True},
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
@@ -81,6 +83,43 @@ class SdlcE2E(unittest.TestCase):
             path = os.path.join(self.tmp, "codebase", stack)
             os.makedirs(path)
             subprocess.run(["git", "init", "-q"], cwd=path, check=True)
+            subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=path, check=True)
+            subprocess.run(["git", "config", "user.name", "Test"], cwd=path, check=True)
+            with open(os.path.join(path, "README.md"), "w") as fh:
+                fh.write(f"{stack}\n")
+            subprocess.run(["git", "add", "README.md"], cwd=path, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=path, check=True)
+
+    def write_agent_artifact(self, rel, step):
+        full = os.path.join(self.tmp, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        if os.path.exists(full):
+            return
+        if rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
+            with open(full, "w") as fh:
+                json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
+        else:
+            with open(full, "w") as fh:
+                fh.write("artifact\n")
+
+    def implementation_outputs(self, act):
+        def prompt_value(name):
+            match = re.search(rf"^- {re.escape(name)}: (.+)$", act["prompt"], re.MULTILINE)
+            self.assertIsNotNone(match, f"missing {name} in implementation prompt")
+            return match.group(1).strip()
+
+        repo = prompt_value("stack")
+        repo_path = os.path.join(self.tmp, prompt_value("repo_path"))
+        branch = prompt_value("branch")
+        worktree = os.path.join(self.tmp, ".maestro", "test-worktrees", repo)
+        os.makedirs(os.path.dirname(worktree), exist_ok=True)
+        if not os.path.exists(worktree):
+            subprocess.run(["git", "-C", repo_path, "worktree", "add", "-q", "-b",
+                            branch, worktree, "HEAD"], check=True)
+        commit = subprocess.run(["git", "-C", worktree, "rev-parse", "HEAD"], check=True,
+                                capture_output=True, text=True).stdout.strip()
+        return {"branch": branch, "worktree": worktree, "commit": commit,
+                "summary": "built", "tests_passed": True}
 
     # -- driver ----------------------------------------------------------
 
@@ -108,18 +147,17 @@ class SdlcE2E(unittest.TestCase):
                 run = resolver.Run("demo", self.tmp)
                 if act["action"] == "run_agent":
                     for rel in act.get("artifacts", []):
-                        full = os.path.join(self.tmp, rel)
-                        os.makedirs(os.path.dirname(full), exist_ok=True)
-                        if not os.path.exists(full):  # keep prepped fixtures intact
-                            with open(full, "w") as fh:
-                                fh.write("artifact\n")
+                        self.write_agent_artifact(rel, step)
                     node = step.rsplit("/", 1)[-1]
-                    outputs = overrides.get(node) or canned_agent_outputs(step, act)
+                    outputs = (overrides.get(node) or
+                               (self.implementation_outputs(act) if node == "implement"
+                                else canned_agent_outputs(step, act)))
                     resolver.complete_step(run, step, outputs=outputs)
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
+                                   or "implementation_pool" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -171,21 +209,24 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         self.assertEqual(action["outputs"]["hld"], ".maestro/runs/demo/hld.md")
-        self.assertEqual(action["outputs"]["backend_branch"], "feature/x")
+        self.assertEqual(action["outputs"]["implementation_manifest"],
+                         ".maestro/runs/demo/implementation-manifest.json")
         steps = [s for _, s in trace]
-        # both stacks implemented through the nested subworkflow-in-branch
-        self.assertIn("implement[backend]/impl/implement", steps)
-        self.assertIn("implement[frontend]/impl/review", steps)
+        # both selected repos implemented through runtime claims, not hard-coded stacks
+        impl_steps = [s for s in steps if s.endswith("/impl/implement")]
+        review_steps = [s for s in steps if s.endswith("/impl/review")]
+        self.assertEqual(len(impl_steps), 2)
+        self.assertEqual(len(review_steps), 2)
         # the PRD phase always runs (even with a requirement already present) before the HLD
         self.assertIn("design/brainstorm_draft", steps)
         self.assertLess(steps.index("design/brainstorm_draft"), steps.index("design/author_hld"))
         # the LLDs are approved by a human before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
         self.assertIn("design/lld_approval", gate_steps)
-        self.assertLess(steps.index("design/lld_approval"), steps.index("implement[backend]/impl/implement"))
+        self.assertLess(steps.index("design/lld_approval"), steps.index(impl_steps[0]))
         # design ran before implementation, qa after
         self.assertLess(steps.index("design/author_hld"), steps.index("arch_review"))
-        self.assertLess(steps.index("merge_for_test"), steps.index("qa/qa_run"))
+        self.assertLess(steps.index("finalize_implementation"), steps.index("qa/qa_run"))
 
     def test_revise_cascade_from_contract_gate(self):
         self.prep_tasks_json()
@@ -290,8 +331,7 @@ class SdlcE2E(unittest.TestCase):
             globals()["canned_agent_outputs"] = orig
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertIn("implement[backend]/impl/fix", steps)
-        self.assertIn("implement[frontend]/impl/fix", steps)
+        self.assertEqual(len([s for s in steps if s.endswith("/impl/fix")]), 2)
 
     def test_oq_loop_with_real_scripts(self):
         """The design OQ cycle against the REAL oq_serve/oq_record scripts and a real
@@ -322,16 +362,12 @@ class SdlcE2E(unittest.TestCase):
             if action["action"] == "run_agents":
                 for act in action["agents"]:
                     for rel in act.get("artifacts", []):
-                        full = os.path.join(self.tmp, rel)
-                        os.makedirs(os.path.dirname(full), exist_ok=True)
-                        open(full, "w").write("x")
+                        self.write_agent_artifact(rel, act["step"])
                     resolver.complete_step(run, act["step"],
                                            outputs=canned_agent_outputs(act["step"], act))
             elif action["action"] == "run_agent":
                 for rel in action.get("artifacts", []):
-                    full = os.path.join(self.tmp, rel)
-                    os.makedirs(os.path.dirname(full), exist_ok=True)
-                    open(full, "w").write("x")
+                    self.write_agent_artifact(rel, action["step"])
                 if action["step"].endswith("refine_hld"):
                     # simulate the plan skill folding resolved answers into the HLD
                     with open(oq_path) as fh:
@@ -408,9 +444,7 @@ class SdlcE2E(unittest.TestCase):
             if action["action"] == "run_agent":
                 seen.append(step.rsplit("/", 1)[-1])
                 for rel in action.get("artifacts", []):
-                    full = os.path.join(self.tmp, rel)
-                    os.makedirs(os.path.dirname(full), exist_ok=True)
-                    open(full, "w").write("x")
+                    self.write_agent_artifact(rel, step)
                 node = step.rsplit("/", 1)[-1]
                 if node == "brainstorm_draft":
                     # simulate the brainstorm skill emitting one open question

@@ -12,8 +12,23 @@ inputs:
 defaults:
   model: haiku
   agent: analyst
-start: build
+start: plan_maps
 nodes:
+  - id: plan_maps
+    type: script
+    label: Plan codebase-map refresh
+    run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
+    routes:
+      - {when: "${steps.plan_maps.outputs.stale} == true", to: snapshot_maps}
+      - {to: build}
+
+  - id: snapshot_maps
+    type: script
+    label: Snapshot maps before refresh
+    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json"]
+    on_fail: abort
+    next: build
+
   - id: build
     type: agent
     label: Build the knowledge base
@@ -46,7 +61,9 @@ nodes:
     skill: build-knowledge
     outputs: [domains_written, architecture_path, summary]
     artifact: "docs/architecture.md"
-    next: record_maps
+    routes:
+      - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
+      - {to: consolidate}
 
   - id: record_maps
     type: script
@@ -54,7 +71,8 @@ nodes:
     # Stamp each repo's current HEAD into its docs/codebase-map.md marker, so the next
     # build-knowledge / retrospect run refreshes only the diff. Owned by the engine, not the
     # skill — swapping build-knowledge can't change how incremental tracking works.
-    run: [python3, .maestro/engine/codebase_scan.py, record, --root, .]
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
+    on_fail: build
     next: consolidate
 
   - id: consolidate

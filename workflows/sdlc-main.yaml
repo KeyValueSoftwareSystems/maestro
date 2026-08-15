@@ -1,7 +1,7 @@
 # The full KeyValue AI-SDLC pipeline — the default workflow behind `/maestro <slug>`.
 #
-#   design (sub-wf) -> architecture review -> [gates] -> parallel per-stack impl
-#   (impl.yaml per branch) -> merge (stub) -> qa (sub-wf) -> review pack -> release
+#   design -> architecture review -> gates -> repo implementation pool -> verified
+#   test-context manifest -> QA -> review pack -> release
 #   gate -> archive (stub)
 #
 # Every producing step writes an artifact under .maestro/runs/<slug>/ and the engine gates
@@ -36,7 +36,7 @@ nodes:
     type: agent
     label: Architecture review
     instruction: |
-      Review the full design set for this feature (HLD, both LLDs, contract, test
+      Review the full design set for this feature (HLD, every selected repo LLD, contract, test
       cases under .maestro/runs/${inputs.slug}/) for soundness, consistency and risk.
       Findings need evidence; set blocking=true only for must-fix issues.
     skill: architecture-review
@@ -71,49 +71,137 @@ nodes:
       Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})
       Architecture review: ${steps.arch_review.outputs.summary}
     options:
-      - {id: approve, label: Approve — start implementation, to: implement}
+      - {id: approve, label: Approve — start implementation, to: impl_scope_init}
       - {id: revise, label: Request design revisions, to: design, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
 
+  - id: impl_scope_init
+    type: script
+    label: Initialize implementation repo pool
+    run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: implement
+
   - id: implement
     type: parallel
-    label: Implementation
+    label: Implementation (repo pool)
     join: all
     on_branch_fail: ask
     branches:
-      - id: backend
-        start: impl
+      - id: slot_1
+        start: claim
         steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
           - id: impl
             type: subworkflow
             workflow: .maestro/workflows/impl.yaml
-            inputs: {slug: "${inputs.slug}", stack: backend, feature: "${inputs.feature}"}
-            next: end
-      - id: frontend
-        start: impl
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+      - id: slot_2
+        start: claim
         steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
           - id: impl
             type: subworkflow
             workflow: .maestro/workflows/impl.yaml
-            inputs: {slug: "${inputs.slug}", stack: frontend, feature: "${inputs.feature}"}
-            next: end
-    next: merge_for_test
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+      - id: slot_3
+        start: claim
+        steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
+          - id: impl
+            type: subworkflow
+            workflow: .maestro/workflows/impl.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+      - id: slot_4
+        start: claim
+        steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
+          - id: impl
+            type: subworkflow
+            workflow: .maestro/workflows/impl.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+    next: finalize_implementation
 
-  - id: merge_for_test
+  - id: finalize_implementation
     type: script
-    label: Merge for test (stub)
-    # POC stub — wire to your real merge/stack-up command. Branches:
-    #   ${steps.implement.branches.backend.outputs.branch}
-    #   ${steps.implement.branches.frontend.outputs.branch}
-    run: [bash, -c, "echo 'merge stub: wire your merge + stack-up here'; exit 0"]
-    on_fail: ask
+    label: Verify implementation test context
+    run: [python3, .maestro/engine/implementation_pool.py, finalize, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
     next: qa
 
   - id: qa
     type: subworkflow
     label: QA phase
     workflow: .maestro/workflows/qa.yaml
-    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"
+      implementation_manifest_sha256: "${steps.finalize_implementation.outputs.manifest_sha256}"
     max_visits: 3
     next: review_pack
 
@@ -124,7 +212,8 @@ nodes:
       Assemble the release review pack for this feature: what was built (per stack),
       review outcomes, QA results, open risks, and how to verify locally. Digest the
       artifacts under .maestro/runs/${inputs.slug}/ — the pack is what the human reads at
-      the release gate.
+      the release gate. Treat implementation-manifest.json as the source of truth for every
+      repository's exact branch, worktree, and commit; include all of them in the pack.
     skill: human-review-pack
     agent: analyst
     model: opus
@@ -160,5 +249,4 @@ outputs:
   hld: "${steps.design.outputs.hld_path}"
   contract: "${steps.design.outputs.contract_path}"
   review_pack: "${steps.review_pack.outputs.pack_path}"
-  backend_branch: "${steps.implement.branches.backend.outputs.branch}"
-  frontend_branch: "${steps.implement.branches.frontend.outputs.branch}"
+  implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"

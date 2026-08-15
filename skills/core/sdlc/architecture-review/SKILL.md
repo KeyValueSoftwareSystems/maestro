@@ -16,7 +16,8 @@ cross-checked against the HLD, acceptance criteria, and the architecture rules (
 ADRs).
 
 ## Steps
-1. **Read** the HLD, both LLDs, the contract, and acceptance criteria; note the stated NFRs.
+1. **Read** the HLD, every selected repository LLD, the contract, and acceptance criteria;
+   note the stated NFRs. Use `lld-repos.json` as the authoritative selection.
 2. **Trace each acceptance criterion** to a design element — flag anything unmet (a gap).
 3. **Deep, evidence-backed pass** over every dimension in the checklist below. For a more
    independent read you MAY spawn a fresh read-only sub-agent (via the Task tool) that follows

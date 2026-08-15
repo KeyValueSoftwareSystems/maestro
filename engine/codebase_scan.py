@@ -29,11 +29,18 @@ Commands
       the NEXT run incremental — kept in the engine, invoked from a workflow script
       node, so it can't be skipped by swapping the skill.
 
+  snapshot [--root .] --out <path> [--map-rel docs/codebase-map.md]
+      Capture stale map prose hashes and repo HEADs immediately before refresh. Use
+      `record --snapshot <path> --snapshot-sha256 <hash>` afterward; record refuses to
+      advance markers if the engine snapshot changed, map prose stayed unchanged, or a
+      repo moved while the agent was refreshing it.
+
 Marker line (an HTML comment — invisible in rendered markdown):
   <!-- maestro-codebase-map commit=<sha> updated=<iso8601> -->
 """
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -110,6 +117,24 @@ def write_marker(map_path, commit):
         fh.write(text)
 
 
+def map_content_hash(map_path):
+    """Hash map prose while ignoring the engine-owned freshness marker."""
+    try:
+        with open(map_path, encoding="utf-8") as fh:
+            text = fh.read()
+    except OSError:
+        return None
+    return hashlib.sha256(MARKER_RE.sub("", text).encode("utf-8")).hexdigest()
+
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with open(path, "rb") as fh:
+        for chunk in iter(lambda: fh.read(65536), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _rel(path, root):
     try:
         return os.path.relpath(path, root)
@@ -168,10 +193,104 @@ def cmd_plan(root, map_rel):
     return 0
 
 
-def cmd_record(root, map_rel):
+def cmd_snapshot(root, map_rel, out):
+    """Capture the stale maps' HEADs and prose hashes before an agent refresh."""
     root = os.path.abspath(root)
+    stale = []
+    for name, repo in discover_repos(root):
+        map_abs = os.path.join(repo, map_rel)
+        head = _head(repo)
+        prev = read_marker(map_abs) if os.path.exists(map_abs) else None
+        if head is not None and prev == head:
+            continue
+        stale.append({
+            "name": name,
+            "repo_path": _rel(repo, root),
+            "map_path": _rel(map_abs, root),
+            "head_commit": head,
+            "content_hash": map_content_hash(map_abs),
+        })
+    if not stale:
+        print("FAIL: snapshot requested but no stale codebase maps were found", file=sys.stderr)
+        return 1
+    out_abs = out if os.path.isabs(out) else os.path.join(root, out)
+    os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+    with open(out_abs, "w", encoding="utf-8") as fh:
+        json.dump({"schema_version": 1, "root": root, "map_rel": map_rel,
+                   "stale_repos": stale}, fh, indent=2)
+        fh.write("\n")
+    print(json.dumps({"snapshot_path": _rel(out_abs, root),
+                      "snapshot_sha256": file_hash(out_abs),
+                      "stale_count": len(stale)}))
+    return 0
+
+
+def _load_snapshot(root, snapshot):
+    path = snapshot if os.path.isabs(snapshot) else os.path.join(root, snapshot)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"unreadable refresh snapshot {path}: {exc}") from exc
+    if doc.get("schema_version") != 1 or not isinstance(doc.get("stale_repos"), list):
+        raise ValueError(f"invalid refresh snapshot schema: {path}")
+    if os.path.abspath(doc.get("root", "")) != os.path.abspath(root):
+        raise ValueError("refresh snapshot belongs to a different project root")
+    return doc
+
+
+def cmd_record(root, map_rel, snapshot=None, snapshot_sha256=None):
+    root = os.path.abspath(root)
+    required = None
+    if snapshot:
+        snapshot_abs = snapshot if os.path.isabs(snapshot) else os.path.join(root, snapshot)
+        if not snapshot_sha256:
+            print("FAIL: --snapshot requires --snapshot-sha256", file=sys.stderr)
+            return 1
+        try:
+            actual_snapshot_hash = file_hash(snapshot_abs)
+        except OSError as exc:
+            print(f"FAIL: unreadable refresh snapshot {snapshot_abs}: {exc}", file=sys.stderr)
+            return 1
+        if actual_snapshot_hash != snapshot_sha256:
+            print("FAIL: refresh snapshot changed after the engine created it", file=sys.stderr)
+            return 1
+        try:
+            doc = _load_snapshot(root, snapshot)
+        except ValueError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 1
+        if doc.get("map_rel") != map_rel:
+            print("FAIL: refresh snapshot map path does not match --map-rel", file=sys.stderr)
+            return 1
+        required = {entry.get("name"): entry for entry in doc["stale_repos"]}
+        discovered = {name: repo for name, repo in discover_repos(root)}
+        failures = []
+        for name, entry in required.items():
+            repo = discovered.get(name)
+            if not repo:
+                failures.append(f"{name}: repo is no longer discoverable")
+                continue
+            if _rel(repo, root) != entry.get("repo_path"):
+                failures.append(f"{name}: repo path changed after snapshot")
+                continue
+            if _head(repo) != entry.get("head_commit"):
+                failures.append(f"{name}: HEAD changed while its map was being refreshed")
+                continue
+            new_hash = map_content_hash(os.path.join(repo, map_rel))
+            if new_hash is None:
+                failures.append(f"{name}: refreshed map is missing")
+            elif new_hash == entry.get("content_hash"):
+                failures.append(f"{name}: map prose did not change")
+        if failures:
+            print("FAIL: refusing to mark stale maps current: " + "; ".join(failures),
+                  file=sys.stderr)
+            return 1
+
     recorded, skipped = [], []
     for name, repo in discover_repos(root):
+        if required is not None and name not in required:
+            continue
         map_abs = os.path.join(repo, map_rel)
         head = _head(repo)
         if not os.path.exists(map_abs):
@@ -195,10 +314,19 @@ def main(argv=None):
         p = sub.add_parser(cmd)
         p.add_argument("--root", default=".")
         p.add_argument("--map-rel", default=DEFAULT_MAP_REL)
+        if cmd == "record":
+            p.add_argument("--snapshot")
+            p.add_argument("--snapshot-sha256")
+    p = sub.add_parser("snapshot")
+    p.add_argument("--root", default=".")
+    p.add_argument("--map-rel", default=DEFAULT_MAP_REL)
+    p.add_argument("--out", required=True)
     args = parser.parse_args(argv)
     if args.cmd == "plan":
         return cmd_plan(args.root, args.map_rel)
-    return cmd_record(args.root, args.map_rel)
+    if args.cmd == "snapshot":
+        return cmd_snapshot(args.root, args.map_rel, args.out)
+    return cmd_record(args.root, args.map_rel, args.snapshot, args.snapshot_sha256)
 
 
 if __name__ == "__main__":

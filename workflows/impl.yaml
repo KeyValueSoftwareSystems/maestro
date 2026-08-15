@@ -1,15 +1,14 @@
-# Implementation phase for ONE stack (invoked per-stack by sdlc-main.yaml's parallel
-# node, or standalone: /maestro <slug> workflows/impl.yaml stack=backend).
+# Implementation phase for ONE selected repository.
 #
-# Showcases: a workflow parameterized by an input (skill names contain placeholders —
-# no dispatch glue needed), engine-validated task DAGs, and a bounded fix cycle built
-# from a visit-capped back-edge.
+# Showcases: a repo-parameterized workflow, engine-validated task DAGs, exact git
+# handoffs, and a bounded fix cycle built from a visit-capped back-edge.
 version: 1
 name: impl
-description: Build one stack from its approved LLD — task DAG, sliced implementation, review, bounded fix loop.
+description: Build one selected repo from its approved LLD — task DAG, sliced implementation, review, bounded fix loop.
 inputs:
   slug: {type: string, required: true}
-  stack: {type: string, required: true, description: backend | frontend}
+  stack: {type: string, required: true, description: selected repository name}
+  repo_path: {type: string, required: true, description: path to the selected git repository}
   feature: {type: string, default: "${inputs.slug}"}
 defaults:
   model: sonnet
@@ -21,13 +20,13 @@ nodes:
     type: agent
     label: Task DAG
     instruction: |
-      Produce the parallel task DAG for the ${inputs.stack} stack from its LLD at
+      Produce the parallel task DAG for the ${inputs.stack} repository from its LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
       .maestro/engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
       reported.
-    skill: "${inputs.stack}-tasks"
+    skill: repo-tasks
     agent: planner
     inputs: {slug: "${inputs.slug}", stack: "${inputs.stack}"}
     outputs: [task_count, slice_count]
@@ -48,32 +47,44 @@ nodes:
     type: agent
     label: Implement slices
     instruction: |
-      Implement the ${inputs.stack} stack for this feature from
+      Implement the ${inputs.stack} repository for this feature from
       .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
       skill owns slice fan-out and worktree hygiene. Work against the LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml, grounded in the maintained codebase map
-      (docs/codebase-map.md in the ${inputs.stack} repo — umbrella layout:
-      codebase/<repo>/docs/codebase-map.md; single repo: ./docs/codebase-map.md). Explore
+      at ${inputs.repo_path}/docs/codebase-map.md. Explore
       the live source further only where the map or LLD doesn't cover what a slice
       touches. Report tests honestly.
-    skill: "${inputs.stack}-implement"
+    skill: repo-implement
     isolate: worktree
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
       tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
+      repo_path: "${inputs.repo_path}"
       branch: "feature/${inputs.slug}-${inputs.stack}"
-    outputs: [branch, summary, tests_passed]
+    outputs: [branch, worktree, commit, summary, tests_passed]
     retries: 1
     max_visits: 3
-    next: contract_check
+    next: handoff
 
-  - id: contract_check
+  - id: handoff
     type: script
-    label: Contract check (stub)
-    # POC stub — wire to your real contract test runner (e.g. schemathesis, dredd)
-    run: [bash, -c, "echo 'contract check stub: wire your runner here'; exit 0"]
+    label: Verify live feature worktree
+    run:
+      - python3
+      - .maestro/engine/implementation_pool.py
+      - inspect
+      - --root
+      - "."
+      - --repo
+      - "${inputs.stack}"
+      - --branch
+      - "${steps.implement.outputs.branch}"
+      - --worktree
+      - "${steps.implement.outputs.worktree}"
+    on_fail: abort
+    max_visits: 10
     next: review
 
   - id: review
@@ -81,16 +92,20 @@ nodes:
     label: Code review
     instruction: |
       Review the ${inputs.stack} implementation on branch
-      ${steps.implement.outputs.branch} against the LLD, contract, standards and the
+      ${steps.handoff.outputs.branch} at exact commit ${steps.handoff.outputs.commit}
+      against the LLD, contract, standards and the
       maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
       map to check blast radius, not just the diff in isolation. Findings need file:line
       evidence; set blocking=true only for must-fix issues.
-    skill: "${inputs.stack}-review"
+    skill: repo-review
     agent: reviewer
     model: opus
     inputs:
       slug: "${inputs.slug}"
-      branch: "${steps.implement.outputs.branch}"
+      repo_path: "${inputs.repo_path}"
+      worktree: "${steps.handoff.outputs.worktree}"
+      commit: "${steps.handoff.outputs.commit}"
+      branch: "${steps.handoff.outputs.branch}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
@@ -115,18 +130,21 @@ nodes:
     instruction: |
       One fix attempt: address the blocking findings in
       ${steps.review.outputs.review_path} (and any failing tests) on branch
-      ${steps.implement.outputs.branch}. Smallest safe fix; never weaken or delete a
+      ${steps.handoff.outputs.branch} in exact worktree
+      ${steps.handoff.outputs.worktree}. Smallest safe fix; never weaken or delete a
       failing test. Re-run the failing checks before returning. Do NOT loop — the
       workflow re-invokes you if needed.
     skill: fix-loop
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
-      branch: "${steps.implement.outputs.branch}"
+      branch: "${steps.handoff.outputs.branch}"
+      repo_path: "${inputs.repo_path}"
+      worktree: "${steps.handoff.outputs.worktree}"
     outputs: [fix_summary, checks_passed]
     max_visits: 3
     on_exhausted: impl_gate
-    next: review
+    next: handoff
 
   - id: impl_gate
     type: gate
@@ -134,13 +152,15 @@ nodes:
     prompt: |
       The ${inputs.stack} implementation still has problems after the automated fix
       rounds. Last review: ${steps.review.outputs.summary}
-      Branch: ${steps.implement.outputs.branch}
+      Branch: ${steps.handoff.outputs.branch}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
       - {id: accept, label: Accept as-is — I'll handle the rest, to: end}
       - {id: abandon, label: Abort this stack, to: abort}
 
 outputs:
-  branch: "${steps.implement.outputs.branch}"
+  branch: "${steps.handoff.outputs.branch}"
+  worktree: "${steps.handoff.outputs.worktree}"
+  commit: "${steps.handoff.outputs.commit}"
   summary: "${steps.implement.outputs.summary}"
   review_path: "${steps.review.outputs.review_path}"
