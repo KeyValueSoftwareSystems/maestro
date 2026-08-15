@@ -33,5 +33,8 @@ state. Before returning, capture:
 - `commit`: full `git rev-parse HEAD`
 - `tests_passed`: literal JSON boolean, true only when checks actually ran and passed
 
-Return those fields plus a short `summary` in the last-line JSON object. The engine verifies
-that branch, worktree, and commit agree before QA can start.
+## Output contract
+
+Return `branch`, `worktree`, `commit`, `summary`, and literal boolean `tests_passed` in the
+last-line JSON object. The engine verifies that branch, worktree, and commit agree before QA
+can start.

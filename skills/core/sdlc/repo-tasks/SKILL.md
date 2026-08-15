@@ -20,4 +20,6 @@ framework-native verification appropriate to the detected repo (web, backend, mo
 otherwise). Validate with `python3 .maestro/engine/validate_tasks.py <path>` and correct any
 reported error before returning.
 
+## Output contract
+
 Return `task_count` and `slice_count` as short scalar JSON fields on the last line.

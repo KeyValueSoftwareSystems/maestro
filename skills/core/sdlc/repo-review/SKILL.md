@@ -18,4 +18,6 @@ and meaningful positive/negative tests as applicable to that repository's techno
 Findings require `file:line` evidence. A blocker or major finding makes `blocking=true`.
 Review read-only; write the requested report artifact outside the product worktree.
 
+## Output contract
+
 Return `review_path`, literal boolean `blocking`, and a one-line `summary` as last-line JSON.
