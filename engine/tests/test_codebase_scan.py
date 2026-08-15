@@ -123,6 +123,50 @@ class SingleRepo(unittest.TestCase):
         self.assertEqual(entry["mode"], "full")
         self.assertTrue(self._plan(repo)["stale"])
 
+    def test_verified_record_requires_map_prose_to_change(self):
+        repo = self.tmp
+        map_path = write_map(repo)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        commit(repo, "src/b.py", "print(2)\n", "change")
+        snapshot = os.path.join(repo, ".maestro", "runs", "x", "map-snapshot.json")
+        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAP_REL, snapshot)
+
+        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAP_REL, snapshot,
+                                       snap["snapshot_sha256"]), 1)
+        self.assertNotEqual(cs.read_marker(map_path), cs._head(repo))
+
+        with open(map_path, "a") as fh:
+            fh.write("\nUpdated architecture notes.\n")
+        result = quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL, snapshot,
+                       snap["snapshot_sha256"])
+        self.assertEqual(result["recorded"][0]["commit"], cs._head(repo))
+        self.assertEqual(cs.read_marker(map_path), cs._head(repo))
+
+    def test_verified_record_rejects_head_change_during_refresh(self):
+        repo = self.tmp
+        map_path = write_map(repo)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        commit(repo, "src/b.py", "print(2)\n", "change")
+        snapshot = os.path.join(repo, ".maestro", "runs", "x", "map-snapshot.json")
+        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAP_REL, snapshot)
+        with open(map_path, "a") as fh:
+            fh.write("\nUpdated notes.\n")
+        commit(repo, "src/c.py", "print(3)\n", "concurrent change")
+        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAP_REL, snapshot,
+                                       snap["snapshot_sha256"]), 1)
+
+    def test_verified_record_rejects_tampered_snapshot(self):
+        repo = self.tmp
+        write_map(repo)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        commit(repo, "src/b.py", "print(2)\n", "change")
+        snapshot = os.path.join(repo, ".maestro", "runs", "x", "map-snapshot.json")
+        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAP_REL, snapshot)
+        with open(snapshot, "a") as fh:
+            fh.write(" ")
+        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAP_REL, snapshot,
+                                       snap["snapshot_sha256"]), 1)
+
     def _plan(self, repo):
         return quiet(cs.cmd_plan, repo, cs.DEFAULT_MAP_REL)
 

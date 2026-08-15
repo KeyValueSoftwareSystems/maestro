@@ -25,6 +25,9 @@ import sys
 from pathlib import Path
 from typing import NoReturn
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from validate_open_questions import validate  # noqa: E402
+
 
 def fail(msg: str) -> NoReturn:
     print(f"FAIL: {msg}", file=sys.stderr)
@@ -35,20 +38,16 @@ def main() -> None:
     if len(sys.argv) != 2:
         fail("usage: oq_serve.py <path-to-open-questions.json>")
     path = Path(sys.argv[1])
-    # Fail-soft (matches the ledger's corrupt-file handling): a missing or
-    # unparseable file means "no open questions" -> approve. This keeps resume
-    # working when guard_hld routes a done HLD into serve, and stays safe for HLDs
-    # authored before open-questions.json existed.
     if not path.is_file():
-        print(f"[oq] no open-questions file at {path}; treating as resolved", file=sys.stderr)
-        print(json.dumps({"state": "approve"}))
-        return
+        fail(f"required question ledger not found: {path}")
     try:
-        doc = json.loads(path.read_text())
-    except json.JSONDecodeError as e:
-        print(f"[oq] WARNING: unparseable {path} ({e}); treating as resolved", file=sys.stderr)
-        print(json.dumps({"state": "approve"}))
-        return
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        fail(f"question ledger is not readable JSON: {path}: {exc}")
+
+    error = validate(doc)
+    if error:
+        fail(f"invalid question ledger {path}: {error}")
 
     questions = doc.get("questions", [])
 

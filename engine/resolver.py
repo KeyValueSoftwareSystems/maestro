@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import shlex
 
 try:
     import condctl
@@ -869,10 +870,13 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
         if not branch:
             safe_path = frame.path(node["id"]).replace("[", "-").replace("]", "").replace("/", "-")
             branch = f"maestro/{slug}/{safe_path}"
+        repo_path = (inputs or {}).get("repo_path")
+        git_prefix = f"git -C {shlex.quote(str(repo_path))}" if repo_path else "git"
+        location = (f" for the repository at `{repo_path}`" if repo_path else "")
         lines.append(
             f"ISOLATION IS MANDATORY. Before you edit ANY file, create and enter a git "
-            f"worktree on branch `{branch}`: run `git worktree add -b {branch} "
-            f"<new-dir> HEAD` (or `git worktree add <new-dir> {branch}` if the branch "
+            f"worktree{location} on branch `{branch}`: run `{git_prefix} worktree add -b {branch} "
+            f"<new-dir> HEAD` (or `{git_prefix} worktree add <new-dir> {branch}` if the branch "
             f"exists) and do all of your work from inside <new-dir>. Verify with `git rev-parse "
             f"--show-toplevel` that you are NOT in the main working tree before editing. If a "
             f"worktree cannot be created (e.g. the repo has no commits), STOP and report the "

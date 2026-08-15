@@ -14,15 +14,15 @@ choice is always listed first) with --auto for a fully hands-off walk of the hap
 Usage
 -----
   python3 simulate.py --root <project> --workflow <rel-path> --slug <slug> \
-      [--input k=v ...] [--auto] [--max-steps 500]
+      [--input k=v ...] [--auto] [--max-steps 500] --allow-script-side-effects
 
 Example (from a project with Maestro installed):
   python3 .maestro/engine/simulate.py --root . --workflow .maestro/workflows/design.yaml \
       --slug sim1 --input feature="add favorites" --auto
 
-The run is a REAL run under .maestro/runs/<slug>/ — inspect it afterward with the normal
-`maestroctl status`/`bench_report.py`, or `reset --all` it away when you're done. Never use a
-slug you care about keeping; simulated artifacts are placeholder text, not real content.
+The run is a REAL run under .maestro/runs/<slug>/ and script nodes execute against the
+project root. The explicit side-effect flag prevents accidental use as a read-only graph
+viewer. Existing slugs are refused unless --force is also supplied.
 """
 import argparse
 import json
@@ -34,6 +34,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 import validate as validatemod  # noqa: E402
+import codebase_scan  # noqa: E402
 
 
 def _log(line):
@@ -49,10 +50,57 @@ def _stub_agent(root, act):
         full = os.path.join(root, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
         if not os.path.exists(full):
-            with open(full, "w", encoding="utf-8") as fh:
-                fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "
-                         f"— this step's real agent was never dispatched.\n")
-    return {field: f"[sim] {step}.{field}" for field in act.get("outputs", [])}
+            if rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
+                parts = rel.split("/")
+                slug = parts[3] if len(parts) > 3 else "simulation"
+                content = {"schema_version": 1, "feature_slug": slug, "questions": []}
+                with open(full, "w", encoding="utf-8") as fh:
+                    json.dump(content, fh, indent=2)
+                    fh.write("\n")
+            elif rel.endswith("/tasks.json"):
+                parts = rel.split("/")
+                slug = parts[3] if len(parts) > 3 else "simulation"
+                repo = parts[-2]
+                content = {
+                    "schema_version": 1, "stack": repo, "feature_slug": slug,
+                    "context_manifest": {"read_once": ["simulated"], "reference": []},
+                    "slices": [{"group_id": "sim", "task_ids": ["sim-1"]}],
+                    "tasks": [{"id": "sim-1", "group_id": "sim",
+                               "title": "simulated task", "depends_on": [],
+                               "reads": [], "writes": ["simulated.txt"],
+                               "test": "simulated", "standards": [],
+                               "needs_human_gate": False}],
+                }
+                with open(full, "w", encoding="utf-8") as fh:
+                    json.dump(content, fh, indent=2)
+                    fh.write("\n")
+            else:
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "
+                             f"— this step's real agent was never dispatched.\n")
+    if (step.endswith("resync_map") or step.endswith("/build")
+            or step.endswith("/retrospect")):
+        for _name, repo in codebase_scan.discover_repos(root):
+            map_path = os.path.join(repo, codebase_scan.DEFAULT_MAP_REL)
+            if (step.endswith("/retrospect")
+                    and codebase_scan.read_marker(map_path) == codebase_scan._head(repo)):
+                continue
+            os.makedirs(os.path.dirname(map_path), exist_ok=True)
+            with open(map_path, "a", encoding="utf-8") as fh:
+                fh.write("\n# Simulated map refresh\n")
+    bool_values = {"blocking": False, "tests_passed": True, "passed": True,
+                   "checks_passed": True, "risky": False}
+    numeric_fields = {"task_count", "slice_count", "case_count", "failed_count",
+                      "lessons_count"}
+    outputs = {}
+    for field in act.get("outputs", []):
+        if field in bool_values:
+            outputs[field] = bool_values[field]
+        elif field in numeric_fields:
+            outputs[field] = 0 if field == "failed_count" else 1
+        else:
+            outputs[field] = f"[sim] {step}.{field}"
+    return outputs
 
 
 def _choose_gate_option(act, auto):
@@ -83,7 +131,7 @@ def _choose_gate_option(act, auto):
 MAX_REPEATED_AUTO_CHOICE = 3
 
 
-def run(root, slug, workflow, inputs, auto, max_steps):
+def run(root, slug, workflow, inputs, auto, max_steps, force=False):
     auto_repeat = {}  # (step, option_id) -> consecutive count, for stuck-loop detection
     issues = validatemod.validate_file(workflow, root=root)
     errors = [i for i in issues if i.level == "error"]
@@ -92,8 +140,14 @@ def run(root, slug, workflow, inputs, auto, max_steps):
             _log(str(issue))
         raise resolver.RunError(f"workflow has {len(errors)} validation error(s)", code=1)
 
+    if os.path.exists(statemod.state_path(slug, root)) and not force:
+        raise resolver.RunError(
+            f"slug {slug!r} already exists; choose a throwaway slug or pass --force to "
+            "explicitly replace its run ledger", code=3,
+        )
+
     with statemod.locked(slug, root):
-        resolver.init_run(slug, workflow, inputs, root, force=True)
+        resolver.init_run(slug, workflow, inputs, root, force=force)
     _log(f"[init] slug={slug!r} workflow={workflow!r} root={root!r}")
 
     for step_count in range(max_steps):
@@ -120,9 +174,13 @@ def run(root, slug, workflow, inputs, auto, max_steps):
                 _log(f"[agent ] {step} (model={act.get('model')}, skill={act.get('skill')}, "
                      f"stubbed) -> {outputs}")
             elif act["action"] == "run_script":
+                env = os.environ.copy()
+                env["MAESTRO_SIMULATION"] = "1"
                 proc = subprocess.run(act["argv"], cwd=root, capture_output=True,
-                                      text=True, timeout=act.get("timeout", 300))
+                                      text=True, timeout=act.get("timeout", 300), env=env)
                 _log(f"[script] {step} -> exit={proc.returncode} {proc.stdout.strip()[:200]}")
+                if proc.returncode and proc.stderr.strip():
+                    _log(f"         stderr: {proc.stderr.strip()[:500]}")
             elif act["action"] == "ask_gate":
                 option, text = _choose_gate_option(act, auto)
                 _log(f"[gate  ] {step} -> {option['id']}" + (f" ({text})" if text else ""))
@@ -162,6 +220,12 @@ def main(argv):
     parser.add_argument("--auto", action="store_true",
                         help="auto-pick the first gate option instead of prompting")
     parser.add_argument("--max-steps", type=int, default=500)
+    parser.add_argument("--force", action="store_true",
+                        help="replace an existing run ledger for this slug")
+    parser.add_argument(
+        "--allow-script-side-effects", action="store_true",
+        help="required acknowledgement: workflow script nodes run against --root for real",
+    )
     args = parser.parse_args(argv[1:])
 
     inputs = {}
@@ -171,8 +235,15 @@ def main(argv):
         key, value = pair.split("=", 1)
         inputs[key] = value
 
-    run(args.root, args.slug, args.workflow, inputs, args.auto, args.max_steps)
-    return 0
+    if not args.allow_script_side_effects:
+        raise resolver.RunError(
+            "simulation runs real script nodes and may write to --root; re-run with "
+            "--allow-script-side-effects using a throwaway slug", code=3,
+        )
+
+    result = run(args.root, args.slug, args.workflow, inputs, args.auto,
+                 args.max_steps, force=args.force)
+    return {"done": 0, "failed": 1, "stopped": 2}.get(result.get("action"), 1)
 
 
 if __name__ == "__main__":

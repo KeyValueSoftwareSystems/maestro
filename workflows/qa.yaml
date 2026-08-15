@@ -6,6 +6,8 @@ description: Automate and run the functional test suite; fix loop on failures.
 inputs:
   slug: {type: string, required: true}
   feature: {type: string, default: "${inputs.slug}"}
+  implementation_manifest: {type: string, required: true, description: engine-verified repo/worktree/commit manifest}
+  implementation_manifest_sha256: {type: string, required: true, description: engine-produced manifest digest}
 defaults:
   model: sonnet
   agent: qa
@@ -20,8 +22,19 @@ nodes:
       into an executable E2E suite (use the project's existing E2E framework, else
       Playwright; critical journeys first) and RUN it. Write the run report. Report
       results honestly — failures route into the fix loop, they are not yours to hide.
+      Before doing anything, SHA-256 ${inputs.implementation_manifest} and require it to
+      equal ${inputs.implementation_manifest_sha256}; fail integrity if it differs. Then
+      read it. For every repository,
+      verify the listed worktree is still on the exact listed branch and commit. Run and
+      author tests ONLY against those worktree paths; never use codebase/<repo> or another
+      default checkout. If any identity check fails, report a failed integrity check and do
+      not test a different revision.
     skill: qa-automation
-    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      implementation_manifest: "${inputs.implementation_manifest}"
+      implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
     outputs: [passed, failed_count, summary]
     artifact: ".maestro/runs/${inputs.slug}/qa/report.md"
     max_visits: 5
@@ -34,13 +47,20 @@ nodes:
     type: agent
     label: Fix failures
     instruction: |
-      One fix attempt: diagnose the failures in .maestro/runs/${inputs.slug}/qa/report.md and
-      apply the smallest safe fix (product bug or genuine test bug — never weaken or
-      delete a legitimate failing assertion). Re-run the failing specs before returning.
-      Do NOT loop — the workflow re-invokes you if needed.
+      One fix attempt: diagnose the failures in .maestro/runs/${inputs.slug}/qa/report.md.
+      You may fix only a genuine test-harness bug under .maestro/runs/${inputs.slug}/qa/;
+      never weaken or delete a legitimate assertion. Do NOT change product code or any
+      worktree listed in ${inputs.implementation_manifest}: that would invalidate its
+      reviewed commit identity. If the failure is a product bug, return checks_passed=false
+      with the diagnosis so the bounded loop reaches the human escalation gate. Re-run the
+      failing specs before returning. Do NOT loop — the workflow re-invokes you if needed.
     skill: fix-loop
     agent: implementer
-    inputs: {slug: "${inputs.slug}", report: ".maestro/runs/${inputs.slug}/qa/report.md"}
+    inputs:
+      slug: "${inputs.slug}"
+      report: ".maestro/runs/${inputs.slug}/qa/report.md"
+      implementation_manifest: "${inputs.implementation_manifest}"
+      implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
     outputs: [fix_summary, checks_passed]
     max_visits: 3
     on_exhausted: qa_gate

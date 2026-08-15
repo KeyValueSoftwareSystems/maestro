@@ -40,8 +40,8 @@ def check_schema(doc):
         return f"missing key(s): {', '.join(sorted(missing))}"
     if doc["schema_version"] != 1:
         return "schema_version must be 1"
-    if doc["stack"] not in ("backend", "frontend", "qa"):
-        return f"bad stack {doc['stack']!r}"
+    if not isinstance(doc["stack"], str) or not doc["stack"]:
+        return "stack must be a non-empty repository name"
     if not isinstance(doc["feature_slug"], str) or not doc["feature_slug"]:
         return "feature_slug must be a non-empty string"
     cm = doc["context_manifest"]

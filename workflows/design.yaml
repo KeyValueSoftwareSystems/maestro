@@ -81,7 +81,9 @@ nodes:
       references: "${steps.collect_references.outputs.refs}"
       feedback: "${steps.prd_approval.outputs.feedback}"
     outputs: [draft_summary]
-    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      - ".maestro/runs/${inputs.slug}/requirement-questions.json"
     max_visits: 3
     next: rq_serve
 
@@ -186,9 +188,23 @@ nodes:
       This usually means work happened outside Maestro (e.g. a manual commit). The HLD is
       about to be grounded in docs/codebase-map.md — resync it first, or proceed with what's there?
     options:
-      - {id: resync, label: Resync the map first, to: resync_map}
+      - {id: resync, label: Resync the map first, to: snapshot_map}
       - {id: proceed, label: Proceed with the existing map, to: author_hld}
       - {id: reject, label: Abort the run, to: abort}
+
+  - id: snapshot_map
+    type: script
+    label: Snapshot stale maps before refresh
+    run:
+      - python3
+      - .maestro/engine/codebase_scan.py
+      - snapshot
+      - --root
+      - "."
+      - --out
+      - ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json"
+    on_fail: map_stale_gate
+    next: resync_map
 
   - id: resync_map
     type: agent
@@ -216,7 +232,17 @@ nodes:
     # Stamps each refreshed repo's current HEAD into its map marker, so the NEXT freshness
     # check reports current. Engine-owned, not the skill, so swapping resync_map's skill
     # can't skip or fake this.
-    run: [python3, .maestro/engine/codebase_scan.py, record, --root, .]
+    run:
+      - python3
+      - .maestro/engine/codebase_scan.py
+      - record
+      - --root
+      - "."
+      - --snapshot
+      - ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json"
+      - --snapshot-sha256
+      - "${steps.snapshot_map.outputs.snapshot_sha256}"
+    on_fail: resync_map
     next: author_hld
 
   - id: author_hld
@@ -243,7 +269,9 @@ nodes:
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
-    artifact: ".maestro/runs/${inputs.slug}/hld.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/hld.md"
+      - ".maestro/runs/${inputs.slug}/open-questions.json"
     max_visits: 5
     next: oq_serve
 
@@ -535,3 +563,4 @@ outputs:
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"
   contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
   test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+  repos_csv: "${steps.lld_scope_init.outputs.selected_csv}"

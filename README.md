@@ -69,9 +69,9 @@ Shipped as a worked example (`.maestro/workflows/sdlc-main.yaml` + the `.claude/
 
 ```
 requirement → PRD (consolidate what you gave, or brainstorm one via gated Q&A)
-   → HLD → [open-questions loop → approve] → parallel LLDs → API contract
+   → HLD → [open-questions loop → approve] → parallel per-repo LLDs → API contract
    → functional test cases → architecture review → [approve]
-   → implement per stack (parallel, sliced, reviewed, bounded fix loop)
+   → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
    → QA → review pack → [approve → release → archive: harvest lessons + publish docs]
 ```
 
@@ -129,7 +129,7 @@ nodes:
 
 - **Recommended: an umbrella workspace.** For the best SDLC output, don't run Maestro inside one isolated service repo — stand up a **parent/umbrella repo** per project, clone the service repos you're changing (gitignored) underneath it, and install Maestro into that parent. The lead agent then sees the whole stack at once. Full setup: [docs/umbrella-workspace.md](docs/umbrella-workspace.md). A single repo works too; the umbrella just gives better cross-repo results.
 - **python3 ≥ 3.8** (stdlib only — nothing to `pip install`). Check: `python3 --version`.
-- **git** and, to install, **bash** + **curl**. Your project must be an initialized git repository with at least one commit before the implementation phase — the per-stack implement steps run in isolated `git worktree`s, which a non-repo can't provide (`git init && git add -A && git commit` once if it isn't one yet).
+- **git** and, to install, **bash** + **curl**. Every repository selected for implementation must have at least one commit — each repo's implementation runs in its own isolated `git worktree`, which an uninitialized repo cannot provide (`git init && git add -A && git commit` once in each selected repo if needed).
 - An AI coding harness that supports skills — **Claude Code** (full: parallel subagents, per-step models) or **Cursor** (inline sequential fallback).
 - Optional: **node/npx**, only for auto-installing the six external Superpowers helper skills. Without it the flow still runs (skills fall back to inline behavior).
 - **OS:** macOS and Linux are first-class. On **Windows use WSL** — the installer is bash and the engine's file lock uses `fcntl` (a `msvcrt` fallback exists, but WSL is the tested path).
@@ -271,7 +271,7 @@ The engine is generic; the SDLC pack is just one workflow. To make it yours:
 - **Change a shipped step's behaviour** — edit its skill (`.claude/skills/*/SKILL.md`); the flow is untouched.
 - **Models** — per node (`model: sonnet`) or per workflow (`defaults.model`); values are passed to the harness as-is (`haiku` / `sonnet` / `opus` work in Claude Code).
 - **Loop bounds** — per node `max_visits` (+ `on_exhausted`), backstopped by `defaults.max_visits` (default 10).
-- The merge/contract-check/publish scripts in the example pack are **POC stubs** — wire them to your real runners.
+- The publish script in the example pack is a **POC stub** — wire it to your documentation/repository publishing convention. Implementation and QA do not fake-merge independent repos: the engine verifies and passes each repo's exact worktree, branch, and commit to QA.
 - **Memory (improves over time).** Run `/build-knowledge` once per workspace to seed `.maestro/memory/knowledge/` from your codebase; the design and review steps read it, frozen at init. After a feature, the pre-merge archival phase distills lessons and consolidates them — a lesson becomes trusted (and injected into future runs) only once ≥3 runs corroborate it. See [docs/memory.md](docs/memory.md).
 
 ## Checks

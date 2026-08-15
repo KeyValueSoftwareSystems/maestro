@@ -12,8 +12,23 @@ inputs:
 defaults:
   model: haiku
   agent: analyst
-start: retrospect
+start: plan_maps
 nodes:
+  - id: plan_maps
+    type: script
+    label: Plan codebase-map refresh
+    run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
+    routes:
+      - {when: "${steps.plan_maps.outputs.stale} == true", to: snapshot_maps}
+      - {to: retrospect}
+
+  - id: snapshot_maps
+    type: script
+    label: Snapshot maps before refresh
+    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-map-snapshot.json"]
+    on_fail: abort
+    next: retrospect
+
   - id: retrospect
     type: agent
     label: Distill lessons
@@ -51,7 +66,9 @@ nodes:
     inputs: {slug: "${inputs.slug}"}
     outputs: [incoming_path, lessons_count, summary]
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
-    next: record_maps
+    routes:
+      - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
+      - {to: consolidate}
 
   - id: record_maps
     type: script
@@ -60,7 +77,8 @@ nodes:
     # refreshes only the diff. Engine-owned (not the skill) so swapping retrospect can't change
     # how incremental tracking works. The refreshed maps are committed + pushed per repo by the
     # archive phase's publish step.
-    run: [python3, .maestro/engine/codebase_scan.py, record, --root, .]
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/retrospect-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
+    on_fail: retrospect
     next: consolidate
 
   - id: consolidate
