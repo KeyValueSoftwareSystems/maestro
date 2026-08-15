@@ -68,7 +68,7 @@ Maestro isn't trying to replace a durable production orchestrator or an autonomo
 Shipped as a worked example (`.maestro/workflows/sdlc-main.yaml` + the `.claude/skills/` pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
-requirement → PRD (consolidate what you gave, or brainstorm one via gated Q&A)
+workspace sync → requirement → PRD (consolidate what you gave, or brainstorm one via gated Q&A)
    → HLD → [open-questions loop → approve] → parallel per-repo LLDs → API contract
    → functional test cases → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
@@ -84,7 +84,7 @@ requirement → PRD (consolidate what you gave, or brainstorm one via gated Q&A)
                      │
        ┌─────────────▼──────────────┐    .maestro/engine/maestroctl.py (stdlib python3)
        │  LEAD AGENT (your session) │───► next → ONE action as JSON
-       │  dispatches, never decides │◄─── complete / gate-record / fail
+       │  dispatches, never decides │◄─── complete / gate-record / input-record / fail
        └──┬─────────┬──────────┬────┘
           ▼         ▼          ▼
       subagents   scripts    you (gates)
@@ -187,7 +187,21 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
 
 From there it validates, starts or resumes the run, spawns a subagent per step, asks you at gates, and reports where every artifact landed.
 
-**You almost never call the engine yourself.** The lead agent issues its verbs — `init`, `next`, `complete`, `gate-record`, `fail`, `runs`, … — for you as it drives the graph. Only two are worth running by hand, for inspection:
+Before design, Maestro fetches every discovered repository's **current branch upstream in
+parallel**. If everything is current, this is silent and uses no model. If a repository is
+behind/diverged, living docs are stale, or an existing feature's pinned commit moved, one
+consolidated gate shows the whole workspace. On approval Maestro uses `--ff-only` semantics
+for clean behind branches, never stashes/rebases/merges dirty or diverged work, refreshes only
+affected knowledge (Sonnet, only when provenance requires it), then pins the exact repository
+SHAs in `.maestro/runs/<slug>/workspace-lock.json`. The same check runs before implementation;
+if code moved after design, the design is regenerated and re-approved before build work starts.
+
+Gate choices that require text are deliberately two-stage. Clicking **Revise** first records
+the choice, then Maestro asks what to change and remains parked until non-blank feedback is
+provided. One response can cover several LLDs by labeling each repository; no artifact is
+regenerated with empty or inferred suggestions.
+
+**You almost never call the engine yourself.** The lead agent issues its verbs — `init`, `next`, `complete`, `gate-record`, `gate-input-record`, `fail`, `runs`, … — for you as it drives the graph. Only two are worth running by hand, for inspection:
 
 ```bash
 python3 .maestro/engine/maestroctl.py status --slug my-feature              # step table, gates, active steps
@@ -230,7 +244,7 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
 
 ## Upgrade / uninstall / troubleshooting
 
-- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/` and `.maestro/runs/` are left alone.
+- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/`, `.maestro/index/` provenance and `.maestro/runs/` are left alone.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`, `.cursor/…`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` — that's your work.
 - **"workflow changed" halt:** see *Working as a team* above (`rebase` or `reset`).
 - **A step won't complete (exit 4):** the engine refuses to advance without the declared artifact (non-empty) and output fields — re-run the step or `maestroctl fail` it.
@@ -250,14 +264,16 @@ After install, in your project repo:
   commands/   /maestro and /maestro-init slash-command shims (steps are invoked as skills)
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · fail · reset · rebase · status · graph · note · runs) + ui_server.py + schemas
+              · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
-  workflows/  the example pack: sdlc-main / design / impl / qa, plus archive /
-              build-knowledge / retrospect — customize or replace
+  workflows/  the example pack: sdlc-main / workspace-sync / design / impl / qa,
+              plus archive / build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)
   docs/       workflow-spec.md (the workflow spec)
   memory/     knowledge/ (seeded by /build-knowledge)
+  index/      engine-owned living-doc commit provenance
   runs/<slug>/  everything for one feature: requirement/ + all artifacts + state.yaml
 maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install` + `maestro help`
 ```

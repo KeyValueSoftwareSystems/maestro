@@ -63,7 +63,7 @@ nodes:
     artifact: "docs/architecture.md"
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
-      - {to: consolidate}
+      - {to: record_knowledge}
 
   - id: record_maps
     type: script
@@ -73,6 +73,13 @@ nodes:
     # skill — swapping build-knowledge can't change how incremental tracking works.
     run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
     on_fail: build
+    next: record_knowledge
+
+  - id: record_knowledge
+    type: script
+    label: Record living-doc provenance (engine)
+    run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ., --evidence, docs/architecture.md]
+    on_fail: abort
     next: consolidate
 
   - id: consolidate

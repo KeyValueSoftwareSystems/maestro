@@ -288,7 +288,8 @@ loop:
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'
     run_agents → spawn all listed subagents in one parallel wave → complete each
     run_script → execute argv → complete --exit-code N --stdout '...'
-    ask_gate   → ask the human → gate-record --option X [--input '...']
+    ask_gate   → ask the human for a choice → gate-record --option X
+    ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop
   on step failure: maestroctl fail --step P --reason '...'
 ```
@@ -296,3 +297,9 @@ loop:
 The action payload is fully resolved — placeholders substituted, prompts pre-rendered. The lead
 agent performs zero interpretation, never edits state, never reads artifacts into its own
 context, and never skips a gate.
+
+An option with `input: <field>` is a durable two-stage interaction. Recording the choice
+without text leaves the gate active and makes `next` return `ask_input`; only a non-blank
+`gate-input-record` completes it and exposes `<field>` in the gate outputs. Atomic
+`gate-record --input` remains accepted for API compatibility, while interactive harnesses
+use the two-stage path so a choice click cannot silently become empty feedback.

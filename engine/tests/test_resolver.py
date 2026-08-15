@@ -532,7 +532,7 @@ class ResumeTest(Sim):
 
 
 class GateInputTest(Sim):
-    def test_option_input_required_and_exposed(self):
+    def test_option_input_is_a_durable_second_action(self):
         wf_text = """\
 version: 1
 name: g
@@ -553,10 +553,38 @@ nodes:
 """
         self.start(self.write_wf("w.yaml", wf_text))
         run = self.run_obj()
+        resolver.record_gate(run, "ask", "give")
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_input")
+        self.assertEqual(action["field"], "feedback")
+        self.assertIn("nothing will regenerate", action["prompt"].lower())
         with self.assertRaises(resolver.RunError):
-            resolver.record_gate(run, "ask", "give")  # missing input text
-        action = self.gate("ask", "give", input_text="tighten scope")
+            resolver.record_gate_input(self.run_obj(), "ask", "   ")
+        run = self.run_obj()
+        resolver.record_gate_input(run, "ask", "tighten scope")
+        statemod.save("feat", run.state, self.tmp)
+        action = resolver.next_action(run)
         self.assertIn("Apply: tighten scope", action["prompt"])
+        state = self.state()
+        self.assertEqual(state["gates"][-1]["input"], "tighten scope")
+
+    def test_atomic_gate_input_remains_compatible(self):
+        wf_text = """\
+version: 1
+name: g
+start: ask
+nodes:
+  - id: ask
+    type: gate
+    prompt: Feedback?
+    options:
+      - {id: give, label: Give feedback, to: end, input: feedback}
+"""
+        self.start(self.write_wf("atomic.yaml", wf_text))
+        action = self.gate("ask", "give", input_text="one call")
+        self.assertEqual(action["action"], "done")
+        self.assertEqual(self.state()["gates"][-1]["input"], "one call")
 
 
 SELF_EXHAUST_WF = """\

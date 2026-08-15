@@ -729,7 +729,9 @@ def next_action(run, serial=False):
     for path in cursors:
         frame, node = run.node_at(path)
         entry = statemod.step_entry(run.state, path)
-        if entry.get("pending_ask"):
+        if entry.get("pending_gate_input"):
+            gates.append(_gate_input_action(run, frame, node, path, entry))
+        elif entry.get("pending_ask"):
             gates.append(_synth_gate_action(run, path, node, entry))
         elif ntype(node) == "gate":
             gates.append(_gate_action(run, frame, node, path))
@@ -773,6 +775,44 @@ def _gate_action(run, frame, node, path):
         "step": path,
         "prompt": run.resolve_text(node["prompt"], frame, missing_ok=True),
         "options": options,
+    }
+
+
+def _gate_input_action(run, frame, node, path, entry):
+    pending = entry["pending_gate_input"]
+    option = next((o for o in node["options"] if o["id"] == pending["option"]), None)
+    if option is None or option.get("input") != pending.get("field"):
+        raise RunError(f"gate {path!r}: pending input no longer matches the workflow", code=3)
+    field = pending["field"]
+    if field == "feedback":
+        question = (
+            f"You selected: {option['label']}\n\n"
+            "What should Maestro change before regenerating? Give all suggestions together; "
+            "for multiple LLDs, label each repository. Feedback is required and nothing will "
+            "regenerate until it is recorded."
+        )
+    elif field == "answers_blob":
+        question = (
+            run.resolve_text(node["prompt"], frame, missing_ok=True).rstrip()
+            + "\n\nProvide all answers together now. The question batch remains open until "
+              "at least one non-blank line is recorded."
+        )
+    elif field == "refs":
+        question = "Paste all reference links or local paths together now."
+    elif field == "repos_text":
+        question = "List the repositories to include, separated by commas."
+    else:
+        question = (
+            f"You selected: {option['label']}\n\n"
+            f"Provide the required {field.replace('_', ' ')}. Nothing will continue until "
+            "this input is recorded."
+        )
+    return {
+        "action": "ask_input",
+        "step": path,
+        "prompt": question,
+        "option": option["id"],
+        "field": field,
     }
 
 
@@ -1013,18 +1053,34 @@ def record_note(run, text, step=None):
     return note
 
 
+def _append_gate_history(run, path, option_id, input_text=None, synthesized=None):
+    run.state["gates"].append({
+        "step": path, "option": option_id,
+        **({"input": input_text} if input_text else {}),
+        "at": statemod.now_iso(),
+        **({"synthesized": synthesized} if synthesized else {}),
+    })
+
+
+def _finish_real_gate(run, frame, node, path, entry, option, input_text=None):
+    outputs = {"choice": option["id"]}
+    if option.get("input"):
+        outputs[option["input"]] = input_text
+    entry.pop("pending_gate_input", None)
+    entry["outputs"] = outputs
+    entry["status"] = "done"
+    _append_gate_history(run, path, option["id"], input_text=input_text)
+    _leave_to(run, frame, node, option["to"], outputs, via_gate=True)
+    return entry
+
+
 def record_gate(run, path, option_id, input_text=None):
     _require_cursor(run, path)
     frame, node = run.node_at(path)
     entry = statemod.step_entry(run.state, path)
     ask = entry.get("pending_ask")
-    run.state["gates"].append({
-        "step": path, "option": option_id,
-        **({"input": input_text} if input_text else {}),
-        "at": statemod.now_iso(),
-        **({"synthesized": ask["kind"]} if ask else {}),
-    })
     if ask:
+        _append_gate_history(run, path, option_id, synthesized=ask["kind"])
         return _record_synth_gate(run, frame, node, path, entry, ask, option_id)
     if ntype(node) != "gate":
         raise RunError(f"step {path!r} is not a gate", code=4)
@@ -1033,14 +1089,24 @@ def record_gate(run, path, option_id, input_text=None):
         valid = ", ".join(o["id"] for o in node["options"])
         raise RunError(f"gate {path!r}: unknown option {option_id!r} (valid: {valid})", code=4)
     if option.get("input") and not input_text:
-        raise RunError(f"gate {path!r}: option {option_id!r} requires --input text", code=4)
-    outputs = {"choice": option_id}
-    if option.get("input"):
-        outputs[option["input"]] = input_text
-    entry["outputs"] = outputs
-    entry["status"] = "done"
-    _leave_to(run, frame, node, option["to"], outputs, via_gate=True)
-    return entry
+        entry["pending_gate_input"] = {"option": option_id, "field": option["input"]}
+        return entry
+    return _finish_real_gate(run, frame, node, path, entry, option, input_text=input_text)
+
+
+def record_gate_input(run, path, input_text):
+    _require_cursor(run, path)
+    frame, node = run.node_at(path)
+    entry = statemod.step_entry(run.state, path)
+    pending = entry.get("pending_gate_input")
+    if not pending:
+        raise RunError(f"gate {path!r} is not waiting for free text", code=4)
+    if not input_text or not input_text.strip():
+        raise RunError(f"gate {path!r}: {pending['field']} cannot be blank", code=4)
+    option = next((o for o in node["options"] if o["id"] == pending["option"]), None)
+    if option is None or option.get("input") != pending["field"]:
+        raise RunError(f"gate {path!r}: pending input no longer matches the workflow", code=3)
+    return _finish_real_gate(run, frame, node, path, entry, option, input_text=input_text)
 
 
 def _record_synth_gate(run, frame, node, path, entry, ask, option_id):

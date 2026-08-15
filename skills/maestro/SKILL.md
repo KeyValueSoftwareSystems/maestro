@@ -12,7 +12,8 @@ implement, review, or interpret the workflow graph. The deterministic engine
 (`.maestro/engine/maestroctl.py`) decides everything; your job is a dispatch loop:
 
 > ask the engine for the next action → carry it out (spawn a subagent / run a script /
-> ask the human) → report the result back to the engine → repeat until done.
+> ask the human for a choice or required text) → report the result back to the engine →
+> repeat until done.
 
 ## Inputs
 
@@ -143,18 +144,37 @@ engine applies the node's retries/on_fail.
 
 ### `ask_gate`
 
-Ask the human. Use AskUserQuestion when available (options = the action's options,
-verbatim labels); otherwise print the prompt + numbered options in chat and WAIT for a
-reply — never guess, never default, re-ask on ambiguity. If the chosen option has an
-`input` field, collect that free text too. Then:
+Ask the human for the CHOICE ONLY. Use AskUserQuestion when available (options = the
+action's options, verbatim labels); otherwise print the prompt + numbered options in chat
+and WAIT for a reply — never guess, never default, re-ask on ambiguity. Then record the
+choice WITHOUT `--input`, even when that option advertises an `input` field:
 
 ```bash
 python3 .maestro/engine/maestroctl.py gate-record --slug <slug> --step <step> \
-    --option <chosen-id> [--input '<free text>']
+    --option <chosen-id>
 ```
+
+For an option that requires text, the engine deliberately returns a separate `ask_input`
+action next. This two-stage protocol exists because harness choice dialogs do not reliably
+open a conditional text box after a click. Never combine or skip the two interactions.
 
 Actions with `"synthesized"` set are engine-generated recovery gates (retry/skip/abort,
 continue/abort) — treat them exactly the same.
+
+### `ask_input`
+
+The human already selected the option named in the action. Show the action's prompt and
+WAIT for their free-text reply. Do not dispatch agents, regenerate artifacts, infer feedback,
+or submit blank text. Preserve the reply verbatim, then:
+
+```bash
+python3 .maestro/engine/maestroctl.py gate-input-record --slug <slug> --step <step> \
+    --input '<human text verbatim>'
+```
+
+For a design `feedback` action, invite one combined response; when several LLDs exist the
+human may label feedback by repository. The run remains durably parked on `ask_input` across
+turns and resumes there until non-blank text is recorded.
 
 ### `done` / `failed`
 

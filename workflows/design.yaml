@@ -162,7 +162,7 @@ nodes:
       complete, then choose. Design/technical concerns are handled later at the HLD/LLD.
     options:
       - {id: approve, label: Approve — author the HLD, to: check_codebase_map}
-      - {id: revise, label: Request PRD revisions (regenerates the PRD + its Q&A), to: brainstorm_draft, input: feedback}
+      - {id: revise, label: Request PRD revisions — then describe what to change, to: brainstorm_draft, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
   # ---- Codebase-map freshness gate: catches drift from commits made OUTSIDE Maestro
@@ -346,7 +346,7 @@ nodes:
       Review the document, then choose.
     options:
       - {id: approve, label: Approve — write the detailed designs, to: lld_scope_serve}
-      - {id: revise, label: Request revisions (regenerates everything downstream), to: author_hld, input: feedback}
+      - {id: revise, label: Request HLD revisions — then describe what to change, to: author_hld, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
   # ---- LLD scope: repo-based, not stack-named. lld_scope_serve discovers the ACTUAL repos
@@ -529,7 +529,7 @@ nodes:
       implementation.
     options:
       - {id: approve, label: Approve — reconcile the contract, to: contract}
-      - {id: revise, label: Request LLD revisions (regenerates the LLD(s) + downstream), to: lld_scope, input: feedback}
+      - {id: revise, label: Request LLD revisions — then describe suggestions, to: lld_scope, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
   - id: contract

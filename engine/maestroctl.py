@@ -11,6 +11,7 @@ The lead agent's whole protocol:
         maestroctl complete --slug S --step P --outputs '<json>'
         maestroctl complete --slug S --step P --exit-code N [--stdout '<text>']
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
+        maestroctl gate-input-record --slug S --step P --input '<text>'
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, reset (--step/--all, --cascade), rebase, graph, note (capture out-of-band input).
@@ -107,6 +108,12 @@ def cmd_complete(args):
 def cmd_gate_record(args):
     return _mutate(args, lambda run: resolver.record_gate(
         run, args.step, args.option, input_text=args.input,
+    ))
+
+
+def cmd_gate_input_record(args):
+    return _mutate(args, lambda run: resolver.record_gate_input(
+        run, args.step, args.input,
     ))
 
 
@@ -243,6 +250,13 @@ def build_parser():
     p.add_argument("--input", help="free text collected by the option")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_gate_record)
+
+    p = sub.add_parser("gate-input-record", help="record required free text after a gate choice")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--input", required=True, help="free text requested by the pending gate option")
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_gate_input_record)
 
     p = sub.add_parser("fail", help="record a step failure (engine applies retries/on_fail)")
     p.add_argument("--slug", required=True)

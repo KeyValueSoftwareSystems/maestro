@@ -17,8 +17,15 @@ defaults:
   model: haiku
   agent: general
   max_visits: 10
-start: design
+start: workspace_sync_initial
 nodes:
+  - id: workspace_sync_initial
+    type: subworkflow
+    label: Workspace sync (feature start)
+    workflow: .maestro/workflows/workspace-sync.yaml
+    inputs: {slug: "${inputs.slug}", checkpoint: feature-start}
+    next: design
+
   - id: design
     type: subworkflow
     label: Design phase
@@ -58,7 +65,7 @@ nodes:
       ${steps.arch_review.outputs.summary}
       Full review: ${steps.arch_review.outputs.review_path}
     options:
-      - {id: revise, label: Revise the design (regenerates design phase), to: design, input: feedback}
+      - {id: revise, label: Revise the design — then describe what to change, to: design, input: feedback}
       - {id: waive, label: Waive — proceed anyway, to: contract_approval}
       - {id: reject, label: Abort the run, to: abort}
 
@@ -71,9 +78,21 @@ nodes:
       Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})
       Architecture review: ${steps.arch_review.outputs.summary}
     options:
-      - {id: approve, label: Approve — start implementation, to: impl_scope_init}
-      - {id: revise, label: Request design revisions, to: design, input: feedback}
+      - {id: approve, label: Approve — verify workspace then implement, to: workspace_sync_pre_impl}
+      - {id: revise, label: Request design revisions — then describe what to change, to: design, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
+
+  - id: workspace_sync_pre_impl
+    type: subworkflow
+    label: Workspace sync (pre-implementation)
+    workflow: .maestro/workflows/workspace-sync.yaml
+    inputs: {slug: "${inputs.slug}", checkpoint: pre-implementation}
+    max_visits: 8
+    routes:
+      # If HEAD moved since the design was grounded, regenerate/reapprove the design before
+      # implementation. Continuing at the already-pinned commits falls through immediately.
+      - {when: "${steps.workspace_sync_pre_impl.outputs.changed} == true", to: design}
+      - {to: impl_scope_init}
 
   - id: impl_scope_init
     type: script
@@ -233,7 +252,7 @@ nodes:
       QA: ${steps.qa.outputs.qa_summary}
     options:
       - {id: approve, label: Approve — archive and finish, to: archive}
-      - {id: revise, label: Send back to design, to: design, input: feedback}
+      - {id: revise, label: Send back to design — then describe what to change, to: design, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
 
   - id: archive
