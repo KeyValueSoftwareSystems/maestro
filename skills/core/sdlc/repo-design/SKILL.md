@@ -1,72 +1,111 @@
 ---
 name: repo-design
-description: Author the low-level design (LLD) for a feature IN ONE REPO — read that repo's code to ground the design, then design how the feature slots into it (structure, data/state, the interfaces it exposes and/or consumes, NFRs, tests). Repo-agnostic — works for a backend, frontend, mobile app, or any other repo, whatever it turns out to be. Writes the LLD doc; never edits app code. Front door for /repo-design.
+description: Produce a concise, buildable low-level design (LLD) for one repository. Ground it in that repo's code, show the implementation seam, responsibilities, critical flows, interfaces, state, and verification without repeating the HLD or padding irrelevant sections. Writes only the LLD. Front door for /repo-design.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, design, lld]
 ---
 
 # repo-design — low-level design for one repo
 
-Design how a feature slots into **one specific repo**: read enough of its real code to ground
-the design, then write a **buildable LLD for that repo alone**. This is a design artifact, not
-code — never edit app code, don't implement, and don't design any other repo. The **cross-repo
-contract** is not written here — you describe what this repo exposes and/or consumes; a
-separate step reconciles every repo's LLD into the formal contract.
+Write the implementation map for one repository. A developer or implementation agent should quickly
+see where the feature fits, what changes, how the important flows behave, which order to build them
+in, and how to verify the result. The LLD must preserve enough decisions for implementation to
+continue without another architecture pass. Do not implement, edit application code, redesign
+another repo, or repeat the HLD's product and architecture narrative.
 
-This skill is deliberately repo-agnostic: it does not assume "backend" or "frontend." The repo
-you're given could be either, a mobile app, a CLI, a library, an infra/pipeline repo, or
-anything else — figure out what it actually is from its own code and map it to the sections
-below, marking a section "n/a" when it genuinely doesn't apply rather than forcing content.
+This skill is repo-agnostic. Determine whether the repo is a backend, UI, mobile app, library, CLI,
+infrastructure project, pipeline, or something else from its own evidence. Describe only this repo's
+side of cross-repo interfaces; the later contract step reconciles all sides.
 
-## Inputs
-Your instructions name the **repo** you own (by name/path), the approved HLD, the feature, and
-the artifact path to write. Standalone? ask which repo, or infer it from the current directory,
-and write to a path you choose (and tell the user where).
+## Inputs and grounding
 
-## Steps
-1. **Identify what this repo is.** Read its `docs/codebase-map.md` first (umbrella layout:
-   `codebase/<repo>/docs/codebase-map.md`) — the standing description of its modules, flows and
-   execution modes — plus its `CLAUDE.md`/manifest (`package.json`, `pubspec.yaml`,
-   `pyproject.toml`, a Terraform/CI config, whatever exists). From that, decide its shape: does
-   it serve requests, render UI, run on a device, ship as a library, define infrastructure? That
-   shape determines which sections below carry real content.
-2. **Ground in the code, cheaply.** Read the actual source only where the feature needs context
-   the map doesn't cover — the specific flow you're extending and any execution mode it touches.
-   Cite `file:line` for every constraint you rely on; don't guess. An approach that fits the
-   happy path but breaks an existing mode (async, batch, offline, multi-tenant…) is a wrong LLD.
-3. **Design the structural change** — the modules/components/objects and their responsibilities,
-   and the sequence for each critical path (happy + main error paths); where new code slots in.
-4. **Data & state** (if this repo owns any) — entities, storage/persistence, migration or
-   versioning plan with rollback. Mark "n/a — this repo holds no persistent state" if true.
-5. **Interfaces** — for EACH interface this repo touches, say which direction: what it
-   **exposes** (an API/event/screen/CLI command others call into) and what it **consumes** (an
-   API/event/SDK it calls out to). A repo can do both. Be concrete: method/path or
-   event/topic/screen name, request/response shape, error handling, auth. This is this repo's
-   *side* of any contract — reconciliation with other repos happens in a later step.
-6. **Non-functional requirements**, scaled to what's real here: security & privacy (authz,
-   secrets, PII), performance, reliability (retries, idempotency, partial failure), and
-   observability. Skip a sub-area explicitly (state why) rather than padding it.
-7. **Edge cases** the design must define, not leave to the implementer (empty/oversized inputs,
-   concurrent updates, partial failure, auth denial, rate limits — whichever apply to this
-   repo's shape).
-8. **Test plan** — coverage appropriate to this repo's shape (unit/integration/component/E2E).
-9. **Write** the LLD; flag anything that constrains or must be reconciled with other repos'
-   designs (their existence, not their content, is all you may assume).
+Your instructions name the repo, approved HLD, feature, and artifact path. Read the HLD, then read the
+repo's `docs/codebase-map.md`, project guidance, and relevant manifest. Inspect the real source around
+the flow being changed, its tests, and every execution mode the feature touches.
 
-## What the LLD must cover (write all; mark a section "n/a" with a one-line reason if it
-genuinely doesn't apply to this repo's shape)
-Context & constraints (grounded in the code, cited) · structural/component design · data &
-state · interfaces exposed and/or consumed · security & privacy · performance · reliability ·
-observability · edge cases · test plan · rollout/backout note for this repo alone.
+Use code evidence to confirm design constraints rather than to decorate the document. Collect the
+small set of decision-driving references in a compact `claim | source` table or cite them beside the
+relevant decision. Do not attach `file:line` to every sentence.
+
+## Process
+
+1. Identify the existing design seam: the interface through which current callers, users, jobs, or
+   tests reach the behavior being changed.
+2. Map the approved HLD direction onto this repo's existing modules and conventions. Prefer extending
+   a proven seam over adding a parallel architecture.
+3. Define responsibilities and dependencies for each changed or new module. Keep interfaces small
+   and hide implementation detail behind them.
+4. Describe the critical success flow and only the failure, retry, concurrency, offline, or recovery
+   flows that change control, state, or externally visible behavior.
+5. Specify interfaces and state precisely where they exist: direction, names, shapes, validation,
+   errors, authorization, ownership, persistence, migration, and compatibility.
+6. Include security, privacy, performance, reliability, observability, rollout, and backout only when
+   they constrain this repo's implementation or operation.
+7. Order the work into dependency-aware, independently verifiable increments. Put foundational
+   contract or state changes before their consumers and identify safe checkpoints.
+8. Map acceptance behavior to tests at the highest stable seam available.
+9. Edit once for the implementer: remove repeated HLD context, generic guidance, obvious framework
+   behavior, and any section that contains no useful decision.
+
+## LLD shape
+
+Use these core sections in this order:
+
+1. **Change summary** — a short list of this repo's responsibilities, exposed or consumed behavior,
+   and the implementation boundary.
+2. **Existing design seam** — the current modules, conventions, and constraints the change extends,
+   with compact code evidence.
+3. **Proposed changes** — preferably an `area | change | responsibility` table followed by rationale
+   only where needed.
+4. **Critical flows** — numbered flows or sequence diagrams for ordering that matters. Cover the main
+   success path and material failure paths; do not enumerate trivial variations.
+5. **Implementation sequence** — dependency-ordered increments with a concrete result and verification
+   checkpoint for each. This is an order of work, not a file-by-file task dump.
+6. **Verification** — acceptance behavior mapped to unit, integration, component, or end-to-end tests,
+   including the existing test seam or prior art to follow.
+
+Add the following sections only when they carry real design information:
+
+- **Interfaces and state** — contracts exposed or consumed, data ownership, persistence, migration,
+  versioning, compatibility, validation, authorization, and error behavior.
+- **Operational behavior** — relevant security/privacy, performance, reliability, observability,
+  rollout, or backout decisions.
+- **Open implementation decisions** — unresolved choices that an implementer cannot safely make
+  alone.
+
+Omit irrelevant optional sections completely. Do not add empty headings, `n/a` entries, or generic
+claims that the implementation will be secure, scalable, observable, or well tested.
+
+## Writing contract
+
+- Write for the developer who will implement this repo's part of the feature.
+- Lead each section with the answer. Use active voice, short sentences, specific names, and one idea
+  per paragraph.
+- Prefer tables for module mappings, interfaces, state transitions, and test coverage. Use prose to
+  explain non-obvious reasoning and diagrams only when order or topology is otherwise hard to follow.
+- Include enough interface and state detail to build and reconcile the design, but avoid code listings
+  and speculative file inventories.
+- Make ownership, dependency direction, invariants, and externally visible failure behavior explicit.
+  Do not make the implementation agent infer decisions that affect correctness.
+- Aim for 900–1,800 words for a normal repo. Genuine implementation complexity can justify more;
+  repeated context and template padding cannot.
+
+## Revision mode
+
+Treat review feedback as rewrite instructions. Update the design in place so it reads as one current
+implementation plan. Do not include reviewer suggestions, revision history, "previous design"
+narration, or a list of changes made during review.
 
 ## Output contract
-Write your LLD to the given artifact path, with the sections above, each constraint citing
-`file:line`. Return `lld_path` and `contract_notes` — a short summary of the
-**decisions/constraints that shape reconciliation with other repos** (e.g. "exposes
-`GET /favorites` with cursor pagination"; "consumes the backend's existing auth token, no
-change needed"). The interfaces section feeds the cross-repo contract step.
+
+Write the LLD at the requested artifact path. Return `lld_path` and concise `contract_notes` containing
+only the decisions or constraints that another repo must reconcile, such as an exposed route, event,
+token expectation, or compatibility requirement. Do not repeat the LLD summary in `contract_notes`.
 
 ## Definition of done
-Every applicable section present and concrete enough to reconcile against other repos'
-designs; "n/a" sections justified in one line, not silently dropped; edge cases specified (not
-"TBD"); breaking changes flagged. Do not implement — this is a design artifact only.
+
+A developer or implementation agent can identify the seam, proposed changes, dependency order, and
+verification checkpoints without rereading the HLD or repeating broad codebase discovery. Every
+material constraint is grounded; critical flows, interfaces, state behavior, invariants, failure
+behavior, and tests are specific enough to implement when applicable; breaking changes are explicit;
+and no irrelevant or revision-process content remains. Do not implement the feature.
