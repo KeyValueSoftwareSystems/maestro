@@ -3,20 +3,20 @@
 # install.sh — install the Maestro pack (KeyValue AI-SDLC v2) into your project
 # =============================================================================
 # Run this from the ROOT of your main repo. It:
-#   1. installs OUR skills + commands + agents into your AI-IDE config dirs
-#      (.claude/ and/or .cursor/ — skills, commands, agents)
+#   1. installs OUR skills + commands + agents into your AI-harness config dirs
+#      (.claude/, .cursor/, and/or .agents/)
 #   2. copies the engine + workflows + builder UI into your repo
-#      (runtime files the /maestro skill shells out to)
+#      (runtime files the Maestro skill shells out to)
 #
 # That's it — no CLI, no config file, no daemons. Everything runs inside your
-# interactive session via the /maestro skill; the engine is stdlib-only python3.
+# interactive session via the Maestro skill; the engine is stdlib-only python3.
 #
 # Two ways to run — no clone required either way:
 #   • Piped: curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/main/install.sh \
-#              | bash -s -- claude-code cursor
+#              | bash -s -- claude-code cursor codex
 #   • From a checkout: /path/to/kv-skills/install.sh claude-code
 #
-# Bare words are IDE targets: claude-code (default) and/or cursor.
+# Bare words are harness targets: claude-code (default), cursor, and/or codex.
 #
 # Stack filter (optional):
 #   --stack go,react   install core SDLC skills/agents + ONLY those tagged stack:go /
@@ -147,7 +147,13 @@ for agent in $AGENTS; do
       say "Installing skills + commands for Cursor${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.cursor/skills"
       copy_tree commands "$DEST/.cursor/commands"
-      # Cursor has no subagent registry; the /maestro skill degrades to inline mode.
+      # Cursor has no subagent registry; the Maestro skill degrades to inline mode.
+      ;;
+    codex)
+      say "Installing skills for Codex${STACKS:+ (stacks: $STACKS)}"
+      # Codex discovers repository skills from .agents/skills and invokes them with
+      # `$skill-name`; its native subagents need no copied Claude agent definitions.
+      copy_skills        "$DEST/.agents/skills"
       ;;
     *) echo "  unknown IDE target: $agent (skipping)" >&2 ;;
   esac
@@ -172,6 +178,15 @@ cp "$SRC/bin/maestro" "$DEST/maestro" && chmod +x "$DEST/maestro" && note "maest
 cp "$SRC/install.sh" "$DEST/install.sh" 2>/dev/null && note "install.sh (re-run to upgrade)"
 
 say "Done."
-note "Next:  open your IDE and run  /maestro-init   (detect stack + build the knowledge base)"
-note "Then:  start a feature with     /maestro my-feature"
+case " $AGENTS " in
+  *" codex "*)
+    note 'Codex: open the repo and invoke  $maestro-init  (detect stack + build the knowledge base)'
+    note 'Codex: then start a feature with $maestro my-feature'
+    ;;
+esac
+case " $AGENTS " in
+  *" claude-code "*|*" cursor "*)
+    note "Claude Code / Cursor: run  /maestro-init  then  /maestro my-feature"
+    ;;
+esac
 note "Guide: ./maestro help   (getting started, .gitignore, upgrade/uninstall)"

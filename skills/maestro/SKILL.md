@@ -1,6 +1,6 @@
 ---
 name: maestro
-description: Lead agent for Maestro workflows — drives a workflow.yaml end-to-end by dispatching engine-served actions to subagents and humans. Front door for /maestro <slug> [workflow-file]. Use when the user wants to run, resume, or continue an orchestrated SDLC flow for a feature.
+description: Lead agent for Maestro workflows — drives a workflow.yaml end-to-end by dispatching engine-served actions to subagents and humans. Front door for /maestro or $maestro with a feature slug and optional workflow file. Use when the user wants to run, resume, or continue an orchestrated SDLC flow for a feature.
 tags: [orchestration, sdlc, lead-agent]
 allowed-tools: Task, Bash, AskUserQuestion, Read
 ---
@@ -99,11 +99,17 @@ engine ledger is the source of truth. When you regain the turn, just resume (bel
 
 ### `run_agent`
 
-Spawn ONE subagent:
+Use ONE worker:
 
 - **Claude Code (Task tool available):** `Task(subagent_type=<agent_type>,
   model=<model>, prompt=<prompt>)` — all three come straight from the action. Use the
   prompt EXACTLY as served; do not rewrite it.
+- **Codex (subagent tools available):** spawn exactly one subagent for the action and give
+  it the served `prompt` EXACTLY. Use `agent_type` as the role/task label when the host lets
+  you name the worker. Treat `model` as a host-specific hint: pass it only when Codex accepts
+  that exact model identifier; never translate Claude aliases (`haiku`, `sonnet`, `opus`) to
+  a guessed OpenAI model. Wait for the worker and use its returned last-line JSON.
+- **No subagent tool:** use inline mode below.
 - The subagent's reply ends with one JSON line (the action's `outputs` fields). Extract
   it and record:
 
@@ -123,9 +129,12 @@ The engine owns retries and failure routing — never loop on a step yourself.
 
 ### `run_agents`
 
-A parallel wave. Spawn ALL listed subagents in ONE message (multiple Task calls, same
-rules as `run_agent`). As each finishes, `complete` (or `fail`) it individually. Finish
-the whole wave before acting on whatever action the last `complete` returns.
+A parallel wave. On Claude Code, spawn ALL listed Task calls in ONE message. On Codex,
+spawn one native subagent per listed action in the same turn so independent work runs in
+parallel. Use each action's exact prompt and the same model rule as `run_agent`. As each
+finishes, `complete` (or `fail`) it individually. Finish the whole wave before acting on
+whatever action the last `complete` returns. If the host has no subagent tools, inline mode's
+`--serial` contract prevents the engine from serving `run_agents`.
 
 ### `run_script`
 
@@ -186,8 +195,9 @@ Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reas
 
 A run does NOT need to finish in one turn, and an interrupted turn is normal — the engine
 ledger holds all progress. To resume after ANY interruption (turn ended, session closed, you
-came back later), just re-invoke `/maestro <slug>` or call `next` and continue the loop from
-whatever action it serves: `init` on an existing run is a no-op that says "resuming", and
+came back later), just re-invoke `/maestro <slug>` (Claude Code / Cursor), `$maestro <slug>`
+(Codex), or call `next` and continue the loop from whatever action it serves: `init` on an
+existing run is a no-op that says "resuming", and
 `next` always returns the one action the run is currently waiting on (often a gate you left
 open). Never restart from scratch and never re-run completed steps — the state ledger, not
 your memory of where you were, decides what happens next. If the user asks "where did we leave
@@ -195,7 +205,8 @@ off?", run `status --slug <slug>` and tell them, then resume.
 
 ## Harness degradation — inline mode
 
-No Task tool (Cursor and most non-Claude-Code harnesses)? Switch to **inline mode** and
+No subagent tool (Cursor, or a Codex installation with subagents disabled)? Switch to
+**inline mode** and
 tell the user once: *"No subagent support here — running steps inline and sequentially;
 per-step models are ignored (everything runs on this session's model)."*
 

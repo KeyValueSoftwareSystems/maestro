@@ -14,12 +14,14 @@ Maestro runs) reads. Run once per workspace; re-runnable (refresh, don't duplica
 
 ## Inputs
 Your instruction names the docs root to write under and the code surface to read (the
-`codebase/` repos or the single repo, their `CLAUDE.md`/`.cursor/rules`, existing `docs/`).
+`codebase/` repos or the single repo, their `AGENTS.md`/`CLAUDE.md`/`.cursor/rules`, existing
+`docs/`).
 Standalone with no paths given? Write to `docs/` and tell the user.
 
 ## Method
 1. **Survey the code.** Per repo: entry points, build/test/run commands, directory layout,
-   house style, dependencies, datastores. Read each repo's `CLAUDE.md`/rules first.
+   house style, dependencies, datastores. Read each repo's `AGENTS.md`, `CLAUDE.md`, or
+   Cursor rules first, applying the instruction files that exist for the active host.
 2. **Identify the domains** — the bounded contexts / feature areas the code is organised
    around (e.g. `auth`, `order-management`, `catalog`, `payments`). Use kebab-case names.
 3. **Per domain, write two files:**

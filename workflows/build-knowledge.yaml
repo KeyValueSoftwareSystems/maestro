@@ -34,7 +34,8 @@ nodes:
     label: Build the knowledge base
     instruction: |
       Scan this workspace and build its living knowledge base under docs/. Read the repos
-      under codebase/ (or the single repo), each repo's CLAUDE.md / .cursor/rules, and any
+      under codebase/ (or the single repo), each repo's AGENTS.md / CLAUDE.md /
+      .cursor/rules, and any
       existing docs/. Then:
       1. Identify the domains / bounded contexts the code is organised around (kebab-case,
          e.g. auth, order-management, catalog, payments).

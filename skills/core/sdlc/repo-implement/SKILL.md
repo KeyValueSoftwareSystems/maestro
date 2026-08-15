@@ -17,10 +17,12 @@ and do every edit, test, merge, and commit inside it. Never edit the umbrella ch
 fall back to the repository's main worktree.
 
 Read repo instructions and the task context manifest in batches. Implement all slices. When
-the harness supports safe parallel agents, use at most three slice worktrees with disjoint
-writes, then merge every slice commit into the feature branch. Otherwise implement slices
-sequentially in the feature worktree. Honor human gates for auth, payments, migrations,
-production config, secrets, and dependency upgrades. Never weaken a failing test.
+the harness supports safe parallel agents (Claude Code Task or Codex native subagents),
+explicitly delegate at most three independent slice groups, one bounded group per subagent,
+using slice worktrees with disjoint writes; wait for them, verify their commits, then merge
+every slice commit into the feature branch. Otherwise implement slices sequentially in the
+feature worktree. Honor human gates for auth, payments, migrations, production config,
+secrets, and dependency upgrades. Never weaken a failing test.
 
 Run the repository's real formatter/linter/type checks and targeted plus relevant full
 tests, including provider/consumer contract checks required by the LLD or OpenAPI contract.

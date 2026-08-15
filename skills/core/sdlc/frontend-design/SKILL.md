@@ -115,7 +115,7 @@ re-validate as needed — but never build the file up incrementally.
 
 Fields:
 - `context_manifest.read_once` = the component/state/hook files the tasks edit against;
-  `reference` = this LLD path, the (pending) contract path, and `CLAUDE.md`.
+  `reference` = this LLD path, the (pending) contract path, and `AGENTS.md`/`CLAUDE.md`.
 - One `tasks[]` entry per ≤1-commit slice (e.g. types/API-client, a component + its UI states,
   form+validation, a route), each with `id`, `group_id`, `title`, `depends_on`
   (**intra-group only**), `reads`, `writes` (exact files), `test`, `standards`,
