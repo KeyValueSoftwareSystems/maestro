@@ -17,27 +17,42 @@ implement, review, or interpret the workflow graph. The deterministic engine
 
 ## Inputs
 
-- `slug` (kebab-case feature id, the folder `.maestro/runs/<slug>/`). If omitted, run the
-  **Selecting a slug** step below to pick or create one — never invent one silently.
+- `slug` (kebab-case feature id, the folder `.maestro/runs/<slug>/`). If the invocation
+  contains a feature request instead of an explicit slug, preserve that request verbatim as
+  the feature description and follow **Selecting a slug** below. Derive a slug visibly from
+  a supplied description; never invent a feature or slug from no input.
 - `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
 
 ## Selecting a slug (only when none was given)
 
-Do NOT guess a slug. Ask the engine what runs exist, then let the human pick:
+Ask the engine what runs exist before deciding whether this is a resume or a new feature:
 
 ```bash
 python3 .maestro/engine/maestroctl.py runs        # read-only JSON: [{slug, status, workflow, active, ...}]
 ```
 
-Present the choice with AskUserQuestion (labels are yours, but the slugs come **verbatim**
-from that output — never from memory): one option per existing run (`resume <slug> — <status>`)
-plus **"Start a new feature"**. The auto-added *Other* lets the human type any slug directly.
+When runs exist and the user did not name one explicitly, present the choice with the host's
+native selector: `AskUserQuestion` on Claude Code, or `request_user_input` on Codex when that
+tool is available. Labels are yours, but the slugs come **verbatim** from the engine output —
+never from memory. Show one option per existing run (`resume <slug> — <status>`) plus
+**"Start a new feature"**. The auto-added *Other* lets the human type a slug directly. If the
+host exposes no selector (for example Codex Default mode), print the same choices as a numbered
+list, explicitly ask for the number or slug, and WAIT; plain text is the required fallback,
+not a failed gate.
 
 - **Resume** → use the chosen slug and continue to Setup (init is a no-op resume).
-- **Start new** (or the list was empty) → ask for a kebab-case slug **and a one-line
-  description** of the feature, then init with `--input feature="<that one-liner>"`. That
-  one-liner is the seed the workflow's brainstorm step expands if no requirement files exist.
+- **Start new, description already supplied** → derive a concise kebab-case slug from the
+  description (lowercase ASCII letters and digits, non-alphanumeric runs collapsed to one
+  hyphen, no leading/trailing hyphen), tell the human `Starting <slug> — <description>`, and
+  continue immediately. Do not stop merely to ask the human to reformat words they already
+  supplied. Example: `we need phone OTP and Google auth` → `phone-otp-google-auth`.
+- **Start new, no description supplied** → ask for the one-line feature description only,
+  derive and show the slug using the same rule, then continue immediately. Do not ask a second
+  question for a manually formatted slug.
+
+In both new-feature cases, init with `--input feature="<description verbatim>"`. That
+description is the seed the workflow's brainstorm step expands if no requirement files exist.
 
 ## Hard rules — read twice
 
@@ -153,10 +168,12 @@ engine applies the node's retries/on_fail.
 
 ### `ask_gate`
 
-Ask the human for the CHOICE ONLY. Use AskUserQuestion when available (options = the
-action's options, verbatim labels); otherwise print the prompt + numbered options in chat
-and WAIT for a reply — never guess, never default, re-ask on ambiguity. Then record the
-choice WITHOUT `--input`, even when that option advertises an `input` field:
+Ask the human for the CHOICE ONLY. Use the host-native selector when available:
+`AskUserQuestion` on Claude Code, or `request_user_input` on Codex. Use the action's option
+labels verbatim. If the current host/mode exposes neither selector, print the prompt + numbered
+options in chat, explicitly ask for the number or option label, and WAIT for a reply — never
+guess, never default, re-ask on ambiguity. Then record the choice WITHOUT `--input`, even when
+that option advertises an `input` field:
 
 ```bash
 python3 .maestro/engine/maestroctl.py gate-record --slug <slug> --step <step> \
