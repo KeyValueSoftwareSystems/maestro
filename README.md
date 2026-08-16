@@ -199,11 +199,17 @@ Everything happens inside your coding-agent host — the `./maestro` helper does
 ```
 /maestro my-feature                                  # full pipeline (.maestro/workflows/sdlc-main.yaml)
 /maestro my-feature .maestro/workflows/design.yaml   # just one phase
-/maestro                                             # no slug → lists existing runs to resume, or start new
+/maestro                                             # no input → lists existing runs to resume, or start new
 $maestro my-feature                                  # Codex syntax; same workflow and ledger
+$maestro add phone OTP and Google auth               # description → derives phone-otp-google-auth
 ```
 
-Called with no slug, the lead agent asks the engine which runs exist and lets you **pick one to resume or start a new feature** (it never invents a slug).
+Called without an explicit slug, the lead agent asks the engine which runs exist. If you
+already supplied a feature description and there are no runs to resume, it derives and shows a
+kebab-case slug and starts immediately; it does not ask you to repeat the description in a
+different format. When a choice is required, Claude Code uses `AskUserQuestion` and Codex uses
+`request_user_input` when its current mode exposes that tool. Hosts or modes without a native
+selector fall back to a numbered text prompt.
 
 On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:
 

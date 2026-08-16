@@ -31,6 +31,13 @@ class InstallTest(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(
                 tmp, ".agents", "skills", "maestro", "SKILL.md"
             )))
+            with open(os.path.join(
+                tmp, ".agents", "skills", "maestro", "SKILL.md"
+            ), encoding="utf-8") as handle:
+                maestro_skill = handle.read()
+            self.assertIn("request_user_input", maestro_skill)
+            self.assertIn("derive a concise kebab-case slug", maestro_skill)
+            self.assertIn("print the same choices as a numbered", maestro_skill)
             self.assertTrue(os.path.isfile(os.path.join(
                 tmp, ".agents", "skills", "maestro-init", "SKILL.md"
             )))
