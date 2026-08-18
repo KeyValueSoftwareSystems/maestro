@@ -207,8 +207,10 @@ def _validate_node(node, ids, declared_inputs, where):
             if opt["to"] not in ids and opt["to"] not in RESERVED:
                 err("missing-route-target", f"option {opt['id']!r} targets unknown node {opt['to']!r}")
             for k in opt:
-                if k not in ("id", "label", "to", "input"):
+                if k not in ("id", "label", "to", "input", "choices", "multi"):
                     err("unknown-key", f"gate option has unknown key {k!r}")
+            if "choices" in opt and not opt.get("input"):
+                err("missing-key", f"option {opt['id']!r} has choices but no input field to fill")
     elif ntype == "script":
         run = node.get("run")
         if not isinstance(run, list) or not run or not all(isinstance(a, str) for a in run):

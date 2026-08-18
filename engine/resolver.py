@@ -807,12 +807,25 @@ def _gate_input_action(run, frame, node, path, entry):
             f"Provide the required {field.replace('_', ' ')}. Nothing will continue until "
             "this input is recorded."
         )
+    # When the option enumerates its valid values (e.g. repos discovered by a prior script
+    # node), resolve them into `choices` so the harness renders a selector instead of a
+    # free-text box. `multi` makes it multi-select; the recorded input is the selected
+    # label(s), the same comma-separated shape a free-text reply would have taken.
+    extra = {}
+    choices_src = option.get("choices")
+    if choices_src:
+        resolved = run.resolve_text(choices_src, frame, missing_ok=True)
+        items = [c.strip() for c in resolved.split(",") if c.strip()]
+        if items:
+            extra["choices"] = items
+            extra["multi"] = bool(option.get("multi", False))
     return {
         "action": "ask_input",
         "step": path,
         "prompt": question,
         "option": option["id"],
         "field": field,
+        **extra,
     }
 
 

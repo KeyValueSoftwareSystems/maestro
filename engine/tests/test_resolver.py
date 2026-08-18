@@ -569,6 +569,72 @@ nodes:
         state = self.state()
         self.assertEqual(state["gates"][-1]["input"], "tighten scope")
 
+    def test_option_choices_render_as_a_selector(self):
+        wf_text = """\
+version: 1
+name: g
+inputs:
+  slug: {type: string, required: true}
+  repos: {type: string, default: "backend,react-app,flutter-app"}
+start: ask
+nodes:
+  - id: ask
+    type: gate
+    prompt: Which repos?
+    options:
+      - {id: all, label: All, to: use}
+      - {id: pick, label: Pick, to: use, input: repos_text, choices: "${inputs.repos}", multi: true}
+  - id: use
+    type: agent
+    instruction: "LLD for ${steps.ask.outputs.repos_text}"
+    outputs: [ok]
+    next: end
+"""
+        self.start(self.write_wf("c.yaml", wf_text))
+        run = self.run_obj()
+        resolver.record_gate(run, "ask", "pick")
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_input")
+        self.assertEqual(action["field"], "repos_text")
+        # the discovered set is offered as a selector, not a free-text box
+        self.assertEqual(action["choices"], ["backend", "react-app", "flutter-app"])
+        self.assertTrue(action["multi"])
+        # selecting labels records the same comma-separated shape a free-text reply would
+        run = self.run_obj()
+        resolver.record_gate_input(run, "ask", "backend,react-app")
+        statemod.save("feat", run.state, self.tmp)
+        action = resolver.next_action(run)
+        self.assertIn("LLD for backend,react-app", action["prompt"])
+
+    def test_option_input_without_choices_stays_free_text(self):
+        wf_text = """\
+version: 1
+name: g
+inputs:
+  slug: {type: string, required: true}
+start: ask
+nodes:
+  - id: ask
+    type: gate
+    prompt: Feedback?
+    options:
+      - {id: give, label: Give, to: use, input: feedback}
+  - id: use
+    type: agent
+    instruction: "Apply ${steps.ask.outputs.feedback}"
+    outputs: [ok]
+    next: end
+"""
+        self.start(self.write_wf("f.yaml", wf_text))
+        run = self.run_obj()
+        resolver.record_gate(run, "ask", "give")
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_input")
+        self.assertNotIn("choices", action)
+        self.assertNotIn("multi", action)
+
     def test_atomic_gate_input_remains_compatible(self):
         wf_text = """\
 version: 1

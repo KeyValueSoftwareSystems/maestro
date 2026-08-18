@@ -142,6 +142,9 @@ python3 .maestro/engine/maestroctl.py fail --slug <slug> --step <step> --reason 
 
 The engine owns retries and failure routing — never loop on a step yourself.
 
+When `complete` succeeds and the step's `artifact` is a `.md` doc, surface it as a rendered
+page — see **Publishing stage artifacts**.
+
 ### `run_agents`
 
 A parallel wave. On Claude Code, spawn ALL listed Task calls in ONE message. On Codex,
@@ -198,6 +201,13 @@ python3 .maestro/engine/maestroctl.py gate-input-record --slug <slug> --step <st
     --input '<human text verbatim>'
 ```
 
+**When the action carries `choices`**, the valid values are known — present them as a
+selector, not a free-text box: `AskUserQuestion` (Claude Code) or `request_user_input`
+(Codex) with those options, `multiSelect: true` when `multi` is set. Record the chosen
+label(s) joined by commas as `--input` (the engine parses that same comma-separated shape).
+The user may still supply an unlisted value via the host's "Other" path; only fall back to
+free text if the host exposes no selector.
+
 For a design `feedback` action, invite one combined response; when several LLDs exist the
 human may label feedback by repository. The run remains durably parked on `ask_input` across
 turns and resumes there until non-blank text is recorded.
@@ -207,6 +217,51 @@ turns and resumes there until non-blank text is recorded.
 Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reason`
 (failed), and where the artifacts live (`.maestro/runs/<slug>/`). Suggest
 `python3 .maestro/engine/maestroctl.py status --slug <slug>` for the full step table.
+
+## Publishing stage artifacts
+
+After `complete` succeeds on an agent step whose `artifact` is a human-readable doc (a
+`.md` file — PRD, HLD, LLD, review pack), surface it to the user as a **rendered page**,
+not just a path. This is presentation only: it never gates the step (the `.md` is still the
+proof), and it never pulls the doc into your context — you do not read produced artifacts
+(rule 2). `.json` artifacts (tasks, open-questions) are not published.
+
+For each `.md` artifact of the just-completed step, with `RUN=.maestro/runs/<slug>` and
+`KEY=<step id>` (the step id is stable across revisions, so a re-run updates the SAME link):
+
+1. Render it — deterministic, no LLM, reads the file as a subprocess (never into context):
+
+```bash
+python3 .maestro/engine/render_doc.py "<artifact>.md" "<artifact>.html"
+```
+
+2. Read any link already published for this stage:
+
+```bash
+python3 .maestro/engine/artifact_record.py get "$RUN" "<KEY>"
+```
+
+3. Surface it, harness-aware:
+   - **Claude Code (an artifact publisher is available):** publish `"<artifact>.html"` with
+     the Artifact tool, passing the doc's title. If step 2 returned a non-empty `url`,
+     publish to THAT url so the link updates in place; otherwise publish fresh. Then store
+     the returned url and tell the user the shareable link:
+
+     ```bash
+     python3 .maestro/engine/artifact_record.py record "$RUN" "<KEY>" \
+         --file "<artifact>.html" --url "<returned url>" --title "<title>"
+     ```
+
+   - **Cursor / Codex / no publisher:** do not publish — record the file only and give the
+     user the local path to open:
+
+     ```bash
+     python3 .maestro/engine/artifact_record.py record "$RUN" "<KEY>" \
+         --file "<artifact>.html" --title "<title>"
+     ```
+
+Publishing reads the file at the tool layer, not into your reasoning — never `cat` the
+`.md` or `.html` into your context first.
 
 ## Resuming a run
 
