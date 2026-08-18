@@ -110,6 +110,14 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
+- **`render_doc.py` / `artifact_record.py`** — stage-artifact publishing. `render_doc.py`
+  turns a stage's `.md` (PRD/HLD/LLD/review) into one self-contained, theme-aware HTML
+  fragment (stdlib-only markdown→HTML, deterministic, publish-ready AND locally openable).
+  `artifact_record.py` owns `.maestro/runs/<slug>/artifacts.json` — the step-id→{file,url}
+  map so a revised stage updates the SAME shareable link. The lead agent renders on every
+  agent-step `complete` with a `.md` artifact, then publishes harness-aware: Claude Code →
+  Artifact link (updated in place via the stored url); Cursor/Codex → the local `.html`
+  file. Presentation only — never gates a step, never read into the agent's context.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
