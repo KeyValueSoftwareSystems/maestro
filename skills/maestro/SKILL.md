@@ -201,6 +201,13 @@ python3 .maestro/engine/maestroctl.py gate-input-record --slug <slug> --step <st
     --input '<human text verbatim>'
 ```
 
+**When the action carries `choices`**, the valid values are known — present them as a
+selector, not a free-text box: `AskUserQuestion` (Claude Code) or `request_user_input`
+(Codex) with those options, `multiSelect: true` when `multi` is set. Record the chosen
+label(s) joined by commas as `--input` (the engine parses that same comma-separated shape).
+The user may still supply an unlisted value via the host's "Other" path; only fall back to
+free text if the host exposes no selector.
+
 For a design `feedback` action, invite one combined response; when several LLDs exist the
 human may label feedback by repository. The run remains durably parked on `ask_input` across
 turns and resumes there until non-blank text is recorded.

@@ -370,7 +370,7 @@ nodes:
       Write the detailed design for all of them now, or just some?
     options:
       - {id: all, label: All of them, to: lld_scope_init}
-      - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
+      - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text, choices: "${steps.lld_scope_serve.outputs.names_csv}", multi: true}
 
   - id: lld_scope_init
     type: script

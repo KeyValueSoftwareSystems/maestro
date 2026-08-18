@@ -302,6 +302,12 @@
               },
               "input": {
                 "type": "string"
+              },
+              "choices": {
+                "type": "string"
+              },
+              "multi": {
+                "type": "boolean"
               }
             }
           }
