@@ -24,8 +24,22 @@ def canned_agent_outputs(step, action):
     """Outputs by node id — mirrors each node's declared outputs list."""
     node = step.rsplit("/", 1)[-1]
     table = {
-        "brainstorm_draft": {"draft_summary": "PRD drafted; 0 open questions"},
-        "rq_fold": {"refined_summary": "folded 1 answer"},
+        "project_context": {"project_context": "A test product with backend and frontend repositories."},
+        "feature_goal": {"feature_goal": "Deliver the demo feature for test users."},
+        "prepare_prd_sections": {
+            "problem_context": "The demo workflow needs a product requirement.",
+            "users_jobs": "Test users need to exercise the feature.",
+            "goals_success": "The feature works and its acceptance checks pass.",
+            "non_goals": "Unrelated product changes are excluded.",
+            "functional_scope": "Implement the requested demo behavior end to end.",
+            "constraints_assumptions": "Use the existing backend and frontend repositories.",
+            "acceptance_criteria": "The documented behavior works and tests pass.",
+            "dependencies_risks": "The feature depends on both repository surfaces.",
+            "priority_phasing": "Build the core behavior before refinements.",
+            "references": "The run requirement and maintained project documentation.",
+        },
+        "author_prd": {"summary": "PRD written from confirmed context"},
+        "repair_prd": {"summary": "PRD repaired to match the contract"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
         "refine_hld": {"refined_summary": "folded 1 answer"},
         "slot_1_design": {"lld_path": "lld/x.md", "contract_notes": "rest+cursor"},
@@ -119,7 +133,25 @@ class SdlcE2E(unittest.TestCase):
         os.makedirs(os.path.dirname(full), exist_ok=True)
         if os.path.exists(full):
             return
-        if rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
+        if rel.endswith("/requirement/prd.md"):
+            sections = {
+                "Summary": "Deliver the confirmed demo feature.",
+                "Problem and context": "The product needs the demo behavior described in this run.",
+                "Users and jobs": "Test users need to complete the demo workflow.",
+                "Goals and success signals": "The behavior works and its acceptance checks pass.",
+                "Non-goals": "Unrelated product and platform changes are excluded.",
+                "Functional scope": "Implement the confirmed demo behavior across the required surfaces.",
+                "Constraints and assumptions": "Use the existing backend and frontend repositories.",
+                "Acceptance criteria": "The documented behavior is available and automated tests pass.",
+                "Dependencies and risks": "Delivery depends on both repositories remaining compatible.",
+                "Priorities and phasing": "Build the core behavior before optional refinements.",
+                "References": "The run requirement and maintained project documentation.",
+            }
+            with open(full, "w") as fh:
+                fh.write("\n\n".join(
+                    f"## {heading}\n\n{body}" for heading, body in sections.items()
+                ) + "\n")
+        elif rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
             with open(full, "w") as fh:
                 json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
         else:
@@ -169,7 +201,7 @@ class SdlcE2E(unittest.TestCase):
                 step = act["step"]
                 trace.append((act["action"], step))
                 run = resolver.Run("demo", self.tmp)
-                if act["action"] == "run_agent":
+                if act["action"] in ("run_agent", "run_lead"):
                     for rel in act.get("artifacts", []):
                         self.write_agent_artifact(rel, step)
                     node = step.rsplit("/", 1)[-1]
@@ -180,6 +212,7 @@ class SdlcE2E(unittest.TestCase):
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
+                            or any(a.endswith("validate_prd.py") for a in act.get("argv", []))
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    for a in act.get("argv", []))):
@@ -191,6 +224,9 @@ class SdlcE2E(unittest.TestCase):
                     resolver.complete_step(run, step, exit_code=code, stdout=out)
                 elif act["action"] == "ask_gate":
                     decisions = gate_script.get(step)
+                    if decisions is None and step.rsplit("/", 1)[-1] in (
+                            "project_context_confirm", "feature_goal_confirm"):
+                        decisions = [("confirm", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -205,6 +241,12 @@ class SdlcE2E(unittest.TestCase):
                         self.assertEqual(pending["field"], selected["input"])
                         trace.append(("ask_input", step))
                         resolver.record_gate_input(run, step, text)
+                elif act["action"] == "ask_interview":
+                    resolver.record_interview(
+                        run, step, act["section"],
+                        answer=None if act.get("proposal") else f"Confirmed {act['title']}",
+                        accept=bool(act.get("proposal")),
+                    )
                 statemod.save("demo", run.state, self.tmp)
         self.fail("pipeline did not terminate within max_steps")
 
@@ -254,9 +296,11 @@ class SdlcE2E(unittest.TestCase):
         review_steps = [s for s in steps if s.endswith("/impl/review")]
         self.assertEqual(len(impl_steps), 2)
         self.assertEqual(len(review_steps), 2)
-        # the PRD phase always runs (even with a requirement already present) before the HLD
-        self.assertIn("design/brainstorm_draft", steps)
-        self.assertLess(steps.index("design/brainstorm_draft"), steps.index("design/author_hld"))
+        # the lead confirms context, interviews every PRD area, and writes once before HLD
+        self.assertIn("design/project_context", steps)
+        self.assertIn("design/prd_interview", steps)
+        self.assertIn("design/author_prd", steps)
+        self.assertLess(steps.index("design/author_prd"), steps.index("design/author_hld"))
         # the LLDs are approved by a human before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
         self.assertIn("design/lld_approval", gate_steps)
@@ -264,6 +308,28 @@ class SdlcE2E(unittest.TestCase):
         # design ran before implementation, qa after
         self.assertLess(steps.index("design/author_hld"), steps.index("arch_review"))
         self.assertLess(steps.index("finalize_implementation"), steps.index("qa/qa_run"))
+
+    def test_valid_existing_prd_uses_fast_path(self):
+        self.prep_tasks_json()
+        self.write_agent_artifact(
+            ".maestro/runs/demo/requirement/prd.md", "existing-prd-fixture"
+        )
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "design/lld_approval": [("approve", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
+        }
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertIn("design/check_existing_prd", steps)
+        self.assertNotIn("design/prepare_prd_sections", steps)
+        self.assertNotIn("design/prd_interview", steps)
+        self.assertNotIn("design/author_prd", steps)
 
     def test_revise_cascade_from_contract_gate(self):
         self.prep_tasks_json()
@@ -285,8 +351,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("design/lld_approval"), 2)
 
     def test_revise_cascade_from_prd_gate(self):
-        """Revising at the PRD approval gate re-enters brainstorm_draft, whose cascade-reset
-        re-runs the whole PRD/Q&A phase before it is confirmed again and the HLD is authored."""
+        """PRD feedback re-confirms the feature, interview, and single-write stage."""
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None)],
@@ -300,8 +365,9 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # PRD authored twice (revise looped back), HLD authored once (revise was before it)
-        self.assertEqual(steps.count("design/brainstorm_draft"), 2)
+        # PRD authored twice (revision forces the interview path despite a valid old file).
+        self.assertEqual(steps.count("design/author_prd"), 2)
+        self.assertEqual(steps.count("design/prd_interview"), 22)  # 11 sections x 2 rounds
         self.assertEqual(steps.count("design/author_hld"), 1)
 
     def test_lld_revise_requires_feedback_action_before_regeneration(self):
@@ -427,7 +493,7 @@ class SdlcE2E(unittest.TestCase):
                         self.write_agent_artifact(rel, act["step"])
                     resolver.complete_step(run, act["step"],
                                            outputs=canned_agent_outputs(act["step"], act))
-            elif action["action"] == "run_agent":
+            elif action["action"] in ("run_agent", "run_lead"):
                 for rel in action.get("artifacts", []):
                     self.write_agent_artifact(rel, action["step"])
                 if action["step"].endswith("refine_hld"):
@@ -450,6 +516,8 @@ class SdlcE2E(unittest.TestCase):
                 step = action["step"]
                 if step == "collect_references":
                     resolver.record_gate(run, step, "none")
+                elif step in ("project_context_confirm", "feature_goal_confirm"):
+                    resolver.record_gate(run, step, "confirm")
                 elif step == "oq_ask":
                     asked.append(action["prompt"])
                     self.assertIn("Quota per user?", action["prompt"])
@@ -469,6 +537,12 @@ class SdlcE2E(unittest.TestCase):
                     resolver.record_gate(run, step, "approve")
                 else:
                     self.fail(f"unexpected gate {step}")
+            elif action["action"] == "ask_interview":
+                resolver.record_interview(
+                    run, action["step"], action["section"],
+                    answer=None if action.get("proposal") else f"Confirmed {action['title']}",
+                    accept=bool(action.get("proposal")),
+                )
             statemod.save("demo", run.state, self.tmp)
         else:
             self.fail("design workflow did not finish")
@@ -479,58 +553,30 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(doc["questions"][0]["status"], "folded")
         self.assertEqual(doc["questions"][0]["resolution"]["answer"], "100")
 
-    def test_brainstorm_path_when_requirement_empty(self):
-        """Empty requirement folder -> intake gate -> references gate (with a link) ->
-        author the PRD via the real oq_serve/oq_record scripts (on requirement-questions.json)
-        -> reach author_hld. The PRD loop mirrors the design OQ loop."""
-        # start from an EMPTY requirement folder (undo setUp's seed file)
+    def test_prd_interview_path_when_requirement_empty(self):
+        """An empty requirement uses lead-only clarification and a durable interview."""
         req_dir = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement")
         for name in os.listdir(req_dir):
             os.remove(os.path.join(req_dir, name))
-        rq_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement-questions.json")
-
         with statemod.locked("demo", self.tmp):
             resolver.init_run("demo", ".maestro/workflows/design.yaml", {"feature": "Demo"}, self.tmp)
 
         seen = []
-        asked = []
-        gave_refs = []
+        interview_sections = []
         reached_hld = False
         for _ in range(80):
             run = resolver.Run("demo", self.tmp)
             action = resolver.next_action(run)
-            if action["action"] == "done":
-                break
             run = resolver.Run("demo", self.tmp)
             step = action.get("step")
-            if action["action"] == "run_agent":
+            if action["action"] in ("run_agent", "run_lead"):
                 seen.append(step.rsplit("/", 1)[-1])
                 for rel in action.get("artifacts", []):
                     self.write_agent_artifact(rel, step)
                 node = step.rsplit("/", 1)[-1]
-                if node == "brainstorm_draft":
-                    # simulate the brainstorm skill emitting one open question
-                    doc = {"schema_version": 1, "feature_slug": "demo", "questions": [{
-                        "id": "r1", "question": "Who is the primary user?", "why": "scope",
-                        "options": ["Admins", "End users"], "status": "open", "resolution": None,
-                    }]}
-                    with open(rq_path, "w") as fh:
-                        json.dump(doc, fh)
-                    outputs = {"draft_summary": "drafted; 1 open question"}
-                elif node == "rq_fold":
-                    with open(rq_path) as fh:
-                        doc = json.load(fh)
-                    for q in doc["questions"]:
-                        if q["status"] == "resolved":
-                            q["status"] = "folded"
-                    with open(rq_path, "w") as fh:
-                        json.dump(doc, fh)
-                    outputs = {"refined_summary": "folded 1 answer"}
-                elif node == "author_hld":
+                if node == "author_hld":
                     reached_hld = True
-                    resolver.complete_step(run, step, outputs={"hld_summary": "ok"})
-                    statemod.save("demo", run.state, self.tmp)
-                    break
+                    outputs = {"hld_summary": "ok"}
                 else:
                     outputs = canned_agent_outputs(step, action)
                 resolver.complete_step(run, step, outputs=outputs)
@@ -541,37 +587,35 @@ class SdlcE2E(unittest.TestCase):
                                        stdout=proc.stdout)
             elif action["action"] == "ask_gate":
                 if step == "requirement_intake":
-                    resolver.record_gate(run, step, "brainstorm")
+                    resolver.record_gate(run, step, "clarify")
                 elif step == "collect_references":
-                    gave_refs.append(action["prompt"])
-                    resolver.record_gate(run, step, "provide",
-                                         input_text="https://figma.com/file/demo")
-                elif step == "rq_ask":
-                    asked.append(action["prompt"])
-                    resolver.record_gate(run, step, "answer-all", input_text="2")
+                    resolver.record_gate(run, step, "provide")
+                    resolver.record_gate_input(run, step, "https://figma.com/file/demo")
+                elif step in ("project_context_confirm", "feature_goal_confirm"):
+                    resolver.record_gate(run, step, "confirm")
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
                 elif step == "map_stale_gate":
-                    # runs every script for real; setUp's codebase/ repos are freshly
-                    # `git init`'d with no map yet, so this genuinely fires.
                     resolver.record_gate(run, step, "proceed")
                 else:
                     self.fail(f"unexpected gate {step}")
+            elif action["action"] == "ask_interview":
+                interview_sections.append(action["section"])
+                resolver.record_interview(run, step, action["section"], accept=True)
             statemod.save("demo", run.state, self.tmp)
+            if reached_hld:
+                break
         else:
-            self.fail("brainstorm path did not reach author_hld")
+            self.fail("PRD interview path did not reach author_hld")
 
         self.assertTrue(reached_hld, "never reached author_hld")
-        self.assertEqual(len(gave_refs), 1)  # references gate was offered
-        self.assertIn("brainstorm_draft", seen)
-        self.assertIn("rq_fold", seen)
-        self.assertEqual(len(asked), 1)
-        self.assertIn("Who is the primary user?", asked[0])
-        with open(rq_path) as fh:
-            doc = json.load(fh)
-        # answered option index 2 -> "End users", then rq_fold folded it
-        self.assertEqual(doc["questions"][0]["status"], "folded")
-        self.assertEqual(doc["questions"][0]["resolution"]["answer"], "End users")
+        self.assertIn("project_context", seen)
+        self.assertIn("author_prd", seen)
+        self.assertEqual(len(interview_sections), 11)
+        context_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "prd-context.json")
+        with open(context_path) as fh:
+            context = json.load(fh)
+        self.assertEqual(len(context["sections"]), 11)
 
 
 if __name__ == "__main__":

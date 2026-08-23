@@ -12,6 +12,7 @@ The lead agent's whole protocol:
         maestroctl complete --slug S --step P --exit-code N [--stdout '<text>']
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
         maestroctl gate-input-record --slug S --step P --input '<text>'
+        maestroctl interview-record --slug S --step P --section X (--accept | --answer '<text>')
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, reset (--step/--all, --cascade), rebase, graph, note (capture out-of-band input).
@@ -100,8 +101,17 @@ def cmd_complete(args):
             raise resolver.RunError(f"--outputs is not valid JSON: {exc}", code=4)
         if not isinstance(outputs, dict):
             raise resolver.RunError("--outputs must be a JSON object", code=4)
+    telemetry = None
+    if args.telemetry:
+        try:
+            telemetry = json.loads(args.telemetry)
+        except ValueError as exc:
+            raise resolver.RunError(f"--telemetry is not valid JSON: {exc}", code=4)
+        if not isinstance(telemetry, dict):
+            raise resolver.RunError("--telemetry must be a JSON object", code=4)
     return _mutate(args, lambda run: resolver.complete_step(
         run, args.step, outputs=outputs, exit_code=args.exit_code, stdout=args.stdout,
+        telemetry=telemetry,
     ))
 
 
@@ -114,6 +124,12 @@ def cmd_gate_record(args):
 def cmd_gate_input_record(args):
     return _mutate(args, lambda run: resolver.record_gate_input(
         run, args.step, args.input,
+    ))
+
+
+def cmd_interview_record(args):
+    return _mutate(args, lambda run: resolver.record_interview(
+        run, args.step, args.section, answer=args.answer, accept=args.accept,
     ))
 
 
@@ -165,12 +181,13 @@ def cmd_status(args):
     print(f"active:   {', '.join(run_info.get('cursors') or []) or '-'}")
     print()
     width = max((len(p) for p in data["steps"]), default=10)
-    print(f"{'step'.ljust(width)}  {'status'.ljust(8)}  visits  outputs")
+    print(f"{'step'.ljust(width)}  {'status'.ljust(8)}  visits  duration  outputs")
     for path in sorted(data["steps"]):
         entry = data["steps"][path]
         keys = ",".join(entry.get("outputs") or {}) or "-"
+        duration = f"{entry['duration_ms']}ms" if "duration_ms" in entry else "-"
         print(f"{path.ljust(width)}  {str(entry.get('status')).ljust(8)}  "
-              f"{str(entry.get('visits', 0)).ljust(6)}  {keys}")
+              f"{str(entry.get('visits', 0)).ljust(6)}  {duration.ljust(8)}  {keys}")
     if data.get("gates"):
         print()
         print("gate decisions:")
@@ -240,6 +257,7 @@ def build_parser():
     p.add_argument("--outputs", help="JSON object the subagent returned")
     p.add_argument("--exit-code", type=int, help="script exit code")
     p.add_argument("--stdout", help="script stdout (last line parsed as JSON outputs)")
+    p.add_argument("--telemetry", help="optional factual JSON metrics from the host")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_complete)
 
@@ -257,6 +275,16 @@ def build_parser():
     p.add_argument("--input", required=True, help="free text requested by the pending gate option")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_gate_input_record)
+
+    p = sub.add_parser("interview-record", help="confirm the current interview section")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--section", required=True)
+    group = p.add_mutually_exclusive_group(required=True)
+    group.add_argument("--accept", action="store_true", help="accept the engine-served proposal")
+    group.add_argument("--answer", help="confirmed replacement answer")
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_interview_record)
 
     p = sub.add_parser("fail", help="record a step failure (engine applies retries/on_fail)")
     p.add_argument("--slug", required=True)

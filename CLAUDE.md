@@ -97,10 +97,12 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   ref renders empty rather than aborting — but `model:`/`max_visits:` and typed init inputs
   resolve strictly), and
   **`render_agent_prompt`** (assembles instruction + inputs + skill pin + artifact list +
-  the last-line-JSON output contract into the subagent prompt). `complete_step`,
-  `record_gate`, `init` live here too.
+  the last-line-JSON output contract into the agent prompt). It also owns lead-executed
+  agents (`execution: lead`) and durable `interview` sections (`record_interview`).
+  `complete_step`, `record_gate`, `init` live here too.
 - **`state.py`** — the ledger: load/save with `fcntl` lock + atomic tmp/rename, `step_entry`,
-  `sha256_file`, `new_state`. The ONLY writer of `.maestro/runs/<slug>/state.yaml`.
+  step wall-clock timing, `sha256_file`, `new_state`. The ONLY writer of
+  `.maestro/runs/<slug>/state.yaml`.
 - **`validate.py`** — schema check + graph lint (start/route-target existence, reachability,
   default-route-on-branches, placeholder resolvability, subworkflow depth, cycle lint).
 - **`condctl.py`** — the ~4-form route-condition grammar (`==`, `!=`, `in […]`, truthy);
@@ -110,6 +112,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
+- **`validate_prd.py`** — deterministic PRD section, word-budget, repetition, and sentence
+  checks. It never makes product decisions.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
@@ -121,11 +125,12 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   under root EXCEPT `.git`/`.maestro` (run state stays engine-only) — workflow SOURCE only.
 
 **The action loop** (engine ↔ lead agent): `maestroctl next` prints exactly ONE action as
-JSON — `run_agent`, `run_agents` (a parallel wave), `run_script`, `ask_gate`, `ask_input`,
-`done`, or `failed`. Input-bearing gate choices deliberately become a second durable
-`ask_input` action before routing. The lead agent (`skills/maestro`) dispatches the action,
-then reports back via `complete`, `gate-record`, `gate-input-record`, or `fail` — each of
-which itself prints the FOLLOWING action. The LLM never interprets the graph or writes state.
+JSON — `run_agent`, `run_agents` (a parallel wave), `run_lead`, `run_script`,
+`ask_interview`, `ask_gate`, `ask_input`, `done`, or `failed`. `run_lead` is the explicit,
+bounded exception to worker dispatch; `ask_interview` records one confirmed section at a time.
+Input-bearing gate choices deliberately become a second durable `ask_input` action before
+routing. The lead reports back via `complete`, `interview-record`, `gate-record`,
+`gate-input-record`, or `fail`. The LLM never interprets the graph or writes state.
 
 ## Running checks
 
@@ -151,8 +156,9 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
 - **Minimal authoring defaults**: only `nodes:` is required — `version` defaults to 1,
   `start` to the first node, node `type` to `agent`, omitted routing to `next: end`.
   Keep these defaults working; they are the "simple workflow creation" promise.
-- **5 node types**: `agent` (instruction required, `skill:` optional pin — omitted =
-  harness auto-discovery), `gate` (options ARE the edges; never skipped on resume),
+- **6 node types**: `agent` (instruction required, optional `execution: lead`, `skill:`
+  optional pin — omitted = harness auto-discovery), `interview` (ordered, durable human
+  clarification with an engine-written JSON artifact), `gate` (options ARE the edges),
   `script` (stdout JSON becomes routable outputs — the `oq_serve` pattern), `parallel`
   (branches may contain agent/gate/script/subworkflow, never nested parallel),
   `subworkflow` (child steps namespaced `parent/child` in state; depth ≤ 4).

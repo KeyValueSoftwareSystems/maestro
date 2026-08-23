@@ -28,6 +28,7 @@ RULE_IDS = [
     "parallel-too-few-branches", "branch-bad-start", "branch-bad-type",
     "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle",
     "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction",
+    "interview-no-sections", "interview-dup-sections",
 ]
 
 MAX_DEPTH = 4
@@ -40,8 +41,10 @@ _PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 _TOP_KEYS = {"version", "name", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"}
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
-    "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "inputs",
-              "outputs", "artifact", "retries", "isolate", "ui"} | _ROUTING_KEYS,
+    "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
+              "inputs", "outputs", "artifact", "retries", "isolate", "ui"} | _ROUTING_KEYS,
+    "interview": {"id", "type", "label", "skill", "context", "sections", "artifact", "ui",
+                  "next", "routes", "max_visits", "on_exhausted"},
     "gate": {"id", "type", "label", "prompt", "options", "max_visits", "on_exhausted", "ui"},
     "script": {"id", "type", "label", "run", "timeout", "ui"} | _ROUTING_KEYS,
     "parallel": {"id", "type", "label", "join", "on_branch_fail", "branches", "isolate", "ui"} | _ROUTING_KEYS,
@@ -191,6 +194,29 @@ def _validate_node(node, ids, declared_inputs, where):
             isinstance(art, str) or (isinstance(art, list) and all(isinstance(a, str) for a in art))
         ):
             err("artifact-not-string", "artifact must be a string or list of strings")
+        if node.get("execution", "worker") not in ("worker", "lead"):
+            err("bad-type", "agent execution must be 'worker' or 'lead'")
+    elif ntype == "interview":
+        sections = node.get("sections")
+        if not isinstance(sections, list) or not sections:
+            err("interview-no-sections", "interview needs at least one section")
+            sections = []
+        seen = set()
+        for section in sections:
+            if not isinstance(section, dict) or not all(k in section for k in ("id", "title")):
+                err("missing-key", f"interview section must have id/title: {section!r}")
+                continue
+            sid = section["id"]
+            if not isinstance(sid, str) or not _ID_RE.match(sid):
+                err("bad-id", f"interview section has bad id {sid!r}")
+            if sid in seen:
+                err("interview-dup-sections", f"duplicate interview section id {sid!r}")
+            seen.add(sid)
+            for key in section:
+                if key not in ("id", "title", "proposal", "prompt"):
+                    err("unknown-key", f"interview section has unknown key {key!r}")
+        if not isinstance(node.get("artifact"), str) or not node.get("artifact"):
+            err("artifact-not-string", "interview artifact must be a non-empty string")
     elif ntype == "gate":
         options = node.get("options")
         if not isinstance(options, list) or not options:

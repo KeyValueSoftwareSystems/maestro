@@ -147,6 +147,31 @@ nodes:
     next: end
 """
 
+INTERVIEW_WF = """\
+version: 1
+name: interview
+inputs:
+  slug: {type: string, required: true}
+start: summarize
+nodes:
+  - id: summarize
+    type: agent
+    execution: lead
+    instruction: Summarize the feature.
+    skill: prd-interview
+    outputs: [summary]
+    next: clarify
+  - id: clarify
+    type: interview
+    skill: prd-interview
+    context: "Context: ${steps.summarize.outputs.summary}"
+    sections:
+      - {id: users, title: Users, proposal: Admins}
+      - {id: scope, title: Scope, prompt: What is in scope?}
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: end
+"""
+
 
 class Sim(unittest.TestCase):
     """Harness: tmp repo dir, helpers to drive a run without any LLM."""
@@ -179,9 +204,13 @@ class Sim(unittest.TestCase):
         with open(full, "w") as fh:
             fh.write("content\n")
 
-    def complete(self, step, outputs=None, exit_code=None, stdout=None, slug="feat"):
+    def complete(self, step, outputs=None, exit_code=None, stdout=None, slug="feat",
+                 telemetry=None):
         run = self.run_obj(slug)
-        resolver.complete_step(run, step, outputs=outputs, exit_code=exit_code, stdout=stdout)
+        resolver.complete_step(
+            run, step, outputs=outputs, exit_code=exit_code, stdout=stdout,
+            telemetry=telemetry,
+        )
         statemod.save(slug, run.state, self.tmp)
         return resolver.next_action(run)
 
@@ -247,6 +276,55 @@ class BackEdgeTest(Sim):
         st = self.state()
         self.assertEqual(st["run"]["status"], "failed")
         self.assertEqual(st["gates"][-1]["option"], "giveup")
+
+
+class LeadInterviewTest(Sim):
+    def test_lead_action_and_durable_interview(self):
+        self.start(self.write_wf("interview.yaml", INTERVIEW_WF))
+        action = self.nxt()
+        self.assertEqual((action["action"], action["step"]), ("run_lead", "summarize"))
+        self.assertEqual(action["skill"], "prd-interview")
+        action = self.complete(
+            "summarize", {"summary": "A small admin product"},
+            telemetry={"input_tokens": 120, "cached": True, "ignored": ["not scalar"]},
+        )
+        self.assertEqual(action["action"], "ask_interview")
+        self.assertEqual((action["section"], action["title"]), ("users", "Users"))
+        self.assertEqual(action["context"], "Context: A small admin product")
+        self.assertIn("Admins", action["prompt"])
+
+        run = self.run_obj()
+        resolver.record_interview(run, "clarify", "users", accept=True)
+        statemod.save("feat", run.state, self.tmp)
+        action = resolver.next_action(run)
+        self.assertEqual(action["section"], "scope")
+        self.assertEqual(action["progress"], {"confirmed": 1, "total": 2})
+
+        resolver.record_interview(run, "clarify", "scope", answer="Export reports only")
+        statemod.save("feat", run.state, self.tmp)
+        self.assertEqual(resolver.next_action(run)["action"], "done")
+        with open(os.path.join(self.tmp, ".maestro", "runs", "feat", "prd-context.json")) as fh:
+            context = json.load(fh)
+        self.assertEqual(
+            [section["answer"] for section in context["sections"]],
+            ["Admins", "Export reports only"],
+        )
+        self.assertEqual(context["context"], "Context: A small admin product")
+        state = self.state()
+        self.assertGreaterEqual(state["steps"]["summarize"]["duration_ms"], 0)
+        self.assertEqual(state["steps"]["summarize"]["telemetry"], {
+            "input_tokens": 120, "cached": True,
+        })
+        self.assertEqual(state["steps"]["clarify"]["interview"]["turns"][0]["source"],
+                         "accepted-proposal")
+
+    def test_interview_rejects_out_of_order_answer(self):
+        self.start(self.write_wf("interview.yaml", INTERVIEW_WF))
+        self.complete("summarize", {"summary": "context"})
+        with self.assertRaises(resolver.RunError) as ctx:
+            resolver.record_interview(self.run_obj(), "clarify", "scope", answer="too early")
+        self.assertEqual(ctx.exception.code, 4)
+        self.assertIn("expected section 'users'", str(ctx.exception))
 
 
 # An upstream producer feeds a loop (serve <-> ask); a later gate can revise back to the
@@ -706,7 +784,17 @@ nodes:
         # or a pack-only skills/<name>/SKILL.md path
         self.assertIn("backend-implement", action["prompt"])
         self.assertNotIn("${inputs.stack}", action["prompt"])
-        self.assertNotIn("skills/backend-implement/SKILL.md", action["prompt"])
+        self.assertNotIn("`skills/backend-implement/SKILL.md`", action["prompt"])
+        self.assertIn(
+            ".agents/skills/backend-implement/SKILL.md", action["prompt"]
+        )
+        self.assertIn(
+            ".claude/skills/backend-implement/SKILL.md", action["prompt"]
+        )
+        self.assertIn(
+            ".cursor/skills/backend-implement/SKILL.md", action["prompt"]
+        )
+        self.assertIn("never use a global `find` or `locate`", action["prompt"])
 
 
 class NestedPlaceholderTest(Sim):

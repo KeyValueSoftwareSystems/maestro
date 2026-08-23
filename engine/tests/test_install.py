@@ -38,11 +38,23 @@ class InstallTest(unittest.TestCase):
             self.assertIn("request_user_input", maestro_skill)
             self.assertIn("derive a concise kebab-case slug", maestro_skill)
             self.assertIn("print the same choices as a numbered", maestro_skill)
+            self.assertIn("### Skill preflight", maestro_skill)
+            self.assertIn("Do not use `locate`", maestro_skill)
+            self.assertIn("cursor remains resumable", maestro_skill)
             self.assertTrue(os.path.isfile(os.path.join(
                 tmp, ".agents", "skills", "maestro-init", "SKILL.md"
             )))
             self.assertTrue(os.path.isfile(os.path.join(
                 tmp, ".agents", "skills", "react-testing", "SKILL.md"
+            )))
+            self.assertTrue(os.path.isfile(os.path.join(
+                tmp, ".agents", "skills", "prd-interview", "SKILL.md"
+            )))
+            self.assertTrue(os.path.isfile(os.path.join(
+                tmp, ".agents", "skills", "prd-writing", "SKILL.md"
+            )))
+            self.assertFalse(os.path.exists(os.path.join(
+                tmp, ".agents", "skills", "brainstorm"
             )))
             self.assertFalse(os.path.exists(os.path.join(
                 tmp, ".agents", "skills", "golang-testing"

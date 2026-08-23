@@ -25,11 +25,11 @@ nodes:
       - {when: "${steps.assert_requirement.outputs.state} == have", to: collect_references}
       - {to: requirement_intake}
 
-  # ---- PRD phase: intake -> collect references -> author/refine the PRD -> Q&A loop ----
-  # ALWAYS produces .maestro/runs/<slug>/requirement/prd.md before the HLD. If the user provided
-  # a complete requirement it is consolidated into prd.md with no questions; otherwise the
-  # gated Q&A loop (reusing the oq_* scripts on requirement-questions.json) fills the gaps.
-  # requirement_intake is reached only when the folder is empty.
+  # ---- PRD phase: bounded lead-agent interview -> one final write -> deterministic lint ----
+  # Product context is confirmed before prose. The lead agent reads maintained summaries and
+  # requirement inputs only; it never scans application source. The engine-owned interview node
+  # persists one confirmed answer per PRD area and writes prd-context.json. A complete existing
+  # prd.md takes the fast path after the two short context confirmations.
   - id: requirement_intake
     type: gate
     label: No requirement found
@@ -39,7 +39,7 @@ nodes:
       How do you want to supply the requirement for "${inputs.feature}"?
     options:
       - {id: add-files, label: I'll add files now — re-check, to: assert_requirement}
-      - {id: brainstorm, label: Brainstorm it with me, to: collect_references}
+      - {id: clarify, label: Clarify it with me, to: collect_references}
       - {id: reject, label: Abort the run, to: abort}
 
   - id: collect_references
@@ -50,119 +50,179 @@ nodes:
       doc or file paths, tickets, URLs. Local paths are read; links that can't be opened are
       recorded in the PRD and turned into a question if their content matters. Or pick "none".
     options:
-      - {id: provide, label: I have references to add, to: brainstorm_draft, input: refs}
-      - {id: none, label: No references — continue, to: brainstorm_draft}
+      - {id: provide, label: I have references to add, to: project_context, input: refs}
+      - {id: none, label: No references — continue, to: project_context}
 
-  - id: brainstorm_draft
+  - id: project_context
     type: agent
-    label: Author / refine the PRD
+    execution: lead
+    label: Summarize project context
     instruction: |
-      Produce the product requirement doc (PRD) for "${inputs.feature}" at
-      .maestro/runs/${inputs.slug}/requirement/prd.md. Read EVERY file already in
-      .maestro/runs/${inputs.slug}/requirement/ (a PRD, notes, mockups — may be empty) and fold in
-      the provided references: ${steps.collect_references.outputs.refs}
-      For local file paths, read them; for Figma/URLs/tickets you cannot open, record the link
-      in the PRD's References section and (only if its content is decision-critical) raise it
-      as a question — never invent its contents.
-
-      Then write requirement-questions.json (schema .maestro/engine/schemas/open-questions.schema.json)
-      with ONLY the remaining HIGH-LEVEL product/feature gaps — problem, users, scope, goals,
-      constraints, acceptance — each with why it matters and 2-4 options. Do NOT ask
-      design/technical/implementation questions (API, schema, components, tech choices) — those
-      belong to the HLD downstream. If the inputs already form a COMPLETE PRD, just consolidate
-      them into prd.md and write an EMPTY questions set (no fabricated questions). Assert
-      nothing the user has not confirmed; do not ask the user anything directly.
-      If a previous review left feedback, honour it (product-level only): ${steps.prd_approval.outputs.feedback}
-    skill: brainstorm
+      State this project's product context in at most three short sentences. Read only root
+      AGENTS.md / CLAUDE.md, maintained summaries under docs/ (architecture.md, technical/,
+      functional/), every file under .maestro/runs/${inputs.slug}/requirement/, and explicit
+      references: ${steps.collect_references.outputs.refs}. Do not read application source or
+      search outside this repository. If context is missing, say so plainly. Apply the user's
+      correction when present: ${steps.project_context_confirm.outputs.feedback}
+    skill: prd-interview
     inputs:
-      feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       references: "${steps.collect_references.outputs.refs}"
-      feedback: "${steps.prd_approval.outputs.feedback}"
-    outputs: [draft_summary]
-    artifact:
-      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
-      - ".maestro/runs/${inputs.slug}/requirement-questions.json"
-    max_visits: 3
-    next: rq_serve
+      feedback: "${steps.project_context_confirm.outputs.feedback}"
+    outputs: [project_context]
+    next: project_context_confirm
 
-  - id: rq_serve
-    type: script
-    label: Next requirement questions?
-    run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/requirement-questions.json"]
-    max_visits: 40
-    on_exhausted: prd_approval
-    routes:
-      - {when: "${steps.rq_serve.outputs.state} == ask", to: rq_ask}
-      - {when: "${steps.rq_serve.outputs.state} == refine", to: rq_fold}
-      - {to: prd_approval}
-
-  # All open requirement questions are asked in ONE gate turn (not one round-trip per
-  # question) — oq_serve.py batches them; oq_record.py applies the combined reply.
-  - id: rq_ask
+  - id: project_context_confirm
     type: gate
-    label: Requirement questions
+    label: Confirm project context
     prompt: |
-      ${steps.rq_serve.outputs.count} open question(s):
+      Project context: ${steps.project_context.outputs.project_context}
 
-      ${steps.rq_serve.outputs.questions_md}
-
-      To answer, reply with ONE line per question, IN THE SAME ORDER as above — each
-      line a number to pick that option, free text for a custom answer, "skip", or
-      "you decide". Keep each answer on a single line.
-    max_visits: 40
+      Is this correct?
     options:
-      - {id: answer-all, label: Answer these, to: rq_record, input: answers_blob}
-      - {id: decide-all, label: You decide all (pick sensible defaults for everything), to: rq_record}
-      - {id: skip-all, label: Skip all — leave as assumptions, to: rq_record}
+      - {id: confirm, label: Yes — use this context, to: feature_goal}
+      - {id: revise, label: No — correct the context, to: project_context, input: feedback}
+      - {id: reject, label: Abort the run, to: abort}
 
-  - id: rq_record
-    type: script
-    label: Record answers
-    run:
-      - python3
-      - .maestro/engine/oq_record.py
-      - ".maestro/runs/${inputs.slug}/requirement-questions.json"
-      - "${steps.rq_serve.outputs.qids_csv}"
-      - "${steps.rq_ask.outputs.choice}"
-      - "${steps.rq_ask.outputs.answers_blob}"
-    max_visits: 40
-    on_fail: abort
-    next: rq_serve
-
-  - id: rq_fold
+  - id: feature_goal
     type: agent
-    label: Fold answers into the PRD
+    execution: lead
+    label: Restate feature goal
     instruction: |
-      Resolved requirement questions await folding. Apply each resolved answer to
-      .maestro/runs/${inputs.slug}/requirement/prd.md ('you-decide' resolutions: pick a
-      sensible default and record the choice), then mark those questions status "folded" in
-      .maestro/runs/${inputs.slug}/requirement-questions.json and re-validate it with
-      python3 .maestro/engine/validate_open_questions.py.
-    skill: brainstorm
+      Restate the requested feature outcome in at most two short sentences. Preserve the user's
+      scope and wording. Use the confirmed project context, feature seed, requirement files and
+      explicit references only. Do not add capabilities or technical design. Apply correction or
+      PRD revision feedback when present: ${steps.feature_goal_confirm.outputs.feedback}
+      ${steps.prd_approval.outputs.feedback}
+    skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
-    outputs: [refined_summary]
-    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
-    max_visits: 20
-    next: rq_serve
+      feature: "${inputs.feature}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feedback: "${steps.feature_goal_confirm.outputs.feedback} ${steps.prd_approval.outputs.feedback}"
+    outputs: [feature_goal]
+    next: feature_goal_confirm
 
-  # ---- PRD approval: confirm the PRD (after every open question is asked + answered)
-  # before authoring the HLD. 'revise' is a back-edge into brainstorm_draft, whose re-entry
-  # cascade-resets the PRD + its whole Q&A loop; the human is the loop bound.
+  - id: feature_goal_confirm
+    type: gate
+    label: Confirm feature goal
+    prompt: |
+      Feature goal: ${steps.feature_goal.outputs.feature_goal}
+
+      Is this the outcome you want?
+    options:
+      - {id: confirm, label: Yes — clarify the PRD areas, to: check_existing_prd}
+      - {id: revise, label: No — correct the feature goal, to: feature_goal, input: feedback}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: check_existing_prd
+    type: script
+    label: Check existing PRD fast path
+    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report, --compatible]
+    routes:
+      - {when: "${steps.prd_approval.outputs.feedback}", to: prepare_prd_sections}
+      - {when: "${steps.check_existing_prd.outputs.valid} == true", to: prd_approval}
+      - {to: prepare_prd_sections}
+
+  - id: prepare_prd_sections
+    type: agent
+    execution: lead
+    label: Prepare grounded PRD proposals
+    instruction: |
+      Prepare a compact proposed answer for every PRD area named in the output contract. Use only
+      the confirmed project context and feature goal, requirement files, and explicit references.
+      Return an empty value for anything not grounded. Do not write PRD prose, inspect application
+      source, or ask the user directly. Honour revision feedback: ${steps.prd_approval.outputs.feedback}
+    skill: prd-interview
+    inputs:
+      slug: "${inputs.slug}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+    outputs: [problem_context, users_jobs, goals_success, non_goals, functional_scope, constraints_assumptions, acceptance_criteria, dependencies_risks, priority_phasing, references]
+    next: prd_interview
+
+  - id: prd_interview
+    type: interview
+    label: Confirm every PRD area
+    skill: prd-interview
+    context: |
+      Confirmed project: ${steps.project_context.outputs.project_context}
+      Confirmed feature: ${steps.feature_goal.outputs.feature_goal}
+    sections:
+      - {id: summary, title: Summary, proposal: "${steps.feature_goal.outputs.feature_goal}"}
+      - {id: problem_context, title: Problem and context, proposal: "${steps.prepare_prd_sections.outputs.problem_context}"}
+      - {id: users_jobs, title: Users and jobs, proposal: "${steps.prepare_prd_sections.outputs.users_jobs}"}
+      - {id: goals_success, title: Goals and success signals, proposal: "${steps.prepare_prd_sections.outputs.goals_success}"}
+      - {id: non_goals, title: Non-goals, proposal: "${steps.prepare_prd_sections.outputs.non_goals}"}
+      - {id: functional_scope, title: Functional scope, proposal: "${steps.prepare_prd_sections.outputs.functional_scope}"}
+      - {id: constraints_assumptions, title: Constraints and assumptions, proposal: "${steps.prepare_prd_sections.outputs.constraints_assumptions}"}
+      - {id: acceptance_criteria, title: Acceptance criteria, proposal: "${steps.prepare_prd_sections.outputs.acceptance_criteria}"}
+      - {id: dependencies_risks, title: Dependencies and risks, proposal: "${steps.prepare_prd_sections.outputs.dependencies_risks}"}
+      - {id: priority_phasing, title: Priorities and phasing, proposal: "${steps.prepare_prd_sections.outputs.priority_phasing}"}
+      - {id: references, title: References, proposal: "${steps.prepare_prd_sections.outputs.references}"}
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: author_prd
+
+  - id: author_prd
+    type: agent
+    execution: lead
+    label: Write final PRD once
+    instruction: |
+      Write the final PRD from the fully confirmed context at
+      .maestro/runs/${inputs.slug}/prd-context.json to
+      .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
+      repository. This is the only normal PRD write.
+    skill: prd-writing
+    inputs:
+      slug: "${inputs.slug}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      context_path: "${steps.prd_interview.outputs.context_path}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    next: validate_prd
+
+  - id: validate_prd
+    type: script
+    label: Validate PRD structure and brevity
+    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report]
+    max_visits: 3
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.validate_prd.outputs.valid} == true", to: prd_approval}
+      - {to: repair_prd}
+
+  - id: repair_prd
+    type: agent
+    execution: lead
+    label: Repair PRD validation defects
+    instruction: |
+      Repair only these deterministic PRD defects: ${steps.validate_prd.outputs.issues_summary}
+      Keep every confirmed decision unchanged and do not expand unrelated sections.
+    skill: prd-writing
+    inputs:
+      slug: "${inputs.slug}"
+      context_path: "${steps.prd_interview.outputs.context_path}"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      validator_feedback: "${steps.validate_prd.outputs.issues_summary}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    max_visits: 2
+    next: validate_prd
+
   - id: prd_approval
     type: gate
     label: PRD approval
     prompt: |
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
-      Open questions & any deferred assumptions: .maestro/runs/${inputs.slug}/requirement-questions.json
 
-      Confirm the product requirement (problem, users, scope, constraints, acceptance) is
-      complete, then choose. Design/technical concerns are handled later at the HLD/LLD.
+      All required product areas were confirmed before writing. Confirm the concise PRD is
+      accurate; design/technical concerns are handled later at the HLD/LLD.
     options:
       - {id: approve, label: Approve — author the HLD, to: check_codebase_map}
-      - {id: revise, label: Request PRD revisions — then describe what to change, to: brainstorm_draft, input: feedback}
+      - {id: revise, label: Correct the feature context and regenerate, to: feature_goal, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
   # ---- Codebase-map freshness gate: catches drift from commits made OUTSIDE Maestro

@@ -102,5 +102,35 @@ class MemoryPlaceholderTest(unittest.TestCase):
         self.assertTrue(any(i.code == "bad-placeholder" for i in issues))
 
 
+class InterviewValidationTest(unittest.TestCase):
+    def _doc(self, sections, artifact=".maestro/runs/x/context.json"):
+        return {
+            "version": 1, "name": "interview", "start": "ask",
+            "nodes": [{
+                "id": "ask", "type": "interview", "skill": "prd-interview",
+                "sections": sections, "artifact": artifact, "next": "end",
+            }],
+        }
+
+    def test_valid_interview(self):
+        issues = validate.validate_doc(self._doc([
+            {"id": "users", "title": "Users", "proposal": "Admins"},
+            {"id": "scope", "title": "Scope", "prompt": "What is in scope?"},
+        ]))
+        self.assertFalse([i for i in issues if i.level == "error"], [str(i) for i in issues])
+
+    def test_interview_requires_sections_and_artifact(self):
+        issues = validate.validate_doc(self._doc([], artifact=""))
+        codes = {i.code for i in issues}
+        self.assertIn("interview-no-sections", codes)
+        self.assertIn("artifact-not-string", codes)
+
+    def test_interview_section_ids_are_unique(self):
+        issues = validate.validate_doc(self._doc([
+            {"id": "users", "title": "Users"}, {"id": "users", "title": "Again"},
+        ]))
+        self.assertIn("interview-dup-sections", {i.code for i in issues})
+
+
 if __name__ == "__main__":
     unittest.main()

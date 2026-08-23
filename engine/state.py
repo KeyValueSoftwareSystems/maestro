@@ -14,6 +14,7 @@ import hashlib
 import os
 import re
 import sys
+import time
 
 try:
     import wf
@@ -87,6 +88,35 @@ def state_path(slug, root="."):
 
 def now_iso():
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def now_ms():
+    return time.time_ns() // 1_000_000
+
+
+def mark_step_started(entry, **metadata):
+    """Record wall-clock timing and stable execution metadata for one visit."""
+    for key in ("finished_at", "duration_ms", "telemetry"):
+        entry.pop(key, None)
+    entry["started_at"] = now_iso()
+    entry["started_at_ms"] = now_ms()
+    for key, value in metadata.items():
+        if value not in (None, ""):
+            entry[key] = value
+
+
+def mark_step_finished(entry, telemetry=None):
+    """Close the current visit timing; optional host metrics must be factual scalars."""
+    finished_ms = now_ms()
+    entry["finished_at"] = now_iso()
+    started_ms = entry.get("started_at_ms")
+    if isinstance(started_ms, int):
+        entry["duration_ms"] = max(0, finished_ms - started_ms)
+    if telemetry:
+        entry["telemetry"] = {
+            key: value for key, value in telemetry.items()
+            if isinstance(value, (str, int, float, bool))
+        }
 
 
 def sha256_file(path):

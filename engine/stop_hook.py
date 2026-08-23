@@ -26,7 +26,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-AUTONOMOUS = {"run_agent", "run_agents", "run_script"}
+AUTONOMOUS = {"run_agent", "run_agents", "run_lead", "run_script"}
 
 
 def main():

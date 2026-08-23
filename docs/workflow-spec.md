@@ -138,7 +138,8 @@ reason. Skipping marks the node `skipped` and takes its default route.
 
 ### `agent`
 
-The workhorse: the lead agent spawns a subagent for it.
+The workhorse. `execution: worker` (default) spawns a subagent; `execution: lead` runs the
+served prompt in the current session without spawning one.
 
 ```yaml
 - id: author_hld
@@ -151,6 +152,7 @@ The workhorse: the lead agent spawns a subagent for it.
                             # Omit for "auto": harness skill-discovery picks the best match.
   agent: planner            # optional subagent type (agents/planner.md); default defaults.agent
   model: sonnet             # optional; default defaults.model
+  execution: worker         # worker | lead; lead ignores the per-step model
   inputs:                   # optional map, passed verbatim into the subagent prompt
     feature: "${inputs.feature}"
     slug: "${inputs.slug}"
@@ -168,6 +170,38 @@ and the engine renders all of them into the subagent prompt. A `skill` supplies 
 That split is what makes skills swappable: pin one of ours, one of yours, or a third-party
 skill (Obra, Superpowers, …), or omit `skill:` and let the harness auto-pick — the graph is
 unchanged either way.
+
+Use `execution: lead` only for small, context-continuous work such as confirming and writing
+a PRD. The action prompt remains the authority: it should name a narrow read/write boundary.
+Pinned skills are resolved only from the active repository's `.agents/skills/`,
+`.claude/skills/`, or `.cursor/skills/` trees; a lead must never search the wider filesystem.
+
+### `interview`
+
+An ordered, durable clarification step. `next` serves one unresolved section as
+`ask_interview`; `interview-record` accepts its proposal or stores a human correction. No AI
+is called by the node. After every section is confirmed, the engine atomically writes the
+structured context artifact and advances.
+
+```yaml
+- id: prd_interview
+  type: interview
+  skill: prd-interview
+  context: "Confirmed feature: ${steps.feature_goal.outputs.feature_goal}"
+  sections:
+    - {id: users, title: Users and jobs, proposal: "${steps.proposals.outputs.users}"}
+    - {id: scope, title: Functional scope, prompt: "What behavior is in scope?"}
+  artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+  next: author_prd
+```
+
+A proposal may be empty. In that case the human must provide an answer; the engine rejects a
+blank answer, acceptance without a proposal, and answers for any section other than the one
+currently served.
+
+The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
+accepts common equivalent headings for its fast path. Maestro-authored PRDs use the exact
+11-heading contract and are validated in strict mode before approval.
 
 ### `gate`
 
@@ -272,8 +306,8 @@ it cannot redirect writes outside `.maestro/runs/<slug>/`.
 
 Written **only** by `engine/maestroctl.py` (fcntl-locked, atomic tmp+rename). Records workflow
 file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run status + cursor
-(active frontier), per-step status / attempts / visits / outputs / artifacts, append-only gate
-decision history, and parallel-branch bookkeeping.
+(active frontier), per-step status / attempts / visits / timing / outputs / artifacts,
+interview answers, append-only gate decision history, and parallel-branch bookkeeping.
 
 Resume: `done` steps are skipped only while their artifacts still exist non-empty on disk;
 interrupted (`running`) steps are re-served; gates always re-ask.
@@ -287,7 +321,9 @@ loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'
     run_agents → spawn all listed subagents in one parallel wave → complete each
+    run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
+    ask_interview → ask one section → interview-record --section X (--accept | --answer TEXT)
     ask_gate   → ask the human for a choice → gate-record --option X
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop
@@ -295,8 +331,8 @@ loop:
 ```
 
 The action payload is fully resolved — placeholders substituted, prompts pre-rendered. The lead
-agent performs zero interpretation, never edits state, never reads artifacts into its own
-context, and never skips a gate.
+agent performs zero graph interpretation, never edits state, and never skips a gate. It reads
+artifacts only when a `run_lead` prompt explicitly grants bounded access.
 
 An option with `input: <field>` is a durable two-stage interaction. Recording the choice
 without text leaves the gate active and makes `next` return `ask_input`; only a non-blank

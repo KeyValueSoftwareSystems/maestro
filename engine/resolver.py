@@ -425,6 +425,21 @@ def _enter_inner(run, frame, node):
     path = frame.path(node["id"])
     entry = statemod.step_entry(run.state, path)
     kind = ntype(node)
+    metadata = {"node_type": kind}
+    if kind == "agent":
+        raw_skill = node.get("skill")
+        metadata.update({
+            "execution": node.get("execution", "worker"),
+            "model": run.model_for(node, frame),
+            "skill": run.resolve_text(raw_skill, frame) if raw_skill else None,
+        })
+    elif kind == "interview":
+        raw_skill = node.get("skill")
+        metadata.update({
+            "execution": "lead",
+            "skill": run.resolve_text(raw_skill, frame) if raw_skill else None,
+        })
+    statemod.mark_step_started(entry, **metadata)
     if kind == "parallel":
         entry["status"] = "running"
         entry["branches"] = {b["id"]: {"status": "running"} for b in node["branches"]}
@@ -612,6 +627,7 @@ def _frame_end(run, frame, last_outputs):
             outputs[key] = run.resolve_value(value, frame, missing_ok=True)
         entry["outputs"] = outputs
         entry["status"] = "done"
+        statemod.mark_step_finished(entry)
         _advance(run, frame.parent, node, outputs)
     else:  # branch
         _branch_terminal(run, frame, "done", last_outputs)
@@ -667,6 +683,7 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
     if join == "any" and status == "done":
         _cancel_branches(run, parent, node, keep=branch_id)
         entry["status"] = "done"
+        statemod.mark_step_finished(entry)
         _advance(run, parent, node)
         return
     if len(terminal) == len(node.get("branches", [])):
@@ -676,6 +693,7 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
             _apply_on_fail(run, parent, node, entry["reason"])
             return
         entry["status"] = "done"
+        statemod.mark_step_finished(entry)
         _advance(run, parent, node)
 
 
@@ -725,7 +743,7 @@ def next_action(run, serial=False):
     if not cursors:
         return {"action": "failed", "reason": "no active steps (inconsistent state) — reset the run"}
 
-    gates, scripts, agents = [], [], []
+    gates, scripts, interviews, lead_agents, worker_agents = [], [], [], [], []
     for path in cursors:
         frame, node = run.node_at(path)
         entry = statemod.step_entry(run.state, path)
@@ -738,7 +756,13 @@ def next_action(run, serial=False):
         elif ntype(node) == "script":
             scripts.append(_script_action(run, frame, node, path))
         elif ntype(node) == "agent":
-            agents.append(_agent_action(run, frame, node, path))
+            action = _agent_action(run, frame, node, path)
+            if action["action"] == "run_lead":
+                lead_agents.append(action)
+            else:
+                worker_agents.append(action)
+        elif ntype(node) == "interview":
+            interviews.append(_interview_action(run, frame, node, path, entry))
         else:
             raise RunError(f"unexpected {ntype(node)} node in cursors: {path}")
 
@@ -746,10 +770,14 @@ def next_action(run, serial=False):
         return scripts[0]
     if gates:
         return gates[0]
-    if len(agents) > 1 and not serial:
-        return {"action": "run_agents", "agents": agents}
-    if agents:
-        return agents[0]
+    if interviews:
+        return interviews[0]
+    if lead_agents:
+        return lead_agents[0]
+    if len(worker_agents) > 1 and not serial:
+        return {"action": "run_agents", "agents": worker_agents}
+    if worker_agents:
+        return worker_agents[0]
     return {"action": "failed", "reason": "nothing runnable — reset the run"}
 
 
@@ -854,7 +882,7 @@ def _agent_action(run, frame, node, path):
     if skill:
         skill = run.resolve_text(skill, frame)  # e.g. skill: "${inputs.stack}-implement"
     return {
-        "action": "run_agent",
+        "action": "run_lead" if node.get("execution") == "lead" else "run_agent",
         "step": path,
         "agent_type": run.agent_for(node, frame),
         "model": run.model_for(node, frame),
@@ -863,6 +891,54 @@ def _agent_action(run, frame, node, path):
         "outputs": node.get("outputs") or [],
         "artifacts": artifacts,
         "prompt": render_agent_prompt(run, frame, node, resolved_inputs, artifacts, isolate, skill),
+    }
+
+
+def _interview_sections(run, frame, node):
+    sections = []
+    for section in node.get("sections") or []:
+        sections.append({
+            "id": section["id"],
+            "title": run.resolve_text(section["title"], frame, missing_ok=True),
+            "proposal": run.resolve_text(section.get("proposal", ""), frame, missing_ok=True).strip(),
+            "prompt": run.resolve_text(section.get("prompt", ""), frame, missing_ok=True).strip(),
+        })
+    return sections
+
+
+def _interview_action(run, frame, node, path, entry):
+    sections = _interview_sections(run, frame, node)
+    answers = (entry.get("interview") or {}).get("answers") or {}
+    current = next((section for section in sections if section["id"] not in answers), None)
+    if current is None:
+        raise RunError(f"interview {path!r} has no unresolved section but is still active", code=4)
+    context = run.resolve_text(node.get("context", ""), frame, missing_ok=True).strip()
+    if current["prompt"]:
+        question = current["prompt"]
+    elif current["proposal"]:
+        question = (
+            f"For **{current['title']}**, Maestro currently understands:\n\n"
+            f"{current['proposal']}\n\nIs this correct? Reply yes, or give the corrected answer."
+        )
+    else:
+        question = (
+            f"For **{current['title']}**, there is no grounded answer yet. "
+            "What should the PRD say?"
+        )
+    skill = node.get("skill")
+    if skill:
+        skill = run.resolve_text(skill, frame)
+    return {
+        "action": "ask_interview",
+        "step": path,
+        "skill": skill,
+        "section": current["id"],
+        "title": current["title"],
+        "proposal": current["proposal"],
+        "context": context,
+        "prompt": question,
+        "confirmed": answers,
+        "progress": {"confirmed": len(answers), "total": len(sections)},
     }
 
 
@@ -886,13 +962,23 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
         lines.append("")
     if skill:
         # Reference the skill by NAME (the harness resolves installed skills from their
-        # frontmatter name). Do NOT hard-code a `skills/<name>/SKILL.md` path — that path
-        # only exists in the pack repo, not in a consumer repo where skills install to
-        # .claude/skills, .cursor/skills, or .agents/skills.
+        # frontmatter name). The explicit candidates are the three supported repo-scoped
+        # install locations, not pack-source paths: consumers do not have `skills/**`, and
+        # workers must never compensate for a missing install with a machine-wide search.
         lines.append(
-            f"Load and follow the `{skill}` skill to perform this task — read its SKILL.md "
-            f"fully before acting; it owns the method and quality bar."
+            f"Load and follow the `{skill}` skill to perform this task — read the first "
+            f"non-empty SKILL.md below fully before acting; it owns the method and quality bar."
         )
+        lines.extend([
+            "Check ONLY these repository-scoped files:",
+            f"- `.agents/skills/{skill}/SKILL.md`",
+            f"- `.claude/skills/{skill}/SKILL.md`",
+            f"- `.cursor/skills/{skill}/SKILL.md`",
+            "Do not search parent directories, the home directory, Desktop, or the wider "
+            "filesystem; never use a global `find` or `locate`, and do not use a native search "
+            "fallback. If none exists, stop and report the missing installation instead of "
+            "performing the task without the pinned skill."
+        ])
     else:
         lines.append(
             "If an installed skill matches this task, load and follow it; otherwise proceed "
@@ -950,7 +1036,7 @@ def _require_cursor(run, path):
         )
 
 
-def complete_step(run, path, outputs=None, exit_code=None, stdout=None):
+def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetry=None):
     _require_cursor(run, path)
     frame, node = run.node_at(path)
     entry = statemod.step_entry(run.state, path)
@@ -958,7 +1044,7 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None):
         raise RunError(f"step {path!r} is waiting on a gate decision, not completion", code=4)
     kind = ntype(node)
     if kind == "script":
-        return _complete_script(run, frame, node, path, entry, exit_code, stdout)
+        return _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry)
     if kind != "agent":
         raise RunError(f"complete is only valid for agent/script steps, not {kind}", code=4)
 
@@ -987,11 +1073,12 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None):
         entry["artifact"] = arts
     entry["status"] = "done"
     entry["attempts"] = 0
+    statemod.mark_step_finished(entry, telemetry)
     _advance(run, frame, node, entry["outputs"])
     return entry
 
 
-def _complete_script(run, frame, node, path, entry, exit_code, stdout):
+def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry=None):
     if exit_code is None:
         raise RunError("script completion requires --exit-code", code=4)
     outputs = {"exit_code": exit_code}
@@ -1009,10 +1096,93 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout):
     if exit_code == 0:
         entry["status"] = "done"
         entry["attempts"] = 0
+        statemod.mark_step_finished(entry, telemetry)
         _advance(run, frame, node, outputs)
     else:
         _register_failure(run, frame, node, path, entry,
                           reason=f"exit code {exit_code}: {text[:300]}")
+    return entry
+
+
+def _write_interview_artifact(run, frame, node, path, sections, answers):
+    rel = run.resolve_text(node["artifact"], frame)
+    full = rel if os.path.isabs(rel) else os.path.join(run.root, rel)
+    parent = os.path.dirname(full)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+    document = {
+        "schema_version": 1,
+        "slug": run.slug,
+        "step": path,
+        "confirmed_at": statemod.now_iso(),
+        "context": run.resolve_text(node.get("context", ""), frame, missing_ok=True).strip(),
+        "sections": [
+            {"id": section["id"], "title": section["title"], "answer": answers[section["id"]]}
+            for section in sections
+        ],
+    }
+    tmp = f"{full}.tmp-{os.getpid()}"
+    try:
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(document, fh, indent=2, ensure_ascii=False)
+            fh.write("\n")
+        os.replace(tmp, full)
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+    return rel
+
+
+def record_interview(run, path, section_id, answer=None, accept=False):
+    """Confirm exactly the currently served interview section and advance when complete."""
+    _require_cursor(run, path)
+    frame, node = run.node_at(path)
+    if ntype(node) != "interview":
+        raise RunError(f"step {path!r} is not an interview", code=4)
+    entry = statemod.step_entry(run.state, path)
+    sections = _interview_sections(run, frame, node)
+    interview = entry.setdefault("interview", {"answers": {}, "turns": []})
+    answers = interview.setdefault("answers", {})
+    current = next((section for section in sections if section["id"] not in answers), None)
+    if current is None:
+        raise RunError(f"interview {path!r} is already complete", code=4)
+    if section_id != current["id"]:
+        raise RunError(
+            f"interview {path!r}: expected section {current['id']!r}, got {section_id!r}", code=4,
+        )
+    if accept:
+        value = current["proposal"].strip()
+        if not value:
+            raise RunError(
+                f"interview {path!r}/{section_id}: there is no proposed answer to accept", code=4,
+            )
+        source = "accepted-proposal"
+    else:
+        if not isinstance(answer, str) or not answer.strip():
+            raise RunError(f"interview {path!r}/{section_id}: answer cannot be blank", code=4)
+        value = answer
+        source = "user-answer"
+    answers[section_id] = value
+    interview["turns"].append({
+        "section": section_id,
+        "source": source,
+        "confirmed_at": statemod.now_iso(),
+    })
+    if len(answers) == len(sections):
+        context_path = _write_interview_artifact(run, frame, node, path, sections, answers)
+        entry["outputs"] = {
+            "context_path": context_path,
+            "confirmed_count": len(answers),
+            "summary": f"Confirmed {len(answers)} PRD areas",
+        }
+        entry["artifact"] = [context_path]
+        entry["status"] = "done"
+        statemod.mark_step_finished(entry, {
+            "interview_turns": len(interview["turns"]),
+        })
+        _advance(run, frame, node, entry["outputs"])
     return entry
 
 
@@ -1033,6 +1203,7 @@ def _register_failure(run, frame, node, path, entry, reason):
         entry["status"] = "pending"  # stays in cursors; next re-serves it
         return
     entry["status"] = "failed"
+    statemod.mark_step_finished(entry)
     _apply_on_fail(run, frame, node, reason)
 
 
@@ -1069,6 +1240,7 @@ def _finish_real_gate(run, frame, node, path, entry, option, input_text=None):
     entry.pop("pending_gate_input", None)
     entry["outputs"] = outputs
     entry["status"] = "done"
+    statemod.mark_step_finished(entry)
     _append_gate_history(run, path, option["id"], input_text=input_text)
     _leave_to(run, frame, node, option["to"], outputs, via_gate=True)
     return entry
@@ -1128,6 +1300,7 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
                 _enter_inner(run, frame, node)
             else:
                 entry["status"] = "pending"
+                statemod.mark_step_started(entry)
         elif option_id == "skip":
             entry.pop("pending_ask", None)
             entry["status"] = "skipped"

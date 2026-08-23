@@ -82,7 +82,7 @@ Shipped as a worked example (`.maestro/workflows/sdlc-main.yaml` + the installed
 pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
-workspace sync → requirement → PRD (consolidate what you gave, or brainstorm one via gated Q&A)
+workspace sync → requirement → PRD (confirm context → clarify sections → write once → validate)
    → HLD → [open-questions loop → approve] → parallel per-repo LLDs → API contract
    → functional test cases → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
@@ -101,16 +101,16 @@ workspace sync → requirement → PRD (consolidate what you gave, or brainstorm
        │  dispatches, never decides │◄─── complete / gate-record / input-record / fail
        └──┬─────────┬──────────┬────┘
           ▼         ▼          ▼
-      subagents   scripts    you (gates)
+      subagents   scripts    you (gates + interview)
       (skill +    (validators,
        model per   stubs)
        step)
 ```
 
-- **`workflow.yaml`** — the graph: 5 node types (`agent`, `gate`, `script`, `parallel`, `subworkflow`), per-node routes with tiny conditions, and **back-edges for loops** (an arrow to any earlier step; the engine cascade-resets downstream work and enforces a per-node visit cap so loops can't run away). Spec: [docs/workflow-spec.md](docs/workflow-spec.md).
+- **`workflow.yaml`** — the graph: 6 node types (`agent`, `interview`, `gate`, `script`, `parallel`, `subworkflow`), per-node routes with tiny conditions, and **back-edges for loops** (an arrow to any earlier step; the engine cascade-resets downstream work and enforces a per-node visit cap so loops can't run away). Spec: [docs/workflow-spec.md](docs/workflow-spec.md).
 - **`.maestro/runs/<slug>/state.yaml`** — the run ledger. Only the engine writes it. Resume, revise-cascades, gate history, parallel-join bookkeeping all live here.
 - **The lead agent never interprets the graph.** The deterministic resolver serves one fully-rendered action at a time; the LLM just dispatches it. That's what makes an LLM-driven orchestrator reliable — and it's all plain, tested Python (see [Checks](#checks); no LLM in the loop).
-- **Agent steps are instruction-first**: write what the step should do; optionally pin a skill (the shipped workflows pin everything for reproducibility) and a model. Claude Code and Codex run independent steps with native subagents; Cursor uses the same engine inline and sequentially. Codex accepts host-valid model IDs and safely ignores the shipped Claude aliases instead of guessing a mapping.
+- **Agent steps are instruction-first**: write what the step should do; optionally pin a skill and model. Worker execution is the default; `execution: lead` keeps small context-continuous steps in the current session. Claude Code and Codex run independent worker steps with native subagents; Cursor uses the same engine inline and sequentially.
 
 Workflows are deliberately minimal to write by hand too — this is a complete one:
 
@@ -213,8 +213,15 @@ selector fall back to a numbered text prompt.
 
 On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:
 
-- **you gave it a complete requirement** → it consolidates that into the PRD as-is, no questions;
-- **partial or nothing** → a gate offers *add files & re-check* / *brainstorm it with me* / *abort*, then asks for optional **references** (Figma links, doc/file paths, tickets), and a gated Q&A loop fills the high-level product gaps.
+- **valid existing `prd.md`** → after two short context confirmations, it goes directly to
+  PRD approval; common equivalent headings are accepted because PRDs have no universal format;
+- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then confirms each PRD area one at a time;
+- **after clarity** → the lead writes the PRD once in plain, skimmable English. A deterministic validator checks required headings, word budgets, repetition, and sentence length. Only validation defects trigger one bounded repair.
+
+The PRD stage does not spawn subagents or scan application source. It reads only repository
+instructions, maintained project docs, the run's requirement folder, and explicit references.
+Pinned skills are checked only under `.agents/skills`, `.claude/skills`, and `.cursor/skills`.
+Step durations are recorded in the run ledger so slow stages are visible.
 
 From there it validates, starts or resumes the run, spawns a subagent per step, asks you at gates, and reports where every artifact landed.
 
@@ -242,8 +249,8 @@ python3 .maestro/engine/maestroctl.py validate .maestro/workflows/my.yaml   # li
 If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --slug <slug>` are your recovery levers — see [Working as a team](#working-as-a-team).
 
 Prefer manual control? Every step is also a skill you can invoke on its own — use its slash
-command in Claude Code/Cursor or mention it with `$` in Codex (`/brainstorm` or
-`$brainstorm`, for example). Same skills, no orchestration.
+command in Claude Code/Cursor or mention it with `$` in Codex (`/plan` or `$plan`, for
+example). Same skills, no orchestration.
 
 ### Pausing & resuming a run
 
@@ -305,7 +312,7 @@ After install, in your project repo:
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              · interview-record · gate-input-record · fail · reset · rebase · status · graph · note · runs)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
@@ -323,7 +330,7 @@ maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestr
 
 The engine is generic; the SDLC pack is just one workflow. To make it yours:
 
-- **Write your own workflow** — a YAML file with `nodes:` (agent / gate / script / parallel / subworkflow), routes, and back-edges for loops. The builder writes it for you. Spec: [docs/workflow-spec.md](docs/workflow-spec.md). Run it with `/maestro <slug> path/to/your.yaml` or `$maestro <slug> path/to/your.yaml`.
+- **Write your own workflow** — a YAML file with `nodes:` (agent / interview / gate / script / parallel / subworkflow), routes, and back-edges for loops. The builder writes it for you. Spec: [docs/workflow-spec.md](docs/workflow-spec.md). Run it with `/maestro <slug> path/to/your.yaml` or `$maestro <slug> path/to/your.yaml`.
 - **Bring your own skills** — an agent node names a skill; that can be one of ours, one you author (`.claude/skills/<name>/SKILL.md` or `.agents/skills/<name>/SKILL.md`), or a third-party pack (Obra, Superpowers, …). Because the *workflow node* supplies the instruction, inputs, artifact path and output fields at runtime, a skill only has to describe *how* to do its job — so swapping one for another is a one-line `skill:` change, or omit `skill:` entirely and let the harness auto-pick from installed skills by description.
 - **Change a shipped step's behaviour** — edit its installed skill; the flow is untouched.
 - **Models** — per node or per workflow (`defaults.model`); values are host-specific and
