@@ -76,6 +76,27 @@ description is the seed for the workflow's bounded PRD interview when no require
 
 ## Setup
 
+Before init, inspect an explicitly selected or resumed slug for the one-time current-format
+upgrade:
+
+```bash
+python3 .maestro/engine/maestroctl.py upgrade-run --slug <slug> --workflow <workflow>
+```
+
+When it returns `needed: true`, show its mode and selected repositories. For `legacy-rebuild`, also
+show the PRD/HLD validation result and existing LLD drafts; `compatible-rebase` preserves the exact
+current cursor and needs no document validation. Ask the human to choose **Upgrade this run once** or **Cancel** using the
+normal native-selector fallback rules. Never apply it silently. If approved, YOU run:
+
+```bash
+python3 .maestro/engine/maestroctl.py upgrade-run --slug <slug> --workflow <workflow> --apply
+```
+
+The engine backs up the old ledger before changing it. After a successful upgrade, continue Setup
+normally. Do not offer the upgrade again when `needed: false`; the current run-format marker makes
+this a one-time operation. Never use `rebase` as a substitute when `upgrade-run` says an upgrade is
+needed.
+
 ```bash
 python3 .maestro/engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
 python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
@@ -229,6 +250,11 @@ If the reply is ambiguous, ask a short follow-up and do not record it. Each succ
 returns the next action, so continue immediately. The engine ledger and generated
 `prd-context.json` are the durable source of truth; do not maintain a competing draft.
 
+Exception: when an LLD interview reply explicitly changes an approved parent decision, record the
+answer normally, but before acting on the returned next action follow **Capturing out-of-band
+input** and ask how to handle that design change. This does not reinterpret an ordinary repository
+answer; it applies only when the human or served question identifies a real upstream correction.
+
 ### `ask_interview_batch`
 
 This is the fast path for a full Grill round. Preflight `prd-interview` and collect every served
@@ -259,6 +285,11 @@ python3 .maestro/engine/maestroctl.py interview-record-batch --slug <slug> --ste
 
 The engine validates the whole batch before recording anything, so one malformed response cannot
 partially update the run. Continue immediately with the returned action.
+
+Exception: after the atomic record, if an LLD response explicitly changes an approved parent
+decision, pause before acting on the returned action and follow **Capturing out-of-band input** for
+that response. Never analyze or interrupt between popup chunks; correction handling happens only
+after the complete batch is durably recorded.
 
 ### `run_script`
 
@@ -361,15 +392,33 @@ This changes no routing; it appends a timestamped note (tagged with the active s
 run. It does NOT replace gates — a genuinely irreversible or out-of-scope ask should still be
 surfaced as a decision, not silently actioned.
 
-**A change to an already-produced design artifact re-enters its gate.** If the user asks in
-chat to change something already written and approved — the PRD, HLD, an LLD, the contract —
-do NOT edit the artifact and carry on, and do NOT let the change flow into implementation
-unreviewed. Record the request as a `note`, then route it through that artifact's approval
-gate using the gate's **revise** option (`feature_goal`/PRD, `prepare_hld_questions`/HLD,
-the repository child's `lld_approval`/LLD, `contract_approval`/contract) so the artifact is regenerated with the
-feedback and the human re-approves the result. The revise back-edge cascade-resets everything
-downstream — that is the point. If the run is past the relevant gate, the correct move is a
-revise at the nearest enclosing gate, never a silent hand-edit.
+**A change to an already-approved design needs an explicit handling decision.** If the user asks
+in chat—or clearly answers an LLD question—in a way that changes an approved PRD, HLD, LLD,
+contract, or verification rule, do not silently edit or ignore the conflict. Record the request as
+a `note`, then present exactly these choices with the native selector:
+
+1. **Update the base design now** — use the relevant gate's existing revise route
+   (`feature_goal`/PRD, `prepare_hld_questions`/HLD, the repository child's `lld_approval`/LLD,
+   `contract_approval`/contract). This deliberately reruns affected design work.
+2. **Approve as a correction and continue** — preserve the base approval evidence and record the
+   user's decision verbatim with the engine command below. This is the fast path.
+3. **Reject or defer this change** — do not put it into the effective design and do not implement it.
+
+For the correction fast path, choose the narrowest factual scope: `product`, `architecture`,
+`repository`, `contract`, `verification`, or `cross-cutting`. A repository LLD child automatically
+targets its parent and repository. YOU run, never hand the command to the user:
+
+```bash
+python3 .maestro/engine/maestroctl.py correction-record --slug <current-slug> \
+  --scope <scope> [--repo <repo>] --text '<approved human wording verbatim>'
+```
+
+Report the returned correction ID, then continue from the engine's existing cursor without a reset.
+The per-correction receipt is the approval record; `approved-corrections.md` and
+`effective-design.json` are engine-rendered downstream context. Approved corrections override
+conflicting base text in LLD authoring, contract/test generation, architecture review,
+implementation, QA, review, and retrospect. Archive folds them once into validated copies under
+`final-design/`; it never changes the original hash-bound approvals.
 
 ## Progress narration
 

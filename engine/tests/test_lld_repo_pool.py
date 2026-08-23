@@ -122,7 +122,13 @@ class LldWorkstreamTest(unittest.TestCase):
                             ),
                             "Existing seam": "Requests enter through `src/routes.py`.",
                             "Proposed changes": "Extend the existing service boundary.",
-                            "Interfaces, state, and flows": (
+                            "Data model and migrations": (
+                                "No repository-owned persistence change."
+                            ),
+                            "API and client contract": (
+                                "No externally consumed interface change."
+                            ),
+                            "State and flows": (
                                 "The route validates input, invokes the service, and returns state."
                             ),
                             "Failure and operational behavior": (
@@ -190,7 +196,7 @@ class LldWorkstreamTest(unittest.TestCase):
         self.assertEqual(statemod.load(backend_slug, self.root)["run"]["status"], "done")
         frontend = statemod.load("feature--lld--frontend", self.root)
         self.assertEqual(frontend["run"]["status"], "running")
-        self.assertEqual(frontend["run"]["cursors"], ["prepare_lld_questions"])
+        self.assertEqual(frontend["run"]["cursors"], ["lld_entry"])
         self.assertEqual(frontend["inputs"]["repo_path"], "codebase/frontend")
 
         self.approve("frontend")

@@ -350,6 +350,12 @@ file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run st
 (active frontier), per-step status / attempts / visits / timing / outputs / artifacts,
 interview answers, append-only gate decision history, and parallel-branch bookkeeping.
 
+`version` is the serialization contract; `run_format` is the shipped workflow-layout marker. A
+missing/older run-format marker triggers the explicit one-time `upgrade-run` preview instead of
+guessing how removed step identifiers map. Compatible ledgers are backed up, rebased, and stamped;
+legacy ledgers are rebuilt from preserved artifacts and require current validation plus human
+approval before their documents can advance.
+
 Resume: `done` steps are skipped only while their artifacts still exist non-empty on disk;
 interrupted (`running`) steps are re-served; gates always re-ask.
 
@@ -358,6 +364,7 @@ interrupted (`running`) steps are re-served; gates always re-ask.
 ```
 maestroctl validate <wf>                 # refuse to start on errors
 maestroctl init --slug S --workflow <wf> [--input k=v ...]
+maestroctl upgrade-run --slug S --workflow <wf> [--apply]  # preview, then one-time upgrade
 loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'

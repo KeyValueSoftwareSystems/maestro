@@ -19,8 +19,9 @@ PRD_SECTION_TITLES = {
     "dependencies and risks", "priorities and phasing", "references",
     "decision summary", "context and scope", "proposed design",
     "key decisions and trade-offs", "delivery and risks", "open questions",
-    "change summary", "existing seam", "proposed changes", "interfaces state and flows",
-    "failure and operational behavior", "implementation sequence", "verification",
+    "change summary", "existing seam", "proposed changes", "data model and migrations",
+    "api and client contract", "state and flows", "failure and operational behavior",
+    "implementation sequence", "verification",
 }
 
 

@@ -25,14 +25,18 @@ unresolved decision that materially changes correctness, compatibility, or the i
 - which existing module or extension seam owns ambiguous behavior;
 - local state authority, lifecycle, validation, or migration where the HLD leaves alternatives;
 - this repo's precise side of an API, event, navigation, storage, or background-work boundary;
+- for an API-producing backend, unresolved persistence ownership or client-contract facts: entity
+  relationships, destructive behavior, route/operation shape, complete DTOs, authorization, stable
+  errors, pagination, time/enum representation, idempotency, refresh and shared-contract ownership;
 - visible error, retry, concurrency, idempotency, offline, or recovery behavior;
 - authorization, privacy, sensitive-data handling, or trust-boundary enforcement;
 - backward compatibility, rollout, backout, or support for relevant execution modes;
 - a verification seam when materially different choices change testability or delivery risk.
 
 Do not reopen PRD or HLD decisions. Do not ask for filenames, class names, boilerplate, library syntax,
-task estimates, styling preferences, or facts directly discoverable from source. Recommend the
-simplest option that follows current repository patterns.
+task estimates, styling preferences, or facts directly discoverable from source. Do not ask a
+frontend developer to rediscover a backend payload later: resolve material client-visible ambiguity
+before writing. Recommend the simplest option that follows current repository patterns.
 
 ## Answer audit
 

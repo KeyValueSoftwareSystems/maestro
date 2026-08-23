@@ -29,7 +29,24 @@ class LldValidationTest(unittest.TestCase):
                 "Extend the current service with the approved behavior. Keep persistence ownership "
                 "inside the repository's existing data layer."
             ),
-            "Interfaces, state, and flows": (
+            "Data model and migrations": (
+                "| Entity and field | Type, nullability and default | Keys, constraints and indexes |\n"
+                "|---|---|---|\n"
+                "| `Widget.id` | UUID, required | Primary key |\n"
+                "| `Widget.ownerId` | UUID, required | Foreign key; index supports owner reads |\n\n"
+                "The additive migration creates the table. No extension or backfill is required; "
+                "rollback drops it before release."
+            ),
+            "API and client contract": (
+                "| Operation | Auth | Request | Response | Errors |\n"
+                "|---|---|---|---|---|\n"
+                "| POST `/api/v1/widgets` | Bearer token | `CreateWidgetRequest { name: string }` | "
+                "201 `WidgetResponse { id: UUID, name: string }` | 400 `VALIDATION_FAILED` |\n\n"
+                "### Frontend handoff\n\n"
+                "Publish the owner-maintained types at `packages/api/widgets.ts`. Keep a canonical "
+                "success fixture beside that contract so the client can mock the operation."
+            ),
+            "State and flows": (
                 "The route validates input, invokes the service, and returns the documented result. "
                 "The service owns ordering and writes state once validation succeeds."
             ),
@@ -91,6 +108,32 @@ class LldValidationTest(unittest.TestCase):
         )
         errors, _ = validate_lld.validate(self.write(text))
         self.assertTrue(any("unresolved placeholder" in error for error in errors))
+
+    def test_schema_and_frontend_contract_are_enforced(self):
+        text = self.valid_text().replace(
+            "| Entity and field | Type, nullability and default | Keys, constraints and indexes |\n"
+            "|---|---|---|\n"
+            "| `Widget.id` | UUID, required | Primary key |\n"
+            "| `Widget.ownerId` | UUID, required | Foreign key; index supports owner reads |\n\n",
+            "The service stores widgets.\n\n",
+        ).replace("### Frontend handoff", "### Consumer notes")
+        errors, _ = validate_lld.validate(self.write(text))
+        self.assertTrue(any("schema table" in error for error in errors))
+        self.assertTrue(any("Frontend handoff" in error for error in errors))
+
+    def test_explicit_no_change_sentences_are_valid(self):
+        text = self.valid_text()
+        data_start = text.index("## Data model and migrations")
+        api_start = text.index("## API and client contract")
+        state_start = text.index("## State and flows")
+        text = (
+            text[:data_start]
+            + "## Data model and migrations\n\nNo repository-owned persistence change.\n\n"
+            + "## API and client contract\n\nNo externally consumed interface change.\n\n"
+            + text[state_start:]
+        )
+        errors, _ = validate_lld.validate(self.write(text))
+        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":

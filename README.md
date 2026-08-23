@@ -86,9 +86,10 @@ workspace sync → requirement → PRD (confirm context → Grill unclear decisi
    → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
    → per-repo LLDs (bounded code seam → grouped Grill → write once → validate → approve)
    → API contract
-   → functional test cases → architecture review → [approve]
+   → functional test cases → effective design (base approvals + approved corrections)
+   → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
-   → QA → review pack → [approve → release → archive: harvest lessons + publish docs]
+   → QA → review pack → [approve → archive: fold corrections + harvest lessons + publish docs]
 ```
 
 **You define the workflow; you bring the skills.** The engine is the product. A workflow is a YAML file describing what runs in what order; each agent step names a *skill* (a reusable prompt) — yours, ours, or a third party's (Obra, Superpowers, …). The workflow owns *where* artifacts land and *when* each step runs; the skill owns only *how* to do its one job, so any skill can be swapped without touching the graph.
@@ -262,6 +263,13 @@ Resuming the parent while those workstreams are pending always opens an LLD sele
 repo's status plus a parent-coordinator option. A developer can therefore return with
 `/maestro my-feature` and choose backend, frontend, or Flutter without remembering the child slug.
 
+If implementation discovery changes an already-approved product or architecture decision, Maestro
+offers two explicit paths: revise the base documents now, or record the human-approved decision as
+an **approved correction** and continue. Each correction is a separate merge-friendly receipt;
+the engine renders all receipts into `approved-corrections.md` and `effective-design.json`, which
+override conflicting base text for every downstream phase. Archive folds them once into validated
+`final-design/` copies while preserving the original hash-bound approvals.
+
 **You almost never call the engine yourself.** The lead agent issues its verbs — `init`, `next`, `complete`, `gate-record`, `gate-input-record`, `fail`, `runs`, … — for you as it drives the graph. Only two are worth running by hand, for inspection:
 
 ```bash
@@ -313,11 +321,16 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
   `.maestro/runs/<feature>--lld--<repo>/` plus that repo's published LLD and receipt under the
   parent. Pull all approved child changes, then refresh the parent LLD status gate.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
+- **Old-format runs:** selecting one through `/maestro` offers a one-time upgrade. The engine backs
+  up its state and artifacts, converts old PRD/HLD structure without reopening clear decisions,
+  asks one baseline approval, and imports each old LLD as an independently validated, unapproved
+  child draft. It never transfers an old approval merely because a Markdown file exists.
 - If you edit a **workflow file** mid-run, the engine halts on the next command with a hash mismatch — nobody silently diverges from the lead's flow. Accept the edit with `maestroctl rebase --slug <slug>` (it re-validates first) or start over with `reset --slug <slug> --all`.
 
 ## Upgrade / uninstall / troubleshooting
 
-- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/`, `.maestro/index/` provenance and `.maestro/runs/` are left alone.
+- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/`, `.maestro/index/` provenance and `.maestro/runs/` are left alone. On the
+  next `/maestro` resume, an old run is detected and upgraded once only after your confirmation.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`, `.cursor/…`,
   `.agents/skills/`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` —
   that's your work.

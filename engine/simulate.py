@@ -90,7 +90,13 @@ def _simulated_lld(parent_slug, repo):
             "Extend the current service with the simulated behavior. Keep state ownership in the "
             "repository's existing data layer."
         ),
-        "Interfaces, state, and flows": (
+        "Data model and migrations": (
+            "No repository-owned persistence change."
+        ),
+        "API and client contract": (
+            "No externally consumed interface change."
+        ),
+        "State and flows": (
             "The entry point validates input, invokes the service, and returns the result. The "
             "service owns ordering and changes state only after validation."
         ),

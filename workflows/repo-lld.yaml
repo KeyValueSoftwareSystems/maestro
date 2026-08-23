@@ -9,12 +9,21 @@ inputs:
   repo: {type: string, required: true}
   repo_path: {type: string, required: true}
   feature: {type: string, default: "${inputs.parent_slug}"}
+  imported_lld: {type: string, default: "", description: legacy LLD draft imported by the one-time run upgrade}
 defaults:
   model: opus
   agent: planner
   max_visits: 6
-start: prepare_lld_questions
+start: lld_entry
 nodes:
+  - id: lld_entry
+    type: script
+    label: Check for an imported legacy LLD draft
+    run: [python3, .maestro/engine/run_upgrade.py, child-entry, --root, ., --slug, "${inputs.slug}"]
+    routes:
+      - {when: "${steps.lld_entry.outputs.imported} == true", to: validate_lld}
+      - {to: prepare_lld_questions}
+
   - id: prepare_lld_questions
     type: agent
     execution: lead
@@ -22,7 +31,9 @@ nodes:
     instruction: |
       Build the next focused queue at .maestro/runs/${inputs.slug}/lld-questions.json before
       writing LLD prose for "${inputs.repo}". Read the approved parent HLD and deferred questions,
-      confirmed LLD decisions, ${inputs.repo_path}/docs/codebase-map.md, repository guidance,
+      confirmed LLD decisions, every parent approved-corrections/*.json receipt and the rendered
+      parent approved-corrections.md when it exists,
+      ${inputs.repo_path}/docs/codebase-map.md, repository guidance,
       relevant manifest, and only source/tests around the affected seam. Do not scan broadly.
 
       Decide normal implementation details from clear existing conventions. Ask only unresolved
@@ -92,13 +103,19 @@ nodes:
     instruction: |
       Write one concise, buildable LLD for only "${inputs.repo}" from the approved parent HLD,
       confirmed decisions at .maestro/runs/${inputs.slug}/lld-context.json, repository guidance,
-      maintained map, and bounded source/test evidence already inspected. Preserve shared decisions.
+      maintained map, every parent approved-corrections/*.json receipt, the rendered parent
+      approved-corrections.md when it exists, and bounded source/test evidence already inspected.
+      Approved corrections override conflicting base statements.
+      Preserve shared decisions.
 
-      Use plain, skimmable technical English and the exact seven-section LLD contract. Make the
-      implementation seam, responsibilities, interfaces/state/flows, failure behavior, dependency
-      order, and verification concrete. Do not repeat the HLD, redesign another repo, include open
-      decisions, produce a file-by-file task dump, or implement code. Target below 70% of every
-      validator ceiling.
+      Use plain, skimmable technical English and the exact nine-section LLD contract. Make the
+      implementation seam, persistence schema/migration, API and client contract, state/flows,
+      failure behavior, dependency order, and verification concrete. For an API-producing backend,
+      publish every route/operation, authorization rule, request/response field, stable error,
+      pagination/time/enum rule, refresh behavior, and shared contract seam the frontend needs to
+      implement without reading backend source. Do not repeat the HLD, redesign another repo,
+      include open decisions, produce a file-by-file task dump, or implement code. Target below 70%
+      of every validator ceiling.
 
       Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
       post-check. Keep it empty unless synthesis reveals a genuinely new blocking repo decision;
@@ -147,7 +164,7 @@ nodes:
 
   - id: validate_lld
     type: script
-    label: Validate LLD structure and readability
+    label: Validate LLD structure and contracts
     run: [python3, .maestro/engine/validate_lld.py, ".maestro/runs/${inputs.slug}/lld.md", --parent-slug, "${inputs.parent_slug}", --repo, "${inputs.repo}", --report]
     max_visits: 3
     on_exhausted: abort
@@ -162,8 +179,10 @@ nodes:
     model: haiku
     instruction: |
       Repair only these deterministic LLD defects: ${steps.validate_lld.outputs.issues_summary}
-      Preserve every confirmed design decision and unrelated section. Run both validators before
-      completing. This is a narrow fallback, not another repository design pass.
+      This may be a legacy imported draft. Bring only its named structural/contract defects to the
+      current nine-section format. Preserve every confirmed design decision, approved correction,
+      and unrelated content. Run both validators before completing. This is a narrow fallback, not
+      another repository design pass.
     skill: lld-writing
     inputs:
       slug: "${inputs.slug}"

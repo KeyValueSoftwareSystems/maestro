@@ -100,6 +100,15 @@ class StateTest(unittest.TestCase):
         statemod.save("real", good, self.tmp)
         self.assertEqual([r["slug"] for r in statemod.list_runs(self.tmp)], ["real"])
 
+    def test_list_runs_surfaces_corrupt_ledger_for_upgrade(self):
+        path = statemod.state_path("legacy", self.tmp)
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            fh.write("<<<<<<< ours\n")
+        summary = statemod.list_runs(self.tmp)[0]
+        self.assertEqual(summary["slug"], "legacy")
+        self.assertEqual(summary["status"], "needs-upgrade")
+
 
 if __name__ == "__main__":
     unittest.main()

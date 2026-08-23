@@ -22,7 +22,8 @@ nodes:
     instruction: |
       Produce the parallel task DAG for the ${inputs.stack} repository from its LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml. Group tasks into slices with intra-group
+      .maestro/runs/${inputs.slug}/openapi.yaml. Also read approved-corrections.md; its approved
+      decisions override conflicting base text. Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
       .maestro/engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
       reported.
@@ -51,7 +52,8 @@ nodes:
       .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
       skill owns slice fan-out and worktree hygiene. Work against the LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml, grounded in the maintained codebase map
+      .maestro/runs/${inputs.slug}/openapi.yaml, with approved-corrections.md overriding any
+      conflicting base statement, grounded in the maintained codebase map
       at ${inputs.repo_path}/docs/codebase-map.md. Explore
       the live source further only where the map or LLD doesn't cover what a slice
       touches. Report tests honestly.
@@ -93,7 +95,7 @@ nodes:
     instruction: |
       Review the ${inputs.stack} implementation on branch
       ${steps.handoff.outputs.branch} at exact commit ${steps.handoff.outputs.commit}
-      against the LLD, contract, standards and the
+      against the LLD, contract, approved-corrections.md, standards and the
       maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
       map to check blast radius, not just the diff in isolation. Findings need file:line
       evidence; set blocking=true only for must-fix issues.

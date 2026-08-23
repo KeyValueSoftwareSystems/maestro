@@ -16,8 +16,8 @@ The lead agent's whole protocol:
         maestroctl interview-record-batch --slug S --step P --responses '<json>'
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, and note
-(capture out-of-band input).
+Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
+upgrade-run, and correction-record.
 
 Exit codes: 0 ok · 1 validation errors · 2 internal error · 3 setup/hash problem ·
 4 invalid transition (wrong step, missing outputs/artifacts, unknown option).
@@ -177,6 +177,26 @@ def cmd_note(args):
         resolver.record_note(run, args.text, step=args.step)
         statemod.save(args.slug, run.state, args.root)
     _print({"ok": True, "notes": len(run.state.get("notes") or [])})
+    return 0
+
+
+def cmd_upgrade_run(args):
+    import run_upgrade
+    result = (
+        run_upgrade.apply(args.slug, args.root, args.workflow)
+        if args.apply else run_upgrade.inspect(args.slug, args.root, args.workflow)
+    )
+    _print(result)
+    return 0
+
+
+def cmd_correction_record(args):
+    import design_corrections
+    result = design_corrections.record(
+        args.slug, args.root, args.scope, args.text, repo=args.repo,
+        parent_slug=args.parent_slug,
+    )
+    _print(result)
     return 0
 
 
@@ -343,6 +363,30 @@ def build_parser():
     p.add_argument("--text", required=True, help="the user's instruction, verbatim")
     p.add_argument("--step", help="step it relates to (default: the active step[s])")
     p.set_defaults(fn=cmd_note)
+
+    p = sub.add_parser(
+        "upgrade-run", help="inspect or apply the one-time current-format run upgrade",
+    )
+    p.add_argument("--slug", required=True)
+    p.add_argument("--workflow", default=".maestro/workflows/sdlc-main.yaml")
+    p.add_argument(
+        "--apply", action="store_true",
+        help="back up and upgrade after the human accepts the inspection preview",
+    )
+    p.set_defaults(fn=cmd_upgrade_run)
+
+    p = sub.add_parser(
+        "correction-record", help="record one human-approved effective-design correction",
+    )
+    p.add_argument("--slug", required=True, help="feature parent or repository LLD child")
+    p.add_argument("--parent-slug", help="explicit feature parent (normally inferred)")
+    p.add_argument(
+        "--scope", required=True,
+        choices=("product", "architecture", "repository", "contract", "verification", "cross-cutting"),
+    )
+    p.add_argument("--repo", help="required for repository scope unless inferred from a child")
+    p.add_argument("--text", required=True, help="the approved correction, verbatim")
+    p.set_defaults(fn=cmd_correction_record)
 
     p = sub.add_parser("status", help="human-readable run status")
     p.add_argument("--slug", required=True)

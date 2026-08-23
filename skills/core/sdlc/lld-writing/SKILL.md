@@ -1,6 +1,6 @@
 ---
 name: lld-writing
-description: Write or narrowly repair one buildable repository LLD from an approved HLD, confirmed repo decisions, and bounded code evidence in concise, skimmable technical English.
+description: Write or narrowly repair one buildable repository LLD from an approved HLD, confirmed repo decisions, and bounded code evidence, including an implementation-complete data model and a frontend-ready API/client contract in concise, skimmable technical English.
 allowed-tools: Read, Grep, Glob, Write, Bash
 tags: [sdlc, design, lld]
 ---
@@ -33,19 +33,51 @@ Use these exact level-2 headings in order:
 1. `Change summary`
 2. `Existing seam`
 3. `Proposed changes`
-4. `Interfaces, state, and flows`
-5. `Failure and operational behavior`
-6. `Implementation sequence`
-7. `Verification`
+4. `Data model and migrations`
+5. `API and client contract`
+6. `State and flows`
+7. `Failure and operational behavior`
+8. `Implementation sequence`
+9. `Verification`
 
 Change summary has four to seven short bullets. Existing seam identifies the current entry point,
 responsible modules, conventions, and constraints with compact backticked path evidence. Proposed
-changes maps areas to responsibilities and explains only non-obvious choices. Interfaces, state, and
-flows defines precise local and cross-repo behavior, validation, ownership, ordering, and relevant
-data shapes without code listings. Failure and operational behavior covers only applicable error,
-retry, concurrency, security, privacy, performance, observability, rollout, and backout decisions.
-Implementation sequence is a dependency-ordered numbered list of verifiable increments, not a file
-inventory. Verification maps behavior to the highest stable existing test seams.
+changes maps areas to responsibilities and explains only non-obvious choices.
+
+Data model and migrations is implementation-complete for every repository-owned store. Use compact
+tables to define every changed entity, field type, nullability, default, primary/foreign key and
+delete action; enumerate enum values, unique/check/exclusion constraints, indexes and the query each
+index serves. State migration order, required extensions, compatibility/backfill behavior and safe
+backout. If persistence does not change, write exactly `No repository-owned persistence change.`
+
+API and client contract is the handoff between producers and consumers. For a backend or other API
+producer, make it sufficient for frontend implementation without reading backend source or guessing
+a field. Include:
+
+- every added or changed operation with method/path or protocol operation, actor, authorization and
+  purpose;
+- all path, query, header and body inputs with type, required/null/default rules and validation;
+- success status and the complete response shape with field types, nullability, enum values, units,
+  timestamp/time-zone format, ordering and pagination;
+- every expected failure with transport status, stable error code, trigger and required client
+  reaction, including retry/refetch and idempotency behavior;
+- cache invalidation, polling/realtime behavior, compatibility/versioning and feature-flag behavior
+  when they affect a client; and
+- a `### Frontend handoff` subsection naming the exact shared contract/schema/type location, its
+  owner, and enough canonical fixtures or examples for a client to start before the backend lands.
+
+For a client repository, define the same contract from the consumer side and name the generated or
+shared source it trusts. If there is no externally consumed interface change, write exactly
+`No externally consumed interface change.` Do not hide a required contract behind "existing
+conventions"; restate every changed shape in this LLD.
+
+State and flows defines ownership, lifecycle transitions, validation order, transactions,
+concurrency and cross-repo ordering without implementation code. Failure and operational behavior
+covers only applicable retry, security, privacy, performance, observability, rollout and backout
+decisions not already fixed by the API error contract. Implementation sequence is a dependency-
+ordered numbered list of verifiable increments, not a file inventory. Verification maps schema,
+contract and behavior to the highest stable existing test seams, including contract tests that let
+clients work independently.
 
 All blocking implementation decisions must be resolved before this document. Never write `TBD`,
 `TODO`, "decide later", or an open-questions section.
@@ -59,7 +91,9 @@ All blocking implementation decisions must be resolved before this document. Nev
 - Avoid filler, repeated HLD context, decorative adjectives, revision history, and generic claims.
 - Use a diagram only when ordering cannot be understood from a short numbered flow.
 
-Target 800–1,600 words and no more than 70% of each validator ceiling on the first write.
+Target 1,200–2,200 words and no more than 70% of each validator ceiling on the first write. Prefer
+dense contract tables over explanatory prose; completeness means no missing decisions, not more
+sentences.
 
 ## Conditional post-check
 
@@ -70,8 +104,9 @@ only that gap in the queue instead of guessing; the workflow asks it and reruns 
 ## Contract notes
 
 Return concise `contract_notes` only for facts another repository or the shared contract must
-reconcile: an exposed/consumed operation, event, token, error, compatibility rule, or ordering
-constraint. Use `None` when this repo adds no cross-repo contract fact.
+reconcile: an exposed/consumed operation, DTO, event, token, stable error, compatibility rule, or
+ordering constraint. For an API producer, include every added or changed client-facing operation;
+use `None` only when this repo truly adds no cross-repo contract fact.
 
 ## Validate and repair
 

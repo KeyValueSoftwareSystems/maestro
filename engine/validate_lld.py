@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deterministically validate Maestro's concise, buildable repository LLD contract."""
+"""Validate Maestro's buildable LLD structure, client contract, and readability."""
 
 from __future__ import annotations
 
@@ -14,17 +14,23 @@ SECTION_BUDGETS = {
     "change summary": 220,
     "existing seam": 420,
     "proposed changes": 700,
-    "interfaces state and flows": 600,
-    "failure and operational behavior": 420,
+    "data model and migrations": 1000,
+    "api and client contract": 1200,
+    "state and flows": 700,
+    "failure and operational behavior": 500,
     "implementation sequence": 420,
-    "verification": 420,
+    "verification": 500,
 }
 SECTION_ORDER = list(SECTION_BUDGETS)
-TOTAL_BUDGET = 2600
+TOTAL_BUDGET = 4200
 PARENT_RE = re.compile(r"^\*\*Parent feature:\*\*\s+`?([^`\s]+)`?\s*$", re.I)
 REPO_RE = re.compile(r"^\*\*Repository:\*\*\s+`?(.+?)`?\s*$", re.I)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.I)
 UNRESOLVED_RE = re.compile(r"\b(?:TBD|TODO|to be decided|decide later)\b", re.I)
+HTTP_OPERATION_RE = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE)\s+`?/[^\s|`]+", re.I)
+OTHER_OPERATION_RE = re.compile(r"\b(?:query|mutation|subscription|event|topic|command)\b", re.I)
+NO_DATA_CHANGE = "no repository-owned persistence change."
+NO_INTERFACE_CHANGE = "no externally consumed interface change."
 DECORATIVE_WORDS = (
     "robust", "seamless", "scalable", "leverage", "facilitate", "best-in-class",
 )
@@ -49,6 +55,31 @@ def _sections(text):
         elif current is not None:
             found[current].append(line)
     return {name: "\n".join(lines).strip() for name, lines in found.items()}, order
+
+
+def _has_markdown_table(text):
+    lines = text.splitlines()
+    for index in range(1, len(lines)):
+        header = lines[index - 1].strip()
+        separator = lines[index].strip()
+        if "|" in header and re.match(r"^\|?\s*:?-{3,}", separator) and "|" in separator:
+            return True
+    return False
+
+
+def _subsection(text, title):
+    wanted = _normalise_heading(title)
+    lines, capture = [], False
+    for line in text.splitlines():
+        match = re.match(r"^###\s+(.+?)\s*$", line)
+        if match:
+            if capture:
+                break
+            capture = _normalise_heading(match.group(1)) == wanted
+            continue
+        if capture:
+            lines.append(line)
+    return "\n".join(lines).strip() if capture else None
 
 
 def validate(path, parent_slug=None, repo=None):
@@ -107,6 +138,36 @@ def validate(path, parent_slug=None, repo=None):
     numbered = [line for line in sequence.splitlines() if re.match(r"^\s*\d+[.)]\s+\S", line)]
     if sequence and not 2 <= len(numbered) <= 10:
         errors.append("implementation sequence must contain 2-10 numbered increments")
+
+    data_model = sections.get("data model and migrations", "")
+    if data_model and NO_DATA_CHANGE not in data_model.lower():
+        if not _has_markdown_table(data_model):
+            errors.append("data model and migrations must contain a schema table or the exact no-change sentence")
+        for label, pattern in (
+            ("field types/nullability", r"\b(?:field|column)s?\b.*\btype\b|\bnull(?:able|ability)?\b"),
+            ("keys/constraints/indexes", r"\b(?:foreign key|primary key|constraint|index|unique)\b"),
+            ("migration/backfill/backout", r"\b(?:migration|extension|backfill|rollback|backout)\b"),
+        ):
+            if not re.search(pattern, data_model, re.I | re.S):
+                errors.append(f"data model and migrations must define {label}")
+
+    api_contract = sections.get("api and client contract", "")
+    if api_contract and NO_INTERFACE_CHANGE not in api_contract.lower():
+        if not _has_markdown_table(api_contract):
+            errors.append("api and client contract must contain an operation table or the exact no-change sentence")
+        if not (HTTP_OPERATION_RE.search(api_contract) or OTHER_OPERATION_RE.search(api_contract)):
+            errors.append("api and client contract must name each route/protocol operation")
+        for term in ("auth", "request", "response", "error"):
+            if not re.search(rf"\b{term}\w*\b", api_contract, re.I):
+                errors.append(f"api and client contract must define {term} behavior")
+        handoff = _subsection(api_contract, "Frontend handoff")
+        if handoff is None:
+            errors.append("api and client contract must contain a Frontend handoff subsection")
+        else:
+            if not re.search(r"`[^`]*(?:/|\.)[^`]*`", handoff):
+                errors.append("frontend handoff must name a backticked shared contract/schema/type location")
+            if not re.search(r"\b(?:fixture|example|mock)\w*\b", handoff, re.I):
+                errors.append("frontend handoff must provide or locate a canonical fixture/example")
     if UNRESOLVED_RE.search(text):
         errors.append("document contains an unresolved placeholder (TBD/TODO/decide later)")
 
@@ -143,7 +204,7 @@ def main(argv=None):
         "valid": not errors,
         "error_count": len(errors),
         "warning_count": len(warnings),
-        "issues_summary": " | ".join(issues[:8]) if issues else "LLD structure and readability checks passed",
+        "issues_summary": " | ".join(issues[:8]) if issues else "LLD structure, contract, and readability checks passed",
     }))
     return 0 if args.report or not errors else 1
 

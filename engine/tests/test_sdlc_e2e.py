@@ -213,7 +213,13 @@ class SdlcE2E(unittest.TestCase):
                     "Extend the current service with the approved behavior. Keep state ownership "
                     "inside the existing data layer."
                 ),
-                "Interfaces, state, and flows": (
+                "Data model and migrations": (
+                    "No repository-owned persistence change."
+                ),
+                "API and client contract": (
+                    "No externally consumed interface change."
+                ),
+                "State and flows": (
                     "The route validates input, invokes the service, and returns the result. The "
                     "service owns ordering and changes state only after validation."
                 ),
