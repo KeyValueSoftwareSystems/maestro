@@ -83,6 +83,22 @@ class InstallTest(unittest.TestCase):
             self.assertIn("Claude Code / Cursor: run", result.stdout)
             self.assertIn("Codex: open the repo", result.stdout)
 
+    def test_upgrade_removes_only_retired_brainstorm_skill(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            retired = os.path.join(tmp, ".agents", "skills", "brainstorm")
+            custom = os.path.join(tmp, ".agents", "skills", "my-custom-skill")
+            os.makedirs(retired)
+            os.makedirs(custom)
+            with open(os.path.join(retired, "SKILL.md"), "w", encoding="utf-8") as handle:
+                handle.write("old Maestro skill\n")
+            with open(os.path.join(custom, "SKILL.md"), "w", encoding="utf-8") as handle:
+                handle.write("user skill\n")
+
+            self.install(tmp, "codex", "--stack", "react")
+
+            self.assertFalse(os.path.exists(retired))
+            self.assertTrue(os.path.isfile(os.path.join(custom, "SKILL.md")))
+
 
 if __name__ == "__main__":
     unittest.main()

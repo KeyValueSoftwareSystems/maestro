@@ -100,6 +100,18 @@ copy_agents() { # $1 = dst dir — filtered by --stack
   done
   note "agents -> $1 ($kept installed, $skipped skipped by --stack)"
 }
+remove_retired_skills() { # $1 = installed skills dir
+  # Named migrations only: never prune the directory wholesale because it may contain
+  # user-authored or third-party skills. `brainstorm` was replaced by the bounded
+  # `prd-interview` + `prd-writing` pair.
+  for retired in brainstorm; do
+    target="$1/$retired"
+    if [ -d "$target" ]; then
+      rm -rf -- "$target"
+      note "removed retired skill -> $target"
+    fi
+  done
+}
 
 # ---------------------------------------------------------------- source dir
 # From a REAL checkout: use the files next to this script. Piped (curl | bash): fetch the
@@ -140,12 +152,14 @@ for agent in $AGENTS; do
     claude-code)
       say "Installing skills + commands + agents for Claude Code${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.claude/skills"
+      remove_retired_skills "$DEST/.claude/skills"
       copy_tree commands "$DEST/.claude/commands"
       copy_agents        "$DEST/.claude/agents"
       ;;
     cursor)
       say "Installing skills + commands for Cursor${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.cursor/skills"
+      remove_retired_skills "$DEST/.cursor/skills"
       copy_tree commands "$DEST/.cursor/commands"
       # Cursor has no subagent registry; the Maestro skill degrades to inline mode.
       ;;
@@ -154,6 +168,7 @@ for agent in $AGENTS; do
       # Codex discovers repository skills from .agents/skills and invokes them with
       # `$skill-name`; its native subagents need no copied Claude agent definitions.
       copy_skills        "$DEST/.agents/skills"
+      remove_retired_skills "$DEST/.agents/skills"
       ;;
     *) echo "  unknown IDE target: $agent (skipping)" >&2 ;;
   esac
