@@ -78,6 +78,57 @@ def _simulated_hld():
     ) + "\n"
 
 
+def _simulated_lld(parent_slug, repo):
+    sections = {
+        "Change summary": "\n".join(
+            f"- Simulate repository behavior {index}." for index in range(1, 5)
+        ),
+        "Existing seam": (
+            "Requests enter through `src/simulated.py` and follow the existing service boundary."
+        ),
+        "Proposed changes": (
+            "Extend the current service with the simulated behavior. Keep state ownership in the "
+            "repository's existing data layer."
+        ),
+        "Interfaces, state, and flows": (
+            "The entry point validates input, invokes the service, and returns the result. The "
+            "service owns ordering and changes state only after validation."
+        ),
+        "Failure and operational behavior": (
+            "Validation failures use the current client error. Storage failures preserve prior "
+            "state and use existing logging."
+        ),
+        "Implementation sequence": (
+            "1. Extend the service boundary and its tests.\n"
+            "2. Connect the entry point and add an integration test."
+        ),
+        "Verification": (
+            "Service tests cover validation and state changes. Integration tests cover the result."
+        ),
+    }
+    header = (
+        f"# Simulated {repo} — LLD\n\n"
+        f"**Parent feature:** `{parent_slug}`\n"
+        f"**Repository:** `{repo}`\n"
+        "**Status:** Ready for review"
+    )
+    return header + "\n\n" + "\n\n".join(
+        f"## {heading}\n\n{text}" for heading, text in sections.items()
+    ) + "\n"
+
+
+def _artifact_run_inputs(root, rel):
+    parts = rel.split("/")
+    try:
+        slug = parts[parts.index("runs") + 1]
+    except (ValueError, IndexError):
+        return {}
+    try:
+        return statemod.load(slug, root).get("inputs", {})
+    except (OSError, ValueError):
+        return {}
+
+
 def _stub_agent(root, act):
     """Instantly complete a worker or lead step: placeholder text for declared fields,
     a placeholder file for every declared artifact (unless one's already there — respects a
@@ -86,11 +137,14 @@ def _stub_agent(root, act):
     for rel in act.get("artifacts", []):
         full = os.path.join(root, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
-        if rel.endswith("prd-questions.json") or rel.endswith("hld-questions.json"):
-            context_name = (
-                "hld-context.json" if rel.endswith("hld-questions.json")
-                else "prd-context.json"
-            )
+        if any(rel.endswith(name) for name in (
+                "prd-questions.json", "hld-questions.json", "lld-questions.json")):
+            if rel.endswith("hld-questions.json"):
+                context_name = "hld-context.json"
+            elif rel.endswith("lld-questions.json"):
+                context_name = "lld-context.json"
+            else:
+                context_name = "prd-context.json"
             context = os.path.join(os.path.dirname(full), context_name)
             questions = [] if os.path.exists(context) else [{
                 "id": "simulated-failure",
@@ -111,7 +165,7 @@ def _stub_agent(root, act):
                 }, fh, indent=2)
                 fh.write("\n")
             continue
-        if rel.endswith("hld-post-questions.json"):
+        if rel.endswith("hld-post-questions.json") or rel.endswith("lld-post-questions.json"):
             with open(full, "w", encoding="utf-8") as fh:
                 json.dump({
                     "schema_version": 2,
@@ -151,6 +205,13 @@ def _stub_agent(root, act):
             elif rel.endswith("/hld.md"):
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(_simulated_hld())
+            elif rel.endswith("/lld.md"):
+                run_inputs = _artifact_run_inputs(root, rel)
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(_simulated_lld(
+                        run_inputs.get("parent_slug", "simulation"),
+                        run_inputs.get("repo", "simulated-repo"),
+                    ))
             else:
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "
@@ -236,11 +297,32 @@ def _auto_complete_lld_workstreams(root, parent_slug):
             if action["action"] == "done":
                 break
             step = action["step"]
-            if action["action"] == "run_agent":
+            if action["action"] in ("run_agent", "run_lead"):
                 outputs = _stub_agent(root, action)
                 with statemod.locked(child_slug, root):
                     child = resolver.Run(child_slug, root)
                     resolver.complete_step(child, step, outputs=outputs)
+                    statemod.save(child_slug, child.state, root)
+            elif action["action"] == "ask_interview":
+                with statemod.locked(child_slug, root):
+                    child = resolver.Run(child_slug, root)
+                    resolver.record_interview(
+                        child, step, action["section"],
+                        answer=None if action.get("proposal") else f"[sim] {action['title']}",
+                        accept=bool(action.get("proposal")),
+                    )
+                    statemod.save(child_slug, child.state, root)
+            elif action["action"] == "ask_interview_batch":
+                responses = {
+                    question["section"]: (
+                        {"accept": True} if question.get("proposal")
+                        else {"answer": f"[sim] {question['title']}"}
+                    )
+                    for question in action["questions"]
+                }
+                with statemod.locked(child_slug, root):
+                    child = resolver.Run(child_slug, root)
+                    resolver.record_interview_batch(child, step, responses)
                     statemod.save(child_slug, child.state, root)
             elif action["action"] == "ask_gate":
                 with statemod.locked(child_slug, root):

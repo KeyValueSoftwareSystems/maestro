@@ -84,7 +84,8 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 ```
 workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
    → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
-   → independent per-repo LLD workstreams → API contract
+   → per-repo LLDs (bounded code seam → grouped Grill → write once → validate → approve)
+   → API contract
    → functional test cases → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
    → QA → review pack → [approve → release → archive: harvest lessons + publish docs]
@@ -250,9 +251,12 @@ provided. No artifact is regenerated with empty or inferred suggestions.
 
 After HLD approval, the parent creates one child run per selected repository—for example
 `my-feature--lld--backend`, `my-feature--lld--frontend`, and `my-feature--lld--flutter`—and waits.
-Each team resumes, reviews, and approves only its child slug. Approval publishes a hash-bound LLD
-and receipt into the parent feature; the API contract cannot start until every selected child is
-approved against the current HLD.
+Each child inspects only the relevant implementation seam, asks material repository decisions in
+one grouped popup, writes the concise LLD once in the lead session, then runs a deterministic shape
+and readability check. A second popup appears only if writing exposes a genuinely new blocking gap;
+repair is a narrow fallback only when validation fails. Each team reviews and approves only its
+child slug. Approval publishes a hash-bound LLD and receipt into the parent feature; the API
+contract cannot start until every selected child is approved against the current HLD.
 
 Resuming the parent while those workstreams are pending always opens an LLD selector showing each
 repo's status plus a parent-coordinator option. A developer can therefore return with

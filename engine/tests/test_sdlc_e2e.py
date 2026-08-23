@@ -32,7 +32,9 @@ def canned_agent_outputs(step, action):
         "prepare_hld_questions": {"summary": "Prepared architecture questions"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
         "repair_hld": {"hld_summary": "Repaired the HLD"},
+        "prepare_lld_questions": {"summary": "Prepared repository design questions"},
         "author_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
+        "repair_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
         "contract": {"contract_summary": "5 endpoints"},
         "test_cases": {"test_cases_path": "test-cases.md", "case_count": 12},
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
@@ -118,11 +120,14 @@ class SdlcE2E(unittest.TestCase):
     def write_agent_artifact(self, rel, step):
         full = os.path.join(self.tmp, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
-        if rel.endswith("prd-questions.json") or rel.endswith("hld-questions.json"):
-            context_name = (
-                "hld-context.json" if rel.endswith("hld-questions.json")
-                else "prd-context.json"
-            )
+        if any(rel.endswith(name) for name in (
+                "prd-questions.json", "hld-questions.json", "lld-questions.json")):
+            if rel.endswith("hld-questions.json"):
+                context_name = "hld-context.json"
+            elif rel.endswith("lld-questions.json"):
+                context_name = "lld-context.json"
+            else:
+                context_name = "prd-context.json"
             decisions = os.path.join(os.path.dirname(full), context_name)
             questions = [] if os.path.exists(decisions) else [{
                 "id": "conflict-behavior",
@@ -142,7 +147,7 @@ class SdlcE2E(unittest.TestCase):
                 },
             }, fh)
             return
-        if rel.endswith("hld-post-questions.json"):
+        if rel.endswith("hld-post-questions.json") or rel.endswith("lld-post-questions.json"):
             with open(full, "w") as fh:
                 json.dump({
                     "schema_version": 2,
@@ -188,6 +193,49 @@ class SdlcE2E(unittest.TestCase):
                 fh.write("# Demo feature — HLD\n\n"
                          "**Feature slug:** `demo`\n"
                          "**Status:** Ready for review\n\n")
+                fh.write("\n\n".join(
+                    f"## {heading}\n\n{body}" for heading, body in sections.items()
+                ) + "\n")
+        elif rel.endswith("/lld.md"):
+            parts = rel.split("/")
+            slug = parts[parts.index("runs") + 1]
+            child_state = statemod.load(slug, self.tmp)
+            parent_slug = child_state["inputs"]["parent_slug"]
+            repo = child_state["inputs"]["repo"]
+            sections = {
+                "Change summary": "\n".join(
+                    f"- Deliver repository behavior {index}." for index in range(1, 5)
+                ),
+                "Existing seam": (
+                    "Requests enter through `src/routes.py` and follow the existing service boundary."
+                ),
+                "Proposed changes": (
+                    "Extend the current service with the approved behavior. Keep state ownership "
+                    "inside the existing data layer."
+                ),
+                "Interfaces, state, and flows": (
+                    "The route validates input, invokes the service, and returns the result. The "
+                    "service owns ordering and changes state only after validation."
+                ),
+                "Failure and operational behavior": (
+                    "Validation failures use the existing client error. Storage failures preserve "
+                    "prior state and use current logging."
+                ),
+                "Implementation sequence": (
+                    "1. Extend the service boundary and cover its behavior.\n"
+                    "2. Connect the route and add an integration test."
+                ),
+                "Verification": (
+                    "Service tests cover validation and state changes. Route tests cover the result."
+                ),
+            }
+            with open(full, "w") as fh:
+                fh.write(
+                    f"# Demo {repo} — LLD\n\n"
+                    f"**Parent feature:** `{parent_slug}`\n"
+                    f"**Repository:** `{repo}`\n"
+                    "**Status:** Ready for review\n\n"
+                )
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")
@@ -237,12 +285,26 @@ class SdlcE2E(unittest.TestCase):
                 trace_step = f"lld:{repo}/{step}"
                 trace.append((action["action"], trace_step))
                 run = resolver.Run(slug, self.tmp)
-                if action["action"] == "run_agent":
+                if action["action"] in ("run_agent", "run_lead"):
                     for rel in action.get("artifacts", []):
                         self.write_agent_artifact(rel, trace_step)
                     resolver.complete_step(
                         run, step, outputs=canned_agent_outputs(step, action),
                     )
+                elif action["action"] == "ask_interview":
+                    resolver.record_interview(
+                        run, step, action["section"],
+                        answer=None if action.get("proposal") else f"Confirmed {action['title']}",
+                        accept=bool(action.get("proposal")),
+                    )
+                elif action["action"] == "ask_interview_batch":
+                    resolver.record_interview_batch(run, step, {
+                        question["section"]: (
+                            {"accept": True} if question.get("proposal")
+                            else {"answer": f"Confirmed {question['title']}"}
+                        )
+                        for question in action["questions"]
+                    })
                 elif action["action"] == "run_script":
                     proc = subprocess.run(
                         action["argv"], cwd=self.tmp, capture_output=True, text=True, timeout=30,
@@ -411,6 +473,16 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("design/lld_workstreams_wait", gate_steps)
         child_approvals = [step for step in gate_steps if step.endswith("/lld_approval")]
         self.assertEqual(len(child_approvals), 2)
+        child_authors = [step for step in steps if step.endswith("/author_lld")]
+        child_interviews = [step for step in steps if step.endswith("/lld_interview")]
+        self.assertEqual(len(child_authors), 2)
+        self.assertEqual(len(child_interviews), 2)
+        self.assertTrue(all(
+            steps.index(step.replace("/author_lld", "/lld_interview")) < steps.index(step)
+            for step in child_authors
+        ))
+        self.assertFalse(any(step.endswith("/lld_post_interview") for step in steps))
+        self.assertFalse(any(step.endswith("/repair_lld") for step in steps))
         self.assertLess(steps.index("design/lld_workstreams_wait"), steps.index(impl_steps[0]))
         # design ran before implementation, qa after
         self.assertLess(steps.index("design/author_hld"), steps.index("arch_review"))

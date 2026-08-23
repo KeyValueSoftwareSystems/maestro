@@ -297,9 +297,12 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
 
 The shipped design workflow does not use one shared parallel node for team-authored LLDs. It
 creates a separate `repo-lld.yaml` run per selected repository. Each child has its own
-`state.yaml`, LLD revision gate, and approval history. Its publish step writes a hash-bound receipt
-to the parent; the parent joins only after every selected child is complete and still matches the
-current HLD. Generic `parallel` remains useful when one owner controls every branch in one run.
+`state.yaml`, decision context, LLD revision gate, and approval history. Its lead agent inspects a
+bounded repository seam, serves material questions as a grouped native interview, writes once, and
+runs `validate_lld.py`; post-write questions and narrow repair are conditional. Its publish step
+writes a hash-bound receipt to the parent; the parent joins only after every selected child is
+complete and still matches the current HLD. Generic `parallel` remains useful when one owner
+controls every branch in one run.
 
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
 `parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per

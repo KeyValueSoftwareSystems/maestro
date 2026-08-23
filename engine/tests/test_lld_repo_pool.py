@@ -77,34 +77,103 @@ class LldWorkstreamTest(unittest.TestCase):
         child_slug = next(
             item["slug"] for item in self.queue()["workstreams"] if item["repo"] == repo
         )
-        run = resolver.Run(child_slug, self.root)
-        action = resolver.next_action(run)
-        self.assertEqual(action["action"], "run_agent")
-        lld_path = os.path.join(statemod.feature_dir(child_slug, self.root), "lld.md")
-        with open(lld_path, "w", encoding="utf-8") as fh:
-            fh.write(f"# {repo} LLD\n")
-        resolver.complete_step(
-            run, action["step"], outputs={"lld_path": "lld.md", "contract_notes": "none"},
-        )
-        statemod.save(child_slug, run.state, self.root)
-
-        run = resolver.Run(child_slug, self.root)
-        action = resolver.next_action(run)
-        self.assertEqual(action["action"], "ask_gate")
-        resolver.record_gate(run, action["step"], "approve")
-        statemod.save(child_slug, run.state, self.root)
-
-        run = resolver.Run(child_slug, self.root)
-        action = resolver.next_action(run)
-        self.assertEqual(action["action"], "run_script")
-        proc = subprocess.run(
-            action["argv"], cwd=self.root, capture_output=True, text=True, timeout=30,
-        )
-        self.assertEqual(proc.returncode, 0, proc.stderr)
-        resolver.complete_step(
-            run, action["step"], exit_code=proc.returncode, stdout=proc.stdout,
-        )
-        statemod.save(child_slug, run.state, self.root)
+        child_dir = statemod.feature_dir(child_slug, self.root)
+        for _ in range(30):
+            run = resolver.Run(child_slug, self.root)
+            action = resolver.next_action(run)
+            if action["action"] == "done":
+                break
+            step = action["step"]
+            if action["action"] in ("run_agent", "run_lead"):
+                for rel in action.get("artifacts", []):
+                    full = os.path.join(self.root, rel)
+                    os.makedirs(os.path.dirname(full), exist_ok=True)
+                    if rel.endswith("lld-questions.json"):
+                        context = os.path.join(child_dir, "lld-context.json")
+                        questions = [] if os.path.exists(context) else [{
+                            "id": "failure-path",
+                            "title": "Failure path",
+                            "question": "How should this repository expose a failed operation?",
+                            "why": "The result changes the repository contract.",
+                            "proposal": "Use the existing typed failure result.",
+                            "must_resolve": ["failure result"],
+                        }]
+                        with open(full, "w", encoding="utf-8") as fh:
+                            json.dump({
+                                "schema_version": 2,
+                                "questions": questions,
+                                "audit": {
+                                    "unresolved": [] if not questions else ["failure result"],
+                                    "contradictions": [],
+                                },
+                            }, fh)
+                    elif rel.endswith("lld-post-questions.json"):
+                        with open(full, "w", encoding="utf-8") as fh:
+                            json.dump({
+                                "schema_version": 2,
+                                "questions": [],
+                                "audit": {"unresolved": [], "contradictions": []},
+                            }, fh)
+                    elif rel.endswith("/lld.md"):
+                        sections = {
+                            "Change summary": "\n".join(
+                                f"- Deliver repository behavior {index}."
+                                for index in range(1, 5)
+                            ),
+                            "Existing seam": "Requests enter through `src/routes.py`.",
+                            "Proposed changes": "Extend the existing service boundary.",
+                            "Interfaces, state, and flows": (
+                                "The route validates input, invokes the service, and returns state."
+                            ),
+                            "Failure and operational behavior": (
+                                "Failures preserve prior state and use existing logging."
+                            ),
+                            "Implementation sequence": (
+                                "1. Extend the service and its tests.\n"
+                                "2. Connect the route and integration test."
+                            ),
+                            "Verification": "Service and route tests cover the behavior.",
+                        }
+                        with open(full, "w", encoding="utf-8") as fh:
+                            fh.write(
+                                f"# Feature {repo} — LLD\n\n"
+                                "**Parent feature:** `feature`\n"
+                                f"**Repository:** `{repo}`\n"
+                                "**Status:** Ready for review\n\n"
+                            )
+                            fh.write("\n\n".join(
+                                f"## {heading}\n\n{body}"
+                                for heading, body in sections.items()
+                            ) + "\n")
+                outputs = (
+                    {"summary": "repository questions prepared"}
+                    if step == "prepare_lld_questions"
+                    else {"lld_path": "lld.md", "contract_notes": "none"}
+                )
+                resolver.complete_step(run, step, outputs=outputs)
+            elif action["action"] == "ask_interview":
+                resolver.record_interview(run, step, action["section"], accept=True)
+            elif action["action"] == "ask_interview_batch":
+                resolver.record_interview_batch(run, step, {
+                    question["section"]: {"accept": True}
+                    for question in action["questions"]
+                })
+            elif action["action"] == "ask_gate":
+                self.assertEqual(step, "lld_approval")
+                resolver.record_gate(run, step, "approve")
+            elif action["action"] == "run_script":
+                proc = subprocess.run(
+                    action["argv"], cwd=self.root, capture_output=True, text=True, timeout=30,
+                )
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                resolver.complete_step(
+                    run, step, exit_code=proc.returncode, stdout=proc.stdout,
+                )
+            else:
+                self.fail(f"unexpected LLD child action: {action}")
+            statemod.save(child_slug, run.state, self.root)
+        else:
+            self.fail(f"LLD child {child_slug} did not finish")
         self.assertEqual(resolver.next_action(resolver.Run(child_slug, self.root))["action"], "done")
         return child_slug
 
@@ -121,7 +190,8 @@ class LldWorkstreamTest(unittest.TestCase):
         self.assertEqual(statemod.load(backend_slug, self.root)["run"]["status"], "done")
         frontend = statemod.load("feature--lld--frontend", self.root)
         self.assertEqual(frontend["run"]["status"], "running")
-        self.assertEqual(frontend["run"]["cursors"], ["author_lld"])
+        self.assertEqual(frontend["run"]["cursors"], ["prepare_lld_questions"])
+        self.assertEqual(frontend["inputs"]["repo_path"], "codebase/frontend")
 
         self.approve("frontend")
         self.assertTrue(self.check()["ready"])

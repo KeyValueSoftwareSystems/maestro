@@ -1,53 +1,200 @@
-# One repository team's independent LLD workstream. The parent feature run creates this run and
-# waits; approval here publishes a hash-bound LLD back into the parent without touching its state.
+# One repository team's independent, clarify-first LLD workstream. The parent feature waits while
+# this child resolves repo decisions, writes once, validates, and publishes its own approved LLD.
 version: 1
 name: repo-lld
-description: Author, review, and publish one repository LLD with an independent team-owned ledger.
+description: Clarify, author, review, and publish one concise repository LLD in its own ledger.
 inputs:
   slug: {type: string, required: true}
   parent_slug: {type: string, required: true}
   repo: {type: string, required: true}
+  repo_path: {type: string, required: true}
   feature: {type: string, default: "${inputs.parent_slug}"}
 defaults:
   model: opus
   agent: planner
-  max_visits: 5
-start: author_lld
+  max_visits: 6
+start: prepare_lld_questions
 nodes:
+  - id: prepare_lld_questions
+    type: agent
+    execution: lead
+    label: Find material repository design gaps
+    instruction: |
+      Build the next focused queue at .maestro/runs/${inputs.slug}/lld-questions.json before
+      writing LLD prose for "${inputs.repo}". Read the approved parent HLD and deferred questions,
+      confirmed LLD decisions, ${inputs.repo_path}/docs/codebase-map.md, repository guidance,
+      relevant manifest, and only source/tests around the affected seam. Do not scan broadly.
+
+      Decide normal implementation details from clear existing conventions. Ask only unresolved
+      choices that materially change correctness, the extension seam, local state/data lifecycle,
+      this repo's contract side, visible failure/retry/concurrency/offline behavior, authorization
+      or privacy, compatibility/migration/rollout, execution modes, or the verification seam. Do
+      not reopen PRD/HLD choices or ask for filenames, boilerplate, library syntax, or task estimates.
+
+      Audit prior answers against must_resolve facts and code/HLD constraints. Write schema version
+      2 with 3-7 grouped questions when several gaps remain, fewer when nearly clear, and an empty
+      queue only when every blocking repo decision is concrete and consistent. Validate it before
+      completing.
+    skill: lld-interview
+    inputs:
+      slug: "${inputs.slug}"
+      parent_slug: "${inputs.parent_slug}"
+      repo: "${inputs.repo}"
+      repo_path: "${inputs.repo_path}"
+      parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
+      parent_deferred_questions: ".maestro/runs/${inputs.parent_slug}/open-questions.json"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      revision_feedback: "${steps.lld_approval.outputs.feedback}"
+      validator: ".maestro/engine/validate_prd_questions.py"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
+    max_visits: 8
+    on_exhausted: lld_clarity_limit
+    next: validate_lld_questions
+
+  - id: validate_lld_questions
+    type: script
+    label: Validate repository question queue
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_lld_questions.outputs.valid} == false", to: prepare_lld_questions}
+      - {when: "${steps.validate_lld_questions.outputs.state} == clear", to: author_lld}
+      - {to: lld_interview}
+
+  - id: lld_interview
+    type: interview
+    label: Clarify repository implementation decisions
+    skill: lld-interview
+    context: |
+      Parent feature: ${inputs.parent_slug}
+      Repository: ${inputs.repo}
+      Approved HLD: .maestro/runs/${inputs.parent_slug}/hld.md
+    questions_artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    next: prepare_lld_questions
+
+  - id: lld_clarity_limit
+    type: gate
+    label: Repository LLD clarity checkpoint
+    prompt: |
+      Eight grouped clarification rounds are complete for ${inputs.repo}, but blocking repository
+      design decisions remain. Continue with focused questions, or abort this LLD workstream?
+    options:
+      - {id: more, label: Continue focused clarification, to: prepare_lld_questions}
+      - {id: reject, label: Abort this repository LLD, to: abort}
+
   - id: author_lld
     type: agent
-    label: Write repository LLD
+    execution: lead
+    label: Write repository LLD once
     instruction: |
-      Write the low-level design for only the "${inputs.repo}" repository. Use the approved parent
-      HLD at .maestro/runs/${inputs.parent_slug}/hld.md, this repository's maintained
-      docs/codebase-map.md, and the real source it cites. Cover concrete modules, interfaces, data
-      changes, error paths, compatibility, tests, rollout, and implementation boundaries needed by
-      this repo. Do not redesign another repository or change shared product/HLD decisions.
+      Write one concise, buildable LLD for only "${inputs.repo}" from the approved parent HLD,
+      confirmed decisions at .maestro/runs/${inputs.slug}/lld-context.json, repository guidance,
+      maintained map, and bounded source/test evidence already inspected. Preserve shared decisions.
 
-      If review feedback exists, address it without adding a revision diary:
-      ${steps.lld_approval.outputs.feedback}
-    skill: repo-design
+      Use plain, skimmable technical English and the exact seven-section LLD contract. Make the
+      implementation seam, responsibilities, interfaces/state/flows, failure behavior, dependency
+      order, and verification concrete. Do not repeat the HLD, redesign another repo, include open
+      decisions, produce a file-by-file task dump, or implement code. Target below 70% of every
+      validator ceiling.
+
+      Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
+      post-check. Keep it empty unless synthesis reveals a genuinely new blocking repo decision;
+      never guess. Run both validators and repair deterministic defects inside this same call.
+    skill: lld-writing
     inputs:
-      slug: "${inputs.parent_slug}"
-      workstream_slug: "${inputs.slug}"
+      slug: "${inputs.slug}"
+      parent_slug: "${inputs.parent_slug}"
       feature: "${inputs.feature}"
       repo: "${inputs.repo}"
+      repo_path: "${inputs.repo_path}"
       parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      lld_path: ".maestro/runs/${inputs.slug}/lld.md"
+      post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+      lld_validator: ".maestro/engine/validate_lld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
       lessons: "${memory.knowledge.repo-design}"
     outputs: [lld_path, contract_notes]
-    artifact: ".maestro/runs/${inputs.slug}/lld.md"
-    next: lld_approval
+    artifact:
+      - ".maestro/runs/${inputs.slug}/lld.md"
+      - ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    max_visits: 4
+    next: validate_lld_post_questions
+
+  - id: validate_lld_post_questions
+    type: script
+    label: Validate repository LLD post-check
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_lld_post_questions.outputs.valid} == false", to: author_lld}
+      - {when: "${steps.validate_lld_post_questions.outputs.state} == ask", to: lld_post_interview}
+      - {to: validate_lld}
+
+  - id: lld_post_interview
+    type: interview
+    label: Resolve newly discovered repository gaps
+    skill: lld-interview
+    context: |
+      A new blocking ${inputs.repo} decision emerged while connecting the complete LLD.
+    questions_artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    next: author_lld
+
+  - id: validate_lld
+    type: script
+    label: Validate LLD structure and readability
+    run: [python3, .maestro/engine/validate_lld.py, ".maestro/runs/${inputs.slug}/lld.md", --parent-slug, "${inputs.parent_slug}", --repo, "${inputs.repo}", --report]
+    max_visits: 3
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.validate_lld.outputs.valid} == true", to: lld_approval}
+      - {to: repair_lld}
+
+  - id: repair_lld
+    type: agent
+    execution: lead
+    label: Repair LLD validation defects
+    model: haiku
+    instruction: |
+      Repair only these deterministic LLD defects: ${steps.validate_lld.outputs.issues_summary}
+      Preserve every confirmed design decision and unrelated section. Run both validators before
+      completing. This is a narrow fallback, not another repository design pass.
+    skill: lld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      parent_slug: "${inputs.parent_slug}"
+      repo: "${inputs.repo}"
+      repo_path: "${inputs.repo_path}"
+      parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      lld_path: ".maestro/runs/${inputs.slug}/lld.md"
+      post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+      lld_validator: ".maestro/engine/validate_lld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
+      validator_feedback: "${steps.validate_lld.outputs.issues_summary}"
+    outputs: [lld_path, contract_notes]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/lld.md"
+      - ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    max_visits: 2
+    next: validate_lld
 
   - id: lld_approval
     type: gate
     label: Repository LLD approval
     prompt: |
-      The ${inputs.repo} LLD is ready at .maestro/runs/${inputs.slug}/lld.md.
+      The concise ${inputs.repo} LLD is ready at .maestro/runs/${inputs.slug}/lld.md.
 
-      This approval belongs only to ${inputs.repo}; it cannot approve another team's LLD.
+      Material repository decisions were clarified before writing. This approval belongs only to
+      ${inputs.repo}; it cannot approve another team's LLD.
     options:
       - {id: approve, label: Approve and publish this repository LLD, to: publish}
-      - {id: revise, label: Request revisions, to: author_lld, input: feedback}
+      - {id: revise, label: Request revisions, to: prepare_lld_questions, input: feedback}
       - {id: reject, label: Reject and abort this workstream, to: abort}
 
   - id: publish

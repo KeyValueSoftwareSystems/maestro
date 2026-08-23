@@ -192,8 +192,15 @@ def cmd_workstreams(args):
         item.get("repo"): item for item in doc.get("workstreams", [])
         if isinstance(item, dict) and item.get("repo") and item.get("slug")
     } if not previous_hld or previous_hld == hld_sha256 else {}
+    repo_paths = {
+        name: os.path.relpath(path, args.root)
+        for name, path in codebase_scan.discover_repos(args.root)
+    }
     workstreams = []
     for repo in doc["selected"]:
+        if repo not in repo_paths:
+            print(f"FAIL: selected repository {repo!r} is no longer discoverable", file=sys.stderr)
+            return 1
         child_slug = (
             existing_by_repo.get(repo, {}).get("slug")
             or _child_slug(args.slug, repo, generation)
@@ -201,6 +208,7 @@ def cmd_workstreams(args):
         child_inputs = {
             "parent_slug": args.slug,
             "repo": repo,
+            "repo_path": repo_paths[repo],
             "feature": args.feature or args.slug,
         }
         with statemod.locked(child_slug, args.root):
