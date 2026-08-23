@@ -64,8 +64,8 @@ description is the seed for the workflow's bounded PRD interview when no require
    only inputs are gate decisions and the requirement folder; everything else you execute.
 2. **Never read worker-produced artifacts** (HLD, LLDs, diffs, reports) into your own
    context. The only exception is an explicit `run_lead`: read and write only the exact paths
-   served in that action's prompt. `ask_interview` never grants permission to scan application
-   code. Your context must stay small enough to drive a long pipeline.
+   served in that action's prompt. `ask_interview` / `ask_interview_batch` never grant
+   permission to scan application code. Your context must stay small enough to drive a long pipeline.
 3. **Never skip, invent, or auto-answer a gate.** Gates exist to put a human in charge.
 4. **Relay honestly.** If a step failed, say so and report it via `fail` — never mark
    work done that is not.
@@ -109,16 +109,16 @@ python3 .maestro/engine/maestroctl.py next --slug <slug>       # add --serial in
 mutating command below itself prints the FOLLOWING action, so use its output directly
 as the next iteration — call `next` only when you need to re-read the current action.
 
-**Keep the loop moving.** After every `complete`/`interview-record`/`gate-record`/`fail`, immediately act on
-the FOLLOWING action it printed — do NOT end your turn between a report and the next
+**Keep the loop moving.** After every mutation command, immediately act on the FOLLOWING action
+it printed — do NOT end your turn between a report and the next
 dispatch. The loop terminates ONLY on `done` or `failed`. A turn that ends mid-run (long
 subagent, harness limit, human stepping away) is not a failure and loses nothing — the
 engine ledger is the source of truth. When you regain the turn, just resume (below).
 
 ### Skill preflight
 
-For `run_agent`, `run_agents`, `run_lead`, and `ask_interview`, preflight every non-empty
-served skill at exactly these repository-relative paths:
+For `run_agent`, `run_agents`, `run_lead`, `ask_interview`, and `ask_interview_batch`, preflight
+every non-empty served skill at exactly these repository-relative paths:
 `.agents/skills/<skill>/SKILL.md`, `.claude/skills/<skill>/SKILL.md`,
 `.cursor/skills/<skill>/SKILL.md`. Do not use `locate`, search parent/home/Desktop directories,
 or scan the wider filesystem. If no non-empty copy exists, do not mutate the run: name the
@@ -204,6 +204,25 @@ If the reply is ambiguous, ask a short follow-up and do not record it. Each succ
 returns the next action, so continue immediately. The engine ledger and generated
 `prd-context.json` are the durable source of truth; do not maintain a competing draft.
 
+### `ask_interview_batch`
+
+This is the fast path for a full Grill round. Preflight `prd-interview`, then show every served
+question together in one numbered message. For each item show only its title, direct prompt, short
+`why`, and recommendation when present. Show the compact context once on the first batch. WAIT once;
+the human may answer naturally and does not need to follow a JSON or numbered template.
+
+Map only answers that are clear from the reply. “All recommended” accepts every served proposal.
+Omit unclear or unanswered question IDs so the engine re-serves only those questions. Never infer,
+silently accept, or drop an answer. Record all clear answers in ONE command:
+
+```bash
+python3 .maestro/engine/maestroctl.py interview-record-batch --slug <slug> --step <step> \
+    --responses '{"question-id":{"accept":true},"other-id":{"answer":"human text verbatim"}}'
+```
+
+The engine validates the whole batch before recording anything, so one malformed response cannot
+partially update the run. Continue immediately with the returned action.
+
 ### `run_script`
 
 Run `argv` with the Bash tool (respect `timeout`, which is in seconds), capturing stdout.
@@ -284,7 +303,8 @@ per-step models are ignored (everything runs on this session's model)."*
   branches one step at a time (never expect `run_agents`).
 - For `run_agent`: execute the served prompt YOURSELF — load the named skill and do the
   work — then call `complete` exactly as a subagent would have been completed.
-- `run_lead` and `ask_interview` behave the same in every harness; they never spawn workers.
+- `run_lead`, `ask_interview`, and `ask_interview_batch` behave the same in every harness; they
+  never spawn workers.
 - Context discipline still applies: after each inline step, carry forward only the JSON
   outputs; do not keep artifact contents in mind — re-read from disk in the step that
   needs them.

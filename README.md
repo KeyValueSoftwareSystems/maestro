@@ -215,7 +215,7 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
 
 - **valid existing `prd.md`** → after two short context confirmations, it goes directly to
   PRD approval; common equivalent headings are accepted because PRDs have no universal format;
-- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then asks only feature-specific decisions and relevant edge cases that remain unclear;
+- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then asks every feature-specific decision and relevant edge case for the current round together;
 - **after clarity** → the lead writes the PRD once in plain, skimmable English. A deterministic validator checks required headings, word budgets, repetition, sentence length, and sequential `AC-xx` acceptance criteria. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
 The PRD stage does not spawn subagents or scan application source. It reads only repository
@@ -312,7 +312,7 @@ After install, in your project repo:
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · interview-record · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              · interview-record · interview-record-batch · gate-input-record · fail · reset · rebase · status · graph · note · runs)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)

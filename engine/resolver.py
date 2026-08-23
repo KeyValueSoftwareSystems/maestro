@@ -948,35 +948,60 @@ def _interview_sections(run, frame, node):
 def _interview_action(run, frame, node, path, entry):
     sections = _interview_sections(run, frame, node)
     answers = (entry.get("interview") or {}).get("answers") or {}
-    current = next((section for section in sections if section["id"] not in answers), None)
-    if current is None:
+    unresolved = [section for section in sections if section["id"] not in answers]
+    if not unresolved:
         raise RunError(f"interview {path!r} has no unresolved section but is still active", code=4)
     context = run.resolve_text(node.get("context", ""), frame, missing_ok=True).strip()
-    if current["prompt"]:
-        question = current["prompt"]
-    elif current["proposal"]:
-        question = (
-            f"For **{current['title']}**, Maestro currently understands:\n\n"
-            f"{current['proposal']}\n\nIs this correct? Reply yes, or give the corrected answer."
-        )
-    else:
-        question = (
-            f"For **{current['title']}**, there is no grounded answer yet. "
-            "What should the PRD say?"
-        )
+
+    def payload(current):
+        if current["prompt"]:
+            question = current["prompt"]
+        elif current["proposal"]:
+            question = (
+                f"For **{current['title']}**, Maestro currently understands:\n\n"
+                f"{current['proposal']}\n\nIs this correct? Reply yes, or give the corrected answer."
+            )
+        else:
+            question = (
+                f"For **{current['title']}**, there is no grounded answer yet. "
+                "What should the PRD say?"
+            )
+        return {
+            "section": current["id"],
+            "title": current["title"],
+            "proposal": current["proposal"],
+            "why": current["why"],
+            "prompt": question,
+        }
+
     skill = node.get("skill")
     if skill:
         skill = run.resolve_text(skill, frame)
+    batch_size = node.get("batch_size", 1)
+    if batch_size > 1:
+        batch = [payload(section) for section in unresolved[:batch_size]]
+        return {
+            "action": "ask_interview_batch",
+            "step": path,
+            "skill": skill,
+            "context": context,
+            "questions": batch,
+            "confirmed": answers,
+            "progress": {"confirmed": len(answers), "total": len(sections)},
+        }
+
+    current = unresolved[0]
+    current_payload = payload(current)
     return {
         "action": "ask_interview",
         "step": path,
         "skill": skill,
-        "section": current["id"],
-        "title": current["title"],
-        "proposal": current["proposal"],
-        "why": current["why"],
+        "section": current_payload["section"],
+        "title": current_payload["title"],
+        "proposal": current_payload["proposal"],
+        "why": current_payload["why"],
         "context": context,
-        "prompt": question,
+        "prompt": current_payload["prompt"],
         "confirmed": answers,
         "progress": {"confirmed": len(answers), "total": len(sections)},
     }
@@ -1219,6 +1244,26 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns):
     return rel
 
 
+def _finish_interview_if_complete(run, frame, node, path, entry, sections, interview):
+    answers = interview["answers"]
+    if len(answers) != len(sections):
+        return
+    context_path = _write_interview_artifact(
+        run, frame, node, path, sections, answers, interview["turns"],
+    )
+    entry["outputs"] = {
+        "context_path": context_path,
+        "confirmed_count": len(answers),
+        "summary": f"Confirmed {len(answers)} product decisions",
+    }
+    entry["artifact"] = [context_path]
+    entry["status"] = "done"
+    statemod.mark_step_finished(entry, {
+        "interview_turns": len(interview["turns"]),
+    })
+    _advance(run, frame, node, entry["outputs"])
+
+
 def record_interview(run, path, section_id, answer=None, accept=False):
     """Confirm exactly the currently served interview section and advance when complete."""
     _require_cursor(run, path)
@@ -1254,21 +1299,79 @@ def record_interview(run, path, section_id, answer=None, accept=False):
         "source": source,
         "confirmed_at": statemod.now_iso(),
     })
-    if len(answers) == len(sections):
-        context_path = _write_interview_artifact(
-            run, frame, node, path, sections, answers, interview["turns"],
+    _finish_interview_if_complete(run, frame, node, path, entry, sections, interview)
+    return entry
+
+
+def record_interview_batch(run, path, responses):
+    """Atomically confirm any clear answers from the currently served interview batch."""
+    _require_cursor(run, path)
+    frame, node = run.node_at(path)
+    if ntype(node) != "interview":
+        raise RunError(f"step {path!r} is not an interview", code=4)
+    if not isinstance(responses, dict) or not responses:
+        raise RunError("batch interview responses must be a non-empty JSON object", code=4)
+
+    entry = statemod.step_entry(run.state, path)
+    sections = _interview_sections(run, frame, node)
+    interview = entry.setdefault("interview", {"answers": {}, "turns": []})
+    answers = interview.setdefault("answers", {})
+    unresolved = [section for section in sections if section["id"] not in answers]
+    batch_size = node.get("batch_size", 1)
+    current_batch = unresolved[:batch_size]
+    current_by_id = {section["id"]: section for section in current_batch}
+    unknown = [section_id for section_id in responses if section_id not in current_by_id]
+    if unknown:
+        raise RunError(
+            f"interview {path!r}: response id(s) are not in the current batch: {unknown}", code=4,
         )
-        entry["outputs"] = {
-            "context_path": context_path,
-            "confirmed_count": len(answers),
-            "summary": f"Confirmed {len(answers)} product decisions",
-        }
-        entry["artifact"] = [context_path]
-        entry["status"] = "done"
-        statemod.mark_step_finished(entry, {
-            "interview_turns": len(interview["turns"]),
+
+    # Validate every response before mutating the ledger so a malformed final answer cannot
+    # partially record earlier answers from the same human reply.
+    normalized = []
+    for section in current_batch:
+        section_id = section["id"]
+        if section_id not in responses:
+            continue
+        response = responses[section_id]
+        if not isinstance(response, dict):
+            raise RunError(f"interview {path!r}/{section_id}: response must be an object", code=4)
+        unknown_keys = set(response) - {"accept", "answer"}
+        if unknown_keys:
+            raise RunError(
+                f"interview {path!r}/{section_id}: unknown response fields {sorted(unknown_keys)}",
+                code=4,
+            )
+        accept = response.get("accept") is True
+        answer = response.get("answer")
+        has_answer = isinstance(answer, str) and bool(answer.strip())
+        if accept == has_answer:
+            raise RunError(
+                f"interview {path!r}/{section_id}: provide exactly one of accept=true or answer",
+                code=4,
+            )
+        if accept:
+            value = section["proposal"].strip()
+            if not value:
+                raise RunError(
+                    f"interview {path!r}/{section_id}: there is no proposed answer to accept",
+                    code=4,
+                )
+            source = "accepted-proposal"
+        else:
+            value = answer.strip()
+            source = "user-answer"
+        normalized.append((section_id, value, source))
+
+    now = statemod.now_iso()
+    for section_id, value, source in normalized:
+        answers[section_id] = value
+        interview["turns"].append({
+            "section": section_id,
+            "source": source,
+            "confirmed_at": now,
         })
-        _advance(run, frame, node, entry["outputs"])
+    _finish_interview_if_complete(run, frame, node, path, entry, sections, interview)
     return entry
 
 

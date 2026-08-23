@@ -184,6 +184,11 @@ is called by the node. After every question is confirmed, the engine atomically 
 structured context artifact and advances. Use either inline `sections` or a validated dynamic
 `questions_artifact`, never both.
 
+Set `batch_size` above 1 to serve up to that many unresolved questions in one
+`ask_interview_batch` action. The lead records all clear answers atomically with
+`interview-record-batch`; omitted answers remain pending and are served again. No question is
+discarded.
+
 ```yaml
 - id: prd_interview
   type: interview
@@ -204,6 +209,7 @@ For feature-specific follow-ups, a preceding agent writes a JSON queue containin
 - id: clarify_edges
   type: interview
   questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+  batch_size: 12
   artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
   next: find_more_gaps
 ```
@@ -338,6 +344,7 @@ loop:
     run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
     ask_interview → ask one decision → interview-record --section X (--accept | --answer TEXT)
+    ask_interview_batch → ask the served round once → interview-record-batch --responses JSON
     ask_gate   → ask the human for a choice → gate-record --option X
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop

@@ -261,6 +261,33 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                         raise resolver.RunError("interview answer cannot be blank", code=4)
                 _log(f"[ask   ] {step}/{act['section']} -> "
                      f"{'accepted proposal' if interview_accept else 'answered'}")
+            elif act["action"] == "ask_interview_batch":
+                interview_responses = {}
+                if not auto:
+                    _log(f"\n--- interview batch: {len(act['questions'])} questions ---")
+                for question in act["questions"]:
+                    if auto:
+                        if question.get("proposal"):
+                            response = {"accept": True}
+                        else:
+                            response = {"answer": f"[auto] {question['title']}"}
+                    else:
+                        _log(f"\n{question['title']}")
+                        if question.get("why"):
+                            _log(f"Why: {question['why']}")
+                        if question.get("proposal"):
+                            _log(f"Proposal: {question['proposal']}")
+                        answer = input(
+                            f"{question['prompt']}\n(answer, or Enter to accept): "
+                        ).strip()
+                        if answer:
+                            response = {"answer": answer}
+                        elif question.get("proposal"):
+                            response = {"accept": True}
+                        else:
+                            raise resolver.RunError("interview answer cannot be blank", code=4)
+                    interview_responses[question["section"]] = response
+                _log(f"[ask   ] {step} -> recorded {len(interview_responses)} answers")
 
             with statemod.locked(slug, root):
                 run_obj = resolver.Run(slug, root)
@@ -278,6 +305,8 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                         run_obj, step, act["section"], answer=interview_answer,
                         accept=interview_accept,
                     )
+                elif act["action"] == "ask_interview_batch":
+                    resolver.record_interview_batch(run_obj, step, interview_responses)
                 statemod.save(slug, run_obj.state, root)
     _log(f"\n[stopped] hit --max-steps ({max_steps}) without finishing")
     return {"action": "stopped"}

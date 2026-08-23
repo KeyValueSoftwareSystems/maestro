@@ -840,6 +840,10 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
           "type": "string",
           "minLength": 1
         },
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1
+        },
         "artifact": {
           "type": "string"
         },
@@ -1132,7 +1136,7 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
   },
   "description": "Minimal authoring: version defaults to 1, start to the first node, node type to agent, omitted routing to next: end."
 }</script>
-<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections", "interview-no-source", "interview-multiple-sources"]</script>
+<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections", "interview-no-source", "interview-multiple-sources", "bad-batch-size"]</script>
 <script>
 /* ================= Maestro Workflow Builder ================= */
 "use strict";
@@ -1296,6 +1300,7 @@ function lint() {
         if (hasSections && hasQuestions) err("interview-multiple-sources", `${w}: interview cannot use both question sources`, n.id);
         if (n.sections !== undefined && !hasSections) err("interview-no-sections", `${w}: interview sections must be a non-empty array`, n.id);
         if (!n.artifact) err("missing-key", `${w}: interview needs an artifact path`, n.id);
+        if (n.batch_size !== undefined && (!Number.isInteger(n.batch_size) || n.batch_size < 1)) err("bad-batch-size", `${w}: interview batch size must be a positive integer`, n.id);
         const sectionIds = (n.sections || []).map(s => s.id);
         if (new Set(sectionIds).size !== sectionIds.length) err("interview-dup-sections", `${w}: interview section ids must be unique`, n.id);
       }
@@ -1417,6 +1422,7 @@ function nodeEl(n, issues) {
   } else if (n.type === "interview") {
     if (n.questions_artifact) chips.push(`<span class="chip">dynamic questions</span>`);
     else chips.push(`<span class="chip">${(n.sections || []).length} section${(n.sections || []).length === 1 ? "" : "s"}</span>`);
+    if ((n.batch_size || 1) > 1) chips.push(`<span class="chip">batch ${n.batch_size}</span>`);
     if (n.skill) chips.push(`<span class="chip skill">${esc(n.skill)}</span>`);
   } else if (n.type === "script") {
     chips.push(`<span class="chip" style="font-family:var(--mono)">${esc((n.run || []).join(" ").slice(0, 30))}</span>`);
@@ -1677,6 +1683,7 @@ function inspectNode(box) {
     box.appendChild(field("Question queue file", txt(n.questions_artifact, v => commit("questions_artifact", () => {
       if (v) { n.questions_artifact = v; delete n.sections; } else delete n.questions_artifact;
     }), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/questions.json" }), "Use this for dynamic, validated questions; leave blank for static sections."));
+    box.appendChild(field("Questions per batch", txt(n.batch_size, v => commit("batch_size", () => v ? n.batch_size = +v : delete n.batch_size), { number: true, placeholder: "1" }), "Use 1 for one-at-a-time; larger values show a round together."));
     box.appendChild(field("Artifact file", txt(n.artifact, v => commit("artifact", () => n.artifact = v), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/prd-context.json" })));
     box.appendChild(field("Sections (JSON array)", txt(JSON.stringify(n.sections || [], null, 2), (v, el) => {
       el.setCustomValidity("");

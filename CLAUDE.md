@@ -127,10 +127,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 
 **The action loop** (engine ↔ lead agent): `maestroctl next` prints exactly ONE action as
 JSON — `run_agent`, `run_agents` (a parallel wave), `run_lead`, `run_script`,
-`ask_interview`, `ask_gate`, `ask_input`, `done`, or `failed`. `run_lead` is the explicit,
-bounded exception to worker dispatch; `ask_interview` records one confirmed section at a time.
+`ask_interview`, `ask_interview_batch`, `ask_gate`, `ask_input`, `done`, or `failed`. `run_lead`
+is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
+atomic batch without dropping unresolved questions.
 Input-bearing gate choices deliberately become a second durable `ask_input` action before
-routing. The lead reports back via `complete`, `interview-record`, `gate-record`,
+routing. The lead reports back via `complete`, `interview-record`, `interview-record-batch`, `gate-record`,
 `gate-input-record`, or `fail`. The LLM never interprets the graph or writes state.
 
 ## Running checks

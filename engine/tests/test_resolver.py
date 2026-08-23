@@ -182,11 +182,13 @@ nodes:
   - id: first
     type: interview
     questions_artifact: ".maestro/runs/${inputs.slug}/questions-1.json"
+    batch_size: 12
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: second
   - id: second
     type: interview
     questions_artifact: ".maestro/runs/${inputs.slug}/questions-2.json"
+    batch_size: 12
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: end
 """
@@ -350,38 +352,69 @@ class LeadInterviewTest(Sim):
     def test_dynamic_questions_append_cumulative_decisions(self):
         self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
         run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
-        for number, question in (
-            (1, {"id": "double-booking", "title": "Booking conflict",
-                 "question": "What should happen if the slot was just taken?",
-                 "why": "This decides the visible conflict behavior.",
-                 "proposal": "Reject and show the next available slots."}),
-            (2, {"id": "cancel-cutoff", "title": "Cancellation cutoff",
-                 "question": "How late may a patient cancel a booking?",
-                 "why": "This changes eligibility and user messaging.",
-                 "proposal": "Allow cancellation until two hours before start."}),
-        ):
-            os.makedirs(run_dir, exist_ok=True)
+        first_questions = [
+            {"id": "double-booking", "title": "Booking conflict",
+             "question": "What should happen if the slot was just taken?",
+             "why": "This decides the visible conflict behavior.",
+             "proposal": "Reject and show the next available slots."},
+            {"id": "stale-form", "title": "Stale form",
+             "question": "Should entered details remain after a stale request is rejected?",
+             "why": "This decides whether the user must repeat work.",
+             "proposal": "Keep all still-valid entered details."},
+        ]
+        second_questions = [{
+            "id": "cancel-cutoff", "title": "Cancellation cutoff",
+            "question": "How late may a patient cancel a booking?",
+            "why": "This changes eligibility and user messaging.",
+            "proposal": "Allow cancellation until two hours before start.",
+        }]
+        os.makedirs(run_dir, exist_ok=True)
+        for number, questions in ((1, first_questions), (2, second_questions)):
             with open(os.path.join(run_dir, f"questions-{number}.json"), "w") as fh:
-                json.dump({"schema_version": 1, "questions": [question]}, fh)
+                json.dump({"schema_version": 1, "questions": questions}, fh)
 
         action = self.nxt()
-        self.assertEqual(action["section"], "double-booking")
-        self.assertEqual(action["why"], "This decides the visible conflict behavior.")
+        self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual([q["section"] for q in action["questions"]],
+                         ["double-booking", "stale-form"])
+        self.assertEqual(action["questions"][0]["why"],
+                         "This decides the visible conflict behavior.")
+
+        # One invalid answer rejects the entire command; nothing is partially recorded.
         run = self.run_obj()
-        resolver.record_interview(run, "first", "double-booking", accept=True)
+        with self.assertRaises(resolver.RunError):
+            resolver.record_interview_batch(run, "first", {
+                "double-booking": {"accept": True},
+                "stale-form": {"answer": ""},
+            })
+        self.assertEqual(run.state["steps"]["first"]["interview"]["answers"], {})
+
+        resolver.record_interview_batch(run, "first", {
+            "double-booking": {"accept": True},
+        })
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual([q["section"] for q in action["questions"]], ["stale-form"])
+        run = self.run_obj()
+        resolver.record_interview_batch(run, "first", {
+            "stale-form": {"answer": "Keep the form values"},
+        })
         statemod.save("feat", run.state, self.tmp)
 
         action = self.nxt()
-        self.assertEqual(action["section"], "cancel-cutoff")
+        self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual(action["questions"][0]["section"], "cancel-cutoff")
         run = self.run_obj()
-        resolver.record_interview(run, "second", "cancel-cutoff", answer="Any time before start")
+        resolver.record_interview_batch(run, "second", {
+            "cancel-cutoff": {"answer": "Any time before start"},
+        })
         statemod.save("feat", run.state, self.tmp)
         self.assertEqual(self.nxt()["action"], "done")
 
         with open(os.path.join(run_dir, "prd-context.json")) as fh:
             context = json.load(fh)
         self.assertEqual([item["id"] for item in context["decisions"]],
-                         ["double-booking", "cancel-cutoff"])
+                         ["double-booking", "stale-form", "cancel-cutoff"])
         self.assertEqual(len(context["rounds"]), 2)
 
 

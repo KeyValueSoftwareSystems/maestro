@@ -29,9 +29,9 @@ The served instruction selects one mode:
 3. **Grill queue** — read prior confirmed decisions when the supplied file exists. Generate the
    next JSON queue at the workflow-supplied artifact path and run the supplied validator. Use an
    empty `questions` array when no material ambiguity remains.
-4. **Interview turn** — ask exactly the engine-served question. Show its short reason and grounded
-   recommendation when present. Let the user accept, modify, or replace the recommendation. Call
-   `interview-record` only after that decision is clear.
+4. **Interview turn** — ask every question served in the current action together. Show each short
+   reason and grounded recommendation. Let the user answer naturally, map only clear answers, and
+   leave ambiguous items unresolved. Record all clear answers in one batch operation.
 
 ## Grill method
 

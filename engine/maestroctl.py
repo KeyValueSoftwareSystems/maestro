@@ -13,6 +13,7 @@ The lead agent's whole protocol:
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
         maestroctl gate-input-record --slug S --step P --input '<text>'
         maestroctl interview-record --slug S --step P --section X (--accept | --answer '<text>')
+        maestroctl interview-record-batch --slug S --step P --responses '<json>'
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, reset (--step/--all, --cascade), rebase, graph, note (capture out-of-band input).
@@ -130,6 +131,18 @@ def cmd_gate_input_record(args):
 def cmd_interview_record(args):
     return _mutate(args, lambda run: resolver.record_interview(
         run, args.step, args.section, answer=args.answer, accept=args.accept,
+    ))
+
+
+def cmd_interview_record_batch(args):
+    try:
+        responses = json.loads(args.responses)
+    except ValueError as exc:
+        raise resolver.RunError(f"--responses is not valid JSON: {exc}", code=4) from None
+    if not isinstance(responses, dict):
+        raise resolver.RunError("--responses must be a JSON object", code=4)
+    return _mutate(args, lambda run: resolver.record_interview_batch(
+        run, args.step, responses,
     ))
 
 
@@ -285,6 +298,18 @@ def build_parser():
     group.add_argument("--answer", help="confirmed replacement answer")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_interview_record)
+
+    p = sub.add_parser(
+        "interview-record-batch", help="confirm clear answers from a served interview batch",
+    )
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument(
+        "--responses", required=True,
+        help='JSON object: {"question-id":{"accept":true}, "other":{"answer":"text"}}',
+    )
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_interview_record_batch)
 
     p = sub.add_parser("fail", help="record a step failure (engine applies retries/on_fail)")
     p.add_argument("--slug", required=True)

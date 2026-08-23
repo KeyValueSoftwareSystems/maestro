@@ -179,6 +179,7 @@ nodes:
       Confirmed project: ${steps.project_context.outputs.project_context}
       Confirmed feature: ${steps.feature_goal.outputs.feature_goal}
     questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+    batch_size: 12
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: prepare_prd_questions
 

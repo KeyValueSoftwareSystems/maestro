@@ -249,6 +249,14 @@ class SdlcE2E(unittest.TestCase):
                         answer=None if act.get("proposal") else f"Confirmed {act['title']}",
                         accept=bool(act.get("proposal")),
                     )
+                elif act["action"] == "ask_interview_batch":
+                    resolver.record_interview_batch(run, step, {
+                        question["section"]: (
+                            {"accept": True} if question.get("proposal")
+                            else {"answer": f"Confirmed {question['title']}"}
+                        )
+                        for question in act["questions"]
+                    })
                 statemod.save("demo", run.state, self.tmp)
         self.fail("pipeline did not terminate within max_steps")
 
@@ -545,6 +553,14 @@ class SdlcE2E(unittest.TestCase):
                     answer=None if action.get("proposal") else f"Confirmed {action['title']}",
                     accept=bool(action.get("proposal")),
                 )
+            elif action["action"] == "ask_interview_batch":
+                resolver.record_interview_batch(run, action["step"], {
+                    question["section"]: (
+                        {"accept": True} if question.get("proposal")
+                        else {"answer": f"Confirmed {question['title']}"}
+                    )
+                    for question in action["questions"]
+                })
             statemod.save("demo", run.state, self.tmp)
         else:
             self.fail("design workflow did not finish")
@@ -604,6 +620,12 @@ class SdlcE2E(unittest.TestCase):
             elif action["action"] == "ask_interview":
                 interview_sections.append(action["section"])
                 resolver.record_interview(run, step, action["section"], accept=True)
+            elif action["action"] == "ask_interview_batch":
+                interview_sections.extend(q["section"] for q in action["questions"])
+                resolver.record_interview_batch(run, step, {
+                    question["section"]: {"accept": True}
+                    for question in action["questions"]
+                })
             statemod.save("demo", run.state, self.tmp)
             if reached_hld:
                 break
