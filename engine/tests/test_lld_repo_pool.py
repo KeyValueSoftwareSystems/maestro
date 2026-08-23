@@ -42,6 +42,12 @@ class LldWorkstreamTest(unittest.TestCase):
         os.makedirs(parent)
         with open(os.path.join(parent, "hld.md"), "w", encoding="utf-8") as fh:
             fh.write("# Feature HLD\n\nInitial architecture.\n")
+        parent_state = statemod.new_state(
+            "feature", ".maestro/workflows/sdlc-main.yaml", "parent-hash",
+            {"slug": "feature", "feature": "Feature"},
+        )
+        parent_state["run"]["cursors"] = ["design/lld_workstreams_wait"]
+        statemod.save("feature", parent_state, self.root)
         self.assertEqual(lld_repo_pool.cmd_init(SimpleNamespace(
             root=self.root, slug="feature", choice="all", repos_text="",
         )), 0)
@@ -103,6 +109,11 @@ class LldWorkstreamTest(unittest.TestCase):
         return child_slug
 
     def test_one_team_approval_does_not_approve_another(self):
+        summary = lld_repo_pool.workstream_summary("feature", self.root)
+        self.assertTrue(summary["available"])
+        self.assertEqual(
+            {item["repo"] for item in summary["workstreams"]}, {"backend", "frontend"},
+        )
         backend_slug = self.approve("backend")
         status = self.check()
         self.assertFalse(status["ready"])

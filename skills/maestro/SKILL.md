@@ -36,7 +36,9 @@ python3 .maestro/engine/maestroctl.py runs        # read-only JSON: [{slug, stat
 When runs exist and the user did not name one explicitly, present the choice with the host's
 native selector: `AskUserQuestion` on Claude Code, or `request_user_input` on Codex when that
 tool is available. Labels are yours, but the slugs come **verbatim** from the engine output —
-never from memory. Show one option per existing run (`resume <slug> — <status>`) plus
+never from memory. Label `kind: repo-lld` entries as
+`<repo> LLD for <parent_slug> — <status>`; label feature entries as
+`resume <slug> — <status>`. Show one option per existing run plus
 **"Start a new feature"**. The auto-added *Other* lets the human type a slug directly. If the
 host exposes no selector (for example Codex Default mode), print the same choices as a numbered
 list, explicitly ask for the number or slug, and WAIT; plain text is the required fallback,
@@ -98,6 +100,29 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   know the user has a PRD/notes to paste, point them at that folder first; otherwise just
   init and run the loop — the gates will ask. (A workflow with no such handling will simply
   abort on an empty requirement; relay that.)
+
+### Repository LLD resume selector
+
+After a no-op init of an existing run, ask the engine for its repo workstreams:
+
+```bash
+python3 .maestro/engine/maestroctl.py workstreams --slug <slug>
+```
+
+When it returns `available: true` and `<slug>` is the returned `parent_slug`, ALWAYS present a
+native selector before calling `next`, even when the user explicitly supplied the parent slug.
+Offer every returned child as `Work on <repo> LLD — <status> (<active step>)` plus
+`Parent coordinator — check whether all LLDs are ready`. Use only returned slugs and statuses.
+
+- Child selected: switch the active slug to that child, validate its returned `workflow`, no-op
+  init it, and drive that child normally. Do not mutate the parent.
+- Parent coordinator selected: keep the parent slug and continue to its status/refresh gate.
+- If the invocation already named a repo LLD child, honour that direct choice without asking a
+  second time.
+
+This selector is intentionally repeated on every parent resume while LLD workstreams are pending.
+It prevents a returning backend, frontend, or Flutter developer from accidentally driving the
+shared parent or another team's ledger.
 
 ## The loop
 

@@ -254,6 +254,10 @@ Each team resumes, reviews, and approves only its child slug. Approval publishes
 and receipt into the parent feature; the API contract cannot start until every selected child is
 approved against the current HLD.
 
+Resuming the parent while those workstreams are pending always opens an LLD selector showing each
+repo's status plus a parent-coordinator option. A developer can therefore return with
+`/maestro my-feature` and choose backend, frontend, or Flutter without remembering the child slug.
+
 **You almost never call the engine yourself.** The lead agent issues its verbs — `init`, `next`, `complete`, `gate-record`, `gate-input-record`, `fail`, `runs`, … — for you as it drives the graph. Only two are worth running by hand, for inspection:
 
 ```bash

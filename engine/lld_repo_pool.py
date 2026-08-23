@@ -285,6 +285,40 @@ def cmd_check(args):
     return 0
 
 
+def workstream_summary(slug, root="."):
+    """Read-only resume picker data for a parent feature or one of its LLD children."""
+    selected = statemod.load(slug, root)
+    if selected is None:
+        return {"available": False, "parent_slug": slug, "workstreams": []}
+    selected_inputs = selected.get("inputs") or {}
+    parent_slug = selected_inputs.get("parent_slug") or slug
+    parent = statemod.load(parent_slug, root)
+    doc = _load_queue(parent_slug, root) or {}
+    items = []
+    for item in doc.get("workstreams") or []:
+        child = statemod.load(item.get("slug", ""), root)
+        ok, reason = _published_ok(parent_slug, item, root)
+        run = (child or {}).get("run") or {}
+        items.append({
+            "slug": item.get("slug"),
+            "repo": item.get("repo"),
+            "workflow": (child or {}).get("workflow", {}).get("file"),
+            "status": "approved" if ok else (run.get("status") or "missing"),
+            "detail": reason,
+            "active": run.get("cursors") or [],
+        })
+    parent_active = ((parent or {}).get("run") or {}).get("cursors") or []
+    waiting = any(path.endswith("lld_workstreams_wait") for path in parent_active)
+    return {
+        "available": bool(items) and waiting,
+        "parent_slug": parent_slug,
+        "parent_status": ((parent or {}).get("run") or {}).get("status"),
+        "parent_active": parent_active,
+        "selected_slug": slug,
+        "workstreams": items,
+    }
+
+
 def cmd_publish(args):
     child = statemod.load(args.slug, args.root)
     if child is None:

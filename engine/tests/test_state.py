@@ -79,7 +79,19 @@ class StateTest(unittest.TestCase):
         self.assertEqual(by_slug["beta"]["active"], ["author_hld"])
         # every entry is a lightweight summary, never the full ledger
         self.assertEqual(set(runs[0]),
-                         {"slug", "status", "workflow", "active", "updated_at"})
+                         {"slug", "status", "workflow", "active", "updated_at", "kind",
+                          "parent_slug", "repo"})
+
+    def test_list_runs_labels_repo_lld_children(self):
+        child = statemod.new_state(
+            "feat--lld--backend", "workflows/repo-lld.yaml", "h",
+            {"slug": "feat--lld--backend", "parent_slug": "feat", "repo": "backend"},
+        )
+        statemod.save("feat--lld--backend", child, self.tmp)
+        summary = statemod.list_runs(self.tmp)[0]
+        self.assertEqual(summary["kind"], "repo-lld")
+        self.assertEqual(summary["parent_slug"], "feat")
+        self.assertEqual(summary["repo"], "backend")
 
     def test_list_runs_skips_non_run_dirs(self):
         # a stray directory that isn't a run (no valid state.yaml) is ignored

@@ -197,12 +197,18 @@ def list_runs(root="."):
         if data is None:
             continue
         run = data.get("run") or {}
+        inputs = data.get("inputs") or {}
+        parent_slug = inputs.get("parent_slug")
+        repo = inputs.get("repo")
         runs.append({
             "slug": name,
             "status": run.get("status"),
             "workflow": (data.get("workflow") or {}).get("file"),
             "active": run.get("cursors") or [],
             "updated_at": data.get("updated_at"),
+            "kind": "repo-lld" if parent_slug and repo else "feature",
+            "parent_slug": parent_slug,
+            "repo": repo,
         })
     runs.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
     return runs

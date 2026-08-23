@@ -16,7 +16,8 @@ The lead agent's whole protocol:
         maestroctl interview-record-batch --slug S --step P --responses '<json>'
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, reset (--step/--all, --cascade), rebase, graph, note (capture out-of-band input).
+Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, and note
+(capture out-of-band input).
 
 Exit codes: 0 ok · 1 validation errors · 2 internal error · 3 setup/hash problem ·
 4 invalid transition (wrong step, missing outputs/artifacts, unknown option).
@@ -215,6 +216,12 @@ def cmd_runs(args):
     return 0
 
 
+def cmd_workstreams(args):
+    import lld_repo_pool
+    _print(lld_repo_pool.workstream_summary(args.slug, args.root))
+    return 0
+
+
 def cmd_graph(args):
     import wf as wfmod
 
@@ -348,6 +355,12 @@ def build_parser():
 
     p = sub.add_parser("runs", help="list every run under .maestro/runs/ as JSON (read-only)")
     p.set_defaults(fn=cmd_runs)
+
+    p = sub.add_parser(
+        "workstreams", help="list repo-owned LLD child runs for resume selection (read-only)",
+    )
+    p.add_argument("--slug", required=True, help="parent feature or repo LLD child slug")
+    p.set_defaults(fn=cmd_workstreams)
     return parser
 
 
