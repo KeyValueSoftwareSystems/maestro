@@ -1,7 +1,7 @@
 ---
 name: prd-writing
 description: Write or repair one final PRD from fully confirmed structured context in plain, skimmable technical English. Use only after the PRD interview is complete; never invent missing product decisions.
-allowed-tools: Read, Write
+allowed-tools: Read, Write, Bash
 tags: [sdlc, requirement]
 ---
 
@@ -17,6 +17,10 @@ Read the confirmed inputs and requirement paths supplied by the workflow. When t
 decision artifact exists, its answers are authoritative; when it does not, no extra interview
 decisions were needed. Do not scan the repository, reopen product decisions, add plausible
 features, or infer technical design. If a required answer is absent, stop instead of filling space.
+
+For a decision whose `source` is `user-answer`, use only its `answer`. Its unaccepted `proposal` is
+context, not permission to complete a partial answer. Stop without writing if a `must_resolve` fact
+is absent, a material value remains vague, or two confirmed decisions conflict.
 
 ## Required structure
 
@@ -50,6 +54,10 @@ Use identifiers only in `Acceptance criteria`. Write every criterion as a sequen
 bullet beginning `AC-01:`, `AC-02:`, and so on. Do not put `B1`, `B2`, `FR-*`, `REQ-*`, question
 IDs, or other traceability codes in any other section.
 
+Before adding prose, create all eleven headings in the required order. Before completing, check
+that every in-scope actor permission, state transition, limit, conflict, override, and recovery rule
+from the confirmed decisions has an observable acceptance criterion. Non-goals do not need one.
+
 ## Plain technical English
 
 - Put the decision or idea first.
@@ -67,7 +75,14 @@ IDs, or other traceability codes in any other section.
 
 Summary: 120 words. Problem, users, goals, constraints, dependencies: 180 each. Non-goals,
 priorities: 140 each. Functional scope: 300. Acceptance criteria: 260. References: 160. Whole
-document: 1,800 words maximum. These are ceilings, not targets.
+document: 1,800 words maximum. These are ceilings, not targets. Target no more than 70% of each
+section ceiling on the first write so small edits cannot trigger a repair.
+
+## Validate before returning
+
+Run the workflow-supplied validator after writing. Allow its mechanical-fix mode to normalize line
+wrapping and acceptance-criteria numbering. If it still reports a defect, repair only that defect
+inside this same call and validate again. Do not return success with a failing artifact.
 
 ## Repair mode
 

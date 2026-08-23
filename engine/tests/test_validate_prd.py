@@ -103,6 +103,27 @@ class PrdValidationTest(unittest.TestCase):
         self.assertTrue(any("Feature slug" in error for error in errors))
         self.assertTrue(any("Status" in error for error in errors))
 
+    def test_mechanical_fix_joins_wrapped_criteria_and_renumbers(self):
+        text = self.valid_text().replace(
+            "- AC-01: The confirmed behavior is observable.",
+            "- AC-04: The confirmed behavior is observable and preserves\n"
+            "  the user's entered values.\n"
+            "- AC-09: A second observable result is shown.",
+        )
+        path = self.write(text)
+        fixes = validate_prd.apply_mechanical_fixes(path)
+        self.assertIn("joined wrapped acceptance-criteria lines", fixes)
+        self.assertIn("renumbered acceptance criteria sequentially", fixes)
+        with open(path) as fh:
+            updated = fh.read()
+        self.assertIn(
+            "- AC-01: The confirmed behavior is observable and preserves the user's entered values.",
+            updated,
+        )
+        self.assertIn("- AC-02: A second observable result is shown.", updated)
+        errors, _ = validate_prd.validate(path)
+        self.assertEqual(errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

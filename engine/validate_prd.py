@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -28,6 +29,7 @@ AC_LINE_RE = re.compile(r"^\s*[-*]\s+(?:\*\*)?AC-(\d{2,})(?:\*\*)?:\s+\S")
 NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
+AC_PREFIX_RE = re.compile(r"^(\s*[-*]\s+)(?:\*\*)?AC-\d{2,}(?:\*\*)?:\s*", re.IGNORECASE)
 
 # Existing PRDs do not share a universal heading standard. The fast-path compatibility mode
 # accepts common equivalents while generated Maestro PRDs still use the exact headings above.
@@ -83,6 +85,90 @@ def _sections(text, compatible=False):
         elif current is not None:
             found[current].append(line)
     return {name: "\n".join(lines).strip() for name, lines in found.items()}
+
+
+def _normalize_acceptance_criteria(text):
+    """Apply syntax-only AC fixes without changing any product words."""
+    lines = text.splitlines()
+    start = next((index for index, line in enumerate(lines)
+                  if _normalise_heading(line[3:]) == "acceptance criteria"
+                  and line.startswith("## ")), None)
+    if start is None:
+        return text, []
+    end = next((index for index in range(start + 1, len(lines))
+                if lines[index].startswith("## ")), len(lines))
+
+    body = lines[start + 1:end]
+    prefix_blanks = []
+    suffix_blanks = []
+    while body and not body[0].strip():
+        prefix_blanks.append(body.pop(0))
+    while body and not body[-1].strip():
+        suffix_blanks.insert(0, body.pop())
+
+    normalized, current = [], None
+    joined = False
+    for line in body:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if re.match(r"^[-*]\s+", stripped):
+            if current is not None:
+                normalized.append(current)
+            current = stripped
+        elif current is not None and line[:1].isspace():
+            current += " " + stripped
+            joined = True
+        else:
+            if current is not None:
+                normalized.append(current)
+                current = None
+            normalized.append(stripped)
+    if current is not None:
+        normalized.append(current)
+
+    renumbered = False
+    ac_number = 0
+    for index, line in enumerate(normalized):
+        if AC_PREFIX_RE.match(line):
+            ac_number += 1
+            replacement = AC_PREFIX_RE.sub(
+                lambda match: f"{match.group(1)}AC-{ac_number:02d}: ", line, count=1,
+            )
+            if replacement != line:
+                renumbered = True
+            normalized[index] = replacement
+
+    new_lines = lines[:start + 1] + prefix_blanks + normalized + suffix_blanks + lines[end:]
+    result = "\n".join(new_lines) + ("\n" if text.endswith("\n") else "")
+    fixes = []
+    if joined:
+        fixes.append("joined wrapped acceptance-criteria lines")
+    if renumbered:
+        fixes.append("renumbered acceptance criteria sequentially")
+    return result, fixes
+
+
+def apply_mechanical_fixes(path):
+    """Normalize safe Markdown syntax and atomically replace the file when changed."""
+    target = Path(path)
+    try:
+        original = target.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    updated, fixes = _normalize_acceptance_criteria(original)
+    if updated == original:
+        return []
+    tmp = target.with_name(f"{target.name}.tmp-{os.getpid()}")
+    try:
+        tmp.write_text(updated, encoding="utf-8")
+        os.replace(tmp, target)
+    finally:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+    return fixes
 
 
 def validate(path, compatible=False):
@@ -170,13 +256,20 @@ def main(argv=None):
         "--compatible", action="store_true",
         help="accept common equivalent headings when checking an existing third-party PRD",
     )
+    parser.add_argument(
+        "--fix-mechanical", action="store_true",
+        help="atomically normalize safe Markdown syntax before validation",
+    )
     args = parser.parse_args(argv)
+    fixes = apply_mechanical_fixes(args.path) if args.fix_mechanical else []
     errors, warnings = validate(args.path, compatible=args.compatible)
     issues = errors + warnings
     print(json.dumps({
         "valid": not errors,
         "error_count": len(errors),
         "warning_count": len(warnings),
+        "changed": bool(fixes),
+        "fixes": fixes,
         "issues_summary": " | ".join(issues[:8]) if issues else "PRD structure and brevity checks passed",
     }))
     return 0 if args.report or not errors else 1

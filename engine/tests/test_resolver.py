@@ -357,22 +357,29 @@ class LeadInterviewTest(Sim):
             {"id": "double-booking", "title": "Booking conflict",
              "question": "What should happen if the slot was just taken?",
              "why": "This decides the visible conflict behavior.",
-             "proposal": "Reject and show the next available slots."},
+             "proposal": "Reject and show the next available slots.",
+             "must_resolve": ["visible losing-booking outcome", "recovery action"]},
             {"id": "stale-form", "title": "Stale form",
              "question": "Should entered details remain after a stale request is rejected?",
              "why": "This decides whether the user must repeat work.",
-             "proposal": "Keep all still-valid entered details."},
+             "proposal": "Keep all still-valid entered details.",
+             "must_resolve": ["whether entered details remain"]},
         ]
         second_questions = [{
             "id": "cancel-cutoff", "title": "Cancellation cutoff",
             "question": "How late may a patient cancel a booking?",
             "why": "This changes eligibility and user messaging.",
             "proposal": "Allow cancellation until two hours before start.",
+            "must_resolve": ["cancellation cutoff"],
         }]
         os.makedirs(run_dir, exist_ok=True)
         for number, questions in ((1, first_questions), (2, second_questions)):
             with open(os.path.join(run_dir, f"questions-{number}.json"), "w") as fh:
-                json.dump({"schema_version": 1, "questions": questions}, fh)
+                json.dump({
+                    "schema_version": 2,
+                    "questions": questions,
+                    "audit": {"unresolved": [q["id"] for q in questions], "contradictions": []},
+                }, fh)
 
         action = self.nxt()
         self.assertEqual(action["action"], "ask_interview_batch")
@@ -417,6 +424,8 @@ class LeadInterviewTest(Sim):
             context = json.load(fh)
         self.assertEqual([item["id"] for item in context["decisions"]],
                          ["double-booking", "stale-form", "cancel-cutoff"])
+        self.assertEqual(context["decisions"][0]["must_resolve"],
+                         ["visible losing-booking outcome", "recovery action"])
         self.assertEqual(len(context["rounds"]), 2)
 
 

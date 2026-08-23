@@ -38,9 +38,46 @@ class QuestionQueueValidationTest(unittest.TestCase):
 
     def test_empty_queue_means_clarity(self):
         errors, warnings, doc = validate_prd_questions.validate(self.write({
-            "schema_version": 1, "questions": [],
+            "schema_version": 2,
+            "questions": [],
+            "audit": {"unresolved": [], "contradictions": []},
         }))
         self.assertEqual((errors, warnings, doc["questions"]), ([], [], []))
+
+    def test_v2_question_requires_resolution_facts(self):
+        question = self.question(must_resolve=[
+            "who may change a booked slot",
+            "what happens to the existing booking",
+        ])
+        errors, warnings, _ = validate_prd_questions.validate(self.write({
+            "schema_version": 2,
+            "questions": [question],
+            "audit": {
+                "unresolved": ["booked-slot-change lacks an owner and outcome"],
+                "contradictions": [],
+            },
+        }))
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+        question.pop("must_resolve")
+        errors, _, _ = validate_prd_questions.validate(self.write({
+            "schema_version": 2,
+            "questions": [question],
+            "audit": {"unresolved": ["booked-slot-change"], "contradictions": []},
+        }))
+        self.assertTrue(any("must_resolve" in error for error in errors))
+
+    def test_v2_empty_queue_rejects_claimed_gaps(self):
+        errors, _, _ = validate_prd_questions.validate(self.write({
+            "schema_version": 2,
+            "questions": [],
+            "audit": {
+                "unresolved": ["timezone has no concrete value"],
+                "contradictions": ["past bookings are both editable and immutable"],
+            },
+        }))
+        self.assertTrue(any("empty queue" in error for error in errors))
 
     def test_rejects_section_question_and_multiple_decisions(self):
         errors, _, _ = validate_prd_questions.validate(self.write({
@@ -62,6 +99,16 @@ class QuestionQueueValidationTest(unittest.TestCase):
             "schema_version": 1, "questions": [self.question()],
         }), decisions_path=decisions)
         self.assertTrue(any("earlier round" in error for error in errors))
+
+    def test_schema_v1_remains_compatible_with_existing_runs(self):
+        errors, warnings, _ = validate_prd_questions.validate(self.write({
+            "schema_version": 1, "questions": [self.question()],
+        }))
+        self.assertEqual((errors, warnings), ([], []))
+        errors, _, _ = validate_prd_questions.validate(self.write({
+            "schema_version": 1, "questions": [self.question()],
+        }), require_version=2)
+        self.assertTrue(any("this workflow" in error for error in errors))
 
 
 if __name__ == "__main__":

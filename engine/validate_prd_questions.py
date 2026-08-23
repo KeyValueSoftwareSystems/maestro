@@ -11,6 +11,7 @@ from pathlib import Path
 
 
 MAX_QUESTIONS = 12
+MAX_RESOLUTION_FACTS = 4
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 PRD_SECTION_TITLES = {
     "summary", "problem and context", "users and jobs", "goals and success signals",
@@ -43,15 +44,18 @@ def _decided_ids(path):
     }
 
 
-def validate(path, decisions_path=None):
+def validate(path, decisions_path=None, require_version=None):
     errors, warnings = [], []
     doc, error = _read(path)
     if error:
         return [f"cannot read question queue: {error}"], [], None
     if not isinstance(doc, dict):
         return ["question queue must be a JSON object"], [], None
-    if doc.get("schema_version") != 1:
-        errors.append("schema_version must be 1")
+    schema_version = doc.get("schema_version")
+    if schema_version not in (1, 2):
+        errors.append("schema_version must be 1 or 2")
+    if require_version is not None and schema_version != require_version:
+        errors.append(f"schema_version must be {require_version} for this workflow")
     questions = doc.get("questions")
     if not isinstance(questions, list):
         errors.append("questions must be an array")
@@ -66,7 +70,10 @@ def validate(path, decisions_path=None):
         if not isinstance(question, dict):
             errors.append(f"{where} must be an object")
             continue
-        unknown = set(question) - {"id", "title", "question", "why", "proposal"}
+        allowed = {"id", "title", "question", "why", "proposal"}
+        if schema_version == 2:
+            allowed.add("must_resolve")
+        unknown = set(question) - allowed
         if unknown:
             errors.append(f"{where} has unknown field(s): {', '.join(sorted(unknown))}")
         for field in ("id", "title", "question", "why"):
@@ -103,6 +110,50 @@ def validate(path, decisions_path=None):
             errors.append(f"{where}.proposal exceeds 90 words")
         elif not proposal.strip():
             warnings.append(f"{where} has no grounded recommendation")
+
+        if schema_version == 2:
+            must_resolve = question.get("must_resolve")
+            if not isinstance(must_resolve, list) or not must_resolve:
+                errors.append(f"{where}.must_resolve must be a non-empty array")
+            elif len(must_resolve) > MAX_RESOLUTION_FACTS:
+                errors.append(
+                    f"{where}.must_resolve has {len(must_resolve)} facts; "
+                    f"maximum is {MAX_RESOLUTION_FACTS}"
+                )
+            else:
+                for fact_index, fact in enumerate(must_resolve, 1):
+                    if not isinstance(fact, str) or not fact.strip():
+                        errors.append(
+                            f"{where}.must_resolve[{fact_index}] must be a non-empty string"
+                        )
+                    elif len(_words(fact)) > 16:
+                        errors.append(
+                            f"{where}.must_resolve[{fact_index}] exceeds 16 words"
+                        )
+
+    if schema_version == 2:
+        audit = doc.get("audit")
+        if not isinstance(audit, dict):
+            errors.append("audit must be an object for schema_version 2")
+        else:
+            unknown = set(audit) - {"unresolved", "contradictions"}
+            if unknown:
+                errors.append(f"audit has unknown field(s): {', '.join(sorted(unknown))}")
+            for field in ("unresolved", "contradictions"):
+                values = audit.get(field)
+                if not isinstance(values, list):
+                    errors.append(f"audit.{field} must be an array")
+                elif any(not isinstance(value, str) or not value.strip() for value in values):
+                    errors.append(f"audit.{field} must contain only non-empty strings")
+            if questions and not audit.get("unresolved") and not audit.get("contradictions"):
+                errors.append("non-empty queue must name an unresolved fact or contradiction")
+            if not questions:
+                unresolved = audit.get("unresolved")
+                contradictions = audit.get("contradictions")
+                if unresolved:
+                    errors.append("empty queue cannot declare unresolved decision facts")
+                if contradictions:
+                    errors.append("empty queue cannot declare decision contradictions")
     return errors, warnings, doc
 
 
@@ -110,9 +161,12 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path")
     parser.add_argument("--decisions", help="cumulative decision artifact from prior rounds")
+    parser.add_argument("--require-version", type=int, choices=(1, 2))
     parser.add_argument("--report", action="store_true", help="always exit 0 for workflow routing")
     args = parser.parse_args(argv)
-    errors, warnings, doc = validate(args.path, decisions_path=args.decisions)
+    errors, warnings, doc = validate(
+        args.path, decisions_path=args.decisions, require_version=args.require_version,
+    )
     questions = doc.get("questions") if isinstance(doc, dict) else []
     count = len(questions) if isinstance(questions, list) else 0
     issues = errors + warnings

@@ -77,9 +77,17 @@ def _stub_agent(root, act):
                 "question": "What should the user see when the simulated action fails?",
                 "why": "This confirms a material user-visible edge case.",
                 "proposal": "Keep their input and show a retry action.",
+                "must_resolve": ["visible failure outcome", "recovery action"],
             }]
             with open(full, "w", encoding="utf-8") as fh:
-                json.dump({"schema_version": 1, "questions": questions}, fh, indent=2)
+                json.dump({
+                    "schema_version": 2,
+                    "questions": questions,
+                    "audit": {
+                        "unresolved": [] if not questions else ["simulated failure behavior"],
+                        "contradictions": [],
+                    },
+                }, fh, indent=2)
                 fh.write("\n")
             continue
         if not os.path.exists(full):

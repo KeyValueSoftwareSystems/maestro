@@ -137,15 +137,23 @@ nodes:
       user-visible behaviour, acceptance, or risk. Each item must resolve one decision, explain
       briefly why it matters, and include a grounded recommendation when possible.
 
+      First audit every earlier answer against that question's must_resolve facts. A saved answer
+      is not automatically complete. Use only the stored answer as confirmed when its source is
+      user-answer; never fill its missing facts from the unaccepted proposal. Ask focused follow-ups
+      for missing facts, concrete values, or contradictions between decisions. Use a new ID for a
+      follow-up so both answers remain visible.
+
       Test only relevant lenses: actor permissions; lifecycle and state transitions; timing and
       limits; conflicts or concurrent actions from the user's perspective; cancel, retry, and
       recovery behaviour; invalid or stale input; notifications and external effects; privacy and
       data visibility; admin overrides; migration or backward compatibility; measurable success;
       and explicit non-goals. Do not mechanically cover every lens. Do not ask about PRD headings,
       repeat a decided question, ask technical-design questions, inspect application source, or
-      draft the PRD. Write 4-8 questions when several material gaps remain, fewer when nearly clear,
-      and an empty questions array when the feature is clear enough to specify. Validate the file
-      with the supplied deterministic validator before completing.
+      draft the PRD. Write schema_version 2 with 4-8 questions when several material gaps remain,
+      fewer when nearly clear, and an empty questions array only after all must_resolve facts are
+      explicit and no decisions conflict. Every question declares 1-4 short must_resolve facts.
+      Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
+      Validate the file with the supplied deterministic validator before completing.
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
@@ -158,14 +166,14 @@ nodes:
       revision_feedback: "${steps.prd_approval.outputs.feedback}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
-    max_visits: 4
+    max_visits: 8
     on_exhausted: clarity_limit
     next: validate_prd_questions
 
   - id: validate_prd_questions
     type: script
     label: Validate Grill question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --report]
     routes:
       - {when: "${steps.validate_prd_questions.outputs.valid} == false", to: prepare_prd_questions}
       - {when: "${steps.validate_prd_questions.outputs.state} == clear", to: author_prd}
@@ -188,13 +196,13 @@ nodes:
     type: gate
     label: PRD clarity checkpoint
     prompt: |
-      Four Grill rounds are complete. Confirmed decisions are saved at
+      Eight Grill rounds are complete and unresolved product facts remain. Confirmed decisions are saved at
       .maestro/runs/${inputs.slug}/prd-context.json.
 
-      Is the feature clear enough to write, or should Maestro keep asking focused questions?
+      Maestro will not write the PRD while those facts are unresolved. Continue the focused
+      interview, or stop this run?
     options:
-      - {id: write, label: Clarity is sufficient — write the PRD, to: author_prd}
-      - {id: more, label: Keep grilling me, to: prepare_prd_questions}
+      - {id: more, label: Continue with focused questions, to: prepare_prd_questions}
       - {id: reject, label: Abort the run, to: abort}
 
   - id: author_prd
@@ -205,7 +213,12 @@ nodes:
       Write the final PRD from the confirmed project context, feature goal, requirements,
       references, and any cumulative decisions at .maestro/runs/${inputs.slug}/prd-context.json to
       .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
-      repository. This is the only normal PRD write.
+      repository. Use only stored answers, never unaccepted proposal text, for user-answer
+      decisions. Create the exact eleven-section skeleton before filling it, keep the first write
+      below 70% of every supplied ceiling, and give every in-scope confirmed behavior an observable
+      AC. Before completing, run `python3 .maestro/engine/validate_prd.py
+      .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical`; repair any remaining named
+      defect inside this same call and run it again. This is the only normal PRD write.
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
@@ -214,6 +227,7 @@ nodes:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       references: "${steps.collect_references.outputs.refs}"
       decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
+      validator: ".maestro/engine/validate_prd.py"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     next: validate_prd
@@ -221,7 +235,7 @@ nodes:
   - id: validate_prd
     type: script
     label: Validate PRD structure and brevity
-    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report]
+    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --fix-mechanical, --report]
     max_visits: 3
     on_exhausted: abort
     routes:
@@ -232,9 +246,14 @@ nodes:
     type: agent
     execution: lead
     label: Repair PRD validation defects
+    model: haiku
     instruction: |
       Repair only these deterministic PRD defects: ${steps.validate_prd.outputs.issues_summary}
-      Keep every confirmed decision unchanged and do not expand unrelated sections.
+      Keep every confirmed decision unchanged and do not expand unrelated sections. Run the
+      supplied validator with its mechanical-fix option before completing. Run `python3
+      .maestro/engine/validate_prd.py .maestro/runs/${inputs.slug}/requirement/prd.md
+      --fix-mechanical`, fix only a remaining named defect, and run it again. This is a narrow
+      fallback repair, not a full PRD rewrite.
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
@@ -244,6 +263,7 @@ nodes:
       references: "${steps.collect_references.outputs.refs}"
       decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      validator: ".maestro/engine/validate_prd.py"
       validator_feedback: "${steps.validate_prd.outputs.issues_summary}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"

@@ -931,6 +931,7 @@ def _interview_sections(run, frame, node):
             "proposal": question.get("proposal", "").strip(),
             "prompt": question["question"].strip(),
             "why": question["why"].strip(),
+            "must_resolve": list(question.get("must_resolve") or []),
         } for question in questions]
 
     sections = []
@@ -941,6 +942,7 @@ def _interview_sections(run, frame, node):
             "proposal": run.resolve_text(section.get("proposal", ""), frame, missing_ok=True).strip(),
             "prompt": run.resolve_text(section.get("prompt", ""), frame, missing_ok=True).strip(),
             "why": "",
+            "must_resolve": [],
         })
     return sections
 
@@ -1200,6 +1202,7 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns):
                     "question": "",
                     "why": "",
                     "proposal": "",
+                    "must_resolve": [],
                     "answer": old["answer"],
                     "source": "legacy-confirmed",
                     "confirmed_at": document.get("confirmed_at", now),
@@ -1217,6 +1220,7 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns):
             "question": section["prompt"],
             "why": section["why"],
             "proposal": section["proposal"],
+            "must_resolve": section.get("must_resolve", []),
             "answer": answers[section["id"]],
             "source": turn.get("source", "user-answer"),
             "confirmed_at": turn.get("confirmed_at", now),

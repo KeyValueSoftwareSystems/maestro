@@ -128,9 +128,17 @@ class SdlcE2E(unittest.TestCase):
                 "question": "What should the user see if another action makes this request stale?",
                 "why": "This defines a material failure and recovery path.",
                 "proposal": "Reject the stale request, explain why, and preserve entered data.",
+                "must_resolve": ["visible stale-request outcome", "recovery action"],
             }]
             with open(full, "w") as fh:
-                json.dump({"schema_version": 1, "questions": questions}, fh)
+                json.dump({
+                    "schema_version": 2,
+                    "questions": questions,
+                    "audit": {
+                        "unresolved": [] if not questions else ["stale-request behavior"],
+                        "contradictions": [],
+                    },
+                }, fh)
             return
         if os.path.exists(full):
             return

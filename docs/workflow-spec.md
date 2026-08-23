@@ -206,8 +206,12 @@ not process or record between them. `chat` is the backward-compatible default.
 ```
 
 For feature-specific follow-ups, a preceding agent writes a JSON queue containing
-`schema_version: 1` and `questions`; every question has `id`, `title`, `question`, `why`, and
-`proposal`. The engine appends each completed queue to the cumulative decision artifact:
+`schema_version: 2`, `questions`, and `audit`; every question has `id`, `title`, `question`,
+`why`, `proposal`, and one to four short `must_resolve` facts. `audit.unresolved` and
+`audit.contradictions` explain why another round exists. Both arrays must be empty before an empty
+queue may declare the interview clear. The engine appends each completed queue, including its
+resolution facts, to the cumulative decision artifact. Schema version 1 remains readable so an
+installed run can be upgraded in place.
 
 ```yaml
 - id: clarify_edges
@@ -228,6 +232,9 @@ accepts common equivalent headings for its fast path. Maestro-authored PRDs use 
 11-heading contract and are validated in strict mode before approval. Traceability IDs appear
 only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria. Generated PRDs begin
 with one concise level-1 feature title plus `Feature slug` and `Status: Ready for review` metadata.
+The author validates inside its existing call; the workflow then runs `--fix-mechanical` to join
+wrapped acceptance criteria and restore sequential AC numbers without another model. Only a
+remaining semantic or structural defect reaches the fast fallback repair agent.
 
 ### `gate`
 
