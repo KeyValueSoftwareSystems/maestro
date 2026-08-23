@@ -172,6 +172,25 @@ nodes:
     next: end
 """
 
+DYNAMIC_INTERVIEW_WF = """\
+version: 1
+name: dynamic-interview
+inputs:
+  slug: {type: string, required: true}
+start: first
+nodes:
+  - id: first
+    type: interview
+    questions_artifact: ".maestro/runs/${inputs.slug}/questions-1.json"
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: second
+  - id: second
+    type: interview
+    questions_artifact: ".maestro/runs/${inputs.slug}/questions-2.json"
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: end
+"""
+
 
 class Sim(unittest.TestCase):
     """Harness: tmp repo dir, helpers to drive a run without any LLM."""
@@ -306,9 +325,11 @@ class LeadInterviewTest(Sim):
         with open(os.path.join(self.tmp, ".maestro", "runs", "feat", "prd-context.json")) as fh:
             context = json.load(fh)
         self.assertEqual(
-            [section["answer"] for section in context["sections"]],
+            [decision["answer"] for decision in context["decisions"]],
             ["Admins", "Export reports only"],
         )
+        self.assertEqual(context["schema_version"], 2)
+        self.assertEqual(len(context["rounds"]), 1)
         self.assertEqual(context["context"], "Context: A small admin product")
         state = self.state()
         self.assertGreaterEqual(state["steps"]["summarize"]["duration_ms"], 0)
@@ -325,6 +346,43 @@ class LeadInterviewTest(Sim):
             resolver.record_interview(self.run_obj(), "clarify", "scope", answer="too early")
         self.assertEqual(ctx.exception.code, 4)
         self.assertIn("expected section 'users'", str(ctx.exception))
+
+    def test_dynamic_questions_append_cumulative_decisions(self):
+        self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
+        run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
+        for number, question in (
+            (1, {"id": "double-booking", "title": "Booking conflict",
+                 "question": "What should happen if the slot was just taken?",
+                 "why": "This decides the visible conflict behavior.",
+                 "proposal": "Reject and show the next available slots."}),
+            (2, {"id": "cancel-cutoff", "title": "Cancellation cutoff",
+                 "question": "How late may a patient cancel a booking?",
+                 "why": "This changes eligibility and user messaging.",
+                 "proposal": "Allow cancellation until two hours before start."}),
+        ):
+            os.makedirs(run_dir, exist_ok=True)
+            with open(os.path.join(run_dir, f"questions-{number}.json"), "w") as fh:
+                json.dump({"schema_version": 1, "questions": [question]}, fh)
+
+        action = self.nxt()
+        self.assertEqual(action["section"], "double-booking")
+        self.assertEqual(action["why"], "This decides the visible conflict behavior.")
+        run = self.run_obj()
+        resolver.record_interview(run, "first", "double-booking", accept=True)
+        statemod.save("feat", run.state, self.tmp)
+
+        action = self.nxt()
+        self.assertEqual(action["section"], "cancel-cutoff")
+        run = self.run_obj()
+        resolver.record_interview(run, "second", "cancel-cutoff", answer="Any time before start")
+        statemod.save("feat", run.state, self.tmp)
+        self.assertEqual(self.nxt()["action"], "done")
+
+        with open(os.path.join(run_dir, "prd-context.json")) as fh:
+            context = json.load(fh)
+        self.assertEqual([item["id"] for item in context["decisions"]],
+                         ["double-booking", "cancel-cutoff"])
+        self.assertEqual(len(context["rounds"]), 2)
 
 
 # An upstream producer feeds a loop (serve <-> ask); a later gate can revise back to the

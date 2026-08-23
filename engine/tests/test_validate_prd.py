@@ -20,7 +20,9 @@ class PrdValidationTest(unittest.TestCase):
     def valid_text(self):
         return "\n\n".join(
             f"## {heading.title().replace('Non Goals', 'Non-goals')}\n\n"
-            f"A concise confirmed product decision for {heading}."
+            + ("- AC-01: The confirmed behavior is observable."
+               if heading == "acceptance criteria"
+               else f"A concise confirmed product decision for {heading}.")
             for heading in validate_prd.SECTION_BUDGETS
         ) + "\n"
 
@@ -64,6 +66,31 @@ class PrdValidationTest(unittest.TestCase):
         compatible_errors, _ = validate_prd.validate(path, compatible=True)
         self.assertTrue(strict_errors)
         self.assertEqual(compatible_errors, [])
+
+    def test_acceptance_ids_are_required_and_sequential(self):
+        text = self.valid_text().replace(
+            "- AC-01: The confirmed behavior is observable.",
+            "- The confirmed behavior is observable.\n- AC-03: A later result is visible.",
+        )
+        errors, _ = validate_prd.validate(self.write(text))
+        self.assertTrue(any("each non-empty line" in error for error in errors))
+        self.assertTrue(any("unique and sequential" in error for error in errors))
+
+    def test_codes_outside_acceptance_criteria_fail(self):
+        text = self.valid_text().replace(
+            "A concise confirmed product decision for functional scope.",
+            "FR-01 adds the confirmed behavior.",
+        )
+        errors, _ = validate_prd.validate(self.write(text))
+        self.assertTrue(any("allowed only in acceptance criteria" in error for error in errors))
+
+    def test_compatible_mode_does_not_require_acceptance_ids(self):
+        text = self.valid_text().replace(
+            "- AC-01: The confirmed behavior is observable.",
+            "The confirmed behavior is observable.",
+        )
+        errors, _ = validate_prd.validate(self.write(text), compatible=True)
+        self.assertEqual(errors, [])
 
 
 if __name__ == "__main__":

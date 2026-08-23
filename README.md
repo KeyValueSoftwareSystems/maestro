@@ -82,7 +82,7 @@ Shipped as a worked example (`.maestro/workflows/sdlc-main.yaml` + the installed
 pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
-workspace sync → requirement → PRD (confirm context → clarify sections → write once → validate)
+workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
    → HLD → [open-questions loop → approve] → parallel per-repo LLDs → API contract
    → functional test cases → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
@@ -215,8 +215,8 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
 
 - **valid existing `prd.md`** → after two short context confirmations, it goes directly to
   PRD approval; common equivalent headings are accepted because PRDs have no universal format;
-- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then confirms each PRD area one at a time;
-- **after clarity** → the lead writes the PRD once in plain, skimmable English. A deterministic validator checks required headings, word budgets, repetition, and sentence length. Only validation defects trigger one bounded repair.
+- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then asks only feature-specific decisions and relevant edge cases that remain unclear;
+- **after clarity** → the lead writes the PRD once in plain, skimmable English. A deterministic validator checks required headings, word budgets, repetition, sentence length, and sequential `AC-xx` acceptance criteria. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
 The PRD stage does not spawn subagents or scan application source. It reads only repository
 instructions, maintained project docs, the run's requirement folder, and explicit references.

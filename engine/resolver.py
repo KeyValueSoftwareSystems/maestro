@@ -23,9 +23,17 @@ try:
     import memory as memorymod
     import state as statemod
     import validate as validatemod
+    import validate_prd_questions as prdqmod
     import wf
 except ImportError:  # imported as a package (tests)
-    from . import condctl, memory as memorymod, state as statemod, validate as validatemod, wf
+    from . import (
+        condctl,
+        memory as memorymod,
+        state as statemod,
+        validate as validatemod,
+        validate_prd_questions as prdqmod,
+        wf,
+    )
 
 
 class RunError(RuntimeError):
@@ -895,6 +903,36 @@ def _agent_action(run, frame, node, path):
 
 
 def _interview_sections(run, frame, node):
+    questions_artifact = node.get("questions_artifact")
+    if questions_artifact:
+        questions_rel = run.resolve_text(questions_artifact, frame)
+        questions_full = (
+            questions_rel if os.path.isabs(questions_rel)
+            else os.path.join(run.root, questions_rel)
+        )
+        decisions_rel = run.resolve_text(node["artifact"], frame)
+        decisions_full = (
+            decisions_rel if os.path.isabs(decisions_rel)
+            else os.path.join(run.root, decisions_rel)
+        )
+        errors, _warnings, document = prdqmod.validate(
+            questions_full, decisions_path=decisions_full,
+        )
+        if errors:
+            raise RunError(
+                f"interview question queue {questions_rel!r} is invalid: "
+                + " | ".join(errors[:5]),
+                code=4,
+            )
+        questions = document.get("questions") if isinstance(document, dict) else []
+        return [{
+            "id": question["id"],
+            "title": question["title"].strip(),
+            "proposal": question.get("proposal", "").strip(),
+            "prompt": question["question"].strip(),
+            "why": question["why"].strip(),
+        } for question in questions]
+
     sections = []
     for section in node.get("sections") or []:
         sections.append({
@@ -902,6 +940,7 @@ def _interview_sections(run, frame, node):
             "title": run.resolve_text(section["title"], frame, missing_ok=True),
             "proposal": run.resolve_text(section.get("proposal", ""), frame, missing_ok=True).strip(),
             "prompt": run.resolve_text(section.get("prompt", ""), frame, missing_ok=True).strip(),
+            "why": "",
         })
     return sections
 
@@ -935,6 +974,7 @@ def _interview_action(run, frame, node, path, entry):
         "section": current["id"],
         "title": current["title"],
         "proposal": current["proposal"],
+        "why": current["why"],
         "context": context,
         "prompt": question,
         "confirmed": answers,
@@ -1104,22 +1144,66 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry
     return entry
 
 
-def _write_interview_artifact(run, frame, node, path, sections, answers):
+def _write_interview_artifact(run, frame, node, path, sections, answers, turns):
     rel = run.resolve_text(node["artifact"], frame)
     full = rel if os.path.isabs(rel) else os.path.join(run.root, rel)
     parent = os.path.dirname(full)
     if parent:
         os.makedirs(parent, exist_ok=True)
+    now = statemod.now_iso()
+    document = {}
+    if os.path.exists(full):
+        try:
+            with open(full, encoding="utf-8") as fh:
+                existing = json.load(fh)
+            if isinstance(existing, dict):
+                document = existing
+        except (OSError, ValueError):
+            document = {}
+
+    # Preserve artifacts from the original static-section interview format when a run is
+    # upgraded in place. New rounds always use the cumulative decisions schema.
+    decisions = document.get("decisions") if isinstance(document.get("decisions"), list) else []
+    if not decisions:
+        for old in document.get("sections") or []:
+            if isinstance(old, dict) and old.get("id") and "answer" in old:
+                decisions.append({
+                    "id": old["id"],
+                    "title": old.get("title", old["id"]),
+                    "question": "",
+                    "why": "",
+                    "proposal": "",
+                    "answer": old["answer"],
+                    "source": "legacy-confirmed",
+                    "confirmed_at": document.get("confirmed_at", now),
+                })
+    source_by_id = {turn.get("section"): turn for turn in turns if isinstance(turn, dict)}
+    by_id = {
+        item.get("id"): item for item in decisions
+        if isinstance(item, dict) and isinstance(item.get("id"), str)
+    }
+    for section in sections:
+        turn = source_by_id.get(section["id"], {})
+        by_id[section["id"]] = {
+            "id": section["id"],
+            "title": section["title"],
+            "question": section["prompt"],
+            "why": section["why"],
+            "proposal": section["proposal"],
+            "answer": answers[section["id"]],
+            "source": turn.get("source", "user-answer"),
+            "confirmed_at": turn.get("confirmed_at", now),
+        }
+    rounds = document.get("rounds") if isinstance(document.get("rounds"), list) else []
+    rounds.append({"confirmed_at": now, "question_ids": [item["id"] for item in sections]})
     document = {
-        "schema_version": 1,
+        "schema_version": 2,
         "slug": run.slug,
         "step": path,
-        "confirmed_at": statemod.now_iso(),
         "context": run.resolve_text(node.get("context", ""), frame, missing_ok=True).strip(),
-        "sections": [
-            {"id": section["id"], "title": section["title"], "answer": answers[section["id"]]}
-            for section in sections
-        ],
+        "updated_at": now,
+        "rounds": rounds,
+        "decisions": list(by_id.values()),
     }
     tmp = f"{full}.tmp-{os.getpid()}"
     try:
@@ -1171,11 +1255,13 @@ def record_interview(run, path, section_id, answer=None, accept=False):
         "confirmed_at": statemod.now_iso(),
     })
     if len(answers) == len(sections):
-        context_path = _write_interview_artifact(run, frame, node, path, sections, answers)
+        context_path = _write_interview_artifact(
+            run, frame, node, path, sections, answers, interview["turns"],
+        )
         entry["outputs"] = {
             "context_path": context_path,
             "confirmed_count": len(answers),
-            "summary": f"Confirmed {len(answers)} PRD areas",
+            "summary": f"Confirmed {len(answers)} product decisions",
         }
         entry["artifact"] = [context_path]
         entry["status"] = "done"

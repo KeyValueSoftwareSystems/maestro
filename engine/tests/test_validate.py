@@ -103,13 +103,19 @@ class MemoryPlaceholderTest(unittest.TestCase):
 
 
 class InterviewValidationTest(unittest.TestCase):
-    def _doc(self, sections, artifact=".maestro/runs/x/context.json"):
+    def _doc(self, sections=None, artifact=".maestro/runs/x/context.json",
+             questions_artifact=None):
+        node = {
+            "id": "ask", "type": "interview", "skill": "prd-interview",
+            "artifact": artifact, "next": "end",
+        }
+        if sections is not None:
+            node["sections"] = sections
+        if questions_artifact is not None:
+            node["questions_artifact"] = questions_artifact
         return {
             "version": 1, "name": "interview", "start": "ask",
-            "nodes": [{
-                "id": "ask", "type": "interview", "skill": "prd-interview",
-                "sections": sections, "artifact": artifact, "next": "end",
-            }],
+            "nodes": [node],
         }
 
     def test_valid_interview(self):
@@ -123,6 +129,7 @@ class InterviewValidationTest(unittest.TestCase):
         issues = validate.validate_doc(self._doc([], artifact=""))
         codes = {i.code for i in issues}
         self.assertIn("interview-no-sections", codes)
+        self.assertIn("interview-no-source", codes)
         self.assertIn("artifact-not-string", codes)
 
     def test_interview_section_ids_are_unique(self):
@@ -130,6 +137,19 @@ class InterviewValidationTest(unittest.TestCase):
             {"id": "users", "title": "Users"}, {"id": "users", "title": "Again"},
         ]))
         self.assertIn("interview-dup-sections", {i.code for i in issues})
+
+    def test_valid_dynamic_interview(self):
+        issues = validate.validate_doc(self._doc(
+            questions_artifact=".maestro/runs/x/questions.json",
+        ))
+        self.assertFalse([i for i in issues if i.level == "error"], [str(i) for i in issues])
+
+    def test_interview_rejects_two_question_sources(self):
+        issues = validate.validate_doc(self._doc(
+            [{"id": "users", "title": "Users"}],
+            questions_artifact=".maestro/runs/x/questions.json",
+        ))
+        self.assertIn("interview-multiple-sources", {i.code for i in issues})
 
 
 if __name__ == "__main__":

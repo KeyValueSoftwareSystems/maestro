@@ -178,10 +178,11 @@ Pinned skills are resolved only from the active repository's `.agents/skills/`,
 
 ### `interview`
 
-An ordered, durable clarification step. `next` serves one unresolved section as
+An ordered, durable clarification step. `next` serves one unresolved question as
 `ask_interview`; `interview-record` accepts its proposal or stores a human correction. No AI
-is called by the node. After every section is confirmed, the engine atomically writes the
-structured context artifact and advances.
+is called by the node. After every question is confirmed, the engine atomically writes the
+structured context artifact and advances. Use either inline `sections` or a validated dynamic
+`questions_artifact`, never both.
 
 ```yaml
 - id: prd_interview
@@ -195,13 +196,26 @@ structured context artifact and advances.
   next: author_prd
 ```
 
+For feature-specific follow-ups, a preceding agent writes a JSON queue containing
+`schema_version: 1` and `questions`; every question has `id`, `title`, `question`, `why`, and
+`proposal`. The engine appends each completed queue to the cumulative decision artifact:
+
+```yaml
+- id: clarify_edges
+  type: interview
+  questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+  artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+  next: find_more_gaps
+```
+
 A proposal may be empty. In that case the human must provide an answer; the engine rejects a
-blank answer, acceptance without a proposal, and answers for any section other than the one
+blank answer, acceptance without a proposal, and answers for any question other than the one
 currently served.
 
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
 accepts common equivalent headings for its fast path. Maestro-authored PRDs use the exact
-11-heading contract and are validated in strict mode before approval.
+11-heading contract and are validated in strict mode before approval. Traceability IDs appear
+only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria.
 
 ### `gate`
 
@@ -323,7 +337,7 @@ loop:
     run_agents → spawn all listed subagents in one parallel wave → complete each
     run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
-    ask_interview → ask one section → interview-record --section X (--accept | --answer TEXT)
+    ask_interview → ask one decision → interview-record --section X (--accept | --answer TEXT)
     ask_gate   → ask the human for a choice → gate-record --option X
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop

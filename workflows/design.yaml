@@ -25,10 +25,10 @@ nodes:
       - {when: "${steps.assert_requirement.outputs.state} == have", to: collect_references}
       - {to: requirement_intake}
 
-  # ---- PRD phase: bounded lead-agent interview -> one final write -> deterministic lint ----
+  # ---- PRD phase: bounded Grill interview -> one final write -> deterministic lint ----
   # Product context is confirmed before prose. The lead agent reads maintained summaries and
   # requirement inputs only; it never scans application source. The engine-owned interview node
-  # persists one confirmed answer per PRD area and writes prd-context.json. A complete existing
+  # persists feature-specific product decisions and edge cases in prd-context.json. A complete existing
   # prd.md takes the fast path after the two short context confirmations.
   - id: requirement_intake
     type: gate
@@ -112,7 +112,7 @@ nodes:
 
       Is this the outcome you want?
     options:
-      - {id: confirm, label: Yes — clarify the PRD areas, to: check_existing_prd}
+      - {id: confirm, label: Yes — clarify the product decisions, to: check_existing_prd}
       - {id: revise, label: No — correct the feature goal, to: feature_goal, input: feedback}
       - {id: reject, label: Abort the run, to: abort}
 
@@ -121,19 +121,31 @@ nodes:
     label: Check existing PRD fast path
     run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report, --compatible]
     routes:
-      - {when: "${steps.prd_approval.outputs.feedback}", to: prepare_prd_sections}
+      - {when: "${steps.prd_approval.outputs.feedback}", to: prepare_prd_questions}
       - {when: "${steps.check_existing_prd.outputs.valid} == true", to: prd_approval}
-      - {to: prepare_prd_sections}
+      - {to: prepare_prd_questions}
 
-  - id: prepare_prd_sections
+  - id: prepare_prd_questions
     type: agent
     execution: lead
-    label: Prepare grounded PRD proposals
+    label: Find the next material product gaps
     instruction: |
-      Prepare a compact proposed answer for every PRD area named in the output contract. Use only
-      the confirmed project context and feature goal, requirement files, and explicit references.
-      Return an empty value for anything not grounded. Do not write PRD prose, inspect application
-      source, or ask the user directly. Honour revision feedback: ${steps.prd_approval.outputs.feedback}
+      Build the next feature-specific Grill question queue at
+      .maestro/runs/${inputs.slug}/prd-questions.json. Use the confirmed context and goal,
+      requirement files, explicit references, revision feedback, and earlier decisions when the
+      decisions file exists. Ask only unanswered product decisions that materially change scope,
+      user-visible behaviour, acceptance, or risk. Each item must resolve one decision, explain
+      briefly why it matters, and include a grounded recommendation when possible.
+
+      Test only relevant lenses: actor permissions; lifecycle and state transitions; timing and
+      limits; conflicts or concurrent actions from the user's perspective; cancel, retry, and
+      recovery behaviour; invalid or stale input; notifications and external effects; privacy and
+      data visibility; admin overrides; migration or backward compatibility; measurable success;
+      and explicit non-goals. Do not mechanically cover every lens. Do not ask about PRD headings,
+      repeat a decided question, ask technical-design questions, inspect application source, or
+      draft the PRD. Write 4-8 questions when several material gaps remain, fewer when nearly clear,
+      and an empty questions array when the feature is clear enough to specify. Validate the file
+      with the supplied deterministic validator before completing.
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
@@ -141,45 +153,65 @@ nodes:
       feature_goal: "${steps.feature_goal.outputs.feature_goal}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       references: "${steps.collect_references.outputs.refs}"
-    outputs: [problem_context, users_jobs, goals_success, non_goals, functional_scope, constraints_assumptions, acceptance_criteria, dependencies_risks, priority_phasing, references]
-    next: prd_interview
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
+      validator: ".maestro/engine/validate_prd_questions.py"
+      revision_feedback: "${steps.prd_approval.outputs.feedback}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+    max_visits: 4
+    on_exhausted: clarity_limit
+    next: validate_prd_questions
+
+  - id: validate_prd_questions
+    type: script
+    label: Validate Grill question queue
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --report]
+    routes:
+      - {when: "${steps.validate_prd_questions.outputs.valid} == false", to: prepare_prd_questions}
+      - {when: "${steps.validate_prd_questions.outputs.state} == clear", to: author_prd}
+      - {to: prd_interview}
 
   - id: prd_interview
     type: interview
-    label: Confirm every PRD area
+    label: Clarify material product decisions
     skill: prd-interview
     context: |
       Confirmed project: ${steps.project_context.outputs.project_context}
       Confirmed feature: ${steps.feature_goal.outputs.feature_goal}
-    sections:
-      - {id: summary, title: Summary, proposal: "${steps.feature_goal.outputs.feature_goal}"}
-      - {id: problem_context, title: Problem and context, proposal: "${steps.prepare_prd_sections.outputs.problem_context}"}
-      - {id: users_jobs, title: Users and jobs, proposal: "${steps.prepare_prd_sections.outputs.users_jobs}"}
-      - {id: goals_success, title: Goals and success signals, proposal: "${steps.prepare_prd_sections.outputs.goals_success}"}
-      - {id: non_goals, title: Non-goals, proposal: "${steps.prepare_prd_sections.outputs.non_goals}"}
-      - {id: functional_scope, title: Functional scope, proposal: "${steps.prepare_prd_sections.outputs.functional_scope}"}
-      - {id: constraints_assumptions, title: Constraints and assumptions, proposal: "${steps.prepare_prd_sections.outputs.constraints_assumptions}"}
-      - {id: acceptance_criteria, title: Acceptance criteria, proposal: "${steps.prepare_prd_sections.outputs.acceptance_criteria}"}
-      - {id: dependencies_risks, title: Dependencies and risks, proposal: "${steps.prepare_prd_sections.outputs.dependencies_risks}"}
-      - {id: priority_phasing, title: Priorities and phasing, proposal: "${steps.prepare_prd_sections.outputs.priority_phasing}"}
-      - {id: references, title: References, proposal: "${steps.prepare_prd_sections.outputs.references}"}
+    questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
-    next: author_prd
+    next: prepare_prd_questions
+
+  - id: clarity_limit
+    type: gate
+    label: PRD clarity checkpoint
+    prompt: |
+      Four Grill rounds are complete. Confirmed decisions are saved at
+      .maestro/runs/${inputs.slug}/prd-context.json.
+
+      Is the feature clear enough to write, or should Maestro keep asking focused questions?
+    options:
+      - {id: write, label: Clarity is sufficient — write the PRD, to: author_prd}
+      - {id: more, label: Keep grilling me, to: prepare_prd_questions}
+      - {id: reject, label: Abort the run, to: abort}
 
   - id: author_prd
     type: agent
     execution: lead
     label: Write final PRD once
     instruction: |
-      Write the final PRD from the fully confirmed context at
-      .maestro/runs/${inputs.slug}/prd-context.json to
+      Write the final PRD from the confirmed project context, feature goal, requirements,
+      references, and any cumulative decisions at .maestro/runs/${inputs.slug}/prd-context.json to
       .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
       repository. This is the only normal PRD write.
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
+      project_context: "${steps.project_context.outputs.project_context}"
       feature_goal: "${steps.feature_goal.outputs.feature_goal}"
-      context_path: "${steps.prd_interview.outputs.context_path}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     next: validate_prd
@@ -204,7 +236,11 @@ nodes:
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
-      context_path: "${steps.prd_interview.outputs.context_path}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
       validator_feedback: "${steps.validate_prd.outputs.issues_summary}"
     outputs: [summary]
@@ -218,7 +254,7 @@ nodes:
     prompt: |
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
 
-      All required product areas were confirmed before writing. Confirm the concise PRD is
+      Material product decisions and relevant edge cases were clarified before writing. Confirm the concise PRD is
       accurate; design/technical concerns are handled later at the HLD/LLD.
     options:
       - {id: approve, label: Approve — author the HLD, to: check_codebase_map}

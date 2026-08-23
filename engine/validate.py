@@ -28,7 +28,8 @@ RULE_IDS = [
     "parallel-too-few-branches", "branch-bad-start", "branch-bad-type",
     "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle",
     "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction",
-    "interview-no-sections", "interview-dup-sections",
+    "interview-no-sections", "interview-dup-sections", "interview-no-source",
+    "interview-multiple-sources",
 ]
 
 MAX_DEPTH = 4
@@ -43,8 +44,9 @@ _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
               "inputs", "outputs", "artifact", "retries", "isolate", "ui"} | _ROUTING_KEYS,
-    "interview": {"id", "type", "label", "skill", "context", "sections", "artifact", "ui",
-                  "next", "routes", "max_visits", "on_exhausted"},
+    "interview": {"id", "type", "label", "skill", "context", "sections",
+                  "questions_artifact", "artifact", "ui", "next", "routes", "max_visits",
+                  "on_exhausted"},
     "gate": {"id", "type", "label", "prompt", "options", "max_visits", "on_exhausted", "ui"},
     "script": {"id", "type", "label", "run", "timeout", "ui"} | _ROUTING_KEYS,
     "parallel": {"id", "type", "label", "join", "on_branch_fail", "branches", "isolate", "ui"} | _ROUTING_KEYS,
@@ -198,8 +200,17 @@ def _validate_node(node, ids, declared_inputs, where):
             err("bad-type", "agent execution must be 'worker' or 'lead'")
     elif ntype == "interview":
         sections = node.get("sections")
-        if not isinstance(sections, list) or not sections:
-            err("interview-no-sections", "interview needs at least one section")
+        questions_artifact = node.get("questions_artifact")
+        has_sections = isinstance(sections, list) and bool(sections)
+        has_questions = isinstance(questions_artifact, str) and bool(questions_artifact.strip())
+        if not has_sections and not has_questions:
+            err("interview-no-source", "interview needs sections or questions_artifact")
+        if has_sections and has_questions:
+            err("interview-multiple-sources", "interview cannot use both sections and questions_artifact")
+        if sections is not None and (not isinstance(sections, list) or not sections):
+            err("interview-no-sections", "interview sections must be a non-empty list")
+            sections = []
+        elif sections is None:
             sections = []
         seen = set()
         for section in sections:
@@ -217,6 +228,8 @@ def _validate_node(node, ids, declared_inputs, where):
                     err("unknown-key", f"interview section has unknown key {key!r}")
         if not isinstance(node.get("artifact"), str) or not node.get("artifact"):
             err("artifact-not-string", "interview artifact must be a non-empty string")
+        if questions_artifact is not None and not has_questions:
+            err("artifact-not-string", "questions_artifact must be a non-empty string")
     elif ntype == "gate":
         options = node.get("options")
         if not isinstance(options, list) or not options:

@@ -24,6 +24,8 @@ SECTION_BUDGETS = {
     "references": 160,
 }
 TOTAL_BUDGET = 1800
+AC_LINE_RE = re.compile(r"^\s*[-*]\s+(?:\*\*)?AC-(\d{2,})(?:\*\*)?:\s+\S")
+NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORECASE)
 
 # Existing PRDs do not share a universal heading standard. The fast-path compatibility mode
 # accepts common equivalents while generated Maestro PRDs still use the exact headings above.
@@ -101,6 +103,31 @@ def validate(path, compatible=False):
     total = len(_words(text))
     if total > TOTAL_BUDGET:
         errors.append(f"document: {total} words exceeds {TOTAL_BUDGET}")
+
+    if not compatible:
+        acceptance = sections.get("acceptance criteria", "")
+        ac_ids = []
+        for line in acceptance.splitlines():
+            if not line.strip():
+                continue
+            match = AC_LINE_RE.match(line)
+            if not match:
+                errors.append(
+                    "acceptance criteria: each non-empty line must be a bullet beginning AC-01:"
+                )
+                continue
+            ac_ids.append(int(match.group(1)))
+        if ac_ids and ac_ids != list(range(1, len(ac_ids) + 1)):
+            errors.append("acceptance criteria: IDs must be unique and sequential from AC-01")
+        for name, body in sections.items():
+            if name == "acceptance criteria":
+                continue
+            codes = sorted(set(NON_AC_CODE_RE.findall(body)))
+            if codes:
+                errors.append(
+                    f"{name}: traceability codes are allowed only in acceptance criteria: "
+                    + ", ".join(codes[:5])
+                )
 
     seen = {}
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):

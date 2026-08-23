@@ -26,18 +26,7 @@ def canned_agent_outputs(step, action):
     table = {
         "project_context": {"project_context": "A test product with backend and frontend repositories."},
         "feature_goal": {"feature_goal": "Deliver the demo feature for test users."},
-        "prepare_prd_sections": {
-            "problem_context": "The demo workflow needs a product requirement.",
-            "users_jobs": "Test users need to exercise the feature.",
-            "goals_success": "The feature works and its acceptance checks pass.",
-            "non_goals": "Unrelated product changes are excluded.",
-            "functional_scope": "Implement the requested demo behavior end to end.",
-            "constraints_assumptions": "Use the existing backend and frontend repositories.",
-            "acceptance_criteria": "The documented behavior works and tests pass.",
-            "dependencies_risks": "The feature depends on both repository surfaces.",
-            "priority_phasing": "Build the core behavior before refinements.",
-            "references": "The run requirement and maintained project documentation.",
-        },
+        "prepare_prd_questions": {"summary": "Prepared the next focused product questions"},
         "author_prd": {"summary": "PRD written from confirmed context"},
         "repair_prd": {"summary": "PRD repaired to match the contract"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
@@ -131,6 +120,18 @@ class SdlcE2E(unittest.TestCase):
     def write_agent_artifact(self, rel, step):
         full = os.path.join(self.tmp, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
+        if rel.endswith("prd-questions.json"):
+            decisions = os.path.join(os.path.dirname(full), "prd-context.json")
+            questions = [] if os.path.exists(decisions) else [{
+                "id": "conflict-behavior",
+                "title": "Conflicting action",
+                "question": "What should the user see if another action makes this request stale?",
+                "why": "This defines a material failure and recovery path.",
+                "proposal": "Reject the stale request, explain why, and preserve entered data.",
+            }]
+            with open(full, "w") as fh:
+                json.dump({"schema_version": 1, "questions": questions}, fh)
+            return
         if os.path.exists(full):
             return
         if rel.endswith("/requirement/prd.md"):
@@ -142,7 +143,7 @@ class SdlcE2E(unittest.TestCase):
                 "Non-goals": "Unrelated product and platform changes are excluded.",
                 "Functional scope": "Implement the confirmed demo behavior across the required surfaces.",
                 "Constraints and assumptions": "Use the existing backend and frontend repositories.",
-                "Acceptance criteria": "The documented behavior is available and automated tests pass.",
+                "Acceptance criteria": "- AC-01: The documented behavior is available and automated tests pass.",
                 "Dependencies and risks": "Delivery depends on both repositories remaining compatible.",
                 "Priorities and phasing": "Build the core behavior before optional refinements.",
                 "References": "The run requirement and maintained project documentation.",
@@ -212,7 +213,8 @@ class SdlcE2E(unittest.TestCase):
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
-                            or any(a.endswith("validate_prd.py") for a in act.get("argv", []))
+                            or any(a.endswith("validate_prd.py") or a.endswith("validate_prd_questions.py")
+                                   for a in act.get("argv", []))
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    for a in act.get("argv", []))):
@@ -296,7 +298,7 @@ class SdlcE2E(unittest.TestCase):
         review_steps = [s for s in steps if s.endswith("/impl/review")]
         self.assertEqual(len(impl_steps), 2)
         self.assertEqual(len(review_steps), 2)
-        # the lead confirms context, interviews every PRD area, and writes once before HLD
+        # the lead confirms context, grills one material edge, and writes once before HLD
         self.assertIn("design/project_context", steps)
         self.assertIn("design/prd_interview", steps)
         self.assertIn("design/author_prd", steps)
@@ -327,7 +329,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         self.assertIn("design/check_existing_prd", steps)
-        self.assertNotIn("design/prepare_prd_sections", steps)
+        self.assertNotIn("design/prepare_prd_questions", steps)
         self.assertNotIn("design/prd_interview", steps)
         self.assertNotIn("design/author_prd", steps)
 
@@ -367,7 +369,7 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         # PRD authored twice (revision forces the interview path despite a valid old file).
         self.assertEqual(steps.count("design/author_prd"), 2)
-        self.assertEqual(steps.count("design/prd_interview"), 22)  # 11 sections x 2 rounds
+        self.assertEqual(steps.count("design/prd_interview"), 1)
         self.assertEqual(steps.count("design/author_hld"), 1)
 
     def test_lld_revise_requires_feedback_action_before_regeneration(self):
@@ -611,11 +613,11 @@ class SdlcE2E(unittest.TestCase):
         self.assertTrue(reached_hld, "never reached author_hld")
         self.assertIn("project_context", seen)
         self.assertIn("author_prd", seen)
-        self.assertEqual(len(interview_sections), 11)
+        self.assertEqual(len(interview_sections), 1)
         context_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "prd-context.json")
         with open(context_path) as fh:
             context = json.load(fh)
-        self.assertEqual(len(context["sections"]), 11)
+        self.assertEqual(len(context["decisions"]), 1)
 
 
 if __name__ == "__main__":

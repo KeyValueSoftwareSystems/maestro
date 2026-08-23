@@ -768,8 +768,29 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
       "required": [
         "id",
         "type",
-        "sections",
         "artifact"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "sections"
+          ],
+          "not": {
+            "required": [
+              "questions_artifact"
+            ]
+          }
+        },
+        {
+          "required": [
+            "questions_artifact"
+          ],
+          "not": {
+            "required": [
+              "sections"
+            ]
+          }
+        }
       ],
       "additionalProperties": false,
       "properties": {
@@ -814,6 +835,10 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
               }
             }
           }
+        },
+        "questions_artifact": {
+          "type": "string",
+          "minLength": 1
         },
         "artifact": {
           "type": "string"
@@ -1107,7 +1132,7 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
   },
   "description": "Minimal authoring: version defaults to 1, start to the first node, node type to agent, omitted routing to next: end."
 }</script>
-<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections"]</script>
+<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections", "interview-no-source", "interview-multiple-sources"]</script>
 <script>
 /* ================= Maestro Workflow Builder ================= */
 "use strict";
@@ -1265,7 +1290,11 @@ function lint() {
       }
       if (n.type === "agent" && !(n.instruction || "").trim()) err("empty-instruction", `${w}: agent needs an instruction`, n.id);
       if (n.type === "interview") {
-        if (!(n.sections || []).length) err("interview-no-sections", `${w}: interview needs at least one section`, n.id);
+        const hasSections = Array.isArray(n.sections) && n.sections.length;
+        const hasQuestions = typeof n.questions_artifact === "string" && n.questions_artifact.trim();
+        if (!hasSections && !hasQuestions) err("interview-no-source", `${w}: interview needs sections or a question queue`, n.id);
+        if (hasSections && hasQuestions) err("interview-multiple-sources", `${w}: interview cannot use both question sources`, n.id);
+        if (n.sections !== undefined && !hasSections) err("interview-no-sections", `${w}: interview sections must be a non-empty array`, n.id);
         if (!n.artifact) err("missing-key", `${w}: interview needs an artifact path`, n.id);
         const sectionIds = (n.sections || []).map(s => s.id);
         if (new Set(sectionIds).size !== sectionIds.length) err("interview-dup-sections", `${w}: interview section ids must be unique`, n.id);
@@ -1386,7 +1415,8 @@ function nodeEl(n, issues) {
   } else if (n.type === "gate") {
     chips.push(`<span class="chip">${(n.options || []).length} option${(n.options || []).length === 1 ? "" : "s"}</span>`);
   } else if (n.type === "interview") {
-    chips.push(`<span class="chip">${(n.sections || []).length} section${(n.sections || []).length === 1 ? "" : "s"}</span>`);
+    if (n.questions_artifact) chips.push(`<span class="chip">dynamic questions</span>`);
+    else chips.push(`<span class="chip">${(n.sections || []).length} section${(n.sections || []).length === 1 ? "" : "s"}</span>`);
     if (n.skill) chips.push(`<span class="chip skill">${esc(n.skill)}</span>`);
   } else if (n.type === "script") {
     chips.push(`<span class="chip" style="font-family:var(--mono)">${esc((n.run || []).join(" ").slice(0, 30))}</span>`);
@@ -1644,10 +1674,13 @@ function inspectNode(box) {
   } else if (n.type === "interview") {
     box.appendChild(field("Skill", txt(n.skill, v => commit("skill", () => v ? n.skill = v : delete n.skill), { list: "dl-skills", placeholder: "prd-interview" })));
     box.appendChild(field("Context passed to the interview", txt(n.context, v => commit("context", () => v ? n.context = v : delete n.context), { area: true, mono: true })));
+    box.appendChild(field("Question queue file", txt(n.questions_artifact, v => commit("questions_artifact", () => {
+      if (v) { n.questions_artifact = v; delete n.sections; } else delete n.questions_artifact;
+    }), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/questions.json" }), "Use this for dynamic, validated questions; leave blank for static sections."));
     box.appendChild(field("Artifact file", txt(n.artifact, v => commit("artifact", () => n.artifact = v), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/prd-context.json" })));
     box.appendChild(field("Sections (JSON array)", txt(JSON.stringify(n.sections || [], null, 2), (v, el) => {
       el.setCustomValidity("");
-      try { const parsed = JSON.parse(v); if (!Array.isArray(parsed)) throw new Error("expected an array"); commit("sections", () => n.sections = parsed); }
+      try { const parsed = JSON.parse(v); if (!Array.isArray(parsed)) throw new Error("expected an array"); commit("sections", () => { n.sections = parsed; if (parsed.length) delete n.questions_artifact; }); }
       catch (err) { el.setCustomValidity(err.message); el.reportValidity(); }
     }, { area: true, mono: true }), "Each section needs id and title; proposal and prompt are optional."));
   } else if (n.type === "script") {

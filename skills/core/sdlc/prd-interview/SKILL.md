@@ -1,7 +1,7 @@
 ---
 name: prd-interview
-description: Clarify product intent before a PRD is written. Summarize maintained project context, confirm the feature goal, propose concise answers for every PRD area, and run a bounded Grill-style interview without scanning application code or drafting the PRD.
-allowed-tools: Read, Grep, Glob
+description: Clarify product intent before a PRD is written. Summarize maintained project context, confirm the feature goal, generate feature-specific Grill questions, and resolve material behaviour and edge cases without scanning application code or drafting the PRD.
+allowed-tools: Read, Grep, Glob, Write, Bash
 tags: [sdlc, requirement]
 ---
 
@@ -26,19 +26,34 @@ The served instruction selects one mode:
    sentences. Do not describe implementation details.
 2. **Feature goal** — restate the requested outcome in at most 2 short sentences. Preserve the
    user's wording and scope; do not add capabilities.
-3. **Section proposals** — produce one compact proposed answer for each requested PRD area.
-   Use confirmed evidence only. Return an empty value when there is no grounded answer.
-4. **Interview turn** — for the engine-served area, show the grounded proposal and ask whether
-   it is correct. If there is no proposal, ask the smallest question that resolves the area.
-   Use the Grill pattern: one decision at a time, recommended answer when grounded, accept,
-   modify, or reject. Call `interview-record` only after the answer is clear.
+3. **Grill queue** — read prior confirmed decisions when the supplied file exists. Generate the
+   next JSON queue at the workflow-supplied artifact path and run the supplied validator. Use an
+   empty `questions` array when no material ambiguity remains.
+4. **Interview turn** — ask exactly the engine-served question. Show its short reason and grounded
+   recommendation when present. Let the user accept, modify, or replace the recommendation. Call
+   `interview-record` only after that decision is clear.
 
-## Interview areas
+## Grill method
 
-Cover every area exactly once unless the user corrects it: summary; problem and context; users
-and jobs; goals and success signals; non-goals; functional scope; constraints and assumptions;
-acceptance criteria; dependencies and risks; priorities and phasing; references. A proposal is
-not a fact until the user confirms it.
+Ask about the feature, never the document structure. Derive each question from confirmed context,
+requirements, references, revision feedback, and earlier answers.
+
+- Resolve one material decision per question. Use a concrete actor, action, state, or failure
+  scenario instead of broad prompts.
+- Explain in one short sentence why the answer changes the product.
+- Recommend an answer only when evidence supports it. A recommendation is not confirmed until the
+  user accepts it.
+- Challenge the happy path only through relevant lenses: permissions; lifecycle transitions;
+  timing and limits; visible conflict/concurrency; cancellation, retry, and recovery; invalid or
+  stale input; notifications and external effects; privacy and visibility; admin overrides;
+  migration or compatibility; measurable success; and non-goals.
+- Skip irrelevant lenses. Ask fewer questions as clarity increases. Never ask every category just
+  to fill a checklist.
+- Never repeat a confirmed decision. Never ask “what should this PRD section say?”
+
+The queue JSON has `schema_version: 1` and `questions`. Each question has `id`, `title`,
+`question`, `why`, and `proposal`. Keep IDs stable and feature-specific; they are internal and must
+not appear in the PRD.
 
 ## Standards
 
@@ -46,16 +61,16 @@ not a fact until the user confirms it.
 - Do not silently assume. Unknown means ask.
 - State each idea once. Prefer bullets or one short paragraph.
 - Do not ask technical-design questions; those belong to HLD/LLD.
-- Do not re-ask an area already confirmed in the engine action.
+- Do not turn PRD headings into questions.
+- Do not combine decisions with “and,” nested alternatives, or multiple question marks.
 - Keep the conversation moving; no essays between questions.
 
 ## Safety
 
-Read-only. The engine owns durable interview state and writes the confirmed context artifact.
+Write only the workflow-supplied question-queue artifact. The engine owns durable interview state
+and writes the confirmed context artifact.
 
 ## Output contract
 
-Depending on the served mode, return `project_context`, `feature_goal`, or these section proposal
-fields: `problem_context`, `users_jobs`, `goals_success`, `non_goals`, `functional_scope`,
-`constraints_assumptions`, `acceptance_criteria`, `dependencies_risks`, `priority_phasing`, and
-`references`. Each value is a short scalar, never document contents.
+Depending on the served mode, return `project_context`, `feature_goal`, or `summary`. Each value is
+a short scalar, never document contents.

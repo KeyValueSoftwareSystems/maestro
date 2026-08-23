@@ -92,7 +92,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   happens next. In the shipped pack, every run builds a **PRD** (`requirement/prd.md`)
   before the HLD: if the folder is empty it asks for a short feature request, then collects
   optional **references** (Figma links, doc/file paths, tickets). The lead confirms a compact
-  project context and feature goal, then conducts a section-by-section PRD interview. A valid
+  project context and feature goal, then conducts a feature-specific Grill interview over only
+  the material unresolved decisions and edge cases. A valid
   existing PRD takes a direct approval fast path. If you already
   know the user has a PRD/notes to paste, point them at that folder first; otherwise just
   init and run the loop — the gates will ask. (A workflow with no such handling will simply
@@ -180,9 +181,10 @@ real error or invalid output, use the same single retry then `fail` protocol as 
 
 ### `ask_interview`
 
-This is a durable, one-section-at-a-time PRD interview. Preflight `prd-interview`. On the first
-section, show the served compact context once; then show only the current title, proposal, and
-prompt. Do not repeat the context on later sections. WAIT and never auto-answer for the human.
+This is a durable, one-decision-at-a-time PRD Grill interview. Preflight `prd-interview`. On the
+first question, show the served compact context once. Then show the current title, direct prompt,
+short `why`, and recommendation when present. Do not call it a PRD section and do not repeat the
+context on later questions or rounds. WAIT and never auto-answer for the human.
 
 - If the reply clearly accepts the proposal, record:
 

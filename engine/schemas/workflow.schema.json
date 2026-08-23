@@ -270,8 +270,29 @@
       "required": [
         "id",
         "type",
-        "sections",
         "artifact"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "sections"
+          ],
+          "not": {
+            "required": [
+              "questions_artifact"
+            ]
+          }
+        },
+        {
+          "required": [
+            "questions_artifact"
+          ],
+          "not": {
+            "required": [
+              "sections"
+            ]
+          }
+        }
       ],
       "additionalProperties": false,
       "properties": {
@@ -316,6 +337,10 @@
               }
             }
           }
+        },
+        "questions_artifact": {
+          "type": "string",
+          "minLength": 1
         },
         "artifact": {
           "type": "string"

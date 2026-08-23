@@ -98,7 +98,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   resolve strictly), and
   **`render_agent_prompt`** (assembles instruction + inputs + skill pin + artifact list +
   the last-line-JSON output contract into the agent prompt). It also owns lead-executed
-  agents (`execution: lead`) and durable `interview` sections (`record_interview`).
+  agents (`execution: lead`) and durable interviews (`record_interview`), including validated
+  dynamic question queues and cumulative decision artifacts.
   `complete_step`, `record_gate`, `init` live here too.
 - **`state.py`** — the ledger: load/save with `fcntl` lock + atomic tmp/rename, `step_entry`,
   step wall-clock timing, `sha256_file`, `new_state`. The ONLY writer of
@@ -112,8 +113,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
-- **`validate_prd.py`** — deterministic PRD section, word-budget, repetition, and sentence
-  checks. It never makes product decisions.
+- **`validate_prd.py` / `validate_prd_questions.py`** — deterministic PRD structure,
+  acceptance-ID, brevity, and feature-question queue checks. They never make product decisions.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.

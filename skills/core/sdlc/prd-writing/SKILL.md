@@ -7,15 +7,16 @@ tags: [sdlc, requirement]
 
 # PRD writing
 
-Turn the confirmed context artifact into the final PRD. This is a rendering step, not another
+Turn the confirmed product inputs and decisions into the final PRD. This is a rendering step, not another
 brainstorm. Write once in normal operation; repair only when deterministic validation names a
 specific defect.
 
 ## Source of truth
 
-Read the context artifact supplied by the workflow. Its confirmed answers are authoritative.
-Do not scan the repository, reopen product decisions, add plausible features, or infer technical
-design. If a required answer is absent, stop instead of filling space.
+Read the confirmed inputs and requirement paths supplied by the workflow. When the cumulative
+decision artifact exists, its answers are authoritative; when it does not, no extra interview
+decisions were needed. Do not scan the repository, reopen product decisions, add plausible
+features, or infer technical design. If a required answer is absent, stop instead of filling space.
 
 ## Required structure
 
@@ -32,6 +33,10 @@ Use these exact level-2 headings in this order:
 9. `Dependencies and risks`
 10. `Priorities and phasing`
 11. `References`
+
+Use identifiers only in `Acceptance criteria`. Write every criterion as a sequential observable
+bullet beginning `AC-01:`, `AC-02:`, and so on. Do not put `B1`, `B2`, `FR-*`, `REQ-*`, question
+IDs, or other traceability codes in any other section.
 
 ## Plain technical English
 
@@ -55,7 +60,9 @@ document: 1,800 words maximum. These are ceilings, not targets.
 ## Repair mode
 
 When the workflow supplies validator feedback, change only the named defects. Do not rewrite
-unrelated sections or make the document longer unless the missing precision requires it.
+unrelated sections or make the document longer unless the missing precision requires it. Preserve
+existing acceptance-criteria IDs when their meaning is unchanged; otherwise restore one unique,
+gap-free `AC-01` sequence.
 
 ## Safety
 
