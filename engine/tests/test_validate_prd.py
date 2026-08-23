@@ -18,7 +18,8 @@ class PrdValidationTest(unittest.TestCase):
         return handle.name
 
     def valid_text(self):
-        return "\n\n".join(
+        header = "# Demo feature — PRD\n\n**Feature slug:** `demo`\n**Status:** Ready for review"
+        return header + "\n\n" + "\n\n".join(
             f"## {heading.title().replace('Non Goals', 'Non-goals')}\n\n"
             + ("- AC-01: The confirmed behavior is observable."
                if heading == "acceptance criteria"
@@ -91,6 +92,16 @@ class PrdValidationTest(unittest.TestCase):
         )
         errors, _ = validate_prd.validate(self.write(text), compatible=True)
         self.assertEqual(errors, [])
+
+    def test_strict_mode_requires_compact_document_header(self):
+        text = self.valid_text().replace(
+            "# Demo feature — PRD\n\n**Feature slug:** `demo`\n**Status:** Ready for review\n\n",
+            "",
+        )
+        errors, _ = validate_prd.validate(self.write(text))
+        self.assertTrue(any("level-1 PRD title" in error for error in errors))
+        self.assertTrue(any("Feature slug" in error for error in errors))
+        self.assertTrue(any("Status" in error for error in errors))
 
 
 if __name__ == "__main__":

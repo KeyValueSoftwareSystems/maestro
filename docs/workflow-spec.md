@@ -221,7 +221,8 @@ currently served.
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
 accepts common equivalent headings for its fast path. Maestro-authored PRDs use the exact
 11-heading contract and are validated in strict mode before approval. Traceability IDs appear
-only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria.
+only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria. Generated PRDs begin
+with one concise level-1 feature title plus `Feature slug` and `Status: Ready for review` metadata.
 
 ### `gate`
 

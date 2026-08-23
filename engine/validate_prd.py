@@ -26,6 +26,8 @@ SECTION_BUDGETS = {
 TOTAL_BUDGET = 1800
 AC_LINE_RE = re.compile(r"^\s*[-*]\s+(?:\*\*)?AC-(\d{2,})(?:\*\*)?:\s+\S")
 NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORECASE)
+FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
+STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
 
 # Existing PRDs do not share a universal heading standard. The fast-path compatibility mode
 # accepts common equivalents while generated Maestro PRDs still use the exact headings above.
@@ -90,6 +92,21 @@ def validate(path, compatible=False):
     except OSError as exc:
         return [f"cannot read PRD: {exc}"], []
     sections = _sections(text, compatible=compatible)
+    if not compatible:
+        lines = text.splitlines()
+        h1 = [(index, line[2:].strip()) for index, line in enumerate(lines)
+              if re.match(r"^#\s+\S", line)]
+        if len(h1) != 1:
+            errors.append("document header: exactly one level-1 PRD title is required")
+        elif not re.search(r"\b(?:prd|product requirements document)\b", h1[0][1], re.I):
+            errors.append("document header: level-1 title must identify the document as a PRD")
+        first_h2 = next((index for index, line in enumerate(lines) if line.startswith("## ")),
+                        len(lines))
+        preamble = lines[:first_h2]
+        if not any(FEATURE_SLUG_RE.match(line) for line in preamble):
+            errors.append("document header: missing Feature slug metadata")
+        if not any(STATUS_RE.match(line) for line in preamble):
+            errors.append("document header: missing Status: Ready for review metadata")
     for name, budget in SECTION_BUDGETS.items():
         body = sections.get(name)
         if body is None:

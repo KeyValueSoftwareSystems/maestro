@@ -149,6 +149,9 @@ class SdlcE2E(unittest.TestCase):
                 "References": "The run requirement and maintained project documentation.",
             }
             with open(full, "w") as fh:
+                fh.write("# Demo feature — PRD\n\n"
+                         "**Feature slug:** `demo`\n"
+                         "**Status:** Ready for review\n\n")
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")

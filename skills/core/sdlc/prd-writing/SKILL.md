@@ -20,6 +20,18 @@ features, or infer technical design. If a required answer is absent, stop instea
 
 ## Required structure
 
+Start with this compact document header:
+
+```markdown
+# <Concise feature name> — PRD
+
+**Feature slug:** `<workflow-supplied slug>`
+**Status:** Ready for review
+```
+
+Derive the feature name from the confirmed goal without adding scope. Do not add revision history,
+decision IDs, authors, or decorative metadata.
+
 Use these exact level-2 headings in this order:
 
 1. `Summary`
