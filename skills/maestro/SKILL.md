@@ -206,14 +206,26 @@ returns the next action, so continue immediately. The engine ledger and generate
 
 ### `ask_interview_batch`
 
-This is the fast path for a full Grill round. Preflight `prd-interview`, then show every served
-question together in one numbered message. For each item show only its title, direct prompt, short
-`why`, and recommendation when present. Show the compact context once on the first batch. WAIT once;
-the human may answer naturally and does not need to follow a JSON or numbered template.
+This is the fast path for a full Grill round. Preflight `prd-interview` and collect every served
+answer before recording any of them.
 
-Map only answers that are clear from the reply. “All recommended” accepts every served proposal.
-Omit unclear or unanswered question IDs so the engine re-serves only those questions. Never infer,
-silently accept, or drop an answer. Record all clear answers in ONE command:
+When `presentation` is `popup`, use the host's native question UI (`AskUserQuestion` on Claude or
+`request_user_input` on Codex when available). Never print the question batch into normal chat.
+Put as many questions in each popup as the host supports, then immediately open the next popup
+until the entire served round is covered. This UI chunking is presentation only: do not analyze,
+run a command, generate follow-ups, or record answers between popups.
+
+For each popup item, include the title, direct prompt, short `why`, and recommendation. Let the
+human accept the recommendation or enter a custom answer through the popup's free-form option.
+Keep the collected mapping in memory. Clarify an ambiguous response through another popup before
+recording. If `presentation` requires a popup but the host exposes no native question tool, do not
+fall back to a normal chat questionnaire and do not mutate the run; report the missing capability
+in one line and stop.
+
+When `presentation` is `chat`, use one numbered chat message as the compatibility fallback.
+
+Map only answers that are clear. Never infer, silently accept, or drop an answer. After all popup
+chunks are complete, record the entire collected round in ONE command:
 
 ```bash
 python3 .maestro/engine/maestroctl.py interview-record-batch --slug <slug> --step <step> \

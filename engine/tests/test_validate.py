@@ -104,7 +104,7 @@ class MemoryPlaceholderTest(unittest.TestCase):
 
 class InterviewValidationTest(unittest.TestCase):
     def _doc(self, sections=None, artifact=".maestro/runs/x/context.json",
-             questions_artifact=None, batch_size=None):
+             questions_artifact=None, batch_size=None, presentation=None):
         node = {
             "id": "ask", "type": "interview", "skill": "prd-interview",
             "artifact": artifact, "next": "end",
@@ -115,6 +115,8 @@ class InterviewValidationTest(unittest.TestCase):
             node["questions_artifact"] = questions_artifact
         if batch_size is not None:
             node["batch_size"] = batch_size
+        if presentation is not None:
+            node["presentation"] = presentation
         return {
             "version": 1, "name": "interview", "start": "ask",
             "nodes": [node],
@@ -143,6 +145,7 @@ class InterviewValidationTest(unittest.TestCase):
     def test_valid_dynamic_interview(self):
         issues = validate.validate_doc(self._doc(
             questions_artifact=".maestro/runs/x/questions.json", batch_size=12,
+            presentation="popup",
         ))
         self.assertFalse([i for i in issues if i.level == "error"], [str(i) for i in issues])
 
@@ -158,6 +161,12 @@ class InterviewValidationTest(unittest.TestCase):
             questions_artifact=".maestro/runs/x/questions.json", batch_size=0,
         ))
         self.assertIn("bad-batch-size", {i.code for i in issues})
+
+    def test_interview_presentation_is_validated(self):
+        issues = validate.validate_doc(self._doc(
+            questions_artifact=".maestro/runs/x/questions.json", presentation="modal",
+        ))
+        self.assertIn("bad-type", {i.code for i in issues})
 
 
 if __name__ == "__main__":

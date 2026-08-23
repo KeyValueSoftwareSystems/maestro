@@ -844,6 +844,13 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
           "type": "integer",
           "minimum": 1
         },
+        "presentation": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "popup"
+          ]
+        },
         "artifact": {
           "type": "string"
         },
@@ -1301,6 +1308,7 @@ function lint() {
         if (n.sections !== undefined && !hasSections) err("interview-no-sections", `${w}: interview sections must be a non-empty array`, n.id);
         if (!n.artifact) err("missing-key", `${w}: interview needs an artifact path`, n.id);
         if (n.batch_size !== undefined && (!Number.isInteger(n.batch_size) || n.batch_size < 1)) err("bad-batch-size", `${w}: interview batch size must be a positive integer`, n.id);
+        if (n.presentation !== undefined && !["chat", "popup"].includes(n.presentation)) err("bad-type", `${w}: interview presentation must be chat or popup`, n.id);
         const sectionIds = (n.sections || []).map(s => s.id);
         if (new Set(sectionIds).size !== sectionIds.length) err("interview-dup-sections", `${w}: interview section ids must be unique`, n.id);
       }
@@ -1684,6 +1692,9 @@ function inspectNode(box) {
       if (v) { n.questions_artifact = v; delete n.sections; } else delete n.questions_artifact;
     }), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/questions.json" }), "Use this for dynamic, validated questions; leave blank for static sections."));
     box.appendChild(field("Questions per batch", txt(n.batch_size, v => commit("batch_size", () => v ? n.batch_size = +v : delete n.batch_size), { number: true, placeholder: "1" }), "Use 1 for one-at-a-time; larger values show a round together."));
+    box.appendChild(field("Presentation", sel(n.presentation || "chat", ["chat", "popup"], v => commit("presentation", () => {
+      if (v === "chat") delete n.presentation; else n.presentation = v;
+    })), "Popup requires a native question tool in the active harness."));
     box.appendChild(field("Artifact file", txt(n.artifact, v => commit("artifact", () => n.artifact = v), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/prd-context.json" })));
     box.appendChild(field("Sections (JSON array)", txt(JSON.stringify(n.sections || [], null, 2), (v, el) => {
       el.setCustomValidity("");

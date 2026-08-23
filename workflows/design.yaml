@@ -180,6 +180,7 @@ nodes:
       Confirmed feature: ${steps.feature_goal.outputs.feature_goal}
     questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
     batch_size: 12
+    presentation: popup
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: prepare_prd_questions
 

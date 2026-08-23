@@ -215,7 +215,7 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
 
 - **valid existing `prd.md`** → after two short context confirmations, it goes directly to
   PRD approval; common equivalent headings are accepted because PRDs have no universal format;
-- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then asks every feature-specific decision and relevant edge case for the current round together;
+- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then collects every feature-specific decision and relevant edge case for the current round through native question popups;
 - **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, word budgets, repetition, sentence length, and sequential `AC-xx` acceptance criteria. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
 The PRD stage does not spawn subagents or scan application source. It reads only repository

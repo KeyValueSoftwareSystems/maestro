@@ -189,6 +189,10 @@ Set `batch_size` above 1 to serve up to that many unresolved questions in one
 `interview-record-batch`; omitted answers remain pending and are served again. No question is
 discarded.
 
+Set `presentation: popup` to require the lead to collect the served round through the harness's
+native question UI. If the UI caps questions per popup, the lead opens consecutive popups but does
+not process or record between them. `chat` is the backward-compatible default.
+
 ```yaml
 - id: prd_interview
   type: interview
@@ -210,6 +214,7 @@ For feature-specific follow-ups, a preceding agent writes a JSON queue containin
   type: interview
   questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
   batch_size: 12
+  presentation: popup
   artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
   next: find_more_gaps
 ```

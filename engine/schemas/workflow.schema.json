@@ -346,6 +346,13 @@
           "type": "integer",
           "minimum": 1
         },
+        "presentation": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "popup"
+          ]
+        },
         "artifact": {
           "type": "string"
         },

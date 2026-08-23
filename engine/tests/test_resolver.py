@@ -183,6 +183,7 @@ nodes:
     type: interview
     questions_artifact: ".maestro/runs/${inputs.slug}/questions-1.json"
     batch_size: 12
+    presentation: popup
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: second
   - id: second
@@ -375,6 +376,7 @@ class LeadInterviewTest(Sim):
 
         action = self.nxt()
         self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual(action["presentation"], "popup")
         self.assertEqual([q["section"] for q in action["questions"]],
                          ["double-booking", "stale-form"])
         self.assertEqual(action["questions"][0]["why"],
