@@ -29,8 +29,9 @@ def canned_agent_outputs(step, action):
         "prepare_prd_questions": {"summary": "Prepared the next focused product questions"},
         "author_prd": {"summary": "PRD written from confirmed context"},
         "repair_prd": {"summary": "PRD repaired to match the contract"},
+        "prepare_hld_questions": {"summary": "Prepared architecture questions"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
-        "refine_hld": {"refined_summary": "folded 1 answer"},
+        "repair_hld": {"hld_summary": "Repaired the HLD"},
         "slot_1_design": {"lld_path": "lld/x.md", "contract_notes": "rest+cursor"},
         "slot_2_design": {"lld_path": "lld/x.md", "contract_notes": "uses GET /searches"},
         "slot_3_design": {"lld_path": "lld/x.md", "contract_notes": "n/a"},
@@ -120,8 +121,12 @@ class SdlcE2E(unittest.TestCase):
     def write_agent_artifact(self, rel, step):
         full = os.path.join(self.tmp, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
-        if rel.endswith("prd-questions.json"):
-            decisions = os.path.join(os.path.dirname(full), "prd-context.json")
+        if rel.endswith("prd-questions.json") or rel.endswith("hld-questions.json"):
+            context_name = (
+                "hld-context.json" if rel.endswith("hld-questions.json")
+                else "prd-context.json"
+            )
+            decisions = os.path.join(os.path.dirname(full), context_name)
             questions = [] if os.path.exists(decisions) else [{
                 "id": "conflict-behavior",
                 "title": "Conflicting action",
@@ -137,7 +142,15 @@ class SdlcE2E(unittest.TestCase):
                     "audit": {
                         "unresolved": [] if not questions else ["stale-request behavior"],
                         "contradictions": [],
-                    },
+                },
+            }, fh)
+            return
+        if rel.endswith("hld-post-questions.json"):
+            with open(full, "w") as fh:
+                json.dump({
+                    "schema_version": 2,
+                    "questions": [],
+                    "audit": {"unresolved": [], "contradictions": []},
                 }, fh)
             return
         if os.path.exists(full):
@@ -158,6 +171,24 @@ class SdlcE2E(unittest.TestCase):
             }
             with open(full, "w") as fh:
                 fh.write("# Demo feature — PRD\n\n"
+                         "**Feature slug:** `demo`\n"
+                         "**Status:** Ready for review\n\n")
+                fh.write("\n\n".join(
+                    f"## {heading}\n\n{body}" for heading, body in sections.items()
+                ) + "\n")
+        elif rel.endswith("/hld.md"):
+            sections = {
+                "Decision summary": "\n".join(
+                    f"- Confirmed architecture decision {index}." for index in range(1, 6)
+                ),
+                "Context and scope": "The approved demo spans the backend and frontend.",
+                "Proposed design": "The backend owns decisions. The frontend renders server state.",
+                "Key decisions and trade-offs": "Use one authority to prevent divergent behavior.",
+                "Delivery and risks": "Land the backend contract before client integration.",
+                "Open questions": "None",
+            }
+            with open(full, "w") as fh:
+                fh.write("# Demo feature — HLD\n\n"
                          "**Feature slug:** `demo`\n"
                          "**Status:** Ready for review\n\n")
                 fh.write("\n\n".join(
@@ -225,6 +256,7 @@ class SdlcE2E(unittest.TestCase):
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
                             or any(a.endswith("validate_prd.py") or a.endswith("validate_prd_questions.py")
+                                   or a.endswith("validate_hld.py")
                                    for a in act.get("argv", []))
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
@@ -482,105 +514,27 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertEqual(len([s for s in steps if s.endswith("/impl/fix")]), 2)
 
-    def test_oq_loop_with_real_scripts(self):
-        """The design OQ cycle against the REAL oq_serve/oq_record scripts and a real
-        open-questions.json written by the 'plan' agent."""
+    def test_hld_clarifies_before_single_write(self):
+        """The HLD resolves one grouped architecture round before writing once."""
         self.prep_tasks_json()
-        oq = {
-            "schema_version": 1, "feature_slug": "demo",
-            "questions": [{
-                "id": "q1", "question": "Quota per user?", "why": "sizing",
-                "options": ["10", "100"], "status": "open", "resolution": None,
-            }],
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "design/lld_approval": [("approve", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
         }
-        oq_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "open-questions.json")
-        os.makedirs(os.path.dirname(oq_path), exist_ok=True)
-        with open(oq_path, "w") as fh:
-            json.dump(oq, fh)
-
-        # drive design.yaml standalone
-        with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", ".maestro/workflows/design.yaml", {"feature": "Demo"}, self.tmp)
-        asked = []
-        for _ in range(60):
-            run = resolver.Run("demo", self.tmp)
-            action = resolver.next_action(run)
-            if action["action"] == "done":
-                break
-            run = resolver.Run("demo", self.tmp)
-            if action["action"] == "run_agents":
-                for act in action["agents"]:
-                    for rel in act.get("artifacts", []):
-                        self.write_agent_artifact(rel, act["step"])
-                    resolver.complete_step(run, act["step"],
-                                           outputs=canned_agent_outputs(act["step"], act))
-            elif action["action"] in ("run_agent", "run_lead"):
-                for rel in action.get("artifacts", []):
-                    self.write_agent_artifact(rel, action["step"])
-                if action["step"].endswith("refine_hld"):
-                    # simulate the plan skill folding resolved answers into the HLD
-                    with open(oq_path) as fh:
-                        doc = json.load(fh)
-                    for q in doc["questions"]:
-                        if q["status"] == "resolved":
-                            q["status"] = "folded"
-                    with open(oq_path, "w") as fh:
-                        json.dump(doc, fh)
-                resolver.complete_step(run, action["step"],
-                                       outputs=canned_agent_outputs(action["step"], action))
-            elif action["action"] == "run_script":
-                proc = subprocess.run(action["argv"], cwd=self.tmp, capture_output=True,
-                                      text=True, timeout=30)
-                resolver.complete_step(run, action["step"], exit_code=proc.returncode,
-                                       stdout=proc.stdout)
-            elif action["action"] == "ask_gate":
-                step = action["step"]
-                if step == "collect_references":
-                    resolver.record_gate(run, step, "none")
-                elif step in ("project_context_confirm", "feature_goal_confirm"):
-                    resolver.record_gate(run, step, "confirm")
-                elif step == "oq_ask":
-                    asked.append(action["prompt"])
-                    self.assertIn("Quota per user?", action["prompt"])
-                    resolver.record_gate(run, step, "answer-all", input_text="2")
-                elif step == "prd_approval":
-                    resolver.record_gate(run, step, "approve")
-                elif step == "map_stale_gate":
-                    # this test runs every script for real (unlike drive()'s selective
-                    # stubbing), and setUp's codebase/backend+frontend are freshly `git init`'d
-                    # with no map yet — genuinely stale, so the gate genuinely fires.
-                    resolver.record_gate(run, step, "proceed")
-                elif step == "hld_approval":
-                    resolver.record_gate(run, step, "approve")
-                elif step == "lld_scope":
-                    resolver.record_gate(run, step, "all")
-                elif step == "lld_approval":
-                    resolver.record_gate(run, step, "approve")
-                else:
-                    self.fail(f"unexpected gate {step}")
-            elif action["action"] == "ask_interview":
-                resolver.record_interview(
-                    run, action["step"], action["section"],
-                    answer=None if action.get("proposal") else f"Confirmed {action['title']}",
-                    accept=bool(action.get("proposal")),
-                )
-            elif action["action"] == "ask_interview_batch":
-                resolver.record_interview_batch(run, action["step"], {
-                    question["section"]: (
-                        {"accept": True} if question.get("proposal")
-                        else {"answer": f"Confirmed {question['title']}"}
-                    )
-                    for question in action["questions"]
-                })
-            statemod.save("demo", run.state, self.tmp)
-        else:
-            self.fail("design workflow did not finish")
-        self.assertEqual(len(asked), 1)
-        with open(oq_path) as fh:
-            doc = json.load(fh)
-        # answered with option index 2 -> "100", then refine folded it
-        self.assertEqual(doc["questions"][0]["status"], "folded")
-        self.assertEqual(doc["questions"][0]["resolution"]["answer"], "100")
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertEqual(steps.count("design/hld_interview"), 1)
+        self.assertEqual(steps.count("design/author_hld"), 1)
+        self.assertIn("design/validate_hld_post_questions", steps)
+        self.assertIn("design/validate_hld", steps)
+        self.assertNotIn("design/hld_post_interview", steps)
+        self.assertNotIn("design/repair_hld", steps)
 
     def test_prd_interview_path_when_requirement_empty(self):
         """An empty requirement uses lead-only clarification and a durable interview."""
@@ -629,10 +583,12 @@ class SdlcE2E(unittest.TestCase):
                 else:
                     self.fail(f"unexpected gate {step}")
             elif action["action"] == "ask_interview":
-                interview_sections.append(action["section"])
+                if step.endswith("prd_interview"):
+                    interview_sections.append(action["section"])
                 resolver.record_interview(run, step, action["section"], accept=True)
             elif action["action"] == "ask_interview_batch":
-                interview_sections.extend(q["section"] for q in action["questions"])
+                if step.endswith("prd_interview"):
+                    interview_sections.extend(q["section"] for q in action["questions"])
                 resolver.record_interview_batch(run, step, {
                     question["section"]: {"accept": True}
                     for question in action["questions"]

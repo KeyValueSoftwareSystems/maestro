@@ -1,9 +1,9 @@
-# Design phase: requirement -> HLD -> open-questions loop -> approval -> parallel LLDs
-# -> API contract -> functional test cases.
+# Design phase: requirement -> clarify-first HLD -> conditional post-check -> approval
+# -> parallel LLDs -> API contract -> functional test cases.
 #
-# Showcases: script routing on stdout JSON (oq_serve), a human-in-the-loop cycle built
-# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets all
-# downstream design artifacts, and a parallel fork.
+# Showcases: validated clarify-first interviews, a conditional post-design question cycle built
+# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets downstream
+# design artifacts, and a parallel fork.
 version: 1
 name: design
 description: Design a feature end-to-end, from requirement folder to reviewed design artifacts.
@@ -294,7 +294,7 @@ nodes:
     run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
     routes:
       - {when: "${steps.check_codebase_map.outputs.stale} == true", to: map_stale_gate}
-      - {to: author_hld}
+      - {to: prepare_hld_questions}
 
   - id: map_stale_gate
     type: gate
@@ -307,7 +307,7 @@ nodes:
       about to be grounded in docs/codebase-map.md — resync it first, or proceed with what's there?
     options:
       - {id: resync, label: Resync the map first, to: snapshot_map}
-      - {id: proceed, label: Proceed with the existing map, to: author_hld}
+      - {id: proceed, label: Proceed with the existing map, to: prepare_hld_questions}
       - {id: reject, label: Abort the run, to: abort}
 
   - id: snapshot_map
@@ -361,99 +361,180 @@ nodes:
       - --snapshot-sha256
       - "${steps.snapshot_map.outputs.snapshot_sha256}"
     on_fail: resync_map
-    next: author_hld
+    next: prepare_hld_questions
 
-  - id: author_hld
+  # ---- HLD phase: clarify known architecture decisions -> one write -> conditional post-check ----
+  # Known material decisions are resolved before prose. The HLD author also emits a structured
+  # post-check; only a genuinely new gap discovered during synthesis causes one grouped follow-up
+  # and a rewrite. Deferred questions remain in open-questions.json for downstream LLD agents.
+  - id: prepare_hld_questions
     type: agent
-    label: Author HLD
+    execution: lead
+    label: Find the next material architecture gaps
     instruction: |
-      Write the high-level design for this feature. Read EVERY file in the requirement
-      folder as the requirement, AND the maintained codebase map(s) — docs/codebase-map.md
-      in each repo the feature touches (umbrella layout: codebase/<repo>/docs/codebase-map.md;
-      single repo: ./docs/codebase-map.md). The map is the standing description of the real
-      modules, flows and execution modes; ground the design in it. Explore the actual source
-      further ONLY where the feature needs context the map does not cover. Your chosen
-      approach MUST accommodate every execution mode relevant to the feature; if one cannot
-      be supported, say so explicitly and constrain scope rather than assuming the happy path.
-      Surface unresolved product/technical decisions as open questions: write them to BOTH the
-      HLD's "Open questions" section AND .maestro/runs/${inputs.slug}/open-questions.json
-      (schema .maestro/engine/schemas/open-questions.schema.json). Do not ask the user anything
-      directly. If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
-    skill: plan
+      Build the next architecture Grill queue at
+      .maestro/runs/${inputs.slug}/hld-questions.json before HLD prose is written. Read every
+      requirement file, the maintained codebase map in each affected repo, existing confirmed HLD
+      decisions when present, and revision feedback. Explore source only when a material decision
+      depends on detail absent from the maps.
+
+      Ask only unresolved decisions that change system ownership, boundaries, data authority,
+      cross-repo interaction, security/privacy, failure or recovery behavior, execution-mode
+      support, migration, rollout, or a material trade-off. Do not ask for endpoint fields, table
+      columns, filenames, task breakdowns, or other LLD details. Audit earlier answers against their
+      must_resolve facts and each other; a saved answer is not automatically complete. Use only the
+      stored answer as confirmed for user-answer decisions, never its unaccepted proposal.
+
+      Write schema_version 2 with 4-8 questions when several gaps remain, fewer when nearly clear,
+      and an empty queue only when all material architecture facts are concrete and consistent.
+      Every question declares 1-4 short must_resolve facts. Include audit.unresolved and
+      audit.contradictions; both must be empty with an empty queue. Validate before completing.
+    skill: hld-interview
     inputs:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      validator: ".maestro/engine/validate_prd_questions.py"
+      revision_feedback: "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"
+      codebase_lessons: "${memory.knowledge.codebase}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
+    max_visits: 8
+    on_exhausted: hld_clarity_limit
+    next: validate_hld_questions
+
+  - id: validate_hld_questions
+    type: script
+    label: Validate architecture question queue
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_hld_questions.outputs.valid} == false", to: prepare_hld_questions}
+      - {when: "${steps.validate_hld_questions.outputs.state} == clear", to: author_hld}
+      - {to: hld_interview}
+
+  - id: hld_interview
+    type: interview
+    label: Clarify material architecture decisions
+    skill: hld-interview
+    context: |
+      Feature: ${inputs.feature}
+      Approved PRD: .maestro/runs/${inputs.slug}/requirement/prd.md
+    questions_artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    next: prepare_hld_questions
+
+  - id: hld_clarity_limit
+    type: gate
+    label: HLD clarity checkpoint
+    prompt: |
+      Eight architecture rounds are complete and material decisions remain unresolved.
+      Maestro will not finalize the HLD while those decisions are unclear. Continue with focused
+      questions, or stop this run?
+    options:
+      - {id: more, label: Continue with focused questions, to: prepare_hld_questions}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: author_hld
+    type: agent
+    execution: lead
+    label: Author HLD once
+    instruction: |
+      Write the final high-level design from the approved requirement, maintained codebase maps,
+      relevant source details, and confirmed architecture decisions at
+      .maestro/runs/${inputs.slug}/hld-context.json. Honour review feedback without mentioning the
+      review: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
+
+      Write concise, skimmable technical English. Do not reopen settled decisions, invent missing
+      facts, repeat the PRD, or drift into endpoint fields, schema columns, file lists, or task-level
+      implementation. Create the exact six-section HLD skeleton before filling it and target below
+      70% of every supplied word ceiling.
+
+      Also write open-questions.json containing only questions explicitly deferred to LLD, and
+      hld-post-questions.json as a schema-version-2 post-check. The post-check must be empty when no
+      new material gap emerged during synthesis. If a new blocking gap did emerge, put only that
+      gap in the post-check; do not silently guess. Validate the HLD, deferred-question ledger, and
+      post-check before completing, repairing deterministic defects inside this same call.
+    skill: hld-writing
+    inputs:
+      feature: "${inputs.feature}"
+      slug: "${inputs.slug}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/hld.md"
       - ".maestro/runs/${inputs.slug}/open-questions.json"
-    max_visits: 5
-    next: oq_serve
+      - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    max_visits: 4
+    next: validate_hld_post_questions
 
-  # ---- open-questions cycle: serve -> ask -> record -> serve (back-edges) ----
-  # All open questions are asked in ONE gate turn (not one round-trip per question) —
-  # oq_serve.py batches them; oq_record.py applies the combined reply.
-  - id: oq_serve
+  - id: validate_hld_post_questions
     type: script
-    label: Next open questions?
-    run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/open-questions.json"]
-    max_visits: 40
-    on_exhausted: hld_approval
+    label: Validate HLD post-check
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --report]
     routes:
-      - {when: "${steps.oq_serve.outputs.state} == ask", to: oq_ask}
-      - {when: "${steps.oq_serve.outputs.state} == refine", to: refine_hld}
-      - {to: hld_approval}
+      - {when: "${steps.validate_hld_post_questions.outputs.valid} == false", to: author_hld}
+      - {when: "${steps.validate_hld_post_questions.outputs.state} == ask", to: hld_post_interview}
+      - {to: validate_hld}
 
-  - id: oq_ask
-    type: gate
-    label: Open questions
-    prompt: |
-      ${steps.oq_serve.outputs.count} open question(s):
+  - id: hld_post_interview
+    type: interview
+    label: Resolve newly discovered HLD gaps
+    skill: hld-interview
+    context: |
+      A material gap emerged while connecting the complete HLD. Resolve it before final approval.
+    questions_artifact: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    next: author_hld
 
-      ${steps.oq_serve.outputs.questions_md}
-
-      To answer, reply with ONE line per question, IN THE SAME ORDER as above — each
-      line a number to pick that option, free text for a custom answer, "skip", or
-      "you decide". Keep each answer on a single line.
-    max_visits: 40
-    options:
-      - {id: answer-all, label: Answer these, to: oq_record, input: answers_blob}
-      - {id: decide-all, label: You decide all (pick sensible defaults for everything), to: oq_record}
-      - {id: skip-all, label: Skip all — defer to LLD, to: oq_record}
-
-  - id: oq_record
+  - id: validate_hld
     type: script
-    label: Record answers
-    run:
-      - python3
-      - .maestro/engine/oq_record.py
-      - ".maestro/runs/${inputs.slug}/open-questions.json"
-      - "${steps.oq_serve.outputs.qids_csv}"
-      - "${steps.oq_ask.outputs.choice}"
-      - "${steps.oq_ask.outputs.answers_blob}"
-    max_visits: 40
-    on_fail: abort
-    next: oq_serve
+    label: Validate HLD structure and readability
+    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --report]
+    max_visits: 3
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.validate_hld.outputs.valid} == true", to: hld_approval}
+      - {to: repair_hld}
 
-  - id: refine_hld
+  - id: repair_hld
     type: agent
-    label: Fold answers into HLD
+    execution: lead
+    label: Repair HLD validation defects
+    model: haiku
     instruction: |
-      Resolved open questions await folding into the HLD. Apply each resolved answer to
-      .maestro/runs/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default
-      and record the choice), then mark those questions status "folded" in
-      .maestro/runs/${inputs.slug}/open-questions.json and re-validate it with
-      python3 .maestro/engine/validate_open_questions.py.
-    skill: plan
+      Repair only these deterministic HLD defects: ${steps.validate_hld.outputs.issues_summary}
+      Preserve every confirmed architecture decision and do not rewrite unrelated sections. Run
+      the supplied validators before completing. This is a narrow fallback repair.
+    skill: hld-writing
     inputs:
       slug: "${inputs.slug}"
-    outputs: [refined_summary]
-    artifact: ".maestro/runs/${inputs.slug}/hld.md"
-    max_visits: 20
-    next: oq_serve
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
+      validator_feedback: "${steps.validate_hld.outputs.issues_summary}"
+    outputs: [hld_summary]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/hld.md"
+      - ".maestro/runs/${inputs.slug}/open-questions.json"
+      - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    max_visits: 2
+    next: validate_hld
 
   - id: hld_approval
     type: gate
@@ -464,7 +545,7 @@ nodes:
       Review the document, then choose.
     options:
       - {id: approve, label: Approve — write the detailed designs, to: lld_scope_serve}
-      - {id: revise, label: Request HLD revisions — then describe what to change, to: author_hld, input: feedback}
+      - {id: revise, label: Request HLD revisions — then describe what to change, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
   # ---- LLD scope: repo-based, not stack-named. lld_scope_serve discovers the ACTUAL repos

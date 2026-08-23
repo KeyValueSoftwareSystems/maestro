@@ -61,6 +61,23 @@ def _simulated_prd():
     ) + "\n"
 
 
+def _simulated_hld():
+    sections = {
+        "Decision summary": "\n".join(
+            f"- Simulated architecture decision {index}." for index in range(1, 6)
+        ),
+        "Context and scope": "The simulated feature spans one backend and one client.",
+        "Proposed design": "The backend owns decisions. The client renders server state.",
+        "Key decisions and trade-offs": "Use one authority to avoid divergent behavior.",
+        "Delivery and risks": "Land the backend contract before client integration.",
+        "Open questions": "None",
+    }
+    header = "# Simulated feature — HLD\n\n**Feature slug:** `simulation`\n**Status:** Ready for review"
+    return header + "\n\n" + "\n\n".join(
+        f"## {heading}\n\n{text}" for heading, text in sections.items()
+    ) + "\n"
+
+
 def _stub_agent(root, act):
     """Instantly complete a worker or lead step: placeholder text for declared fields,
     a placeholder file for every declared artifact (unless one's already there — respects a
@@ -69,8 +86,12 @@ def _stub_agent(root, act):
     for rel in act.get("artifacts", []):
         full = os.path.join(root, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
-        if rel.endswith("prd-questions.json"):
-            context = os.path.join(os.path.dirname(full), "prd-context.json")
+        if rel.endswith("prd-questions.json") or rel.endswith("hld-questions.json"):
+            context_name = (
+                "hld-context.json" if rel.endswith("hld-questions.json")
+                else "prd-context.json"
+            )
+            context = os.path.join(os.path.dirname(full), context_name)
             questions = [] if os.path.exists(context) else [{
                 "id": "simulated-failure",
                 "title": "Failure behavior",
@@ -87,6 +108,15 @@ def _stub_agent(root, act):
                         "unresolved": [] if not questions else ["simulated failure behavior"],
                         "contradictions": [],
                     },
+                }, fh, indent=2)
+                fh.write("\n")
+            continue
+        if rel.endswith("hld-post-questions.json"):
+            with open(full, "w", encoding="utf-8") as fh:
+                json.dump({
+                    "schema_version": 2,
+                    "questions": [],
+                    "audit": {"unresolved": [], "contradictions": []},
                 }, fh, indent=2)
                 fh.write("\n")
             continue
@@ -118,6 +148,9 @@ def _stub_agent(root, act):
             elif rel.endswith("/requirement/prd.md"):
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(_simulated_prd())
+            elif rel.endswith("/hld.md"):
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write(_simulated_hld())
             else:
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "

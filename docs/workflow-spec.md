@@ -145,24 +145,23 @@ served prompt in the current session without spawning one.
 - id: author_hld
   type: agent
   instruction: |            # REQUIRED — what this step must do, in plain language.
-    Write the high-level design for this feature from the requirement folder.
-    Surface unresolved decisions as open questions.
-  skill: plan               # optional pin: subagent loads the installed skill named `plan`
+    Write the high-level design from the approved PRD and accepted architecture decisions.
+    Emit deferred choices separately and propose follow-up questions only for genuinely new gaps.
+  skill: hld-writing        # optional pin: agent loads the installed skill by name
                             # (BY NAME, not a path — could be yours or a 3rd-party pack).
                             # Omit for "auto": harness skill-discovery picks the best match.
-  agent: planner            # optional subagent type (agents/planner.md); default defaults.agent
-  model: sonnet             # optional; default defaults.model
-  execution: worker         # worker | lead; lead ignores the per-step model
+  execution: lead           # keep the clarified architecture context in the main session
   inputs:                   # optional map, passed verbatim into the subagent prompt
     feature: "${inputs.feature}"
     slug: "${inputs.slug}"
-  outputs: [hld_summary]    # fields the subagent must return as last-line JSON (small scalars)
-  artifact: ".maestro/${inputs.slug}/hld.md"   # string or list; engine refuses to mark the
-                            # step done unless every artifact exists non-empty ("proof, not
-                            # promises"). The node owns this path; the engine injects it into
-                            # the prompt so the skill needn't know where to write.
+  outputs: [hld_summary]    # fields the agent must return as last-line JSON (small scalars)
+  artifact:                # string or list; engine refuses to mark the step done unless every
+    - ".maestro/${inputs.slug}/hld.md"
+    - ".maestro/${inputs.slug}/hld-post-questions.json"
+                            # artifact exists non-empty ("proof, not promises"). The engine
+                            # injects owned paths into the prompt.
   retries: 1                # re-dispatches on failure before on_fail applies (default 1)
-  next: oq_serve
+  next: validate_hld_post_questions
 ```
 
 The node owns *what/where/when* — `instruction`, `inputs`, `artifact`, `outputs`, ordering —
@@ -246,7 +245,7 @@ A human decision. Options ARE the outgoing edges. Gates are **never** skipped on
   prompt: "HLD ready: ${steps.author_hld.outputs.hld_summary}. Approve?"
   options:
     - {id: approve, label: "Approve — proceed to LLD", to: author_llds}
-    - {id: revise,  label: "Request revisions", to: author_hld, input: feedback}
+    - {id: revise,  label: "Request revisions", to: prepare_hld_questions, input: feedback}
     - {id: reject,  label: "Reject — abort", to: abort}
 ```
 
@@ -256,17 +255,17 @@ is simply an option whose `to:` is a back-edge — re-entry reset cascades autom
 ### `script`
 
 A deterministic command. Exit 0 → `next`/`routes`; non-zero → `on_fail`. If stdout is a single
-JSON object, its fields become the step's outputs and are routable — the generalized
-`oq_serve.py` pattern.
+JSON object, its fields become the step's outputs and are routable. Validators commonly expose
+`valid`, `state`, or another small routing field.
 
 ```yaml
-- id: oq_serve
+- id: validate_hld
   type: script
-  run: ["python3", "engine/oq_serve.py", ".maestro/${inputs.slug}/open-questions.json"]
+  run: ["python3", "engine/validate_hld.py", ".maestro/${inputs.slug}/hld.md",
+        "--open-questions", ".maestro/${inputs.slug}/open-questions.json"]
   timeout: 60               # seconds, optional (default 300)
   routes:
-    - {when: "${steps.oq_serve.outputs.state} == ask",    to: oq_ask}
-    - {when: "${steps.oq_serve.outputs.state} == refine", to: refine_hld}
+    - {when: "${steps.validate_hld.outputs.valid} == false", to: repair_hld}
     - {to: hld_approval}
 ```
 

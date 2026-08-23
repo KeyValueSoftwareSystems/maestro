@@ -113,8 +113,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
-- **`validate_prd.py` / `validate_prd_questions.py`** — deterministic PRD structure,
-  acceptance-ID, brevity, and feature-question queue checks. They never make product decisions.
+- **`validate_prd.py` / `validate_prd_questions.py` / `validate_hld.py`** — deterministic PRD
+  and HLD structure, acceptance-ID, brevity, question-queue, and deferred-ledger checks. They
+  never make product or architecture decisions.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.

@@ -340,7 +340,7 @@ surfaced as a decision, not silently actioned.
 chat to change something already written and approved — the PRD, HLD, an LLD, the contract —
 do NOT edit the artifact and carry on, and do NOT let the change flow into implementation
 unreviewed. Record the request as a `note`, then route it through that artifact's approval
-gate using the gate's **revise** option (`feature_goal`/PRD, `author_hld`/HLD,
+gate using the gate's **revise** option (`feature_goal`/PRD, `prepare_hld_questions`/HLD,
 `lld_approval`/LLDs, `contract_approval`/contract) so the artifact is regenerated with the
 feedback and the human re-approves the result. The revise back-edge cascade-resets everything
 downstream — that is the point. If the run is past the relevant gate, the correct move is a

@@ -17,6 +17,8 @@ PRD_SECTION_TITLES = {
     "summary", "problem and context", "users and jobs", "goals and success signals",
     "non-goals", "functional scope", "constraints and assumptions", "acceptance criteria",
     "dependencies and risks", "priorities and phasing", "references",
+    "decision summary", "context and scope", "proposed design",
+    "key decisions and trade-offs", "delivery and risks", "open questions",
 }
 
 

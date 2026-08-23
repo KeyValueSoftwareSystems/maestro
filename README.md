@@ -83,7 +83,8 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
 workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
-   → HLD → [open-questions loop → approve] → parallel per-repo LLDs → API contract
+   → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
+   → parallel per-repo LLDs → API contract
    → functional test cases → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
    → QA → review pack → [approve → release → archive: harvest lessons + publish docs]
@@ -223,7 +224,16 @@ instructions, maintained project docs, the run's requirement folder, and explici
 Pinned skills are checked only under `.agents/skills`, `.claude/skills`, and `.cursor/skills`.
 Step durations are recorded in the run ledger so slow stages are visible.
 
-From there it validates, starts or resumes the run, spawns a subagent per step, asks you at gates, and reports where every artifact landed.
+The HLD stage follows the same clarify-first shape. It batches only unresolved architecture
+decisions into native question popups, keeps accepted decisions in `hld-context.json`, and then
+writes one short, plain-English HLD. A deterministic validator checks its six-section structure,
+brevity, repetition, and deferred-question ledger. A second popup appears only when synthesis
+uncovers a genuinely new architecture gap; there is no mandatory model-powered folding pass.
+`open-questions.json` contains only explicitly deferred decisions so another reviewer can see
+what remains open.
+
+From there Maestro starts or resumes the run, dispatches each remaining step with its declared
+execution mode, asks you at gates, and reports where every artifact landed.
 
 Before design, Maestro fetches every discovered repository's **current branch upstream in
 parallel**. If everything is current, this is silent and uses no model. If a repository is
