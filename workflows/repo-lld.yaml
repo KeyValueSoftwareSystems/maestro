@@ -1,0 +1,63 @@
+# One repository team's independent LLD workstream. The parent feature run creates this run and
+# waits; approval here publishes a hash-bound LLD back into the parent without touching its state.
+version: 1
+name: repo-lld
+description: Author, review, and publish one repository LLD with an independent team-owned ledger.
+inputs:
+  slug: {type: string, required: true}
+  parent_slug: {type: string, required: true}
+  repo: {type: string, required: true}
+  feature: {type: string, default: "${inputs.parent_slug}"}
+defaults:
+  model: opus
+  agent: planner
+  max_visits: 5
+start: author_lld
+nodes:
+  - id: author_lld
+    type: agent
+    label: Write repository LLD
+    instruction: |
+      Write the low-level design for only the "${inputs.repo}" repository. Use the approved parent
+      HLD at .maestro/runs/${inputs.parent_slug}/hld.md, this repository's maintained
+      docs/codebase-map.md, and the real source it cites. Cover concrete modules, interfaces, data
+      changes, error paths, compatibility, tests, rollout, and implementation boundaries needed by
+      this repo. Do not redesign another repository or change shared product/HLD decisions.
+
+      If review feedback exists, address it without adding a revision diary:
+      ${steps.lld_approval.outputs.feedback}
+    skill: repo-design
+    inputs:
+      slug: "${inputs.parent_slug}"
+      workstream_slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      repo: "${inputs.repo}"
+      parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
+      lessons: "${memory.knowledge.repo-design}"
+    outputs: [lld_path, contract_notes]
+    artifact: ".maestro/runs/${inputs.slug}/lld.md"
+    next: lld_approval
+
+  - id: lld_approval
+    type: gate
+    label: Repository LLD approval
+    prompt: |
+      The ${inputs.repo} LLD is ready at .maestro/runs/${inputs.slug}/lld.md.
+
+      This approval belongs only to ${inputs.repo}; it cannot approve another team's LLD.
+    options:
+      - {id: approve, label: Approve and publish this repository LLD, to: publish}
+      - {id: revise, label: Request revisions, to: author_lld, input: feedback}
+      - {id: reject, label: Reject and abort this workstream, to: abort}
+
+  - id: publish
+    type: script
+    label: Publish approved LLD to parent feature
+    run: [python3, .maestro/engine/lld_repo_pool.py, publish, --root, ., --slug, "${inputs.slug}", --parent-slug, "${inputs.parent_slug}", --repo, "${inputs.repo}"]
+    on_fail: abort
+    next: end
+
+outputs:
+  lld_path: "${steps.publish.outputs.lld_path}"
+  approval_path: "${steps.publish.outputs.approval_path}"
+  repo: "${inputs.repo}"

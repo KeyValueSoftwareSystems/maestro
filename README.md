@@ -84,7 +84,7 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 ```
 workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
    → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
-   → parallel per-repo LLDs → API contract
+   → independent per-repo LLD workstreams → API contract
    → functional test cases → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
    → QA → review pack → [approve → release → archive: harvest lessons + publish docs]
@@ -246,8 +246,13 @@ if code moved after design, the design is regenerated and re-approved before bui
 
 Gate choices that require text are deliberately two-stage. Clicking **Revise** first records
 the choice, then Maestro asks what to change and remains parked until non-blank feedback is
-provided. One response can cover several LLDs by labeling each repository; no artifact is
-regenerated with empty or inferred suggestions.
+provided. No artifact is regenerated with empty or inferred suggestions.
+
+After HLD approval, the parent creates one child run per selected repository—for example
+`my-feature--lld--backend`, `my-feature--lld--frontend`, and `my-feature--lld--flutter`—and waits.
+Each team resumes, reviews, and approves only its child slug. Approval publishes a hash-bound LLD
+and receipt into the parent feature; the API contract cannot start until every selected child is
+approved against the current HLD.
 
 **You almost never call the engine yourself.** The lead agent issues its verbs — `init`, `next`, `complete`, `gate-record`, `gate-input-record`, `fail`, `runs`, … — for you as it drives the graph. Only two are worth running by hand, for inspection:
 
@@ -291,9 +296,14 @@ Sometimes the lead agent ends its turn *mid-run* — after a long step, or becau
 
 Maestro is a shared, paved road, not a per-developer toy: keep the flows in a central, PR-reviewed repo owned by your leads/platform team (changes go through review, same as code), and governance falls out of the graph — route the "approve for release" gate to a lead while anyone runs the steps up to it, no extra RBAC layer needed.
 
-The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is git-tracked on purpose (so a run resumes on any machine). Two consequences for a team:
+The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is git-tracked on purpose (so a run resumes on any machine). Team ownership follows ledger ownership:
 
-- **One owner per slug at a time.** Two people driving the same `<slug>` in parallel will produce conflicting edits to an engine-owned file. Pick distinct slugs, or hand a run off by committing/pushing `.maestro/runs/<slug>/` and letting the next person resume it.
+- **One owner per slug at a time.** Keep one coordinator on the parent feature slug. LLD work is
+  automatically split into repository child slugs, so backend, frontend, and Flutter can push
+  independently without inheriting or conflicting with another team's approval.
+- **Commit the child run with its LLD.** A repo approval updates only
+  `.maestro/runs/<feature>--lld--<repo>/` plus that repo's published LLD and receipt under the
+  parent. Pull all approved child changes, then refresh the parent LLD status gate.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
 - If you edit a **workflow file** mid-run, the engine halts on the next command with a hash mismatch — nobody silently diverges from the lead's flow. Accept the edit with `maestroctl rebase --slug <slug>` (it re-validates first) or start over with `reset --slug <slug> --all`.
 

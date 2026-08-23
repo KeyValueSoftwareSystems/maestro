@@ -223,6 +223,52 @@ def _collect_input(act, auto):
 MAX_REPEATED_AUTO_CHOICE = 3
 
 
+def _auto_complete_lld_workstreams(root, parent_slug):
+    """Approve simulator-created repo child runs so the parent join can make progress."""
+    queue_path = os.path.join(statemod.feature_dir(parent_slug, root), "lld-repos.json")
+    with open(queue_path, encoding="utf-8") as fh:
+        workstreams = json.load(fh).get("workstreams") or []
+    for item in workstreams:
+        child_slug = item["slug"]
+        for _ in range(20):
+            child = resolver.Run(child_slug, root)
+            action = resolver.next_action(child)
+            if action["action"] == "done":
+                break
+            step = action["step"]
+            if action["action"] == "run_agent":
+                outputs = _stub_agent(root, action)
+                with statemod.locked(child_slug, root):
+                    child = resolver.Run(child_slug, root)
+                    resolver.complete_step(child, step, outputs=outputs)
+                    statemod.save(child_slug, child.state, root)
+            elif action["action"] == "ask_gate":
+                with statemod.locked(child_slug, root):
+                    child = resolver.Run(child_slug, root)
+                    resolver.record_gate(child, step, action["options"][0]["id"])
+                    statemod.save(child_slug, child.state, root)
+            elif action["action"] == "run_script":
+                proc = subprocess.run(
+                    action["argv"], cwd=root, capture_output=True, text=True,
+                    timeout=action.get("timeout", 300),
+                )
+                with statemod.locked(child_slug, root):
+                    child = resolver.Run(child_slug, root)
+                    resolver.complete_step(
+                        child, step, exit_code=proc.returncode, stdout=proc.stdout,
+                    )
+                    statemod.save(child_slug, child.state, root)
+            else:
+                raise resolver.RunError(
+                    f"simulator cannot auto-complete LLD child action {action['action']!r}",
+                    code=1,
+                )
+        else:
+            raise resolver.RunError(
+                f"LLD child run {child_slug!r} did not finish in simulation", code=1,
+            )
+
+
 def run(root, slug, workflow, inputs, auto, max_steps, force=False):
     auto_repeat = {}  # (step, option_id) -> consecutive count, for stuck-loop detection
     issues = validatemod.validate_file(workflow, root=root)
@@ -275,6 +321,8 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                 if proc.returncode and proc.stderr.strip():
                     _log(f"         stderr: {proc.stderr.strip()[:500]}")
             elif act["action"] == "ask_gate":
+                if auto and step.endswith("lld_workstreams_wait"):
+                    _auto_complete_lld_workstreams(root, slug)
                 option = _choose_gate_option(act, auto)
                 _log(f"[gate  ] {step} -> {option['id']}")
                 if auto:

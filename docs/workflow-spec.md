@@ -244,7 +244,7 @@ A human decision. Options ARE the outgoing edges. Gates are **never** skipped on
   type: gate
   prompt: "HLD ready: ${steps.author_hld.outputs.hld_summary}. Approve?"
   options:
-    - {id: approve, label: "Approve — proceed to LLD", to: author_llds}
+    - {id: approve, label: "Approve — create repo LLD workstreams", to: lld_scope_serve}
     - {id: revise,  label: "Request revisions", to: prepare_hld_questions, input: feedback}
     - {id: reject,  label: "Reject — abort", to: abort}
 ```
@@ -294,6 +294,12 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
       steps: [ ... ]
   next: contract
 ```
+
+The shipped design workflow does not use one shared parallel node for team-authored LLDs. It
+creates a separate `repo-lld.yaml` run per selected repository. Each child has its own
+`state.yaml`, LLD revision gate, and approval history. Its publish step writes a hash-bound receipt
+to the parent; the parent joins only after every selected child is complete and still matches the
+current HLD. Generic `parallel` remains useful when one owner controls every branch in one run.
 
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
 `parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per

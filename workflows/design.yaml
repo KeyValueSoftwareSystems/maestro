@@ -548,12 +548,9 @@ nodes:
       - {id: revise, label: Request HLD revisions — then describe what to change, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
-  # ---- LLD scope: repo-based, not stack-named. lld_scope_serve discovers the ACTUAL repos
-  # under codebase/ (any count, any names — the same discovery codebase_scan.py uses for the
-  # freshness gate); the human picks all of them or a specific subset; lld_scope_init
-  # validates the pick and writes the claim queue every parallel "slot" below drains from.
-  # A revise cycle from lld_approval re-enters HERE (not straight into author_llds) so scope
-  # can change on revision too.
+  # ---- LLD workstreams: one child run and approval ledger per selected repository. ----
+  # The parent owns the shared PRD/HLD and waits here. Backend, frontend, Flutter, or any other
+  # repo team resumes only its child slug, so pushing one team's state cannot advance another.
   - id: lld_scope_serve
     type: script
     label: Discover repos
@@ -587,149 +584,42 @@ nodes:
       - --repos-text
       - "${steps.lld_scope.outputs.repos_text}"
     on_fail: lld_scope
-    next: author_llds
+    next: lld_workstreams_init
 
-  # ---- Detailed designs: a FIXED pool of parallel "slots" (parallel branches can't have a
-  # runtime-variable count), each looping claim -> design -> claim until the queue lld_scope_init
-  # just built is empty. This is the SAME back-edge-loop shape as the open-questions cycle,
-  # applied to repos instead of questions — it scales to any repo count without a per-repo
-  # branch, and still gives real concurrency: run_agents dispatches every slot currently holding
-  # a claimed repo in one wave, so "all repos at once" and "one at a time" both fall out of the
-  # same mechanism depending on how many slots have work when you act.
-  - id: author_llds
-    type: parallel
-    label: Detailed designs (repo pool)
-    join: all
-    on_branch_fail: ask
-    branches:
-      - id: slot_1
-        start: slot_1_claim
-        steps:
-          - id: slot_1_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_1_claim.outputs.done} == true", to: end}
-              - {to: slot_1_design}
-          - id: slot_1_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_1_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_1_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_1_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_1_claim
-      - id: slot_2
-        start: slot_2_claim
-        steps:
-          - id: slot_2_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_2_claim.outputs.done} == true", to: end}
-              - {to: slot_2_design}
-          - id: slot_2_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_2_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_2_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_2_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_2_claim
-      - id: slot_3
-        start: slot_3_claim
-        steps:
-          - id: slot_3_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_3_claim.outputs.done} == true", to: end}
-              - {to: slot_3_design}
-          - id: slot_3_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_3_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_3_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_3_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_3_claim
-      - id: slot_4
-        start: slot_4_claim
-        steps:
-          - id: slot_4_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_4_claim.outputs.done} == true", to: end}
-              - {to: slot_4_design}
-          - id: slot_4_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_4_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_4_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_4_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_4_claim
-    next: lld_approval
+  - id: lld_workstreams_init
+    type: script
+    label: Create independent repository LLD runs
+    run: [python3, .maestro/engine/lld_repo_pool.py, workstreams, --root, ., --slug, "${inputs.slug}", --workflow, .maestro/workflows/repo-lld.yaml, --feature, "${inputs.feature}"]
+    on_fail: abort
+    next: lld_workstreams_check
 
-  # ---- LLD approval: the human reviews whichever detailed design(s) were just written.
-  # 'revise' is a back-edge into lld_scope (not straight back into author_llds) so a revision
-  # can also change scope; re-entry cascade-resets the whole pool plus everything downstream
-  # (contract, test cases). A design change never reaches implementation without passing
-  # back through this gate.
-  - id: lld_approval
+  - id: lld_workstreams_check
+    type: script
+    label: Check repository LLD approvals
+    run: [python3, .maestro/engine/lld_repo_pool.py, check, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.lld_workstreams_check.outputs.ready} == true", to: contract}
+      - {to: lld_workstreams_wait}
+
+  - id: lld_workstreams_wait
     type: gate
-    label: LLD approval
+    label: Repository LLD workstreams
     prompt: |
-      Detailed design(s) ready for review under .maestro/runs/${inputs.slug}/lld/
-      (backend.md and/or frontend.md, depending on the scope chosen).
+      Each selected repository has its own run and approval. Team members can work in parallel
+      without sharing one mutable state.yaml:
 
-      Review whichever were written. Any change to an LLD must be approved here before
-      implementation.
+      ${steps.lld_workstreams_init.outputs.workstreams_md}
+
+      Current status:
+      ${steps.lld_workstreams_check.outputs.status_md}
+
+      Commit and push each child run after its approval. Once those changes are pulled here,
+      refresh this check. The parent will not create the shared contract early.
     options:
-      - {id: approve, label: Approve — reconcile the contract, to: contract}
-      - {id: revise, label: Request LLD revisions — then describe suggestions, to: lld_scope, input: feedback}
-      - {id: reject, label: Reject — abort the run, to: abort}
+      - {id: refresh, label: Refresh repository approval status, to: lld_workstreams_check}
+      - {id: scope, label: Change selected repositories, to: lld_scope}
+      - {id: reject, label: Abort the parent run, to: abort}
 
   - id: contract
     type: agent

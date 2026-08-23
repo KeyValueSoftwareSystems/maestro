@@ -116,6 +116,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`validate_prd.py` / `validate_prd_questions.py` / `validate_hld.py`** — deterministic PRD
   and HLD structure, acceptance-ID, brevity, question-queue, and deferred-ledger checks. They
   never make product or architecture decisions.
+- **`lld_repo_pool.py` / `workflows/repo-lld.yaml`** — create one child run per selected repo,
+  publish only human-approved LLDs back to the parent, bind approvals to the current HLD hash,
+  and let the parent join only after all repo-owned ledgers are complete.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.

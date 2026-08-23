@@ -282,9 +282,9 @@ python3 .maestro/engine/maestroctl.py gate-input-record --slug <slug> --step <st
     --input '<human text verbatim>'
 ```
 
-For a design `feedback` action, invite one combined response; when several LLDs exist the
-human may label feedback by repository. The run remains durably parked on `ask_input` across
-turns and resumes there until non-blank text is recorded.
+For a design `feedback` action, request the change for that artifact only. Repository LLD feedback
+belongs to its `<feature>--lld--<repo>` child run, never the parent or another repo's child. The run
+remains durably parked on `ask_input` across turns until non-blank text is recorded.
 
 ### `done` / `failed`
 
@@ -341,7 +341,7 @@ chat to change something already written and approved — the PRD, HLD, an LLD, 
 do NOT edit the artifact and carry on, and do NOT let the change flow into implementation
 unreviewed. Record the request as a `note`, then route it through that artifact's approval
 gate using the gate's **revise** option (`feature_goal`/PRD, `prepare_hld_questions`/HLD,
-`lld_approval`/LLDs, `contract_approval`/contract) so the artifact is regenerated with the
+the repository child's `lld_approval`/LLD, `contract_approval`/contract) so the artifact is regenerated with the
 feedback and the human re-approves the result. The revise back-edge cascade-resets everything
 downstream — that is the point. If the run is past the relevant gate, the correct move is a
 revise at the nearest enclosing gate, never a silent hand-edit.
