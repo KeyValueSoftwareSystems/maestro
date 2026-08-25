@@ -14,6 +14,7 @@ import hashlib
 import os
 import re
 import sys
+import time
 
 try:
     import wf
@@ -63,6 +64,9 @@ _LOCK_WARNED = False
 MAESTRO_DIR = ".maestro"
 RUNS_DIR = "runs"          # per-slug run ledgers live under .maestro/runs/<slug>/
 STATE_VERSION = 1
+# Semantic run layout.  Unlike STATE_VERSION (the YAML serialization contract), this marker
+# advances when shipped workflows require a one-time ledger/artifact upgrade.
+RUN_FORMAT_VERSION = 2
 
 # A slug becomes a directory name under .maestro/runs/; keep it a single safe path segment so
 # a stray `/` or `..` can never scatter state outside the feature folder.
@@ -89,6 +93,35 @@ def now_iso():
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def now_ms():
+    return time.time_ns() // 1_000_000
+
+
+def mark_step_started(entry, **metadata):
+    """Record wall-clock timing and stable execution metadata for one visit."""
+    for key in ("finished_at", "duration_ms", "telemetry"):
+        entry.pop(key, None)
+    entry["started_at"] = now_iso()
+    entry["started_at_ms"] = now_ms()
+    for key, value in metadata.items():
+        if value not in (None, ""):
+            entry[key] = value
+
+
+def mark_step_finished(entry, telemetry=None):
+    """Close the current visit timing; optional host metrics must be factual scalars."""
+    finished_ms = now_ms()
+    entry["finished_at"] = now_iso()
+    started_ms = entry.get("started_at_ms")
+    if isinstance(started_ms, int):
+        entry["duration_ms"] = max(0, finished_ms - started_ms)
+    if telemetry:
+        entry["telemetry"] = {
+            key: value for key, value in telemetry.items()
+            if isinstance(value, (str, int, float, bool))
+        }
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as fh:
@@ -108,6 +141,7 @@ def artifact_ok(path, root="."):
 def new_state(slug, workflow_file, workflow_hash, inputs):
     return {
         "version": STATE_VERSION,
+        "run_format": RUN_FORMAT_VERSION,
         "slug": slug,
         "workflow": {"file": workflow_file, "sha256": workflow_hash},
         "frames": {},  # path -> {workflow, sha256, inputs} for entered subworkflows
@@ -165,14 +199,38 @@ def list_runs(root="."):
             continue
         data = load(name, root)
         if data is None:
+            path = state_path(name, root)
+            if os.path.isfile(path):
+                try:
+                    updated = _dt.datetime.fromtimestamp(
+                        os.path.getmtime(path), _dt.timezone.utc,
+                    ).strftime("%Y-%m-%dT%H:%M:%SZ")
+                except OSError:
+                    updated = None
+                runs.append({
+                    "slug": name,
+                    "status": "needs-upgrade",
+                    "workflow": None,
+                    "active": [],
+                    "updated_at": updated,
+                    "kind": "feature",
+                    "parent_slug": None,
+                    "repo": None,
+                })
             continue
         run = data.get("run") or {}
+        inputs = data.get("inputs") or {}
+        parent_slug = inputs.get("parent_slug")
+        repo = inputs.get("repo")
         runs.append({
             "slug": name,
             "status": run.get("status"),
             "workflow": (data.get("workflow") or {}).get("file"),
             "active": run.get("cursors") or [],
             "updated_at": data.get("updated_at"),
+            "kind": "repo-lld" if parent_slug and repo else "feature",
+            "parent_slug": parent_slug,
+            "repo": repo,
         })
     runs.sort(key=lambda r: r.get("updated_at") or "", reverse=True)
     return runs

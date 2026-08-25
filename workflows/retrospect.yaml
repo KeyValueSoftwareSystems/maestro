@@ -36,7 +36,9 @@ nodes:
       Harvest the finished run for feature "${inputs.slug}". Read its ledger
       .maestro/runs/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance text;
       per-step visits/attempts/status showing loops and retries) and the run's review/QA
-      artifacts under .maestro/runs/${inputs.slug}/. Then do BOTH:
+      artifacts, approved-corrections.md, and final-design/ under
+      .maestro/runs/${inputs.slug}/. Final corrected copies and approved corrections override
+      conflicting base design text. Then do BOTH:
       1. Add to / refresh the living docs — technical, functional AND architectural — for the
          domains this feature touched. CREATE docs/technical/<domain>.md and
          docs/functional/<domain>.md for any NEW domain the feature introduced, else update

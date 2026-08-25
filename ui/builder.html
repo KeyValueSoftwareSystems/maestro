@@ -9,7 +9,7 @@
   --bg: #f6f7fb; --panel: #ffffff; --panel2: #f1f3f9; --border: #e4e7f0; --border-strong: #d6dae7;
   --text: #1b2233; --muted: #727a8c; --faint: #9aa1b2; --accent: #4f6bf5; --accent-soft: #eef1ff;
   --danger: #d64550; --warn: #c98a1e; --ok: #2f9e6e; --edge: #c3c8d6;
-  --agent: #4f6bf5; --gate: #c98a1e; --script: #2f9e6e; --parallel: #9a5df0; --subworkflow: #d6558e;
+  --agent: #4f6bf5; --gate: #c98a1e; --interview: #d65a7a; --script: #2f9e6e; --parallel: #9a5df0; --subworkflow: #d6558e;
   --shadow-sm: 0 1px 2px rgba(20,28,60,.07);
   --shadow: 0 4px 20px rgba(20,28,60,.09), 0 1px 3px rgba(20,28,60,.06);
   --shadow-lg: 0 18px 50px rgba(20,28,60,.16);
@@ -22,7 +22,7 @@
   --bg: #111318; --panel: #191b21; --panel2: #15171c; --border: #2a2d36; --border-strong: #363a47;
   --text: #e8eaf0; --muted: #8b909e; --faint: #616675; --accent: #7288ff; --accent-soft: #20264a;
   --danger: #ef6b74; --warn: #e0aa54; --ok: #4dbd8f; --edge: #3a3f4c;
-  --agent: #7288ff; --gate: #e0aa54; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
+  --agent: #7288ff; --gate: #e0aa54; --interview: #ef7898; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
   --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
   --shadow: 0 4px 20px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.4);
   --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
@@ -32,7 +32,7 @@
     --bg: #111318; --panel: #191b21; --panel2: #15171c; --border: #2a2d36; --border-strong: #363a47;
     --text: #e8eaf0; --muted: #8b909e; --faint: #616675; --accent: #7288ff; --accent-soft: #20264a;
     --danger: #ef6b74; --warn: #e0aa54; --ok: #4dbd8f; --edge: #3a3f4c;
-    --agent: #7288ff; --gate: #e0aa54; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
+    --agent: #7288ff; --gate: #e0aa54; --interview: #ef7898; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
     --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
     --shadow: 0 4px 20px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.4);
     --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
@@ -160,6 +160,7 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
   pointer-events: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node.n-agent .ico, .pal-item.n-agent .ico { background: color-mix(in srgb, var(--agent) 15%, transparent); color: var(--agent); }
 .node.n-gate .ico, .pal-item.n-gate .ico { background: color-mix(in srgb, var(--gate) 15%, transparent); color: var(--gate); }
+.node.n-interview .ico, .pal-item.n-interview .ico { background: color-mix(in srgb, var(--interview) 15%, transparent); color: var(--interview); }
 .node.n-script .ico, .pal-item.n-script .ico { background: color-mix(in srgb, var(--script) 15%, transparent); color: var(--script); }
 .node.n-parallel .ico, .pal-item.n-parallel .ico { background: color-mix(in srgb, var(--parallel) 15%, transparent); color: var(--parallel); }
 .node.n-subworkflow .ico, .pal-item.n-subworkflow .ico { background: color-mix(in srgb, var(--subworkflow) 15%, transparent); color: var(--subworkflow); }
@@ -377,6 +378,7 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
     <div class="pal-h">Nodes</div>
     <div class="pal-item n-agent" draggable="true" data-preset="agent"><span class="ico">✦</span><span><div class="nm">Agent</div><div class="ds">AI step</div></span></div>
     <div class="pal-item n-gate" draggable="true" data-preset="gate"><span class="ico">◈</span><span><div class="nm">Gate</div><div class="ds">human decision</div></span></div>
+    <div class="pal-item n-interview" draggable="true" data-preset="interview"><span class="ico">?</span><span><div class="nm">Interview</div><div class="ds">durable Q&amp;A</div></span></div>
     <div class="pal-item n-script" draggable="true" data-preset="script"><span class="ico">$</span><span><div class="nm">Script</div><div class="ds">run a command</div></span></div>
     <div class="pal-item n-parallel" draggable="true" data-preset="parallel"><span class="ico">⋔</span><span><div class="nm">Parallel</div><div class="ds">fork &amp; join</div></span></div>
     <div class="pal-item n-subworkflow" draggable="true" data-preset="subworkflow"><span class="ico">⧉</span><span><div class="nm">Subworkflow</div><div class="ds">nested flow</div></span></div>
@@ -630,6 +632,9 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
           "$ref": "#/definitions/agentNode"
         },
         {
+          "$ref": "#/definitions/interviewNode"
+        },
+        {
           "$ref": "#/definitions/gateNode"
         },
         {
@@ -689,6 +694,12 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
         "model": {
           "type": "string"
         },
+        "execution": {
+          "enum": [
+            "worker",
+            "lead"
+          ]
+        },
         "inputs": {
           "type": "object",
           "additionalProperties": {
@@ -739,6 +750,119 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
         },
         "on_fail": {
           "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
+      }
+    },
+    "interviewNode": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "artifact"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "sections"
+          ],
+          "not": {
+            "required": [
+              "questions_artifact"
+            ]
+          }
+        },
+        {
+          "required": [
+            "questions_artifact"
+          ],
+          "not": {
+            "required": [
+              "sections"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "interview"
+        },
+        "label": {
+          "type": "string"
+        },
+        "skill": {
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/nodeId"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "proposal": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "questions_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "presentation": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "popup"
+          ]
+        },
+        "artifact": {
+          "type": "string"
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
         },
         "max_visits": {
           "type": "integer",
@@ -1019,7 +1143,7 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
   },
   "description": "Minimal authoring: version defaults to 1, start to the first node, node type to agent, omitted routing to next: end."
 }</script>
-<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction"]</script>
+<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections", "interview-no-source", "interview-multiple-sources", "bad-batch-size"]</script>
 <script>
 /* ================= Maestro Workflow Builder ================= */
 "use strict";
@@ -1028,9 +1152,9 @@ const $$ = (s, el) => [...(el || document).querySelectorAll(s)];
 const SCHEMA = JSON.parse($("#workflow-schema").textContent);
 const LINT_RULES = JSON.parse($("#lint-rules").textContent);
 const RESERVED = ["end", "abort"];
-const NODE_TYPES = ["agent", "gate", "script", "parallel", "subworkflow"];
-const ICONS = { agent: "✦", gate: "◈", script: "$", parallel: "⋔", subworkflow: "⧉" };
-const SKILL_CATALOG = ["plan","backend-design","frontend-design","api-contract","functional-testcases",
+const NODE_TYPES = ["agent", "gate", "interview", "script", "parallel", "subworkflow"];
+const ICONS = { agent: "✦", gate: "◈", interview: "?", script: "$", parallel: "⋔", subworkflow: "⧉" };
+const SKILL_CATALOG = ["prd-interview","prd-writing","plan","backend-design","frontend-design","api-contract","functional-testcases",
   "backend-tasks","backend-implement","frontend-implement","qa-automation","architecture-review",
   "backend-review","frontend-review","verify","fix-loop","human-review-pack"];
 const AGENT_CATALOG = ["planner","implementer","reviewer","qa","analyst","general"];
@@ -1176,6 +1300,18 @@ function lint() {
         }
       }
       if (n.type === "agent" && !(n.instruction || "").trim()) err("empty-instruction", `${w}: agent needs an instruction`, n.id);
+      if (n.type === "interview") {
+        const hasSections = Array.isArray(n.sections) && n.sections.length;
+        const hasQuestions = typeof n.questions_artifact === "string" && n.questions_artifact.trim();
+        if (!hasSections && !hasQuestions) err("interview-no-source", `${w}: interview needs sections or a question queue`, n.id);
+        if (hasSections && hasQuestions) err("interview-multiple-sources", `${w}: interview cannot use both question sources`, n.id);
+        if (n.sections !== undefined && !hasSections) err("interview-no-sections", `${w}: interview sections must be a non-empty array`, n.id);
+        if (!n.artifact) err("missing-key", `${w}: interview needs an artifact path`, n.id);
+        if (n.batch_size !== undefined && (!Number.isInteger(n.batch_size) || n.batch_size < 1)) err("bad-batch-size", `${w}: interview batch size must be a positive integer`, n.id);
+        if (n.presentation !== undefined && !["chat", "popup"].includes(n.presentation)) err("bad-type", `${w}: interview presentation must be chat or popup`, n.id);
+        const sectionIds = (n.sections || []).map(s => s.id);
+        if (new Set(sectionIds).size !== sectionIds.length) err("interview-dup-sections", `${w}: interview section ids must be unique`, n.id);
+      }
       if (n.type === "script" && !(Array.isArray(n.run) && n.run.length)) err("bad-type", `${w}: script needs a command`, n.id);
       if (n.type === "subworkflow" && !n.workflow) err("missing-key", `${w}: subworkflow needs a file path`, n.id);
       for (const e of edgesOf([n])) {
@@ -1291,6 +1427,11 @@ function nodeEl(n, issues) {
     if (n.artifact) chips.push(`<span class="chip" title="artifact">📄</span>`);
   } else if (n.type === "gate") {
     chips.push(`<span class="chip">${(n.options || []).length} option${(n.options || []).length === 1 ? "" : "s"}</span>`);
+  } else if (n.type === "interview") {
+    if (n.questions_artifact) chips.push(`<span class="chip">dynamic questions</span>`);
+    else chips.push(`<span class="chip">${(n.sections || []).length} section${(n.sections || []).length === 1 ? "" : "s"}</span>`);
+    if ((n.batch_size || 1) > 1) chips.push(`<span class="chip">batch ${n.batch_size}</span>`);
+    if (n.skill) chips.push(`<span class="chip skill">${esc(n.skill)}</span>`);
   } else if (n.type === "script") {
     chips.push(`<span class="chip" style="font-family:var(--mono)">${esc((n.run || []).join(" ").slice(0, 30))}</span>`);
   } else if (n.type === "parallel") {
@@ -1501,6 +1642,7 @@ function inspectNode(box) {
     row.appendChild(field("Model", txt(n.model, v => commit("model", () => v ? n.model = v : delete n.model), { list: "dl-models", placeholder: "default" })));
     row.appendChild(field("Agent type", txt(n.agent, v => commit("agent", () => v ? n.agent = v : delete n.agent), { list: "dl-agents", placeholder: "default" })));
     sec.appendChild(row);
+    sec.appendChild(field("Execution", sel(n.execution || "worker", ["worker", "lead"], v => commit("execution", () => { if (v === "worker") delete n.execution; else n.execution = v; })), "Lead runs this step in the current session without spawning a worker."));
     sec.appendChild(field("Artifact file(s) it must write", txt(Array.isArray(n.artifact) ? n.artifact.join(", ") : n.artifact,
       v => commit("art", () => { const list = v.split(",").map(s => s.trim()).filter(Boolean); if (!list.length) delete n.artifact; else n.artifact = list.length > 1 ? list : list[0]; }),
       { mono: true, placeholder: ".maestro/${inputs.slug}/hld.md" }), "The engine refuses to mark the step done unless these exist non-empty."));
@@ -1543,6 +1685,22 @@ function inspectNode(box) {
     add.onclick = () => commit("o", () => { n.options = n.options || []; n.options.push({ id: "option-" + (n.options.length + 1), label: "New option", to: "end" }); });
     sec.appendChild(add);
     box.appendChild(sec);
+  } else if (n.type === "interview") {
+    box.appendChild(field("Skill", txt(n.skill, v => commit("skill", () => v ? n.skill = v : delete n.skill), { list: "dl-skills", placeholder: "prd-interview" })));
+    box.appendChild(field("Context passed to the interview", txt(n.context, v => commit("context", () => v ? n.context = v : delete n.context), { area: true, mono: true })));
+    box.appendChild(field("Question queue file", txt(n.questions_artifact, v => commit("questions_artifact", () => {
+      if (v) { n.questions_artifact = v; delete n.sections; } else delete n.questions_artifact;
+    }), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/questions.json" }), "Use this for dynamic, validated questions; leave blank for static sections."));
+    box.appendChild(field("Questions per batch", txt(n.batch_size, v => commit("batch_size", () => v ? n.batch_size = +v : delete n.batch_size), { number: true, placeholder: "1" }), "Use 1 for one-at-a-time; larger values show a round together."));
+    box.appendChild(field("Presentation", sel(n.presentation || "chat", ["chat", "popup"], v => commit("presentation", () => {
+      if (v === "chat") delete n.presentation; else n.presentation = v;
+    })), "Popup requires a native question tool in the active harness."));
+    box.appendChild(field("Artifact file", txt(n.artifact, v => commit("artifact", () => n.artifact = v), { mono: true, placeholder: ".maestro/runs/${inputs.slug}/prd-context.json" })));
+    box.appendChild(field("Sections (JSON array)", txt(JSON.stringify(n.sections || [], null, 2), (v, el) => {
+      el.setCustomValidity("");
+      try { const parsed = JSON.parse(v); if (!Array.isArray(parsed)) throw new Error("expected an array"); commit("sections", () => { n.sections = parsed; if (parsed.length) delete n.questions_artifact; }); }
+      catch (err) { el.setCustomValidity(err.message); el.reportValidity(); }
+    }, { area: true, mono: true }), "Each section needs id and title; proposal and prompt are optional."));
   } else if (n.type === "script") {
     box.appendChild(field("Command (one argument per line)", txt((n.run || []).join("\n"),
       v => commit("run", () => n.run = v.split("\n").map(s => s.trim()).filter(Boolean)), { area: true, mono: true, placeholder: "bash\n-c\necho hello" })));
@@ -1896,6 +2054,8 @@ const PRESETS = {
     instruction: "Automate and run the functional tests; report pass/fail honestly.", outputs: ["passed", "summary"] },
   gate: { type: "gate", prompt: "Approve?", options: [
     { id: "approve", label: "Approve", to: "end" }, { id: "reject", label: "Reject", to: "abort" }] },
+  interview: { type: "interview", skill: "prd-interview", artifact: ".maestro/runs/${inputs.slug}/interview.json",
+    sections: [{ id: "goal", title: "Goal", proposal: "${inputs.feature}", prompt: "Is this goal correct?" }] },
   script: { type: "script", run: ["bash", "-c", "echo hello"] },
   parallel: { type: "parallel", join: "all", branches: [
     { id: "branch-1", start: "step-1", steps: [{ id: "step-1", type: "agent", instruction: "Describe this step…", next: "end", ui: { x: 60, y: 60 } }] },

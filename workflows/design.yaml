@@ -1,9 +1,9 @@
-# Design phase: requirement -> HLD -> open-questions loop -> approval -> parallel LLDs
-# -> API contract -> functional test cases.
+# Design phase: requirement -> clarify-first HLD -> conditional post-check -> approval
+# -> parallel LLDs -> API contract -> functional test cases.
 #
-# Showcases: script routing on stdout JSON (oq_serve), a human-in-the-loop cycle built
-# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets all
-# downstream design artifacts, and a parallel fork.
+# Showcases: validated clarify-first interviews, a conditional post-design question cycle built
+# from BACK-EDGES (no loop construct), a revise gate whose back-edge cascade-resets downstream
+# design artifacts, and a parallel fork.
 version: 1
 name: design
 description: Design a feature end-to-end, from requirement folder to reviewed design artifacts.
@@ -11,12 +11,135 @@ inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
+  upgrade_manifest: {type: string, default: "", description: engine-created one-time legacy run import plan}
 defaults:
   model: opus
   agent: planner
   max_visits: 10
-start: assert_requirement
+start: upgrade_entry
 nodes:
+  - id: upgrade_entry
+    type: script
+    label: Check one-time run upgrade
+    run: [python3, .maestro/engine/run_upgrade.py, resume, --root, ., --manifest, "${inputs.upgrade_manifest}"]
+    routes:
+      - {when: "${steps.upgrade_entry.outputs.state} == ready", to: upgrade_baseline_approval}
+      - {when: "${steps.upgrade_entry.outputs.state} == invalid", to: upgrade_baseline_invalid}
+      - {to: assert_requirement}
+
+  - id: upgrade_baseline_approval
+    type: gate
+    label: Approve imported design baseline
+    prompt: |
+      Maestro found a valid PRD and HLD in the legacy run:
+      ${steps.upgrade_entry.outputs.summary}
+
+      Approve these unchanged as the imported baseline? Existing repository LLDs remain drafts:
+      each one must pass the current validator and its own human approval before implementation.
+    options:
+      - {id: approve, label: Approve imported PRD and HLD, to: upgrade_activate}
+      - {id: restart, label: Recheck and repair through the current design flow, to: upgrade_skip}
+      - {id: reject, label: Abort the upgraded run, to: abort}
+
+  - id: upgrade_baseline_invalid
+    type: gate
+    label: Legacy design needs current-format repair
+    prompt: |
+      The legacy documents were preserved, but their old structure cannot pass current validators:
+      ${steps.upgrade_entry.outputs.summary}
+
+      Convert the existing decisions into the current concise PRD/HLD structure without reopening
+      discovery, restart through the full current design flow, or abort?
+    options:
+      - {id: convert, label: Convert existing PRD and HLD once, to: upgrade_repair}
+      - {id: rediscover, label: Restart through the current design flow, to: upgrade_skip}
+      - {id: reject, label: Abort the upgraded run, to: abort}
+
+  - id: upgrade_repair
+    type: agent
+    execution: lead
+    label: Convert legacy PRD and HLD structure
+    model: sonnet
+    instruction: |
+      Convert the existing legacy PRD and HLD for ${inputs.slug} into the current concise document
+      contracts. The engine preserved immutable originals in the legacy-artifacts paths named by
+      ${inputs.upgrade_manifest}. Read those originals and the current copies only. Preserve every
+      existing product requirement, acceptance behavior, non-goal, architecture decision, trade-off,
+      risk, dependency, and open question. Do not ask new questions, invent missing decisions,
+      broaden scope, or add explanations. This is structural migration, not redesign.
+
+      Rewrite requirement/prd.md using the exact current PRD headings and acceptance IDs only in
+      Acceptance criteria. Rewrite hld.md using the exact six current HLD headings. Keep technical
+      details that belong in the imported repository LLD out of the HLD. Preserve the existing
+      open-questions.json ledger. Run the supplied current validators before returning.
+    skill: run-upgrade-repair
+    inputs:
+      slug: "${inputs.slug}"
+      manifest_path: "${inputs.upgrade_manifest}"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      prd_validator: ".maestro/engine/validate_prd.py"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      validator_feedback: "${steps.upgrade_validate.outputs.issues_summary}"
+    outputs: [summary]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      - ".maestro/runs/${inputs.slug}/hld.md"
+    max_visits: 2
+    on_exhausted: upgrade_repair_limit
+    next: upgrade_validate
+
+  - id: upgrade_validate
+    type: script
+    label: Validate converted legacy baseline
+    run: [python3, .maestro/engine/run_upgrade.py, validate-baseline, --root, ., --manifest, "${inputs.upgrade_manifest}"]
+    routes:
+      - {when: "${steps.upgrade_validate.outputs.valid} == true", to: upgrade_converted_approval}
+      - {to: upgrade_repair}
+
+  - id: upgrade_converted_approval
+    type: gate
+    label: Approve converted design baseline
+    prompt: |
+      The preserved legacy decisions now pass the current PRD and HLD validators:
+      ${steps.upgrade_validate.outputs.summary}
+
+      Approve these converted documents as the imported baseline? Existing repository LLDs remain
+      drafts and still require their own current validation and human approval.
+    options:
+      - {id: approve, label: Approve converted PRD and HLD, to: upgrade_activate}
+      - {id: restart, label: Recheck through the current design flow, to: upgrade_skip}
+      - {id: reject, label: Abort the upgraded run, to: abort}
+
+  - id: upgrade_repair_limit
+    type: gate
+    label: Legacy conversion needs discovery
+    prompt: |
+      The old PRD/HLD could not be converted mechanically after two focused passes:
+      ${steps.upgrade_validate.outputs.issues_summary}
+
+      Continue through current clarification, or abort while preserving the legacy backup?
+    options:
+      - {id: rediscover, label: Continue through current clarification, to: upgrade_skip}
+      - {id: reject, label: Abort and keep the backup, to: abort}
+
+  - id: upgrade_skip
+    type: script
+    label: Close legacy import fast path
+    run: [python3, .maestro/engine/run_upgrade.py, skip, --root, ., --manifest, "${inputs.upgrade_manifest}"]
+    on_fail: abort
+    next: assert_requirement
+
+  - id: upgrade_activate
+    type: script
+    label: Create current repository LLD workstreams from legacy drafts
+    run: [python3, .maestro/engine/run_upgrade.py, activate, --root, ., --manifest, "${inputs.upgrade_manifest}", --child-workflow, .maestro/workflows/repo-lld.yaml]
+    on_fail: abort
+    routes:
+      - {when: "${steps.upgrade_activate.outputs.has_workstreams} == true", to: lld_workstreams_check}
+      - {to: lld_scope_serve}
+
   - id: assert_requirement
     type: script
     label: Requirement present?
@@ -25,11 +148,11 @@ nodes:
       - {when: "${steps.assert_requirement.outputs.state} == have", to: collect_references}
       - {to: requirement_intake}
 
-  # ---- PRD phase: intake -> collect references -> author/refine the PRD -> Q&A loop ----
-  # ALWAYS produces .maestro/runs/<slug>/requirement/prd.md before the HLD. If the user provided
-  # a complete requirement it is consolidated into prd.md with no questions; otherwise the
-  # gated Q&A loop (reusing the oq_* scripts on requirement-questions.json) fills the gaps.
-  # requirement_intake is reached only when the folder is empty.
+  # ---- PRD phase: bounded Grill interview -> one final write -> deterministic lint ----
+  # Product context is confirmed before prose. The lead agent reads maintained summaries and
+  # requirement inputs only; it never scans application source. The engine-owned interview node
+  # persists feature-specific product decisions and edge cases in prd-context.json. A complete existing
+  # prd.md takes the fast path after the two short context confirmations.
   - id: requirement_intake
     type: gate
     label: No requirement found
@@ -39,7 +162,7 @@ nodes:
       How do you want to supply the requirement for "${inputs.feature}"?
     options:
       - {id: add-files, label: I'll add files now — re-check, to: assert_requirement}
-      - {id: brainstorm, label: Brainstorm it with me, to: collect_references}
+      - {id: clarify, label: Clarify it with me, to: collect_references}
       - {id: reject, label: Abort the run, to: abort}
 
   - id: collect_references
@@ -50,119 +173,237 @@ nodes:
       doc or file paths, tickets, URLs. Local paths are read; links that can't be opened are
       recorded in the PRD and turned into a question if their content matters. Or pick "none".
     options:
-      - {id: provide, label: I have references to add, to: brainstorm_draft, input: refs}
-      - {id: none, label: No references — continue, to: brainstorm_draft}
+      - {id: provide, label: I have references to add, to: project_context, input: refs}
+      - {id: none, label: No references — continue, to: project_context}
 
-  - id: brainstorm_draft
+  - id: project_context
     type: agent
-    label: Author / refine the PRD
+    execution: lead
+    label: Summarize project context
     instruction: |
-      Produce the product requirement doc (PRD) for "${inputs.feature}" at
-      .maestro/runs/${inputs.slug}/requirement/prd.md. Read EVERY file already in
-      .maestro/runs/${inputs.slug}/requirement/ (a PRD, notes, mockups — may be empty) and fold in
-      the provided references: ${steps.collect_references.outputs.refs}
-      For local file paths, read them; for Figma/URLs/tickets you cannot open, record the link
-      in the PRD's References section and (only if its content is decision-critical) raise it
-      as a question — never invent its contents.
-
-      Then write requirement-questions.json (schema .maestro/engine/schemas/open-questions.schema.json)
-      with ONLY the remaining HIGH-LEVEL product/feature gaps — problem, users, scope, goals,
-      constraints, acceptance — each with why it matters and 2-4 options. Do NOT ask
-      design/technical/implementation questions (API, schema, components, tech choices) — those
-      belong to the HLD downstream. If the inputs already form a COMPLETE PRD, just consolidate
-      them into prd.md and write an EMPTY questions set (no fabricated questions). Assert
-      nothing the user has not confirmed; do not ask the user anything directly.
-      If a previous review left feedback, honour it (product-level only): ${steps.prd_approval.outputs.feedback}
-    skill: brainstorm
+      State this project's product context in at most three short sentences. Read only root
+      AGENTS.md / CLAUDE.md, maintained summaries under docs/ (architecture.md, technical/,
+      functional/), every file under .maestro/runs/${inputs.slug}/requirement/, and explicit
+      references: ${steps.collect_references.outputs.refs}. Do not read application source or
+      search outside this repository. If context is missing, say so plainly. Apply the user's
+      correction when present: ${steps.project_context_confirm.outputs.feedback}
+    skill: prd-interview
     inputs:
-      feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       references: "${steps.collect_references.outputs.refs}"
-      feedback: "${steps.prd_approval.outputs.feedback}"
-    outputs: [draft_summary]
-    artifact:
-      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
-      - ".maestro/runs/${inputs.slug}/requirement-questions.json"
-    max_visits: 3
-    next: rq_serve
+      feedback: "${steps.project_context_confirm.outputs.feedback}"
+    outputs: [project_context]
+    next: project_context_confirm
 
-  - id: rq_serve
-    type: script
-    label: Next requirement questions?
-    run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/requirement-questions.json"]
-    max_visits: 40
-    on_exhausted: prd_approval
-    routes:
-      - {when: "${steps.rq_serve.outputs.state} == ask", to: rq_ask}
-      - {when: "${steps.rq_serve.outputs.state} == refine", to: rq_fold}
-      - {to: prd_approval}
-
-  # All open requirement questions are asked in ONE gate turn (not one round-trip per
-  # question) — oq_serve.py batches them; oq_record.py applies the combined reply.
-  - id: rq_ask
+  - id: project_context_confirm
     type: gate
-    label: Requirement questions
+    label: Confirm project context
     prompt: |
-      ${steps.rq_serve.outputs.count} open question(s):
+      Project context: ${steps.project_context.outputs.project_context}
 
-      ${steps.rq_serve.outputs.questions_md}
-
-      To answer, reply with ONE line per question, IN THE SAME ORDER as above — each
-      line a number to pick that option, free text for a custom answer, "skip", or
-      "you decide". Keep each answer on a single line.
-    max_visits: 40
+      Is this correct?
     options:
-      - {id: answer-all, label: Answer these, to: rq_record, input: answers_blob}
-      - {id: decide-all, label: You decide all (pick sensible defaults for everything), to: rq_record}
-      - {id: skip-all, label: Skip all — leave as assumptions, to: rq_record}
+      - {id: confirm, label: Yes — use this context, to: feature_goal}
+      - {id: revise, label: No — correct the context, to: project_context, input: feedback}
+      - {id: reject, label: Abort the run, to: abort}
 
-  - id: rq_record
-    type: script
-    label: Record answers
-    run:
-      - python3
-      - .maestro/engine/oq_record.py
-      - ".maestro/runs/${inputs.slug}/requirement-questions.json"
-      - "${steps.rq_serve.outputs.qids_csv}"
-      - "${steps.rq_ask.outputs.choice}"
-      - "${steps.rq_ask.outputs.answers_blob}"
-    max_visits: 40
-    on_fail: abort
-    next: rq_serve
-
-  - id: rq_fold
+  - id: feature_goal
     type: agent
-    label: Fold answers into the PRD
+    execution: lead
+    label: Restate feature goal
     instruction: |
-      Resolved requirement questions await folding. Apply each resolved answer to
-      .maestro/runs/${inputs.slug}/requirement/prd.md ('you-decide' resolutions: pick a
-      sensible default and record the choice), then mark those questions status "folded" in
-      .maestro/runs/${inputs.slug}/requirement-questions.json and re-validate it with
-      python3 .maestro/engine/validate_open_questions.py.
-    skill: brainstorm
+      Restate the requested feature outcome in at most two short sentences. Preserve the user's
+      scope and wording. Use the confirmed project context, feature seed, requirement files and
+      explicit references only. Do not add capabilities or technical design. Apply correction or
+      PRD revision feedback when present: ${steps.feature_goal_confirm.outputs.feedback}
+      ${steps.prd_approval.outputs.feedback}
+    skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
-    outputs: [refined_summary]
-    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
-    max_visits: 20
-    next: rq_serve
+      feature: "${inputs.feature}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feedback: "${steps.feature_goal_confirm.outputs.feedback} ${steps.prd_approval.outputs.feedback}"
+    outputs: [feature_goal]
+    next: feature_goal_confirm
 
-  # ---- PRD approval: confirm the PRD (after every open question is asked + answered)
-  # before authoring the HLD. 'revise' is a back-edge into brainstorm_draft, whose re-entry
-  # cascade-resets the PRD + its whole Q&A loop; the human is the loop bound.
+  - id: feature_goal_confirm
+    type: gate
+    label: Confirm feature goal
+    prompt: |
+      Feature goal: ${steps.feature_goal.outputs.feature_goal}
+
+      Is this the outcome you want?
+    options:
+      - {id: confirm, label: Yes — clarify the product decisions, to: check_existing_prd}
+      - {id: revise, label: No — correct the feature goal, to: feature_goal, input: feedback}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: check_existing_prd
+    type: script
+    label: Check existing PRD fast path
+    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report, --compatible]
+    routes:
+      - {when: "${steps.prd_approval.outputs.feedback}", to: prepare_prd_questions}
+      - {when: "${steps.check_existing_prd.outputs.valid} == true", to: prd_approval}
+      - {to: prepare_prd_questions}
+
+  - id: prepare_prd_questions
+    type: agent
+    execution: lead
+    label: Find the next material product gaps
+    instruction: |
+      Build the next feature-specific Grill question queue at
+      .maestro/runs/${inputs.slug}/prd-questions.json. Use the confirmed context and goal,
+      requirement files, explicit references, revision feedback, and earlier decisions when the
+      decisions file exists. Ask only unanswered product decisions that materially change scope,
+      user-visible behaviour, acceptance, or risk. Each item must resolve one decision, explain
+      briefly why it matters, and include a grounded recommendation when possible.
+
+      First audit every earlier answer against that question's must_resolve facts. A saved answer
+      is not automatically complete. Use only the stored answer as confirmed when its source is
+      user-answer; never fill its missing facts from the unaccepted proposal. Ask focused follow-ups
+      for missing facts, concrete values, or contradictions between decisions. Use a new ID for a
+      follow-up so both answers remain visible.
+
+      Test only relevant lenses: actor permissions; lifecycle and state transitions; timing and
+      limits; conflicts or concurrent actions from the user's perspective; cancel, retry, and
+      recovery behaviour; invalid or stale input; notifications and external effects; privacy and
+      data visibility; admin overrides; migration or backward compatibility; measurable success;
+      and explicit non-goals. Do not mechanically cover every lens. Do not ask about PRD headings,
+      repeat a decided question, ask technical-design questions, inspect application source, or
+      draft the PRD. Write schema_version 2 with 4-8 questions when several material gaps remain,
+      fewer when nearly clear, and an empty questions array only after all must_resolve facts are
+      explicit and no decisions conflict. Every question declares 1-4 short must_resolve facts.
+      Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
+      Validate the file with the supplied deterministic validator before completing.
+    skill: prd-interview
+    inputs:
+      slug: "${inputs.slug}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
+      validator: ".maestro/engine/validate_prd_questions.py"
+      revision_feedback: "${steps.prd_approval.outputs.feedback}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+    max_visits: 8
+    on_exhausted: clarity_limit
+    next: validate_prd_questions
+
+  - id: validate_prd_questions
+    type: script
+    label: Validate Grill question queue
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_prd_questions.outputs.valid} == false", to: prepare_prd_questions}
+      - {when: "${steps.validate_prd_questions.outputs.state} == clear", to: author_prd}
+      - {to: prd_interview}
+
+  - id: prd_interview
+    type: interview
+    label: Clarify material product decisions
+    skill: prd-interview
+    context: |
+      Confirmed project: ${steps.project_context.outputs.project_context}
+      Confirmed feature: ${steps.feature_goal.outputs.feature_goal}
+    questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: prepare_prd_questions
+
+  - id: clarity_limit
+    type: gate
+    label: PRD clarity checkpoint
+    prompt: |
+      Eight Grill rounds are complete and unresolved product facts remain. Confirmed decisions are saved at
+      .maestro/runs/${inputs.slug}/prd-context.json.
+
+      Maestro will not write the PRD while those facts are unresolved. Continue the focused
+      interview, or stop this run?
+    options:
+      - {id: more, label: Continue with focused questions, to: prepare_prd_questions}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: author_prd
+    type: agent
+    execution: lead
+    label: Write final PRD once
+    instruction: |
+      Write the final PRD from the confirmed project context, feature goal, requirements,
+      references, and any cumulative decisions at .maestro/runs/${inputs.slug}/prd-context.json to
+      .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
+      repository. Use only stored answers, never unaccepted proposal text, for user-answer
+      decisions. Create the exact eleven-section skeleton before filling it, keep the first write
+      below 70% of every supplied ceiling, and give every in-scope confirmed behavior an observable
+      AC. Before completing, run `python3 .maestro/engine/validate_prd.py
+      .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical`; repair any remaining named
+      defect inside this same call and run it again. This is the only normal PRD write.
+    skill: prd-writing
+    inputs:
+      slug: "${inputs.slug}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
+      validator: ".maestro/engine/validate_prd.py"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    next: validate_prd
+
+  - id: validate_prd
+    type: script
+    label: Validate PRD structure and brevity
+    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --fix-mechanical, --report]
+    max_visits: 3
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.validate_prd.outputs.valid} == true", to: prd_approval}
+      - {to: repair_prd}
+
+  - id: repair_prd
+    type: agent
+    execution: lead
+    label: Repair PRD validation defects
+    model: haiku
+    instruction: |
+      Repair only these deterministic PRD defects: ${steps.validate_prd.outputs.issues_summary}
+      Keep every confirmed decision unchanged and do not expand unrelated sections. Run the
+      supplied validator with its mechanical-fix option before completing. Run `python3
+      .maestro/engine/validate_prd.py .maestro/runs/${inputs.slug}/requirement/prd.md
+      --fix-mechanical`, fix only a remaining named defect, and run it again. This is a narrow
+      fallback repair, not a full PRD rewrite.
+    skill: prd-writing
+    inputs:
+      slug: "${inputs.slug}"
+      project_context: "${steps.project_context.outputs.project_context}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      validator: ".maestro/engine/validate_prd.py"
+      validator_feedback: "${steps.validate_prd.outputs.issues_summary}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    max_visits: 2
+    next: validate_prd
+
   - id: prd_approval
     type: gate
     label: PRD approval
     prompt: |
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
-      Open questions & any deferred assumptions: .maestro/runs/${inputs.slug}/requirement-questions.json
 
-      Confirm the product requirement (problem, users, scope, constraints, acceptance) is
-      complete, then choose. Design/technical concerns are handled later at the HLD/LLD.
+      Material product decisions and relevant edge cases were clarified before writing. Confirm the concise PRD is
+      accurate; design/technical concerns are handled later at the HLD/LLD.
     options:
       - {id: approve, label: Approve — author the HLD, to: check_codebase_map}
-      - {id: revise, label: Request PRD revisions — then describe what to change, to: brainstorm_draft, input: feedback}
+      - {id: revise, label: Correct the feature context and regenerate, to: feature_goal, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
   # ---- Codebase-map freshness gate: catches drift from commits made OUTSIDE Maestro
@@ -176,7 +417,7 @@ nodes:
     run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
     routes:
       - {when: "${steps.check_codebase_map.outputs.stale} == true", to: map_stale_gate}
-      - {to: author_hld}
+      - {to: prepare_hld_questions}
 
   - id: map_stale_gate
     type: gate
@@ -189,7 +430,7 @@ nodes:
       about to be grounded in docs/codebase-map.md — resync it first, or proceed with what's there?
     options:
       - {id: resync, label: Resync the map first, to: snapshot_map}
-      - {id: proceed, label: Proceed with the existing map, to: author_hld}
+      - {id: proceed, label: Proceed with the existing map, to: prepare_hld_questions}
       - {id: reject, label: Abort the run, to: abort}
 
   - id: snapshot_map
@@ -243,99 +484,180 @@ nodes:
       - --snapshot-sha256
       - "${steps.snapshot_map.outputs.snapshot_sha256}"
     on_fail: resync_map
-    next: author_hld
+    next: prepare_hld_questions
 
-  - id: author_hld
+  # ---- HLD phase: clarify known architecture decisions -> one write -> conditional post-check ----
+  # Known material decisions are resolved before prose. The HLD author also emits a structured
+  # post-check; only a genuinely new gap discovered during synthesis causes one grouped follow-up
+  # and a rewrite. Deferred questions remain in open-questions.json for downstream LLD agents.
+  - id: prepare_hld_questions
     type: agent
-    label: Author HLD
+    execution: lead
+    label: Find the next material architecture gaps
     instruction: |
-      Write the high-level design for this feature. Read EVERY file in the requirement
-      folder as the requirement, AND the maintained codebase map(s) — docs/codebase-map.md
-      in each repo the feature touches (umbrella layout: codebase/<repo>/docs/codebase-map.md;
-      single repo: ./docs/codebase-map.md). The map is the standing description of the real
-      modules, flows and execution modes; ground the design in it. Explore the actual source
-      further ONLY where the feature needs context the map does not cover. Your chosen
-      approach MUST accommodate every execution mode relevant to the feature; if one cannot
-      be supported, say so explicitly and constrain scope rather than assuming the happy path.
-      Surface unresolved product/technical decisions as open questions: write them to BOTH the
-      HLD's "Open questions" section AND .maestro/runs/${inputs.slug}/open-questions.json
-      (schema .maestro/engine/schemas/open-questions.schema.json). Do not ask the user anything
-      directly. If a previous review left feedback, honour it: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
-    skill: plan
+      Build the next architecture Grill queue at
+      .maestro/runs/${inputs.slug}/hld-questions.json before HLD prose is written. Read every
+      requirement file, the maintained codebase map in each affected repo, existing confirmed HLD
+      decisions when present, and revision feedback. Explore source only when a material decision
+      depends on detail absent from the maps.
+
+      Ask only unresolved decisions that change system ownership, boundaries, data authority,
+      cross-repo interaction, security/privacy, failure or recovery behavior, execution-mode
+      support, migration, rollout, or a material trade-off. Do not ask for endpoint fields, table
+      columns, filenames, task breakdowns, or other LLD details. Audit earlier answers against their
+      must_resolve facts and each other; a saved answer is not automatically complete. Use only the
+      stored answer as confirmed for user-answer decisions, never its unaccepted proposal.
+
+      Write schema_version 2 with 4-8 questions when several gaps remain, fewer when nearly clear,
+      and an empty queue only when all material architecture facts are concrete and consistent.
+      Every question declares 1-4 short must_resolve facts. Include audit.unresolved and
+      audit.contradictions; both must be empty with an empty queue. Validate before completing.
+    skill: hld-interview
     inputs:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      validator: ".maestro/engine/validate_prd_questions.py"
+      revision_feedback: "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"
+      codebase_lessons: "${memory.knowledge.codebase}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
+    max_visits: 8
+    on_exhausted: hld_clarity_limit
+    next: validate_hld_questions
+
+  - id: validate_hld_questions
+    type: script
+    label: Validate architecture question queue
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_hld_questions.outputs.valid} == false", to: prepare_hld_questions}
+      - {when: "${steps.validate_hld_questions.outputs.state} == clear", to: author_hld}
+      - {to: hld_interview}
+
+  - id: hld_interview
+    type: interview
+    label: Clarify material architecture decisions
+    skill: hld-interview
+    context: |
+      Feature: ${inputs.feature}
+      Approved PRD: .maestro/runs/${inputs.slug}/requirement/prd.md
+    questions_artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    next: prepare_hld_questions
+
+  - id: hld_clarity_limit
+    type: gate
+    label: HLD clarity checkpoint
+    prompt: |
+      Eight architecture rounds are complete and material decisions remain unresolved.
+      Maestro will not finalize the HLD while those decisions are unclear. Continue with focused
+      questions, or stop this run?
+    options:
+      - {id: more, label: Continue with focused questions, to: prepare_hld_questions}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: author_hld
+    type: agent
+    execution: lead
+    label: Author HLD once
+    instruction: |
+      Write the final high-level design from the approved requirement, maintained codebase maps,
+      relevant source details, and confirmed architecture decisions at
+      .maestro/runs/${inputs.slug}/hld-context.json. Honour review feedback without mentioning the
+      review: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
+
+      Write concise, skimmable technical English. Do not reopen settled decisions, invent missing
+      facts, repeat the PRD, or drift into endpoint fields, schema columns, file lists, or task-level
+      implementation. Create the exact six-section HLD skeleton before filling it and target below
+      70% of every supplied word ceiling.
+
+      Also write open-questions.json containing only questions explicitly deferred to LLD, and
+      hld-post-questions.json as a schema-version-2 post-check. The post-check must be empty when no
+      new material gap emerged during synthesis. If a new blocking gap did emerge, put only that
+      gap in the post-check; do not silently guess. Validate the HLD, deferred-question ledger, and
+      post-check before completing, repairing deterministic defects inside this same call.
+    skill: hld-writing
+    inputs:
+      feature: "${inputs.feature}"
+      slug: "${inputs.slug}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/hld.md"
       - ".maestro/runs/${inputs.slug}/open-questions.json"
-    max_visits: 5
-    next: oq_serve
+      - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    max_visits: 4
+    next: validate_hld_post_questions
 
-  # ---- open-questions cycle: serve -> ask -> record -> serve (back-edges) ----
-  # All open questions are asked in ONE gate turn (not one round-trip per question) —
-  # oq_serve.py batches them; oq_record.py applies the combined reply.
-  - id: oq_serve
+  - id: validate_hld_post_questions
     type: script
-    label: Next open questions?
-    run: [python3, .maestro/engine/oq_serve.py, ".maestro/runs/${inputs.slug}/open-questions.json"]
-    max_visits: 40
-    on_exhausted: hld_approval
+    label: Validate HLD post-check
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --report]
     routes:
-      - {when: "${steps.oq_serve.outputs.state} == ask", to: oq_ask}
-      - {when: "${steps.oq_serve.outputs.state} == refine", to: refine_hld}
-      - {to: hld_approval}
+      - {when: "${steps.validate_hld_post_questions.outputs.valid} == false", to: author_hld}
+      - {when: "${steps.validate_hld_post_questions.outputs.state} == ask", to: hld_post_interview}
+      - {to: validate_hld}
 
-  - id: oq_ask
-    type: gate
-    label: Open questions
-    prompt: |
-      ${steps.oq_serve.outputs.count} open question(s):
+  - id: hld_post_interview
+    type: interview
+    label: Resolve newly discovered HLD gaps
+    skill: hld-interview
+    context: |
+      A material gap emerged while connecting the complete HLD. Resolve it before final approval.
+    questions_artifact: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    next: author_hld
 
-      ${steps.oq_serve.outputs.questions_md}
-
-      To answer, reply with ONE line per question, IN THE SAME ORDER as above — each
-      line a number to pick that option, free text for a custom answer, "skip", or
-      "you decide". Keep each answer on a single line.
-    max_visits: 40
-    options:
-      - {id: answer-all, label: Answer these, to: oq_record, input: answers_blob}
-      - {id: decide-all, label: You decide all (pick sensible defaults for everything), to: oq_record}
-      - {id: skip-all, label: Skip all — defer to LLD, to: oq_record}
-
-  - id: oq_record
+  - id: validate_hld
     type: script
-    label: Record answers
-    run:
-      - python3
-      - .maestro/engine/oq_record.py
-      - ".maestro/runs/${inputs.slug}/open-questions.json"
-      - "${steps.oq_serve.outputs.qids_csv}"
-      - "${steps.oq_ask.outputs.choice}"
-      - "${steps.oq_ask.outputs.answers_blob}"
-    max_visits: 40
-    on_fail: abort
-    next: oq_serve
+    label: Validate HLD structure and readability
+    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --report]
+    max_visits: 3
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.validate_hld.outputs.valid} == true", to: hld_approval}
+      - {to: repair_hld}
 
-  - id: refine_hld
+  - id: repair_hld
     type: agent
-    label: Fold answers into HLD
+    execution: lead
+    label: Repair HLD validation defects
+    model: haiku
     instruction: |
-      Resolved open questions await folding into the HLD. Apply each resolved answer to
-      .maestro/runs/${inputs.slug}/hld.md ('you-decide' resolutions: pick a sensible default
-      and record the choice), then mark those questions status "folded" in
-      .maestro/runs/${inputs.slug}/open-questions.json and re-validate it with
-      python3 .maestro/engine/validate_open_questions.py.
-    skill: plan
+      Repair only these deterministic HLD defects: ${steps.validate_hld.outputs.issues_summary}
+      Preserve every confirmed architecture decision and do not rewrite unrelated sections. Run
+      the supplied validators before completing. This is a narrow fallback repair.
+    skill: hld-writing
     inputs:
       slug: "${inputs.slug}"
-    outputs: [refined_summary]
-    artifact: ".maestro/runs/${inputs.slug}/hld.md"
-    max_visits: 20
-    next: oq_serve
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
+      validator_feedback: "${steps.validate_hld.outputs.issues_summary}"
+    outputs: [hld_summary]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/hld.md"
+      - ".maestro/runs/${inputs.slug}/open-questions.json"
+      - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    max_visits: 2
+    next: validate_hld
 
   - id: hld_approval
     type: gate
@@ -346,15 +668,12 @@ nodes:
       Review the document, then choose.
     options:
       - {id: approve, label: Approve — write the detailed designs, to: lld_scope_serve}
-      - {id: revise, label: Request HLD revisions — then describe what to change, to: author_hld, input: feedback}
+      - {id: revise, label: Request HLD revisions — then describe what to change, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
 
-  # ---- LLD scope: repo-based, not stack-named. lld_scope_serve discovers the ACTUAL repos
-  # under codebase/ (any count, any names — the same discovery codebase_scan.py uses for the
-  # freshness gate); the human picks all of them or a specific subset; lld_scope_init
-  # validates the pick and writes the claim queue every parallel "slot" below drains from.
-  # A revise cycle from lld_approval re-enters HERE (not straight into author_llds) so scope
-  # can change on revision too.
+  # ---- LLD workstreams: one child run and approval ledger per selected repository. ----
+  # The parent owns the shared PRD/HLD and waits here. Backend, frontend, Flutter, or any other
+  # repo team resumes only its child slug, so pushing one team's state cannot advance another.
   - id: lld_scope_serve
     type: script
     label: Discover repos
@@ -388,149 +707,52 @@ nodes:
       - --repos-text
       - "${steps.lld_scope.outputs.repos_text}"
     on_fail: lld_scope
-    next: author_llds
+    next: lld_workstreams_init
 
-  # ---- Detailed designs: a FIXED pool of parallel "slots" (parallel branches can't have a
-  # runtime-variable count), each looping claim -> design -> claim until the queue lld_scope_init
-  # just built is empty. This is the SAME back-edge-loop shape as the open-questions cycle,
-  # applied to repos instead of questions — it scales to any repo count without a per-repo
-  # branch, and still gives real concurrency: run_agents dispatches every slot currently holding
-  # a claimed repo in one wave, so "all repos at once" and "one at a time" both fall out of the
-  # same mechanism depending on how many slots have work when you act.
-  - id: author_llds
-    type: parallel
-    label: Detailed designs (repo pool)
-    join: all
-    on_branch_fail: ask
-    branches:
-      - id: slot_1
-        start: slot_1_claim
-        steps:
-          - id: slot_1_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_1_claim.outputs.done} == true", to: end}
-              - {to: slot_1_design}
-          - id: slot_1_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_1_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_1_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_1_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_1_claim
-      - id: slot_2
-        start: slot_2_claim
-        steps:
-          - id: slot_2_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_2_claim.outputs.done} == true", to: end}
-              - {to: slot_2_design}
-          - id: slot_2_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_2_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_2_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_2_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_2_claim
-      - id: slot_3
-        start: slot_3_claim
-        steps:
-          - id: slot_3_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_3_claim.outputs.done} == true", to: end}
-              - {to: slot_3_design}
-          - id: slot_3_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_3_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_3_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_3_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_3_claim
-      - id: slot_4
-        start: slot_4_claim
-        steps:
-          - id: slot_4_claim
-            type: script
-            run: [python3, .maestro/engine/lld_repo_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
-            max_visits: 40
-            routes:
-              - {when: "${steps.slot_4_claim.outputs.done} == true", to: end}
-              - {to: slot_4_design}
-          - id: slot_4_design
-            type: agent
-            instruction: |
-              Write the low-level design for the "${steps.slot_4_claim.outputs.repo}" repo from
-              the approved HLD at .maestro/runs/${inputs.slug}/hld.md, grounded in that repo's
-              docs/codebase-map.md and the real code it cites.
-              If a previous review left feedback, honour it: ${steps.lld_approval.outputs.feedback}
-            skill: repo-design
-            inputs:
-              slug: "${inputs.slug}"
-              feature: "${inputs.feature}"
-              repo: "${steps.slot_4_claim.outputs.repo}"
-              lessons: "${memory.knowledge.repo-design}"
-            outputs: [lld_path, contract_notes]
-            artifact: ".maestro/runs/${inputs.slug}/lld/${steps.slot_4_claim.outputs.repo}.md"
-            max_visits: 40
-            next: slot_4_claim
-    next: lld_approval
+  - id: lld_workstreams_init
+    type: script
+    label: Create independent repository LLD runs
+    run: [python3, .maestro/engine/lld_repo_pool.py, workstreams, --root, ., --slug, "${inputs.slug}", --workflow, .maestro/workflows/repo-lld.yaml, --feature, "${inputs.feature}"]
+    on_fail: abort
+    next: lld_workstreams_check
 
-  # ---- LLD approval: the human reviews whichever detailed design(s) were just written.
-  # 'revise' is a back-edge into lld_scope (not straight back into author_llds) so a revision
-  # can also change scope; re-entry cascade-resets the whole pool plus everything downstream
-  # (contract, test cases). A design change never reaches implementation without passing
-  # back through this gate.
-  - id: lld_approval
+  - id: lld_workstreams_check
+    type: script
+    label: Check repository LLD approvals
+    run: [python3, .maestro/engine/lld_repo_pool.py, check, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.lld_workstreams_check.outputs.ready} == true", to: corrections_context}
+      - {to: lld_workstreams_wait}
+
+  - id: lld_workstreams_wait
     type: gate
-    label: LLD approval
+    label: Repository LLD workstreams
     prompt: |
-      Detailed design(s) ready for review under .maestro/runs/${inputs.slug}/lld/
-      (backend.md and/or frontend.md, depending on the scope chosen).
+      Each selected repository has its own run and approval. Team members can work in parallel
+      without sharing one mutable state.yaml:
 
-      Review whichever were written. Any change to an LLD must be approved here before
-      implementation.
+      ${steps.lld_workstreams_init.outputs.workstreams_md}
+
+      Current status:
+      ${steps.lld_workstreams_check.outputs.status_md}
+
+      Commit and push each child run after its approval. Once those changes are pulled here,
+      refresh this check. The parent will not create the shared contract early.
+
+      Imported workstreams when this run was upgraded:
+      ${steps.upgrade_activate.outputs.workstreams_md}
     options:
-      - {id: approve, label: Approve — reconcile the contract, to: contract}
-      - {id: revise, label: Request LLD revisions — then describe suggestions, to: lld_scope, input: feedback}
-      - {id: reject, label: Reject — abort the run, to: abort}
+      - {id: refresh, label: Refresh repository approval status, to: lld_workstreams_check}
+      - {id: scope, label: Change selected repositories, to: lld_scope}
+      - {id: reject, label: Abort the parent run, to: abort}
+
+  - id: corrections_context
+    type: script
+    label: Materialize effective design context
+    run: [python3, .maestro/engine/design_corrections.py, render, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: contract
 
   - id: contract
     type: agent
@@ -538,7 +760,8 @@ nodes:
     instruction: |
       Reconcile whichever LLD(s) exist under .maestro/runs/${inputs.slug}/lld/ into an OpenAPI
       contract. If only one side was authored this round, describe that side's exposed contract
-      — do not invent the other side's. Flag any mismatch you had to resolve.
+      — do not invent the other side's. Treat approved-corrections.md as authoritative over any
+      conflicting base statement. Flag any mismatch you had to resolve.
     skill: api-contract
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [contract_summary]
@@ -549,8 +772,9 @@ nodes:
     type: agent
     label: Functional test cases
     instruction: |
-      Produce the functional test-case catalog for this feature from the HLD, LLDs and
-      contract — the QA source of truth.
+      Produce the functional test-case catalog for this feature from the HLD, LLDs, contract, and
+      approved-corrections.md — the QA source of truth. An approved correction overrides a
+      conflicting base statement.
     skill: functional-testcases
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [test_cases_path, case_count]
@@ -558,9 +782,9 @@ nodes:
     next: end
 
 outputs:
-  hld_summary: "${steps.author_hld.outputs.hld_summary}"
+  hld_summary: "${steps.author_hld.outputs.hld_summary} ${steps.upgrade_activate.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"
   contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
   test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
-  repos_csv: "${steps.lld_scope_init.outputs.selected_csv}"
+  repos_csv: "${steps.lld_scope_init.outputs.selected_csv}${steps.upgrade_activate.outputs.selected_csv}"

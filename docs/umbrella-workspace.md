@@ -75,6 +75,11 @@ my-project/                 ← umbrella repo (git init once; run Maestro here)
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so
   the run ledger (`.maestro/runs/<slug>/`) is tracked and a run resumes on any machine.
 
+- **LLD ownership is per repository.** After the shared HLD is approved, Maestro creates child
+  slugs such as `<feature>--lld--backend`. Commit those child directories when handing work to
+  the teams. Each team resumes only its slug and publishes only its LLD; the parent feature waits
+  until every selected repo has an approval receipt bound to the current HLD.
+
 - **Docs + tests centralised in the umbrella.** Keep the per-feature docs tree
   (`docs/technical`, `docs/functional`, `docs/business`) and the cross-repo integration +
   UI-automation suites (`test/integration`, `test/ui-automation`) in the umbrella, so one suite

@@ -1,17 +1,65 @@
 # Pre-merge archival phase (invoked by sdlc-main.yaml before the human merges to master):
-# harvest this run's lessons into memory, then publish curated docs.
-#   harvest (retrospect -> consolidate)  ->  publish (stub)
+# fold approved corrections once, harvest lessons into memory, then publish curated docs.
+#   correction fold (only when needed) -> harvest -> publish (stub)
 version: 1
 name: archive
-description: Harvest the finished feature into memory, then publish its curated docs.
+description: Fold approved corrections, harvest the finished feature, then publish curated docs.
 inputs:
   slug: {type: string, required: true}
   feature: {type: string, default: "${inputs.slug}"}
 defaults:
   model: haiku
   agent: analyst
-start: harvest
+start: prepare_corrections
 nodes:
+  - id: prepare_corrections
+    type: script
+    label: Prepare final approved-correction fold
+    run: [python3, .maestro/engine/design_corrections.py, prepare-fold, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.prepare_corrections.outputs.pending} == true", to: fold_corrections}
+      - {to: harvest}
+
+  - id: fold_corrections
+    type: agent
+    execution: lead
+    label: Apply approved corrections to final design copies
+    model: haiku
+    instruction: |
+      Apply only the approved corrections in ${steps.prepare_corrections.outputs.corrections_path}
+      to the document copies under ${steps.prepare_corrections.outputs.final_design_dir}. The
+      originals are immutable approval evidence: never edit files outside that final-design
+      directory. Make the smallest targeted changes that remove contradicted assumptions without
+      adding prose or reopening settled decisions. Preserve headings, acceptance IDs, and unrelated
+      content. Run the supplied PRD/HLD/LLD validators for every changed Markdown design.
+
+      Write .maestro/runs/${inputs.slug}/correction-fold-report.json as JSON with exactly:
+      {"schema_version":1,"correction_ids":[the IDs from
+      "${steps.prepare_corrections.outputs.corrections_csv}" in that order],"updated_paths":[every
+      changed final-design file as a repository-relative path]}. Do this in one focused pass.
+    skill: design-correction-fold
+    inputs:
+      slug: "${inputs.slug}"
+      corrections_path: "${steps.prepare_corrections.outputs.corrections_path}"
+      fold_plan_path: "${steps.prepare_corrections.outputs.fold_plan_path}"
+      final_design_dir: "${steps.prepare_corrections.outputs.final_design_dir}"
+      report_path: ".maestro/runs/${inputs.slug}/correction-fold-report.json"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/correction-fold-report.json"
+    max_visits: 2
+    on_exhausted: abort
+    next: finalize_corrections
+
+  - id: finalize_corrections
+    type: script
+    label: Validate final corrected design
+    run: [python3, .maestro/engine/design_corrections.py, finalize-fold, --root, ., --slug, "${inputs.slug}", --report, ".maestro/runs/${inputs.slug}/correction-fold-report.json"]
+    on_fail: fold_corrections
+    max_visits: 2
+    on_exhausted: abort
+    next: harvest
+
   - id: harvest
     type: subworkflow
     label: Harvest lessons into memory

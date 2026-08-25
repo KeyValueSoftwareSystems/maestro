@@ -138,29 +138,30 @@ reason. Skipping marks the node `skipped` and takes its default route.
 
 ### `agent`
 
-The workhorse: the lead agent spawns a subagent for it.
+The workhorse. `execution: worker` (default) spawns a subagent; `execution: lead` runs the
+served prompt in the current session without spawning one.
 
 ```yaml
 - id: author_hld
   type: agent
   instruction: |            # REQUIRED — what this step must do, in plain language.
-    Write the high-level design for this feature from the requirement folder.
-    Surface unresolved decisions as open questions.
-  skill: plan               # optional pin: subagent loads the installed skill named `plan`
+    Write the high-level design from the approved PRD and accepted architecture decisions.
+    Emit deferred choices separately and propose follow-up questions only for genuinely new gaps.
+  skill: hld-writing        # optional pin: agent loads the installed skill by name
                             # (BY NAME, not a path — could be yours or a 3rd-party pack).
                             # Omit for "auto": harness skill-discovery picks the best match.
-  agent: planner            # optional subagent type (agents/planner.md); default defaults.agent
-  model: sonnet             # optional; default defaults.model
+  execution: lead           # keep the clarified architecture context in the main session
   inputs:                   # optional map, passed verbatim into the subagent prompt
     feature: "${inputs.feature}"
     slug: "${inputs.slug}"
-  outputs: [hld_summary]    # fields the subagent must return as last-line JSON (small scalars)
-  artifact: ".maestro/${inputs.slug}/hld.md"   # string or list; engine refuses to mark the
-                            # step done unless every artifact exists non-empty ("proof, not
-                            # promises"). The node owns this path; the engine injects it into
-                            # the prompt so the skill needn't know where to write.
+  outputs: [hld_summary]    # fields the agent must return as last-line JSON (small scalars)
+  artifact:                # string or list; engine refuses to mark the step done unless every
+    - ".maestro/${inputs.slug}/hld.md"
+    - ".maestro/${inputs.slug}/hld-post-questions.json"
+                            # artifact exists non-empty ("proof, not promises"). The engine
+                            # injects owned paths into the prompt.
   retries: 1                # re-dispatches on failure before on_fail applies (default 1)
-  next: oq_serve
+  next: validate_hld_post_questions
 ```
 
 The node owns *what/where/when* — `instruction`, `inputs`, `artifact`, `outputs`, ordering —
@@ -168,6 +169,71 @@ and the engine renders all of them into the subagent prompt. A `skill` supplies 
 That split is what makes skills swappable: pin one of ours, one of yours, or a third-party
 skill (Obra, Superpowers, …), or omit `skill:` and let the harness auto-pick — the graph is
 unchanged either way.
+
+Use `execution: lead` only for small, context-continuous work such as confirming and writing
+a PRD. The action prompt remains the authority: it should name a narrow read/write boundary.
+Pinned skills are resolved only from the active repository's `.agents/skills/`,
+`.claude/skills/`, or `.cursor/skills/` trees; a lead must never search the wider filesystem.
+
+### `interview`
+
+An ordered, durable clarification step. `next` serves one unresolved question as
+`ask_interview`; `interview-record` accepts its proposal or stores a human correction. No AI
+is called by the node. After every question is confirmed, the engine atomically writes the
+structured context artifact and advances. Use either inline `sections` or a validated dynamic
+`questions_artifact`, never both.
+
+Set `batch_size` above 1 to serve up to that many unresolved questions in one
+`ask_interview_batch` action. The lead records all clear answers atomically with
+`interview-record-batch`; omitted answers remain pending and are served again. No question is
+discarded.
+
+Set `presentation: popup` to require the lead to collect the served round through the harness's
+native question UI. If the UI caps questions per popup, the lead opens consecutive popups but does
+not process or record between them. `chat` is the backward-compatible default.
+
+```yaml
+- id: prd_interview
+  type: interview
+  skill: prd-interview
+  context: "Confirmed feature: ${steps.feature_goal.outputs.feature_goal}"
+  sections:
+    - {id: users, title: Users and jobs, proposal: "${steps.proposals.outputs.users}"}
+    - {id: scope, title: Functional scope, prompt: "What behavior is in scope?"}
+  artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+  next: author_prd
+```
+
+For feature-specific follow-ups, a preceding agent writes a JSON queue containing
+`schema_version: 2`, `questions`, and `audit`; every question has `id`, `title`, `question`,
+`why`, `proposal`, and one to four short `must_resolve` facts. `audit.unresolved` and
+`audit.contradictions` explain why another round exists. Both arrays must be empty before an empty
+queue may declare the interview clear. The engine appends each completed queue, including its
+resolution facts, to the cumulative decision artifact. Schema version 1 remains readable so an
+installed run can be upgraded in place.
+
+```yaml
+- id: clarify_edges
+  type: interview
+  questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+  batch_size: 12
+  presentation: popup
+  artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+  next: find_more_gaps
+```
+
+A proposal may be empty. In that case the human must provide an answer; the engine rejects a
+blank answer, acceptance without a proposal, and answers for any question other than the one
+currently served.
+
+The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
+accepts common equivalent headings for its fast path. Maestro-authored PRDs use the exact
+11-heading contract and are validated in strict mode before approval. Traceability IDs appear
+only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria. Generated PRDs begin
+with one concise level-1 feature title plus `Feature slug` and `Status: Ready for review` metadata.
+The author validates inside its existing call; the workflow then runs `--fix-mechanical` to join
+wrapped acceptance criteria and restore sequential AC numbers without another model. Only a
+remaining semantic or structural defect reaches the fast fallback repair agent.
 
 ### `gate`
 
@@ -178,8 +244,8 @@ A human decision. Options ARE the outgoing edges. Gates are **never** skipped on
   type: gate
   prompt: "HLD ready: ${steps.author_hld.outputs.hld_summary}. Approve?"
   options:
-    - {id: approve, label: "Approve — proceed to LLD", to: author_llds}
-    - {id: revise,  label: "Request revisions", to: author_hld, input: feedback}
+    - {id: approve, label: "Approve — create repo LLD workstreams", to: lld_scope_serve}
+    - {id: revise,  label: "Request revisions", to: prepare_hld_questions, input: feedback}
     - {id: reject,  label: "Reject — abort", to: abort}
 ```
 
@@ -189,17 +255,17 @@ is simply an option whose `to:` is a back-edge — re-entry reset cascades autom
 ### `script`
 
 A deterministic command. Exit 0 → `next`/`routes`; non-zero → `on_fail`. If stdout is a single
-JSON object, its fields become the step's outputs and are routable — the generalized
-`oq_serve.py` pattern.
+JSON object, its fields become the step's outputs and are routable. Validators commonly expose
+`valid`, `state`, or another small routing field.
 
 ```yaml
-- id: oq_serve
+- id: validate_hld
   type: script
-  run: ["python3", "engine/oq_serve.py", ".maestro/${inputs.slug}/open-questions.json"]
+  run: ["python3", "engine/validate_hld.py", ".maestro/${inputs.slug}/hld.md",
+        "--open-questions", ".maestro/${inputs.slug}/open-questions.json"]
   timeout: 60               # seconds, optional (default 300)
   routes:
-    - {when: "${steps.oq_serve.outputs.state} == ask",    to: oq_ask}
-    - {when: "${steps.oq_serve.outputs.state} == refine", to: refine_hld}
+    - {when: "${steps.validate_hld.outputs.valid} == false", to: repair_hld}
     - {to: hld_approval}
 ```
 
@@ -228,6 +294,15 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
       steps: [ ... ]
   next: contract
 ```
+
+The shipped design workflow does not use one shared parallel node for team-authored LLDs. It
+creates a separate `repo-lld.yaml` run per selected repository. Each child has its own
+`state.yaml`, decision context, LLD revision gate, and approval history. Its lead agent inspects a
+bounded repository seam, serves material questions as a grouped native interview, writes once, and
+runs `validate_lld.py`; post-write questions and narrow repair are conditional. Its publish step
+writes a hash-bound receipt to the parent; the parent joins only after every selected child is
+complete and still matches the current HLD. Generic `parallel` remains useful when one owner
+controls every branch in one run.
 
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
 `parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per
@@ -272,8 +347,14 @@ it cannot redirect writes outside `.maestro/runs/<slug>/`.
 
 Written **only** by `engine/maestroctl.py` (fcntl-locked, atomic tmp+rename). Records workflow
 file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run status + cursor
-(active frontier), per-step status / attempts / visits / outputs / artifacts, append-only gate
-decision history, and parallel-branch bookkeeping.
+(active frontier), per-step status / attempts / visits / timing / outputs / artifacts,
+interview answers, append-only gate decision history, and parallel-branch bookkeeping.
+
+`version` is the serialization contract; `run_format` is the shipped workflow-layout marker. A
+missing/older run-format marker triggers the explicit one-time `upgrade-run` preview instead of
+guessing how removed step identifiers map. Compatible ledgers are backed up, rebased, and stamped;
+legacy ledgers are rebuilt from preserved artifacts and require current validation plus human
+approval before their documents can advance.
 
 Resume: `done` steps are skipped only while their artifacts still exist non-empty on disk;
 interrupted (`running`) steps are re-served; gates always re-ask.
@@ -283,11 +364,15 @@ interrupted (`running`) steps are re-served; gates always re-ask.
 ```
 maestroctl validate <wf>                 # refuse to start on errors
 maestroctl init --slug S --workflow <wf> [--input k=v ...]
+maestroctl upgrade-run --slug S --workflow <wf> [--apply]  # preview, then one-time upgrade
 loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'
     run_agents → spawn all listed subagents in one parallel wave → complete each
+    run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
+    ask_interview → ask one decision → interview-record --section X (--accept | --answer TEXT)
+    ask_interview_batch → ask the served round once → interview-record-batch --responses JSON
     ask_gate   → ask the human for a choice → gate-record --option X
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop
@@ -295,8 +380,8 @@ loop:
 ```
 
 The action payload is fully resolved — placeholders substituted, prompts pre-rendered. The lead
-agent performs zero interpretation, never edits state, never reads artifacts into its own
-context, and never skips a gate.
+agent performs zero graph interpretation, never edits state, and never skips a gate. It reads
+artifacts only when a `run_lead` prompt explicitly grants bounded access.
 
 An option with `input: <field>` is a durable two-stage interaction. Recording the choice
 without text leaves the gate active and makes `next` return `ask_input`; only a non-blank

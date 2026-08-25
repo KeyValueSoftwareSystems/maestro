@@ -13,6 +13,7 @@ description: Full feature pipeline — requirement to release-ready review pack.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  upgrade_manifest: {type: string, default: "", description: engine-created one-time legacy run import plan}
 defaults:
   model: haiku
   agent: general
@@ -35,8 +36,16 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
-      feedback: "${steps.arch_gate.outputs.feedback}"
+      feedback: "${steps.arch_gate.outputs.feedback} ${steps.contract_approval.outputs.feedback} ${steps.release_approval.outputs.feedback}"
+      upgrade_manifest: "${inputs.upgrade_manifest}"
     max_visits: 4
+    next: effective_design
+
+  - id: effective_design
+    type: script
+    label: Freeze effective design context
+    run: [python3, .maestro/engine/design_corrections.py, render, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
     next: arch_review
 
   - id: arch_review
@@ -44,7 +53,9 @@ nodes:
     label: Architecture review
     instruction: |
       Review the full design set for this feature (HLD, every selected repo LLD, contract, test
-      cases under .maestro/runs/${inputs.slug}/) for soundness, consistency and risk.
+      cases, effective-design.json, and approved-corrections.md under
+      .maestro/runs/${inputs.slug}/) for soundness, consistency and risk. Approved corrections
+      override conflicting base statements.
       Findings need evidence; set blocking=true only for must-fix issues.
     skill: architecture-review
     agent: reviewer
@@ -78,9 +89,16 @@ nodes:
       Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})
       Architecture review: ${steps.arch_review.outputs.summary}
     options:
-      - {id: approve, label: Approve — verify workspace then implement, to: workspace_sync_pre_impl}
+      - {id: approve, label: Approve — verify effective design and workspace, to: effective_design_pre_impl}
       - {id: revise, label: Request design revisions — then describe what to change, to: design, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
+
+  - id: effective_design_pre_impl
+    type: script
+    label: Refresh effective design before implementation
+    run: [python3, .maestro/engine/design_corrections.py, render, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: workspace_sync_pre_impl
 
   - id: workspace_sync_pre_impl
     type: subworkflow
@@ -233,6 +251,7 @@ nodes:
       artifacts under .maestro/runs/${inputs.slug}/ — the pack is what the human reads at
       the release gate. Treat implementation-manifest.json as the source of truth for every
       repository's exact branch, worktree, and commit; include all of them in the pack.
+      Treat approved-corrections.md as authoritative over conflicting base design text.
     skill: human-review-pack
     agent: analyst
     model: opus

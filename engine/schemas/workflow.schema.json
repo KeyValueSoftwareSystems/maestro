@@ -134,6 +134,9 @@
           "$ref": "#/definitions/agentNode"
         },
         {
+          "$ref": "#/definitions/interviewNode"
+        },
+        {
           "$ref": "#/definitions/gateNode"
         },
         {
@@ -193,6 +196,12 @@
         "model": {
           "type": "string"
         },
+        "execution": {
+          "enum": [
+            "worker",
+            "lead"
+          ]
+        },
         "inputs": {
           "type": "object",
           "additionalProperties": {
@@ -243,6 +252,119 @@
         },
         "on_fail": {
           "$ref": "#/definitions/failTarget"
+        },
+        "max_visits": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "on_exhausted": {
+          "$ref": "#/definitions/failTarget"
+        },
+        "ui": {
+          "type": "object"
+        }
+      }
+    },
+    "interviewNode": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "artifact"
+      ],
+      "oneOf": [
+        {
+          "required": [
+            "sections"
+          ],
+          "not": {
+            "required": [
+              "questions_artifact"
+            ]
+          }
+        },
+        {
+          "required": [
+            "questions_artifact"
+          ],
+          "not": {
+            "required": [
+              "sections"
+            ]
+          }
+        }
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/nodeId"
+        },
+        "type": {
+          "const": "interview"
+        },
+        "label": {
+          "type": "string"
+        },
+        "skill": {
+          "type": "string"
+        },
+        "context": {
+          "type": "string"
+        },
+        "sections": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "title"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/nodeId"
+              },
+              "title": {
+                "type": "string",
+                "minLength": 1
+              },
+              "proposal": {
+                "type": "string"
+              },
+              "prompt": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "questions_artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "batch_size": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "presentation": {
+          "type": "string",
+          "enum": [
+            "chat",
+            "popup"
+          ]
+        },
+        "artifact": {
+          "type": "string"
+        },
+        "next": {
+          "$ref": "#/definitions/routeTarget"
+        },
+        "routes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/definitions/route"
+          }
         },
         "max_visits": {
           "type": "integer",

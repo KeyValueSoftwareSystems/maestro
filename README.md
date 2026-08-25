@@ -82,11 +82,14 @@ Shipped as a worked example (`.maestro/workflows/sdlc-main.yaml` + the installed
 pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
-workspace sync → requirement → PRD (consolidate what you gave, or brainstorm one via gated Q&A)
-   → HLD → [open-questions loop → approve] → parallel per-repo LLDs → API contract
-   → functional test cases → architecture review → [approve]
+workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
+   → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
+   → per-repo LLDs (bounded code seam → grouped Grill → write once → validate → approve)
+   → API contract
+   → functional test cases → effective design (base approvals + approved corrections)
+   → architecture review → [approve]
    → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
-   → QA → review pack → [approve → release → archive: harvest lessons + publish docs]
+   → QA → review pack → [approve → archive: fold corrections + harvest lessons + publish docs]
 ```
 
 **You define the workflow; you bring the skills.** The engine is the product. A workflow is a YAML file describing what runs in what order; each agent step names a *skill* (a reusable prompt) — yours, ours, or a third party's (Obra, Superpowers, …). The workflow owns *where* artifacts land and *when* each step runs; the skill owns only *how* to do its one job, so any skill can be swapped without touching the graph.
@@ -101,16 +104,16 @@ workspace sync → requirement → PRD (consolidate what you gave, or brainstorm
        │  dispatches, never decides │◄─── complete / gate-record / input-record / fail
        └──┬─────────┬──────────┬────┘
           ▼         ▼          ▼
-      subagents   scripts    you (gates)
+      subagents   scripts    you (gates + interview)
       (skill +    (validators,
        model per   stubs)
        step)
 ```
 
-- **`workflow.yaml`** — the graph: 5 node types (`agent`, `gate`, `script`, `parallel`, `subworkflow`), per-node routes with tiny conditions, and **back-edges for loops** (an arrow to any earlier step; the engine cascade-resets downstream work and enforces a per-node visit cap so loops can't run away). Spec: [docs/workflow-spec.md](docs/workflow-spec.md).
+- **`workflow.yaml`** — the graph: 6 node types (`agent`, `interview`, `gate`, `script`, `parallel`, `subworkflow`), per-node routes with tiny conditions, and **back-edges for loops** (an arrow to any earlier step; the engine cascade-resets downstream work and enforces a per-node visit cap so loops can't run away). Spec: [docs/workflow-spec.md](docs/workflow-spec.md).
 - **`.maestro/runs/<slug>/state.yaml`** — the run ledger. Only the engine writes it. Resume, revise-cascades, gate history, parallel-join bookkeeping all live here.
 - **The lead agent never interprets the graph.** The deterministic resolver serves one fully-rendered action at a time; the LLM just dispatches it. That's what makes an LLM-driven orchestrator reliable — and it's all plain, tested Python (see [Checks](#checks); no LLM in the loop).
-- **Agent steps are instruction-first**: write what the step should do; optionally pin a skill (the shipped workflows pin everything for reproducibility) and a model. Claude Code and Codex run independent steps with native subagents; Cursor uses the same engine inline and sequentially. Codex accepts host-valid model IDs and safely ignores the shipped Claude aliases instead of guessing a mapping.
+- **Agent steps are instruction-first**: write what the step should do; optionally pin a skill and model. Worker execution is the default; `execution: lead` keeps small context-continuous steps in the current session. Claude Code and Codex run independent worker steps with native subagents; Cursor uses the same engine inline and sequentially.
 
 Workflows are deliberately minimal to write by hand too — this is a complete one:
 
@@ -213,10 +216,26 @@ selector fall back to a numbered text prompt.
 
 On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:
 
-- **you gave it a complete requirement** → it consolidates that into the PRD as-is, no questions;
-- **partial or nothing** → a gate offers *add files & re-check* / *brainstorm it with me* / *abort*, then asks for optional **references** (Figma links, doc/file paths, tickets), and a gated Q&A loop fills the high-level product gaps.
+- **valid existing `prd.md`** → after two short context confirmations, it goes directly to
+  PRD approval; common equivalent headings are accepted because PRDs have no universal format;
+- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then collects every feature-specific decision and relevant edge case for the current round through native question popups;
+- **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, word budgets, repetition, sentence length, and sequential `AC-xx` acceptance criteria. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
-From there it validates, starts or resumes the run, spawns a subagent per step, asks you at gates, and reports where every artifact landed.
+The PRD stage does not spawn subagents or scan application source. It reads only repository
+instructions, maintained project docs, the run's requirement folder, and explicit references.
+Pinned skills are checked only under `.agents/skills`, `.claude/skills`, and `.cursor/skills`.
+Step durations are recorded in the run ledger so slow stages are visible.
+
+The HLD stage follows the same clarify-first shape. It batches only unresolved architecture
+decisions into native question popups, keeps accepted decisions in `hld-context.json`, and then
+writes one short, plain-English HLD. A deterministic validator checks its six-section structure,
+brevity, repetition, and deferred-question ledger. A second popup appears only when synthesis
+uncovers a genuinely new architecture gap; there is no mandatory model-powered folding pass.
+`open-questions.json` contains only explicitly deferred decisions so another reviewer can see
+what remains open.
+
+From there Maestro starts or resumes the run, dispatches each remaining step with its declared
+execution mode, asks you at gates, and reports where every artifact landed.
 
 Before design, Maestro fetches every discovered repository's **current branch upstream in
 parallel**. If everything is current, this is silent and uses no model. If a repository is
@@ -229,8 +248,27 @@ if code moved after design, the design is regenerated and re-approved before bui
 
 Gate choices that require text are deliberately two-stage. Clicking **Revise** first records
 the choice, then Maestro asks what to change and remains parked until non-blank feedback is
-provided. One response can cover several LLDs by labeling each repository; no artifact is
-regenerated with empty or inferred suggestions.
+provided. No artifact is regenerated with empty or inferred suggestions.
+
+After HLD approval, the parent creates one child run per selected repository—for example
+`my-feature--lld--backend`, `my-feature--lld--frontend`, and `my-feature--lld--flutter`—and waits.
+Each child inspects only the relevant implementation seam, asks material repository decisions in
+one grouped popup, writes the concise LLD once in the lead session, then runs a deterministic shape
+and readability check. A second popup appears only if writing exposes a genuinely new blocking gap;
+repair is a narrow fallback only when validation fails. Each team reviews and approves only its
+child slug. Approval publishes a hash-bound LLD and receipt into the parent feature; the API
+contract cannot start until every selected child is approved against the current HLD.
+
+Resuming the parent while those workstreams are pending always opens an LLD selector showing each
+repo's status plus a parent-coordinator option. A developer can therefore return with
+`/maestro my-feature` and choose backend, frontend, or Flutter without remembering the child slug.
+
+If implementation discovery changes an already-approved product or architecture decision, Maestro
+offers two explicit paths: revise the base documents now, or record the human-approved decision as
+an **approved correction** and continue. Each correction is a separate merge-friendly receipt;
+the engine renders all receipts into `approved-corrections.md` and `effective-design.json`, which
+override conflicting base text for every downstream phase. Archive folds them once into validated
+`final-design/` copies while preserving the original hash-bound approvals.
 
 **You almost never call the engine yourself.** The lead agent issues its verbs — `init`, `next`, `complete`, `gate-record`, `gate-input-record`, `fail`, `runs`, … — for you as it drives the graph. Only two are worth running by hand, for inspection:
 
@@ -242,8 +280,8 @@ python3 .maestro/engine/maestroctl.py validate .maestro/workflows/my.yaml   # li
 If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --slug <slug>` are your recovery levers — see [Working as a team](#working-as-a-team).
 
 Prefer manual control? Every step is also a skill you can invoke on its own — use its slash
-command in Claude Code/Cursor or mention it with `$` in Codex (`/brainstorm` or
-`$brainstorm`, for example). Same skills, no orchestration.
+command in Claude Code/Cursor or mention it with `$` in Codex (`/plan` or `$plan`, for
+example). Same skills, no orchestration.
 
 ### Pausing & resuming a run
 
@@ -274,15 +312,25 @@ Sometimes the lead agent ends its turn *mid-run* — after a long step, or becau
 
 Maestro is a shared, paved road, not a per-developer toy: keep the flows in a central, PR-reviewed repo owned by your leads/platform team (changes go through review, same as code), and governance falls out of the graph — route the "approve for release" gate to a lead while anyone runs the steps up to it, no extra RBAC layer needed.
 
-The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is git-tracked on purpose (so a run resumes on any machine). Two consequences for a team:
+The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is git-tracked on purpose (so a run resumes on any machine). Team ownership follows ledger ownership:
 
-- **One owner per slug at a time.** Two people driving the same `<slug>` in parallel will produce conflicting edits to an engine-owned file. Pick distinct slugs, or hand a run off by committing/pushing `.maestro/runs/<slug>/` and letting the next person resume it.
+- **One owner per slug at a time.** Keep one coordinator on the parent feature slug. LLD work is
+  automatically split into repository child slugs, so backend, frontend, and Flutter can push
+  independently without inheriting or conflicting with another team's approval.
+- **Commit the child run with its LLD.** A repo approval updates only
+  `.maestro/runs/<feature>--lld--<repo>/` plus that repo's published LLD and receipt under the
+  parent. Pull all approved child changes, then refresh the parent LLD status gate.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
+- **Old-format runs:** selecting one through `/maestro` offers a one-time upgrade. The engine backs
+  up its state and artifacts, converts old PRD/HLD structure without reopening clear decisions,
+  asks one baseline approval, and imports each old LLD as an independently validated, unapproved
+  child draft. It never transfers an old approval merely because a Markdown file exists.
 - If you edit a **workflow file** mid-run, the engine halts on the next command with a hash mismatch — nobody silently diverges from the lead's flow. Accept the edit with `maestroctl rebase --slug <slug>` (it re-validates first) or start over with `reset --slug <slug> --all`.
 
 ## Upgrade / uninstall / troubleshooting
 
-- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/`, `.maestro/index/` provenance and `.maestro/runs/` are left alone.
+- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/`, `.maestro/index/` provenance and `.maestro/runs/` are left alone. On the
+  next `/maestro` resume, an old run is detected and upgraded once only after your confirmation.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`, `.cursor/…`,
   `.agents/skills/`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` —
   that's your work.
@@ -305,7 +353,7 @@ After install, in your project repo:
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              · interview-record · interview-record-batch · gate-input-record · fail · reset · rebase · status · graph · note · runs)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
@@ -323,7 +371,7 @@ maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestr
 
 The engine is generic; the SDLC pack is just one workflow. To make it yours:
 
-- **Write your own workflow** — a YAML file with `nodes:` (agent / gate / script / parallel / subworkflow), routes, and back-edges for loops. The builder writes it for you. Spec: [docs/workflow-spec.md](docs/workflow-spec.md). Run it with `/maestro <slug> path/to/your.yaml` or `$maestro <slug> path/to/your.yaml`.
+- **Write your own workflow** — a YAML file with `nodes:` (agent / interview / gate / script / parallel / subworkflow), routes, and back-edges for loops. The builder writes it for you. Spec: [docs/workflow-spec.md](docs/workflow-spec.md). Run it with `/maestro <slug> path/to/your.yaml` or `$maestro <slug> path/to/your.yaml`.
 - **Bring your own skills** — an agent node names a skill; that can be one of ours, one you author (`.claude/skills/<name>/SKILL.md` or `.agents/skills/<name>/SKILL.md`), or a third-party pack (Obra, Superpowers, …). Because the *workflow node* supplies the instruction, inputs, artifact path and output fields at runtime, a skill only has to describe *how* to do its job — so swapping one for another is a one-line `skill:` change, or omit `skill:` entirely and let the harness auto-pick from installed skills by description.
 - **Change a shipped step's behaviour** — edit its installed skill; the flow is untouched.
 - **Models** — per node or per workflow (`defaults.model`); values are host-specific and

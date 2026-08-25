@@ -24,14 +24,17 @@ def canned_agent_outputs(step, action):
     """Outputs by node id — mirrors each node's declared outputs list."""
     node = step.rsplit("/", 1)[-1]
     table = {
-        "brainstorm_draft": {"draft_summary": "PRD drafted; 0 open questions"},
-        "rq_fold": {"refined_summary": "folded 1 answer"},
+        "project_context": {"project_context": "A test product with backend and frontend repositories."},
+        "feature_goal": {"feature_goal": "Deliver the demo feature for test users."},
+        "prepare_prd_questions": {"summary": "Prepared the next focused product questions"},
+        "author_prd": {"summary": "PRD written from confirmed context"},
+        "repair_prd": {"summary": "PRD repaired to match the contract"},
+        "prepare_hld_questions": {"summary": "Prepared architecture questions"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
-        "refine_hld": {"refined_summary": "folded 1 answer"},
-        "slot_1_design": {"lld_path": "lld/x.md", "contract_notes": "rest+cursor"},
-        "slot_2_design": {"lld_path": "lld/x.md", "contract_notes": "uses GET /searches"},
-        "slot_3_design": {"lld_path": "lld/x.md", "contract_notes": "n/a"},
-        "slot_4_design": {"lld_path": "lld/x.md", "contract_notes": "n/a"},
+        "repair_hld": {"hld_summary": "Repaired the HLD"},
+        "prepare_lld_questions": {"summary": "Prepared repository design questions"},
+        "author_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
+        "repair_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
         "contract": {"contract_summary": "5 endpoints"},
         "test_cases": {"test_cases_path": "test-cases.md", "case_count": 12},
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
@@ -117,9 +120,132 @@ class SdlcE2E(unittest.TestCase):
     def write_agent_artifact(self, rel, step):
         full = os.path.join(self.tmp, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
+        if any(rel.endswith(name) for name in (
+                "prd-questions.json", "hld-questions.json", "lld-questions.json")):
+            if rel.endswith("hld-questions.json"):
+                context_name = "hld-context.json"
+            elif rel.endswith("lld-questions.json"):
+                context_name = "lld-context.json"
+            else:
+                context_name = "prd-context.json"
+            decisions = os.path.join(os.path.dirname(full), context_name)
+            questions = [] if os.path.exists(decisions) else [{
+                "id": "conflict-behavior",
+                "title": "Conflicting action",
+                "question": "What should the user see if another action makes this request stale?",
+                "why": "This defines a material failure and recovery path.",
+                "proposal": "Reject the stale request, explain why, and preserve entered data.",
+                "must_resolve": ["visible stale-request outcome", "recovery action"],
+            }]
+            with open(full, "w") as fh:
+                json.dump({
+                    "schema_version": 2,
+                    "questions": questions,
+                    "audit": {
+                        "unresolved": [] if not questions else ["stale-request behavior"],
+                        "contradictions": [],
+                },
+            }, fh)
+            return
+        if rel.endswith("hld-post-questions.json") or rel.endswith("lld-post-questions.json"):
+            with open(full, "w") as fh:
+                json.dump({
+                    "schema_version": 2,
+                    "questions": [],
+                    "audit": {"unresolved": [], "contradictions": []},
+                }, fh)
+            return
         if os.path.exists(full):
             return
-        if rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
+        if rel.endswith("/requirement/prd.md"):
+            sections = {
+                "Summary": "Deliver the confirmed demo feature.",
+                "Problem and context": "The product needs the demo behavior described in this run.",
+                "Users and jobs": "Test users need to complete the demo workflow.",
+                "Goals and success signals": "The behavior works and its acceptance checks pass.",
+                "Non-goals": "Unrelated product and platform changes are excluded.",
+                "Functional scope": "Implement the confirmed demo behavior across the required surfaces.",
+                "Constraints and assumptions": "Use the existing backend and frontend repositories.",
+                "Acceptance criteria": "- AC-01: The documented behavior is available and automated tests pass.",
+                "Dependencies and risks": "Delivery depends on both repositories remaining compatible.",
+                "Priorities and phasing": "Build the core behavior before optional refinements.",
+                "References": "The run requirement and maintained project documentation.",
+            }
+            with open(full, "w") as fh:
+                fh.write("# Demo feature — PRD\n\n"
+                         "**Feature slug:** `demo`\n"
+                         "**Status:** Ready for review\n\n")
+                fh.write("\n\n".join(
+                    f"## {heading}\n\n{body}" for heading, body in sections.items()
+                ) + "\n")
+        elif rel.endswith("/hld.md"):
+            sections = {
+                "Decision summary": "\n".join(
+                    f"- Confirmed architecture decision {index}." for index in range(1, 6)
+                ),
+                "Context and scope": "The approved demo spans the backend and frontend.",
+                "Proposed design": "The backend owns decisions. The frontend renders server state.",
+                "Key decisions and trade-offs": "Use one authority to prevent divergent behavior.",
+                "Delivery and risks": "Land the backend contract before client integration.",
+                "Open questions": "None",
+            }
+            with open(full, "w") as fh:
+                fh.write("# Demo feature — HLD\n\n"
+                         "**Feature slug:** `demo`\n"
+                         "**Status:** Ready for review\n\n")
+                fh.write("\n\n".join(
+                    f"## {heading}\n\n{body}" for heading, body in sections.items()
+                ) + "\n")
+        elif rel.endswith("/lld.md"):
+            parts = rel.split("/")
+            slug = parts[parts.index("runs") + 1]
+            child_state = statemod.load(slug, self.tmp)
+            parent_slug = child_state["inputs"]["parent_slug"]
+            repo = child_state["inputs"]["repo"]
+            sections = {
+                "Change summary": "\n".join(
+                    f"- Deliver repository behavior {index}." for index in range(1, 5)
+                ),
+                "Existing seam": (
+                    "Requests enter through `src/routes.py` and follow the existing service boundary."
+                ),
+                "Proposed changes": (
+                    "Extend the current service with the approved behavior. Keep state ownership "
+                    "inside the existing data layer."
+                ),
+                "Data model and migrations": (
+                    "No repository-owned persistence change."
+                ),
+                "API and client contract": (
+                    "No externally consumed interface change."
+                ),
+                "State and flows": (
+                    "The route validates input, invokes the service, and returns the result. The "
+                    "service owns ordering and changes state only after validation."
+                ),
+                "Failure and operational behavior": (
+                    "Validation failures use the existing client error. Storage failures preserve "
+                    "prior state and use current logging."
+                ),
+                "Implementation sequence": (
+                    "1. Extend the service boundary and cover its behavior.\n"
+                    "2. Connect the route and add an integration test."
+                ),
+                "Verification": (
+                    "Service tests cover validation and state changes. Route tests cover the result."
+                ),
+            }
+            with open(full, "w") as fh:
+                fh.write(
+                    f"# Demo {repo} — LLD\n\n"
+                    f"**Parent feature:** `{parent_slug}`\n"
+                    f"**Repository:** `{repo}`\n"
+                    "**Status:** Ready for review\n\n"
+                )
+                fh.write("\n\n".join(
+                    f"## {heading}\n\n{body}" for heading, body in sections.items()
+                ) + "\n")
+        elif rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
             with open(full, "w") as fh:
                 json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
         else:
@@ -145,6 +271,71 @@ class SdlcE2E(unittest.TestCase):
         return {"branch": branch, "worktree": worktree, "commit": commit,
                 "summary": "built", "tests_passed": True}
 
+    def drive_lld_workstreams(self, trace, gate_script):
+        """Drive every repo-owned child run without mutating the parent feature state."""
+        queue_path = os.path.join(
+            self.tmp, ".maestro", "runs", "demo", "lld-repos.json",
+        )
+        with open(queue_path, encoding="utf-8") as fh:
+            workstreams = json.load(fh)["workstreams"]
+        for item in workstreams:
+            slug, repo = item["slug"], item["repo"]
+            decisions = gate_script.get(f"lld:{repo}", [("approve", None)])
+            gate_index = 0
+            for _ in range(20):
+                run = resolver.Run(slug, self.tmp)
+                action = resolver.next_action(run)
+                if action["action"] == "done":
+                    break
+                step = action["step"]
+                trace_step = f"lld:{repo}/{step}"
+                trace.append((action["action"], trace_step))
+                run = resolver.Run(slug, self.tmp)
+                if action["action"] in ("run_agent", "run_lead"):
+                    for rel in action.get("artifacts", []):
+                        self.write_agent_artifact(rel, trace_step)
+                    resolver.complete_step(
+                        run, step, outputs=canned_agent_outputs(step, action),
+                    )
+                elif action["action"] == "ask_interview":
+                    resolver.record_interview(
+                        run, step, action["section"],
+                        answer=None if action.get("proposal") else f"Confirmed {action['title']}",
+                        accept=bool(action.get("proposal")),
+                    )
+                elif action["action"] == "ask_interview_batch":
+                    resolver.record_interview_batch(run, step, {
+                        question["section"]: (
+                            {"accept": True} if question.get("proposal")
+                            else {"answer": f"Confirmed {question['title']}"}
+                        )
+                        for question in action["questions"]
+                    })
+                elif action["action"] == "run_script":
+                    proc = subprocess.run(
+                        action["argv"], cwd=self.tmp, capture_output=True, text=True, timeout=30,
+                    )
+                    resolver.complete_step(
+                        run, step, exit_code=proc.returncode, stdout=proc.stdout,
+                    )
+                elif action["action"] == "ask_gate":
+                    self.assertLess(gate_index, len(decisions), f"{repo} LLD gate overscripted")
+                    option, feedback = decisions[gate_index]
+                    gate_index += 1
+                    selected = next(o for o in action["options"] if o["id"] == option)
+                    resolver.record_gate(run, step, option)
+                    if selected.get("input"):
+                        self.assertIsNotNone(feedback)
+                        pending = resolver.next_action(run)
+                        self.assertEqual(pending["action"], "ask_input")
+                        trace.append(("ask_input", trace_step))
+                        resolver.record_gate_input(run, step, feedback)
+                else:
+                    self.fail(f"unexpected child LLD action: {action}")
+                statemod.save(slug, run.state, self.tmp)
+            else:
+                self.fail(f"LLD workstream {slug} did not finish")
+
     # -- driver ----------------------------------------------------------
 
     def drive(self, gate_script, max_steps=200, agent_overrides=None):
@@ -169,7 +360,7 @@ class SdlcE2E(unittest.TestCase):
                 step = act["step"]
                 trace.append((act["action"], step))
                 run = resolver.Run("demo", self.tmp)
-                if act["action"] == "run_agent":
+                if act["action"] in ("run_agent", "run_lead"):
                     for rel in act.get("artifacts", []):
                         self.write_agent_artifact(rel, step)
                     node = step.rsplit("/", 1)[-1]
@@ -180,6 +371,9 @@ class SdlcE2E(unittest.TestCase):
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
+                            or any(a.endswith("validate_prd.py") or a.endswith("validate_prd_questions.py")
+                                   or a.endswith("validate_hld.py")
+                                   for a in act.get("argv", []))
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    for a in act.get("argv", []))):
@@ -190,7 +384,15 @@ class SdlcE2E(unittest.TestCase):
                         code, out = canned_script(step)
                     resolver.complete_step(run, step, exit_code=code, stdout=out)
                 elif act["action"] == "ask_gate":
+                    if step == "design/lld_workstreams_wait":
+                        self.drive_lld_workstreams(trace, gate_script)
+                        resolver.record_gate(run, step, "refresh")
+                        statemod.save("demo", run.state, self.tmp)
+                        continue
                     decisions = gate_script.get(step)
+                    if decisions is None and step.rsplit("/", 1)[-1] in (
+                            "project_context_confirm", "feature_goal_confirm"):
+                        decisions = [("confirm", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -205,6 +407,20 @@ class SdlcE2E(unittest.TestCase):
                         self.assertEqual(pending["field"], selected["input"])
                         trace.append(("ask_input", step))
                         resolver.record_gate_input(run, step, text)
+                elif act["action"] == "ask_interview":
+                    resolver.record_interview(
+                        run, step, act["section"],
+                        answer=None if act.get("proposal") else f"Confirmed {act['title']}",
+                        accept=bool(act.get("proposal")),
+                    )
+                elif act["action"] == "ask_interview_batch":
+                    resolver.record_interview_batch(run, step, {
+                        question["section"]: (
+                            {"accept": True} if question.get("proposal")
+                            else {"answer": f"Confirmed {question['title']}"}
+                        )
+                        for question in act["questions"]
+                    })
                 statemod.save("demo", run.state, self.tmp)
         self.fail("pipeline did not terminate within max_steps")
 
@@ -234,7 +450,6 @@ class SdlcE2E(unittest.TestCase):
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
             "design/lld_scope": [("all", None)],
-            "design/lld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
         }
@@ -254,16 +469,51 @@ class SdlcE2E(unittest.TestCase):
         review_steps = [s for s in steps if s.endswith("/impl/review")]
         self.assertEqual(len(impl_steps), 2)
         self.assertEqual(len(review_steps), 2)
-        # the PRD phase always runs (even with a requirement already present) before the HLD
-        self.assertIn("design/brainstorm_draft", steps)
-        self.assertLess(steps.index("design/brainstorm_draft"), steps.index("design/author_hld"))
+        # the lead confirms context, grills one material edge, and writes once before HLD
+        self.assertIn("design/project_context", steps)
+        self.assertIn("design/prd_interview", steps)
+        self.assertIn("design/author_prd", steps)
+        self.assertLess(steps.index("design/author_prd"), steps.index("design/author_hld"))
         # the LLDs are approved by a human before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
-        self.assertIn("design/lld_approval", gate_steps)
-        self.assertLess(steps.index("design/lld_approval"), steps.index(impl_steps[0]))
+        self.assertIn("design/lld_workstreams_wait", gate_steps)
+        child_approvals = [step for step in gate_steps if step.endswith("/lld_approval")]
+        self.assertEqual(len(child_approvals), 2)
+        child_authors = [step for step in steps if step.endswith("/author_lld")]
+        child_interviews = [step for step in steps if step.endswith("/lld_interview")]
+        self.assertEqual(len(child_authors), 2)
+        self.assertEqual(len(child_interviews), 2)
+        self.assertTrue(all(
+            steps.index(step.replace("/author_lld", "/lld_interview")) < steps.index(step)
+            for step in child_authors
+        ))
+        self.assertFalse(any(step.endswith("/lld_post_interview") for step in steps))
+        self.assertFalse(any(step.endswith("/repair_lld") for step in steps))
+        self.assertLess(steps.index("design/lld_workstreams_wait"), steps.index(impl_steps[0]))
         # design ran before implementation, qa after
         self.assertLess(steps.index("design/author_hld"), steps.index("arch_review"))
         self.assertLess(steps.index("finalize_implementation"), steps.index("qa/qa_run"))
+
+    def test_valid_existing_prd_uses_fast_path(self):
+        self.prep_tasks_json()
+        self.write_agent_artifact(
+            ".maestro/runs/demo/requirement/prd.md", "existing-prd-fixture"
+        )
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
+        }
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertIn("design/check_existing_prd", steps)
+        self.assertNotIn("design/prepare_prd_questions", steps)
+        self.assertNotIn("design/prd_interview", steps)
+        self.assertNotIn("design/author_prd", steps)
 
     def test_revise_cascade_from_contract_gate(self):
         self.prep_tasks_json()
@@ -272,47 +522,46 @@ class SdlcE2E(unittest.TestCase):
             "design/prd_approval": [("approve", None), ("approve", None)],
             "design/hld_approval": [("approve", None), ("approve", None)],
             "design/lld_scope": [("all", None), ("all", None)],
-            "design/lld_approval": [("approve", None), ("approve", None)],
             "contract_approval": [("revise", "tighten the API"), ("approve", None)],
             "release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # design phase ran twice end-to-end (HLD + LLDs regenerated on the second pass)
+        # Shared design ran twice. Repo approvals remain separate child ledgers and are reused
+        # only because the deterministic fixture produced the same HLD bytes.
         self.assertEqual(steps.count("design/author_hld"), 2)
         self.assertEqual(steps.count("design/contract"), 2)
-        self.assertEqual(steps.count("design/lld_approval"), 2)
+        self.assertEqual(len([s for s in steps if s.endswith("/lld_approval")]), 2)
 
     def test_revise_cascade_from_prd_gate(self):
-        """Revising at the PRD approval gate re-enters brainstorm_draft, whose cascade-reset
-        re-runs the whole PRD/Q&A phase before it is confirmed again and the HLD is authored."""
+        """PRD feedback re-confirms the feature, interview, and single-write stage."""
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("revise", "sharpen the scope"), ("approve", None)],
             "design/hld_approval": [("approve", None)],
             "design/lld_scope": [("all", None)],
-            "design/lld_approval": [("approve", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # PRD authored twice (revise looped back), HLD authored once (revise was before it)
-        self.assertEqual(steps.count("design/brainstorm_draft"), 2)
+        # PRD authored twice (revision forces the interview path despite a valid old file).
+        self.assertEqual(steps.count("design/author_prd"), 2)
+        self.assertEqual(steps.count("design/prd_interview"), 1)
         self.assertEqual(steps.count("design/author_hld"), 1)
 
-    def test_lld_revise_requires_feedback_action_before_regeneration(self):
+    def test_repo_lld_revise_is_isolated_and_requires_feedback(self):
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None)],
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None), ("all", None)],
-            "design/lld_approval": [
-                ("revise", "Backend: rotate refresh tokens.\nFrontend: show expiry state."),
+            "design/lld_scope": [("all", None)],
+            "lld:backend": [
+                ("revise", "Rotate refresh tokens and document the failure path."),
                 ("approve", None),
             ],
             "contract_approval": [("approve", None)],
@@ -320,14 +569,14 @@ class SdlcE2E(unittest.TestCase):
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
-        lld_events = [(kind, step) for kind, step in trace
-                      if step == "design/lld_approval"]
-        self.assertIn(("ask_input", "design/lld_approval"), lld_events)
-        state = statemod.load("demo", self.tmp)
+        self.assertIn(("ask_input", "lld:backend/lld_approval"), trace)
+        state = statemod.load("demo--lld--backend", self.tmp)
         revisions = [g for g in state["gates"]
-                     if g["step"] == "design/lld_approval" and g["option"] == "revise"]
+                     if g["step"] == "lld_approval" and g["option"] == "revise"]
         self.assertEqual(len(revisions), 1)
-        self.assertIn("rotate refresh tokens", revisions[0]["input"])
+        self.assertIn("rotate refresh tokens", revisions[0]["input"].lower())
+        frontend = statemod.load("demo--lld--frontend", self.tmp)
+        self.assertFalse(any(g["option"] == "revise" for g in frontend["gates"]))
 
     def test_blocking_arch_review_gate_waive(self):
         self.prep_tasks_json()
@@ -336,7 +585,6 @@ class SdlcE2E(unittest.TestCase):
             "design/prd_approval": [("approve", None)],
             "design/hld_approval": [("approve", None)],
             "design/lld_scope": [("all", None)],
-            "design/lld_approval": [("approve", None)],
             "arch_gate": [("waive", None)],
             "contract_approval": [("approve", None)],
             "release_approval": [("approve", None)],
@@ -383,8 +631,7 @@ class SdlcE2E(unittest.TestCase):
                 "design/collect_references": [("none", None)],
                 "design/prd_approval": [("approve", None)],
                 "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-                "design/lld_approval": [("approve", None)],
+                "design/lld_scope": [("all", None)],
                 "contract_approval": [("approve", None)],
                 "release_approval": [("approve", None)],
             }
@@ -395,142 +642,51 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertEqual(len([s for s in steps if s.endswith("/impl/fix")]), 2)
 
-    def test_oq_loop_with_real_scripts(self):
-        """The design OQ cycle against the REAL oq_serve/oq_record scripts and a real
-        open-questions.json written by the 'plan' agent."""
+    def test_hld_clarifies_before_single_write(self):
+        """The HLD resolves one grouped architecture round before writing once."""
         self.prep_tasks_json()
-        oq = {
-            "schema_version": 1, "feature_slug": "demo",
-            "questions": [{
-                "id": "q1", "question": "Quota per user?", "why": "sizing",
-                "options": ["10", "100"], "status": "open", "resolution": None,
-            }],
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
         }
-        oq_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "open-questions.json")
-        os.makedirs(os.path.dirname(oq_path), exist_ok=True)
-        with open(oq_path, "w") as fh:
-            json.dump(oq, fh)
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertEqual(steps.count("design/hld_interview"), 1)
+        self.assertEqual(steps.count("design/author_hld"), 1)
+        self.assertIn("design/validate_hld_post_questions", steps)
+        self.assertIn("design/validate_hld", steps)
+        self.assertNotIn("design/hld_post_interview", steps)
+        self.assertNotIn("design/repair_hld", steps)
 
-        # drive design.yaml standalone
-        with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", ".maestro/workflows/design.yaml", {"feature": "Demo"}, self.tmp)
-        asked = []
-        for _ in range(60):
-            run = resolver.Run("demo", self.tmp)
-            action = resolver.next_action(run)
-            if action["action"] == "done":
-                break
-            run = resolver.Run("demo", self.tmp)
-            if action["action"] == "run_agents":
-                for act in action["agents"]:
-                    for rel in act.get("artifacts", []):
-                        self.write_agent_artifact(rel, act["step"])
-                    resolver.complete_step(run, act["step"],
-                                           outputs=canned_agent_outputs(act["step"], act))
-            elif action["action"] == "run_agent":
-                for rel in action.get("artifacts", []):
-                    self.write_agent_artifact(rel, action["step"])
-                if action["step"].endswith("refine_hld"):
-                    # simulate the plan skill folding resolved answers into the HLD
-                    with open(oq_path) as fh:
-                        doc = json.load(fh)
-                    for q in doc["questions"]:
-                        if q["status"] == "resolved":
-                            q["status"] = "folded"
-                    with open(oq_path, "w") as fh:
-                        json.dump(doc, fh)
-                resolver.complete_step(run, action["step"],
-                                       outputs=canned_agent_outputs(action["step"], action))
-            elif action["action"] == "run_script":
-                proc = subprocess.run(action["argv"], cwd=self.tmp, capture_output=True,
-                                      text=True, timeout=30)
-                resolver.complete_step(run, action["step"], exit_code=proc.returncode,
-                                       stdout=proc.stdout)
-            elif action["action"] == "ask_gate":
-                step = action["step"]
-                if step == "collect_references":
-                    resolver.record_gate(run, step, "none")
-                elif step == "oq_ask":
-                    asked.append(action["prompt"])
-                    self.assertIn("Quota per user?", action["prompt"])
-                    resolver.record_gate(run, step, "answer-all", input_text="2")
-                elif step == "prd_approval":
-                    resolver.record_gate(run, step, "approve")
-                elif step == "map_stale_gate":
-                    # this test runs every script for real (unlike drive()'s selective
-                    # stubbing), and setUp's codebase/backend+frontend are freshly `git init`'d
-                    # with no map yet — genuinely stale, so the gate genuinely fires.
-                    resolver.record_gate(run, step, "proceed")
-                elif step == "hld_approval":
-                    resolver.record_gate(run, step, "approve")
-                elif step == "lld_scope":
-                    resolver.record_gate(run, step, "all")
-                elif step == "lld_approval":
-                    resolver.record_gate(run, step, "approve")
-                else:
-                    self.fail(f"unexpected gate {step}")
-            statemod.save("demo", run.state, self.tmp)
-        else:
-            self.fail("design workflow did not finish")
-        self.assertEqual(len(asked), 1)
-        with open(oq_path) as fh:
-            doc = json.load(fh)
-        # answered with option index 2 -> "100", then refine folded it
-        self.assertEqual(doc["questions"][0]["status"], "folded")
-        self.assertEqual(doc["questions"][0]["resolution"]["answer"], "100")
-
-    def test_brainstorm_path_when_requirement_empty(self):
-        """Empty requirement folder -> intake gate -> references gate (with a link) ->
-        author the PRD via the real oq_serve/oq_record scripts (on requirement-questions.json)
-        -> reach author_hld. The PRD loop mirrors the design OQ loop."""
-        # start from an EMPTY requirement folder (undo setUp's seed file)
+    def test_prd_interview_path_when_requirement_empty(self):
+        """An empty requirement uses lead-only clarification and a durable interview."""
         req_dir = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement")
         for name in os.listdir(req_dir):
             os.remove(os.path.join(req_dir, name))
-        rq_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement-questions.json")
-
         with statemod.locked("demo", self.tmp):
             resolver.init_run("demo", ".maestro/workflows/design.yaml", {"feature": "Demo"}, self.tmp)
 
         seen = []
-        asked = []
-        gave_refs = []
+        interview_sections = []
         reached_hld = False
         for _ in range(80):
             run = resolver.Run("demo", self.tmp)
             action = resolver.next_action(run)
-            if action["action"] == "done":
-                break
             run = resolver.Run("demo", self.tmp)
             step = action.get("step")
-            if action["action"] == "run_agent":
+            if action["action"] in ("run_agent", "run_lead"):
                 seen.append(step.rsplit("/", 1)[-1])
                 for rel in action.get("artifacts", []):
                     self.write_agent_artifact(rel, step)
                 node = step.rsplit("/", 1)[-1]
-                if node == "brainstorm_draft":
-                    # simulate the brainstorm skill emitting one open question
-                    doc = {"schema_version": 1, "feature_slug": "demo", "questions": [{
-                        "id": "r1", "question": "Who is the primary user?", "why": "scope",
-                        "options": ["Admins", "End users"], "status": "open", "resolution": None,
-                    }]}
-                    with open(rq_path, "w") as fh:
-                        json.dump(doc, fh)
-                    outputs = {"draft_summary": "drafted; 1 open question"}
-                elif node == "rq_fold":
-                    with open(rq_path) as fh:
-                        doc = json.load(fh)
-                    for q in doc["questions"]:
-                        if q["status"] == "resolved":
-                            q["status"] = "folded"
-                    with open(rq_path, "w") as fh:
-                        json.dump(doc, fh)
-                    outputs = {"refined_summary": "folded 1 answer"}
-                elif node == "author_hld":
+                if node == "author_hld":
                     reached_hld = True
-                    resolver.complete_step(run, step, outputs={"hld_summary": "ok"})
-                    statemod.save("demo", run.state, self.tmp)
-                    break
+                    outputs = {"hld_summary": "ok"}
                 else:
                     outputs = canned_agent_outputs(step, action)
                 resolver.complete_step(run, step, outputs=outputs)
@@ -541,37 +697,43 @@ class SdlcE2E(unittest.TestCase):
                                        stdout=proc.stdout)
             elif action["action"] == "ask_gate":
                 if step == "requirement_intake":
-                    resolver.record_gate(run, step, "brainstorm")
+                    resolver.record_gate(run, step, "clarify")
                 elif step == "collect_references":
-                    gave_refs.append(action["prompt"])
-                    resolver.record_gate(run, step, "provide",
-                                         input_text="https://figma.com/file/demo")
-                elif step == "rq_ask":
-                    asked.append(action["prompt"])
-                    resolver.record_gate(run, step, "answer-all", input_text="2")
+                    resolver.record_gate(run, step, "provide")
+                    resolver.record_gate_input(run, step, "https://figma.com/file/demo")
+                elif step in ("project_context_confirm", "feature_goal_confirm"):
+                    resolver.record_gate(run, step, "confirm")
                 elif step == "prd_approval":
                     resolver.record_gate(run, step, "approve")
                 elif step == "map_stale_gate":
-                    # runs every script for real; setUp's codebase/ repos are freshly
-                    # `git init`'d with no map yet, so this genuinely fires.
                     resolver.record_gate(run, step, "proceed")
                 else:
                     self.fail(f"unexpected gate {step}")
+            elif action["action"] == "ask_interview":
+                if step.endswith("prd_interview"):
+                    interview_sections.append(action["section"])
+                resolver.record_interview(run, step, action["section"], accept=True)
+            elif action["action"] == "ask_interview_batch":
+                if step.endswith("prd_interview"):
+                    interview_sections.extend(q["section"] for q in action["questions"])
+                resolver.record_interview_batch(run, step, {
+                    question["section"]: {"accept": True}
+                    for question in action["questions"]
+                })
             statemod.save("demo", run.state, self.tmp)
+            if reached_hld:
+                break
         else:
-            self.fail("brainstorm path did not reach author_hld")
+            self.fail("PRD interview path did not reach author_hld")
 
         self.assertTrue(reached_hld, "never reached author_hld")
-        self.assertEqual(len(gave_refs), 1)  # references gate was offered
-        self.assertIn("brainstorm_draft", seen)
-        self.assertIn("rq_fold", seen)
-        self.assertEqual(len(asked), 1)
-        self.assertIn("Who is the primary user?", asked[0])
-        with open(rq_path) as fh:
-            doc = json.load(fh)
-        # answered option index 2 -> "End users", then rq_fold folded it
-        self.assertEqual(doc["questions"][0]["status"], "folded")
-        self.assertEqual(doc["questions"][0]["resolution"]["answer"], "End users")
+        self.assertIn("project_context", seen)
+        self.assertIn("author_prd", seen)
+        self.assertEqual(len(interview_sections), 1)
+        context_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "prd-context.json")
+        with open(context_path) as fh:
+            context = json.load(fh)
+        self.assertEqual(len(context["decisions"]), 1)
 
 
 if __name__ == "__main__":
