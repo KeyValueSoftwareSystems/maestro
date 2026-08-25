@@ -71,12 +71,13 @@ from the confirmed decisions has an observable acceptance criterion. Non-goals d
 - State each idea once. No recap paragraphs, filler, marketing claims, or repeated rationale.
 - Expand only when precision would otherwise be lost.
 
-## Word budgets
+## Concision
 
-Summary: 120 words. Problem, users, goals, constraints, dependencies: 180 each. Non-goals,
-priorities: 140 each. Functional scope: 300. Acceptance criteria: 260. References: 160. Whole
-document: 1,800 words maximum. These are ceilings, not targets. Target no more than 70% of each
-section ceiling on the first write so small edits cannot trigger a repair.
+Use the shortest wording that preserves every confirmed product fact. Remove repetition, filler,
+and generic explanation; prefer bullets or compact tables when they make the content easier to
+scan. There is no word-count target or ceiling. Never omit, merge, or soften a requirement, edge
+case, constraint, risk, or acceptance criterion merely to shorten the document. When precision
+needs more context, include it.
 
 ## Validate before returning
 

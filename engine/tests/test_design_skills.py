@@ -7,6 +7,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 HLD_SKILL = ROOT / "skills" / "core" / "sdlc" / "plan" / "SKILL.md"
 LLD_SKILL = ROOT / "skills" / "core" / "sdlc" / "repo-design" / "SKILL.md"
+CURRENT_WRITERS = (
+    ROOT / "skills" / "core" / "sdlc" / "prd-writing" / "SKILL.md",
+    ROOT / "skills" / "core" / "sdlc" / "hld-writing" / "SKILL.md",
+    ROOT / "skills" / "core" / "sdlc" / "lld-writing" / "SKILL.md",
+)
 
 
 class DesignSkillContractTest(unittest.TestCase):
@@ -25,7 +30,7 @@ class DesignSkillContractTest(unittest.TestCase):
             "Open questions",
         ):
             self.assertIn(section, self.hld)
-        self.assertIn("700–1,400 words", self.hld)
+        self.assertIn("no word-count target or ceiling", self.hld.lower())
         self.assertIn("without re-deciding", self.hld)
 
     def test_hld_does_not_force_artificial_design_work(self):
@@ -47,7 +52,8 @@ class DesignSkillContractTest(unittest.TestCase):
             self.assertIn(section, self.lld)
         self.assertIn("area | change | responsibility", self.lld)
         self.assertIn("claim | source", self.lld)
-        self.assertIn("900–1,800 words", self.lld)
+        self.assertIn("no word-count target", self.lld.lower())
+        self.assertIn("ceiling", self.lld.lower())
         self.assertIn("dependency-ordered increments", self.lld)
         self.assertIn("without another architecture pass", self.lld)
 
@@ -64,6 +70,13 @@ class DesignSkillContractTest(unittest.TestCase):
             self.assertIn("feedback", lowered)
             self.assertIn("revision history", lowered)
             self.assertIn("do not include", lowered)
+
+    def test_current_writers_never_force_a_word_limit(self):
+        for path in CURRENT_WRITERS:
+            text = path.read_text(encoding="utf-8").lower()
+            self.assertIn("no word-count target or ceiling", text)
+            self.assertNotIn("word maximum", text)
+            self.assertNotIn("validator ceiling", text)
 
 
 if __name__ == "__main__":

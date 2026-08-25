@@ -10,19 +10,18 @@ import sys
 from pathlib import Path
 
 
-SECTION_BUDGETS = {
-    "change summary": 220,
-    "existing seam": 420,
-    "proposed changes": 700,
-    "data model and migrations": 1000,
-    "api and client contract": 1200,
-    "state and flows": 700,
-    "failure and operational behavior": 500,
-    "implementation sequence": 420,
-    "verification": 500,
-}
-SECTION_ORDER = list(SECTION_BUDGETS)
-TOTAL_BUDGET = 4200
+REQUIRED_SECTIONS = (
+    "change summary",
+    "existing seam",
+    "proposed changes",
+    "data model and migrations",
+    "api and client contract",
+    "state and flows",
+    "failure and operational behavior",
+    "implementation sequence",
+    "verification",
+)
+SECTION_ORDER = list(REQUIRED_SECTIONS)
 PARENT_RE = re.compile(r"^\*\*Parent feature:\*\*\s+`?([^`\s]+)`?\s*$", re.I)
 REPO_RE = re.compile(r"^\*\*Repository:\*\*\s+`?(.+?)`?\s*$", re.I)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.I)
@@ -113,10 +112,10 @@ def validate(path, parent_slug=None, repo=None):
 
     if order != SECTION_ORDER:
         errors.append("sections must use the exact required order")
-    unknown = [name for name in order if name not in SECTION_BUDGETS]
+    unknown = [name for name in order if name not in REQUIRED_SECTIONS]
     if unknown:
         errors.append("unexpected level-2 section(s): " + ", ".join(unknown))
-    for name, budget in SECTION_BUDGETS.items():
+    for name in REQUIRED_SECTIONS:
         body = sections.get(name)
         if body is None:
             errors.append(f"missing section: {name}")
@@ -124,8 +123,6 @@ def validate(path, parent_slug=None, repo=None):
         count = len(_words(body))
         if count == 0:
             errors.append(f"empty section: {name}")
-        elif count > budget:
-            errors.append(f"{name}: {count} words exceeds {budget}")
 
     bullets = [line for line in sections.get("change summary", "").splitlines()
                if re.match(r"^\s*[-*]\s+\S", line)]
@@ -171,9 +168,6 @@ def validate(path, parent_slug=None, repo=None):
     if UNRESOLVED_RE.search(text):
         errors.append("document contains an unresolved placeholder (TBD/TODO/decide later)")
 
-    total = len(_words(text))
-    if total > TOTAL_BUDGET:
-        errors.append(f"document: {total} words exceeds {TOTAL_BUDGET}")
     seen = set()
     for sentence in re.split(r"(?<=[.!?])\s+|\n+", text):
         normal = re.sub(r"[^a-z0-9]+", " ", sentence.lower()).strip()

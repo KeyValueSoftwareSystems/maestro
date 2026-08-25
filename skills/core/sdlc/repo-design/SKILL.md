@@ -87,8 +87,8 @@ claims that the implementation will be secure, scalable, observable, or well tes
   and speculative file inventories.
 - Make ownership, dependency direction, invariants, and externally visible failure behavior explicit.
   Do not make the implementation agent infer decisions that affect correctness.
-- Aim for 900–1,800 words for a normal repo. Genuine implementation complexity can justify more;
-  repeated context and template padding cannot.
+- Use the shortest wording that remains implementation-complete. There is no word-count target or
+  ceiling; remove repeated context and template padding, never a detail the developer needs.
 
 ## Revision mode
 

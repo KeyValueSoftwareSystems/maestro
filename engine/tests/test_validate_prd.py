@@ -24,7 +24,7 @@ class PrdValidationTest(unittest.TestCase):
             + ("- AC-01: The confirmed behavior is observable."
                if heading == "acceptance criteria"
                else f"A concise confirmed product decision for {heading}.")
-            for heading in validate_prd.SECTION_BUDGETS
+            for heading in validate_prd.REQUIRED_SECTIONS
         ) + "\n"
 
     def test_complete_concise_prd_passes(self):
@@ -42,15 +42,26 @@ class PrdValidationTest(unittest.TestCase):
         self.assertIn("missing section: non goals", errors)
         self.assertIn("empty section: references", errors)
 
-    def test_section_budget_and_repetition_fail(self):
+    def test_long_section_does_not_fail(self):
+        detail = " ".join(
+            f"Confirmed product detail {index} remains necessary."
+            for index in range(1, 801)
+        )
+        text = self.valid_text().replace(
+            "A concise confirmed product decision for summary.", detail, 1,
+        )
+        errors, warnings = validate_prd.validate(self.write(text))
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
+    def test_repetition_fails(self):
         repeated = "This exact product sentence contains enough words to trigger repetition."
         text = self.valid_text().replace(
             "A concise confirmed product decision for summary.",
-            " ".join(["word"] * 121) + f". {repeated} {repeated}",
+            f"{repeated} {repeated}",
             1,
         )
         errors, _ = validate_prd.validate(self.write(text))
-        self.assertTrue(any("summary:" in error and "exceeds" in error for error in errors))
         self.assertTrue(any(error.startswith("repeated sentence:") for error in errors))
 
     def test_missing_file_fails_cleanly(self):

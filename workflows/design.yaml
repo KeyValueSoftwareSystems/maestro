@@ -337,9 +337,10 @@ nodes:
       references, and any cumulative decisions at .maestro/runs/${inputs.slug}/prd-context.json to
       .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
       repository. Use only stored answers, never unaccepted proposal text, for user-answer
-      decisions. Create the exact eleven-section skeleton before filling it, keep the first write
-      below 70% of every supplied ceiling, and give every in-scope confirmed behavior an observable
-      AC. Before completing, run `python3 .maestro/engine/validate_prd.py
+      decisions. Create the exact eleven-section skeleton before filling it, use the shortest clear
+      wording that preserves every confirmed fact, and give every in-scope confirmed behavior an
+      observable AC. Never omit necessary context merely to shorten the PRD. Before completing, run
+      `python3 .maestro/engine/validate_prd.py
       .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical`; repair any remaining named
       defect inside this same call and run it again. This is the only normal PRD write.
     skill: prd-writing
@@ -357,7 +358,7 @@ nodes:
 
   - id: validate_prd
     type: script
-    label: Validate PRD structure and brevity
+    label: Validate PRD structure and clarity
     run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --fix-mechanical, --report]
     max_visits: 3
     on_exhausted: abort
@@ -572,8 +573,9 @@ nodes:
 
       Write concise, skimmable technical English. Do not reopen settled decisions, invent missing
       facts, repeat the PRD, or drift into endpoint fields, schema columns, file lists, or task-level
-      implementation. Create the exact six-section HLD skeleton before filling it and target below
-      70% of every supplied word ceiling.
+      implementation. Create the exact six-section HLD skeleton before filling it. Use the shortest
+      clear wording that preserves every material decision and all context needed to understand the
+      architecture; never remove necessary content to reduce length.
 
       Also write open-questions.json containing only questions explicitly deferred to LLD, and
       hld-post-questions.json as a schema-version-2 post-check. The post-check must be empty when no

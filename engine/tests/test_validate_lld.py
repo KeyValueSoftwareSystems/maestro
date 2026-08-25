@@ -78,6 +78,21 @@ class LldValidationTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(warnings, [])
 
+    def test_long_section_does_not_fail(self):
+        detail = " ".join(
+            f"Repository detail {index} preserves a necessary confirmed implementation decision."
+            for index in range(1, 701)
+        )
+        text = self.valid_text().replace(
+            "Extend the current service with the approved behavior. Keep persistence ownership "
+            "inside the repository's existing data layer.",
+            detail,
+            1,
+        )
+        errors, warnings = validate_lld.validate(self.write(text))
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
     def test_missing_order_and_summary_shape_fail(self):
         text = self.valid_text().replace(
             "## Existing seam", "## Extra section\n\nExtra.\n\n## Existing seam",
