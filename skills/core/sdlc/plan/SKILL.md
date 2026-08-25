@@ -73,8 +73,9 @@ apply; never add `n/a` headings or generic assurances.
 - State concrete behavior and consequences. Delete filler such as "robust", "seamless",
   "scalable", or "follows best practices" unless the document gives a measurable meaning.
 - Do not restate the PRD, narrate research, show a checklist, or include code and file touch lists.
-- Aim for 700–1,400 words for a normal feature. Complexity can justify more; template completeness
-  cannot. Never remove a material decision merely to hit the target.
+- Use the shortest wording that preserves every material architectural decision and its necessary
+  context. There is no word-count target or ceiling; remove repetition and template padding, never
+  information needed for approval or downstream design.
 
 ## Revision mode
 

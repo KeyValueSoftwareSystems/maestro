@@ -11,20 +11,19 @@ import sys
 from pathlib import Path
 
 
-SECTION_BUDGETS = {
-    "summary": 120,
-    "problem and context": 180,
-    "users and jobs": 180,
-    "goals and success signals": 180,
-    "non goals": 140,
-    "functional scope": 300,
-    "constraints and assumptions": 180,
-    "acceptance criteria": 260,
-    "dependencies and risks": 180,
-    "priorities and phasing": 140,
-    "references": 160,
-}
-TOTAL_BUDGET = 1800
+REQUIRED_SECTIONS = (
+    "summary",
+    "problem and context",
+    "users and jobs",
+    "goals and success signals",
+    "non goals",
+    "functional scope",
+    "constraints and assumptions",
+    "acceptance criteria",
+    "dependencies and risks",
+    "priorities and phasing",
+    "references",
+)
 AC_LINE_RE = re.compile(r"^\s*[-*]\s+(?:\*\*)?AC-(\d{2,})(?:\*\*)?:\s+\S")
 NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
@@ -193,7 +192,7 @@ def validate(path, compatible=False):
             errors.append("document header: missing Feature slug metadata")
         if not any(STATUS_RE.match(line) for line in preamble):
             errors.append("document header: missing Status: Ready for review metadata")
-    for name, budget in SECTION_BUDGETS.items():
+    for name in REQUIRED_SECTIONS:
         body = sections.get(name)
         if body is None:
             errors.append(f"missing section: {name}")
@@ -201,11 +200,6 @@ def validate(path, compatible=False):
         count = len(_words(body))
         if count == 0:
             errors.append(f"empty section: {name}")
-        elif count > budget:
-            errors.append(f"{name}: {count} words exceeds {budget}")
-    total = len(_words(text))
-    if total > TOTAL_BUDGET:
-        errors.append(f"document: {total} words exceeds {TOTAL_BUDGET}")
 
     if not compatible:
         acceptance = sections.get("acceptance criteria", "")
@@ -270,7 +264,7 @@ def main(argv=None):
         "warning_count": len(warnings),
         "changed": bool(fixes),
         "fixes": fixes,
-        "issues_summary": " | ".join(issues[:8]) if issues else "PRD structure and brevity checks passed",
+        "issues_summary": " | ".join(issues[:8]) if issues else "PRD structure and clarity checks passed",
     }))
     return 0 if args.report or not errors else 1
 

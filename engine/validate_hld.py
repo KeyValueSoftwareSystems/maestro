@@ -15,16 +15,15 @@ except ImportError:  # imported as a package (tests)
     from .validate_open_questions import validate as validate_open_questions
 
 
-SECTION_BUDGETS = {
-    "decision summary": 220,
-    "context and scope": 320,
-    "proposed design": 750,
-    "key decisions and trade offs": 520,
-    "delivery and risks": 420,
-    "open questions": 220,
-}
-SECTION_ORDER = list(SECTION_BUDGETS)
-TOTAL_BUDGET = 2200
+REQUIRED_SECTIONS = (
+    "decision summary",
+    "context and scope",
+    "proposed design",
+    "key decisions and trade offs",
+    "delivery and risks",
+    "open questions",
+)
+SECTION_ORDER = list(REQUIRED_SECTIONS)
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
 DECORATIVE_WORDS = (
@@ -103,11 +102,11 @@ def validate(path, open_questions_path=None):
 
     if order != SECTION_ORDER:
         errors.append("sections must use the exact required order")
-    unknown = [name for name in order if name not in SECTION_BUDGETS]
+    unknown = [name for name in order if name not in REQUIRED_SECTIONS]
     if unknown:
         errors.append("unexpected level-2 section(s): " + ", ".join(unknown))
 
-    for name, budget in SECTION_BUDGETS.items():
+    for name in REQUIRED_SECTIONS:
         body = sections.get(name)
         if body is None:
             errors.append(f"missing section: {name}")
@@ -115,18 +114,12 @@ def validate(path, open_questions_path=None):
         count = len(_words(body))
         if count == 0:
             errors.append(f"empty section: {name}")
-        elif count > budget:
-            errors.append(f"{name}: {count} words exceeds {budget}")
 
     summary = sections.get("decision summary", "")
     summary_bullets = [line for line in summary.splitlines()
                        if re.match(r"^\s*[-*]\s+\S", line)]
     if summary and not 5 <= len(summary_bullets) <= 8:
         errors.append("decision summary must contain 5-8 bullets")
-
-    total = len(_words(text))
-    if total > TOTAL_BUDGET:
-        errors.append(f"document: {total} words exceeds {TOTAL_BUDGET}")
 
     if open_questions_path:
         errors.extend(_validate_deferred_ledger(

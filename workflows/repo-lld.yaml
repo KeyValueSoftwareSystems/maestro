@@ -114,8 +114,9 @@ nodes:
       publish every route/operation, authorization rule, request/response field, stable error,
       pagination/time/enum rule, refresh behavior, and shared contract seam the frontend needs to
       implement without reading backend source. Do not repeat the HLD, redesign another repo,
-      include open decisions, produce a file-by-file task dump, or implement code. Target below 70%
-      of every validator ceiling.
+      include open decisions, produce a file-by-file task dump, or implement code. Use the shortest
+      clear wording that remains implementation-complete; never remove necessary detail or context
+      to reduce length.
 
       Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
       post-check. Keep it empty unless synthesis reveals a genuinely new blocking repo decision;

@@ -51,6 +51,20 @@ class HldValidationTest(unittest.TestCase):
         self.assertEqual(errors, [])
         self.assertEqual(warnings, [])
 
+    def test_long_section_does_not_fail(self):
+        detail = " ".join(
+            f"Architecture detail {index} preserves a necessary confirmed system decision."
+            for index in range(1, 701)
+        )
+        text = self.valid_text().replace(
+            "The approved feature spans one backend and one client.", detail, 1,
+        )
+        errors, warnings = validate_hld.validate(
+            self.write(text), open_questions_path=self.ledger(),
+        )
+        self.assertEqual(errors, [])
+        self.assertEqual(warnings, [])
+
     def test_missing_order_and_summary_shape_fail(self):
         text = self.valid_text().replace(
             "## Context and scope", "## Extra section\n\nExtra.\n\n## Context and scope",

@@ -114,7 +114,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
 - **`validate_prd.py` / `validate_prd_questions.py` / `validate_hld.py` / `validate_lld.py`** —
-  deterministic PRD, HLD, and repository LLD structure, acceptance-ID, brevity, question-queue,
+  deterministic PRD, HLD, and repository LLD structure, acceptance-ID, readability, question-queue,
   and deferred-ledger checks. They never make product or architecture decisions.
 - **`lld_repo_pool.py` / `workflows/repo-lld.yaml`** — create one child run per selected repo,
   run a lead-owned bounded clarification and single-write LLD flow, publish only human-approved

@@ -62,11 +62,13 @@ belong to LLD.
 - Do not narrate research, restate the same decision, add filler, or include a revision log.
 - Add a diagram only when it makes a multi-system flow clearer than short prose.
 
-## Size targets
+## Concision
 
-The workflow validator supplies hard ceilings. Target no more than 70% of each ceiling on the first
-write. A normal HLD should remain roughly 700–1,400 words; complexity may justify less or more, but
-template completion does not.
+Use the shortest wording that preserves the complete architectural direction. Remove repetition,
+filler, and implementation detail that belongs in the LLD; prefer compact bullets, tables, or a
+useful diagram when they improve scanning. There is no word-count target or ceiling. Never omit a
+material decision, boundary, interaction, trade-off, risk, or necessary context merely to shorten
+the HLD. Correctness and completeness take precedence over length.
 
 ## Conditional post-check
 
@@ -80,7 +82,7 @@ uses the supplied open-question schema; final entries are `deferred`, never `ope
 
 ## Validate before returning
 
-Run every workflow-supplied validator. Repair deterministic structure, brevity, readability, or
+Run every workflow-supplied validator. Repair deterministic structure, clarity, readability, or
 ledger defects inside this call and validate again. Do not report success with a failing artifact.
 
 ## Repair mode

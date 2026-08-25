@@ -21,9 +21,10 @@ for the current validator.
 3. Map every inventoried fact into exactly one current section. Keep acceptance identifiers only in
    acceptance criteria and preserve their meaning.
 4. Remove only repetition, obsolete revision history, and excess explanation. Do not remove a
-   unique requirement or decision to meet brevity limits; compress it instead.
+   unique requirement or decision merely to shorten the document; compress it when that preserves
+   the complete meaning.
 5. Run the supplied validators. Repair only named structural, metadata, ordering, duplication, or
-   brevity defects.
+   readability defects.
 
 ## Standards
 

@@ -91,8 +91,10 @@ All blocking implementation decisions must be resolved before this document. Nev
 - Avoid filler, repeated HLD context, decorative adjectives, revision history, and generic claims.
 - Use a diagram only when ordering cannot be understood from a short numbered flow.
 
-Target 1,200–2,200 words and no more than 70% of each validator ceiling on the first write. Prefer
-dense contract tables over explanatory prose; completeness means no missing decisions, not more
+Use the shortest wording that remains implementation-complete. Prefer dense contract tables over
+repeated explanatory prose. There is no word-count target or ceiling. Never omit a schema detail,
+contract field, state transition, failure rule, implementation dependency, test obligation, or
+necessary context merely to shorten the LLD. Completeness means no missing decisions, not more
 sentences.
 
 ## Conditional post-check
@@ -110,7 +112,7 @@ use `None` only when this repo truly adds no cross-repo contract fact.
 
 ## Validate and repair
 
-Run every supplied validator. Repair deterministic structure, brevity, readability, or post-queue
+Run every supplied validator. Repair deterministic structure, clarity, readability, or post-queue
 defects inside the same call and validate again. In repair mode, change only named defects and
 preserve all confirmed decisions and unrelated prose.
 
