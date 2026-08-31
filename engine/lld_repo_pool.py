@@ -28,6 +28,15 @@ Commands
   check [--root .] --slug <parent>
       Verify every selected child run completed and published a hash-matching approved LLD.
 
+  validate-review [--root .] --slug <parent> --blocking <bool> --revision-scope <scope>
+                  --repos-text <names> --correction-text <text>
+      Validate and normalize the architecture review's deterministic revision routing fields.
+
+  reopen [--root .] --slug <parent> --repos-text <names> --feedback <text>
+         --workflow <path> [--feature <text>]
+      Replace only the named approved child workstreams with fresh revision ledgers while keeping
+      every unrelated repository approval intact.
+
   publish [--root .] --slug <child> --parent-slug <parent> --repo <name>
       After the child approval gate, atomically publish its LLD and approval receipt to the parent.
 """
@@ -42,6 +51,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import state as statemod  # noqa: E402
+
+
+REVIEW_SCOPES = ("product", "hld", "lld", "contract", "verification", "cross-cutting")
 
 
 def _queue_path(slug, root):
@@ -119,6 +131,34 @@ def _parse_repos_text(text, discovered):
         match = by_lower.get(w.lower())
         (picked if match else unknown).append(match or w)
     return picked, unknown
+
+
+def _selected_repos(doc, text):
+    selected = (doc or {}).get("selected") or []
+    picked, unknown = _parse_repos_text(text or "", selected)
+    picked = list(dict.fromkeys(picked))
+    if unknown:
+        raise ValueError(
+            f"unknown affected repository name(s) {unknown}; selected repositories are {selected}"
+        )
+    if not picked:
+        raise ValueError("at least one affected repository is required")
+    return picked
+
+
+def _child_generation(parent_slug, repo, child_slug):
+    base = _child_slug(parent_slug, repo, 1)
+    if child_slug == base:
+        return 1
+    match = re.match(re.escape(base) + r"--v(\d+)$", child_slug or "")
+    return int(match.group(1)) if match else 1
+
+
+def _next_child(slug, repo, root, after_generation):
+    generation = max(2, after_generation + 1)
+    while statemod.load(_child_slug(slug, repo, generation), root) is not None:
+        generation += 1
+    return _child_slug(slug, repo, generation), generation
 
 
 def cmd_init(args):
@@ -201,10 +241,17 @@ def cmd_workstreams(args):
         if repo not in repo_paths:
             print(f"FAIL: selected repository {repo!r} is no longer discoverable", file=sys.stderr)
             return 1
-        child_slug = (
-            existing_by_repo.get(repo, {}).get("slug")
-            or _child_slug(args.slug, repo, generation)
+        existing_item = existing_by_repo.get(repo, {})
+        child_generation = int(existing_item.get("generation") or generation)
+        child_slug = existing_item.get("slug") or _child_slug(
+            args.slug, repo, child_generation,
         )
+        # A selective LLD revision may already own the numeric slug that a later HLD-wide
+        # generation would normally choose. Never attach a new HLD to that older child ledger.
+        if not existing_item and statemod.load(child_slug, args.root) is not None:
+            child_slug, child_generation = _next_child(
+                args.slug, repo, args.root, child_generation,
+            )
         child_inputs = {
             "parent_slug": args.slug,
             "repo": repo,
@@ -226,10 +273,12 @@ def cmd_workstreams(args):
                 resolver.init_run(
                     child_slug, args.workflow, child_inputs, args.root,
                 )
-        workstreams.append({"repo": repo, "slug": child_slug})
+        workstreams.append({
+            "repo": repo, "slug": child_slug, "generation": child_generation,
+        })
     doc["workstreams"] = workstreams
     doc["hld_sha256"] = hld_sha256
-    doc["generation"] = generation
+    doc["generation"] = max(item["generation"] for item in workstreams)
     with statemod.locked(args.slug, args.root):
         _save_queue(args.slug, args.root, doc)
     lines = [f"- `{item['repo']}` → `/maestro {item['slug']}`" for item in workstreams]
@@ -289,6 +338,133 @@ def cmd_check(args):
         "total_count": len(workstreams),
         "pending_csv": ",".join(pending),
         "status_md": "\n".join(statuses),
+    }))
+    return 0
+
+
+def cmd_validate_review(args):
+    blocking = str(args.blocking).strip().lower() == "true"
+    if not blocking:
+        print(json.dumps({
+            "valid": True,
+            "blocking": False,
+            "revision_scope": "none",
+            "affected_repos_csv": "",
+            "correction_text": "",
+        }))
+        return 0
+    scope = (args.revision_scope or "").strip().lower()
+    if scope not in REVIEW_SCOPES:
+        print(
+            f"FAIL: blocking architecture review requires revision_scope in {REVIEW_SCOPES}",
+            file=sys.stderr,
+        )
+        return 1
+    correction = (args.correction_text or "").strip()
+    if not correction:
+        print("FAIL: blocking architecture review requires correction_text", file=sys.stderr)
+        return 1
+    try:
+        repos = _selected_repos(_load_queue(args.slug, args.root), args.repos_text)
+    except ValueError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 1
+    print(json.dumps({
+        "valid": True,
+        "blocking": True,
+        "revision_scope": scope,
+        "affected_repos_csv": ",".join(repos),
+        "correction_text": correction,
+    }))
+    return 0
+
+
+def cmd_reopen(args):
+    import resolver
+
+    doc = _load_queue(args.slug, args.root)
+    if not doc or not doc.get("workstreams"):
+        print(f"FAIL: no LLD workstreams for parent slug {args.slug!r}", file=sys.stderr)
+        return 1
+    try:
+        repos = _selected_repos(doc, args.repos_text)
+    except ValueError as exc:
+        print(f"FAIL: {exc}", file=sys.stderr)
+        return 1
+    feedback = (args.feedback or "").strip()
+    if not feedback:
+        print("FAIL: LLD revision feedback cannot be blank", file=sys.stderr)
+        return 1
+    parent_hld = os.path.join(statemod.feature_dir(args.slug, args.root), "hld.md")
+    if (not os.path.isfile(parent_hld)
+            or doc.get("hld_sha256") != statemod.sha256_file(parent_hld)):
+        print(
+            "FAIL: parent HLD changed; recreate all LLD workstreams from the HLD revision path",
+            file=sys.stderr,
+        )
+        return 1
+    repo_paths = {
+        name: os.path.relpath(path, args.root)
+        for name, path in codebase_scan.discover_repos(args.root)
+    }
+    by_repo = {
+        item.get("repo"): dict(item)
+        for item in doc.get("workstreams") or []
+        if isinstance(item, dict) and item.get("repo") and item.get("slug")
+    }
+    for repo in repos:
+        if repo not in by_repo or repo not in repo_paths:
+            print(f"FAIL: affected repository {repo!r} has no current workstream", file=sys.stderr)
+            return 1
+
+    reopened = []
+    for repo in repos:
+        current = by_repo[repo]
+        current_state = statemod.load(current["slug"], args.root) or {}
+        current_inputs = current_state.get("inputs") or {}
+        if (current_state.get("run", {}).get("status") == "running"
+                and current_inputs.get("review_feedback") == feedback):
+            reopened.append(current)
+            continue
+        if current_state.get("run", {}).get("status") != "done":
+            print(
+                f"FAIL: repository {repo!r} already has an unfinished LLD workstream",
+                file=sys.stderr,
+            )
+            return 1
+        generation = int(current.get("generation") or _child_generation(
+            args.slug, repo, current["slug"],
+        ))
+        child_slug, generation = _next_child(args.slug, repo, args.root, generation)
+        child_inputs = {
+            "parent_slug": args.slug,
+            "repo": repo,
+            "repo_path": repo_paths[repo],
+            "feature": args.feature or args.slug,
+            "review_feedback": feedback,
+        }
+        with statemod.locked(child_slug, args.root):
+            resolver.init_run(child_slug, args.workflow, child_inputs, args.root)
+        replacement = {"repo": repo, "slug": child_slug, "generation": generation}
+        by_repo[repo] = replacement
+        reopened.append(replacement)
+
+    doc["workstreams"] = [by_repo[repo] for repo in doc["selected"]]
+    doc["generation"] = max(
+        int(item.get("generation") or _child_generation(args.slug, item["repo"], item["slug"]))
+        for item in doc["workstreams"]
+    )
+    with statemod.locked(args.slug, args.root):
+        _save_queue(args.slug, args.root, doc)
+    lines = [f"- `{item['repo']}` → `/maestro {item['slug']}`" for item in reopened]
+    print(json.dumps({
+        "reopened_count": len(reopened),
+        "reopened_repos_csv": ",".join(item["repo"] for item in reopened),
+        "workstreams_md": "\n".join(lines),
+        "hld_summary": (
+            "Existing approved PRD/HLD retained; reopened LLDs for "
+            + ", ".join(item["repo"] for item in reopened)
+        ),
     }))
     return 0
 
@@ -425,6 +601,24 @@ def main(argv):
     p.add_argument("--root", default=".")
     p.add_argument("--slug", required=True, help="parent feature slug")
     p.set_defaults(fn=cmd_check)
+
+    p = sub.add_parser("validate-review")
+    p.add_argument("--root", default=".")
+    p.add_argument("--slug", required=True, help="parent feature slug")
+    p.add_argument("--blocking", required=True)
+    p.add_argument("--revision-scope", default="")
+    p.add_argument("--repos-text", default="")
+    p.add_argument("--correction-text", default="")
+    p.set_defaults(fn=cmd_validate_review)
+
+    p = sub.add_parser("reopen")
+    p.add_argument("--root", default=".")
+    p.add_argument("--slug", required=True, help="parent feature slug")
+    p.add_argument("--repos-text", required=True)
+    p.add_argument("--feedback", required=True)
+    p.add_argument("--workflow", required=True, help="repo LLD child workflow")
+    p.add_argument("--feature", default="")
+    p.set_defaults(fn=cmd_reopen)
 
     p = sub.add_parser("publish")
     p.add_argument("--root", default=".")
