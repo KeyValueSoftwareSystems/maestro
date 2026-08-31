@@ -304,6 +304,20 @@ writes a hash-bound receipt to the parent; the parent joins only after every sel
 complete and still matches the current HLD. Generic `parallel` remains useful when one owner
 controls every branch in one run.
 
+The architecture-review gate has a scoped correction path. A deterministic validator checks the
+reviewer's source-layer enum, affected repository names, and proposed correction wording against
+`lld-repos.json`. Human approval records one immutable correction receipt per affected repository,
+then replaces only those completed child workstreams with fresh revision ledgers. Unaffected LLD
+approvals remain valid; the parent cannot continue until every replacement is approved and
+published, after which contract/test generation and architecture review run again.
+
+After contract approval, implementation scope is a separate human gate. `implementation_pool.py`
+stores the complete designed repository set, one active batch, verified implementations from prior
+batches, and the remaining deferred set. Fixed parallel slots claim only the active batch. A later
+batch resumes through the pre-implementation workspace check and scope gate, not through design;
+PRD/HLD/LLD/contract/architecture review remain approved unless repository drift invalidates them.
+The parent may stay parked at its deferred-work gate between delivery batches.
+
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
 `parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per
 stack. In harnesses with parallel subagents, ready agent steps across branches are dispatched

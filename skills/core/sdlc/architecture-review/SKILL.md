@@ -25,7 +25,12 @@ ADRs).
    perform the pass **inline**. Either way: **read-only — never edit code.** You are the
    read-only backstop; nothing is skipped.
 4. **Consolidate** findings; sort by severity; decide `blocking`.
-5. **Write** the report and return the verdict.
+5. **Classify the revision route.** For a blocking verdict, select the earliest authoritative
+   layer that would normally need revision: `product`, `hld`, `lld`, `contract`, `verification`,
+   or `cross-cutting`. Name every repository whose LLD must reflect the correction, even when the
+   normal source layer is PRD/HLD/contract; the human is always offered an LLD-only correction
+   path that deliberately preserves the approved PRD/HLD.
+6. **Write** the report and return the verdict.
 
 ## What the review must cover (checklist — independent of the external skill)
 - **Completeness / gaps** — does the design satisfy every requirement & acceptance
@@ -76,5 +81,20 @@ remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write the
 (summary + findings table) to the artifact path your instructions specify (the orchestrator
 passes it). Running standalone? write to a sensible path you choose and tell the user where.
 
+For the routing fields:
+
+- `revision_scope` is the earliest source-of-truth layer whose revision would resolve all
+  blocking findings. Prefer the order product → hld → lld → contract → verification; use
+  `cross-cutting` only when no single layer owns the decision.
+- `affected_repos_csv` is a comma-separated subset of the exact repository names in
+  `lld-repos.json`. It is mandatory for a blocking verdict because the human may approve the
+  finding as an effective-design correction and update only those LLDs.
+- `correction_text` is one or two precise sentences stating the resulting design rule. It must be
+  complete enough to become a human-approved correction receipt; do not put analysis or options in
+  it.
+- For a non-blocking verdict return `revision_scope: "none"`, `affected_repos_csv: ""`, and
+  `correction_text: ""`.
+
 ## Output contract
-Return `review_path`, `blocking`, `summary`.
+Return `review_path`, `blocking`, `summary`, `revision_scope`, `affected_repos_csv`, and
+`correction_text`.

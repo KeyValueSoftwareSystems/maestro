@@ -240,6 +240,64 @@ class LldWorkstreamTest(unittest.TestCase):
         self.assertFalse(status["ready"])
         self.assertEqual(status["pending_csv"], "backend")
 
+    def test_reopen_replaces_only_affected_approved_workstream(self):
+        backend_v1 = self.approve("backend")
+        frontend_v1 = self.approve("frontend")
+        self.assertTrue(self.check()["ready"])
+        args = SimpleNamespace(
+            root=self.root,
+            slug="feature",
+            repos_text="backend",
+            feedback="Preserve prior state and return the typed failure result.",
+            workflow=".maestro/workflows/repo-lld.yaml",
+            feature="Feature",
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(lld_repo_pool.cmd_reopen(args), 0)
+        queue = self.queue()
+        by_repo = {item["repo"]: item for item in queue["workstreams"]}
+        self.assertEqual(by_repo["backend"]["slug"], "feature--lld--backend--v2")
+        self.assertEqual(by_repo["frontend"]["slug"], frontend_v1)
+        self.assertNotEqual(by_repo["backend"]["slug"], backend_v1)
+        revised = statemod.load(by_repo["backend"]["slug"], self.root)
+        self.assertEqual(
+            revised["inputs"]["review_feedback"],
+            "Preserve prior state and return the typed failure result.",
+        )
+        status = self.check()
+        self.assertFalse(status["ready"])
+        self.assertEqual(status["pending_csv"], "backend")
+
+        # Script retry before the child finishes is idempotent; it must not create v3.
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(lld_repo_pool.cmd_reopen(args), 0)
+        self.assertEqual(
+            next(item["slug"] for item in self.queue()["workstreams"]
+                 if item["repo"] == "backend"),
+            "feature--lld--backend--v2",
+        )
+
+    def test_validate_review_requires_selected_repositories_for_blocking_verdict(self):
+        good = SimpleNamespace(
+            root=self.root,
+            slug="feature",
+            blocking="true",
+            revision_scope="hld",
+            repos_text="backend",
+            correction_text="Use the typed backend failure contract.",
+        )
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.assertEqual(lld_repo_pool.cmd_validate_review(good), 0)
+        result = json.loads(output.getvalue())
+        self.assertTrue(result["blocking"])
+        self.assertEqual(result["affected_repos_csv"], "backend")
+
+        bad = SimpleNamespace(**{**vars(good), "repos_text": "missing"})
+        with contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(lld_repo_pool.cmd_validate_review(bad), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

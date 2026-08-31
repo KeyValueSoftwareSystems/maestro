@@ -11,6 +11,10 @@ inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
+  revision_mode: {type: string, default: "", description: architecture gate choice for a scoped revision}
+  revision_scope: {type: string, default: "", description: earliest authoritative design layer affected by architecture review}
+  affected_repos: {type: string, default: "", description: comma-separated repositories whose LLDs need the approved change}
+  correction_text: {type: string, default: "", description: architecture-review correction wording approved at the gate}
   upgrade_manifest: {type: string, default: "", description: engine-created one-time legacy run import plan}
 defaults:
   model: opus
@@ -23,6 +27,14 @@ nodes:
     label: Check one-time run upgrade
     run: [python3, .maestro/engine/run_upgrade.py, resume, --root, ., --manifest, "${inputs.upgrade_manifest}"]
     routes:
+      # Architecture review is scope-aware: the human can always approve an LLD-only correction,
+      # or reopen the earliest authoritative source layer identified by the reviewer.
+      - {when: "${inputs.revision_mode} == lld_only", to: record_arch_lld_correction}
+      - {when: "${inputs.revision_scope} == hld", to: prepare_hld_questions}
+      - {when: "${inputs.revision_scope} == lld", to: lld_review_reopen}
+      - {when: "${inputs.revision_scope} == contract", to: corrections_context}
+      - {when: "${inputs.revision_scope} == verification", to: test_cases}
+      - {when: "${inputs.revision_scope} in [product, cross-cutting]", to: assert_requirement}
       - {when: "${steps.upgrade_entry.outputs.state} == ready", to: upgrade_baseline_approval}
       - {when: "${steps.upgrade_entry.outputs.state} == invalid", to: upgrade_baseline_invalid}
       - {to: assert_requirement}
@@ -718,6 +730,46 @@ nodes:
     on_fail: abort
     next: lld_workstreams_check
 
+  - id: record_arch_lld_correction
+    type: script
+    label: Record approved LLD-only architecture correction
+    run:
+      - python3
+      - .maestro/engine/design_corrections.py
+      - record-repositories
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --repos-text
+      - "${inputs.affected_repos}"
+      - --text
+      - "${inputs.correction_text}"
+    on_fail: abort
+    next: lld_review_reopen
+
+  - id: lld_review_reopen
+    type: script
+    label: Reopen only affected repository LLDs
+    run:
+      - python3
+      - .maestro/engine/lld_repo_pool.py
+      - reopen
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --repos-text
+      - "${inputs.affected_repos}"
+      - --feedback
+      - "${inputs.correction_text} ${inputs.feedback}"
+      - --workflow
+      - .maestro/workflows/repo-lld.yaml
+      - --feature
+      - "${inputs.feature}"
+    on_fail: abort
+    next: lld_workstreams_check
+
   - id: lld_workstreams_check
     type: script
     label: Check repository LLD approvals
@@ -735,6 +787,7 @@ nodes:
       without sharing one mutable state.yaml:
 
       ${steps.lld_workstreams_init.outputs.workstreams_md}
+      ${steps.lld_review_reopen.outputs.workstreams_md}
 
       Current status:
       ${steps.lld_workstreams_check.outputs.status_md}
@@ -784,7 +837,7 @@ nodes:
     next: end
 
 outputs:
-  hld_summary: "${steps.author_hld.outputs.hld_summary} ${steps.upgrade_activate.outputs.hld_summary}"
+  hld_summary: "${steps.author_hld.outputs.hld_summary} ${steps.upgrade_activate.outputs.hld_summary} ${steps.lld_review_reopen.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"
   contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"

@@ -241,6 +241,52 @@ def record(slug, root, scope, text, repo=None, parent_slug=None):
     }
 
 
+def record_repositories(slug, root, repos_text, text):
+    """Record one human-approved repository correction per named LLD owner.
+
+    Validate the complete list before writing any receipt. The operation is idempotent because
+    ``record`` derives each receipt id from its exact parent/scope/repo/text tuple.
+    """
+    parent = _resolve_parent(slug, root)
+    queue_path = os.path.join(_run_dir(parent, root), "lld-repos.json")
+    try:
+        queue = _load_json(queue_path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"cannot read selected LLD repositories: {exc}") from None
+    selected = queue.get("selected") if isinstance(queue, dict) else None
+    if not isinstance(selected, list) or not selected:
+        raise ValueError("no selected LLD repositories exist for this feature")
+    by_lower = {str(repo).lower(): repo for repo in selected}
+    requested = [part.strip() for part in repos_text.replace(",", " ").split() if part.strip()]
+    if not requested:
+        raise ValueError("at least one affected repository is required")
+    repos, unknown = [], []
+    for candidate in requested:
+        repo = by_lower.get(candidate.lower())
+        if repo is None:
+            unknown.append(candidate)
+        elif repo not in repos:
+            repos.append(repo)
+    if unknown:
+        raise ValueError(
+            f"unknown affected repository name(s) {unknown}; selected repositories are {selected}"
+        )
+    text = text.strip()
+    if not text:
+        raise ValueError("correction text cannot be blank")
+    receipts = [
+        record(parent, root, "repository", text, repo=repo)
+        for repo in repos
+    ]
+    return {
+        "ok": True,
+        "parent_slug": parent,
+        "repos_csv": ",".join(repos),
+        "correction_ids_csv": ",".join(item["id"] for item in receipts),
+        "corrections_count": len(_load_corrections(parent, root)),
+    }
+
+
 def _folded_ids(slug, root):
     path = _fold_receipt_path(slug, root)
     try:
@@ -422,6 +468,12 @@ def main(argv=None):
     p.add_argument("--root", default=".")
     p.add_argument("--slug", required=True)
 
+    p = sub.add_parser("record-repositories")
+    p.add_argument("--root", default=".")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--repos-text", required=True)
+    p.add_argument("--text", required=True)
+
     p = sub.add_parser("prepare-fold")
     p.add_argument("--root", default=".")
     p.add_argument("--slug", required=True)
@@ -438,6 +490,8 @@ def main(argv=None):
                 args.slug, args.root, args.scope, args.text, repo=args.repo,
                 parent_slug=args.parent_slug,
             )
+        elif args.command == "record-repositories":
+            result = record_repositories(args.slug, args.root, args.repos_text, args.text)
         elif args.command == "render":
             parent = _resolve_parent(args.slug, args.root)
             result = _render(parent, args.root)

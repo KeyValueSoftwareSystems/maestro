@@ -118,14 +118,19 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   and deferred-ledger checks. They never make product or architecture decisions.
 - **`lld_repo_pool.py` / `workflows/repo-lld.yaml`** — create one child run per selected repo,
   run a lead-owned bounded clarification and single-write LLD flow, publish only human-approved
-  LLDs back to the parent, bind approvals to the current HLD hash, and let the parent join only
-  after all repo-owned ledgers are complete.
+  LLDs back to the parent, bind approvals to the current HLD hash, selectively reopen only the
+  repositories named by an approved architecture correction, and let the parent join only after
+  all repo-owned ledgers are complete.
+- **`implementation_pool.py`** — separate approved design scope from the current implementation
+  batch, preserve verified repository handoffs across batches, keep unselected repositories as
+  durable deferred work, and build the QA manifest only from exact verified worktree commits.
 - **`run_upgrade.py`** — inspect and apply the explicit one-time semantic run-format upgrade.
   Backs up old state/artifacts, stamps compatible ledgers, and rebuilds legacy ledgers from
   validated PRD/HLD plus independently re-approved imported LLD drafts; never maps removed steps.
 - **`design_corrections.py`** — immutable per-correction approval receipts, deterministic
-  effective-design rendering for downstream consumers, and validated archive-time folding into
-  final document copies without mutating original hash-bound approvals.
+  effective-design rendering for downstream consumers, repository-batch receipts for the
+  architecture-review LLD-only path, and validated archive-time folding into final document copies
+  without mutating original hash-bound approvals.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.

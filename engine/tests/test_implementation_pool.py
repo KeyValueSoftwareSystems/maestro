@@ -114,6 +114,60 @@ class ImplementationPoolTest(unittest.TestCase):
         code, _ = run("finalize", "--root", self.root, "--slug", "feature-x")
         self.assertEqual(code, 1)
 
+    def test_deferred_repo_can_be_selected_in_later_batch(self):
+        web = os.path.join(self.root, "codebase", "web")
+        os.makedirs(web)
+        git(web, "init", "-q")
+        git(web, "config", "user.email", "test@example.com")
+        git(web, "config", "user.name", "Test")
+        with open(os.path.join(web, "README.md"), "w") as fh:
+            fh.write("web\n")
+        git(web, "add", "README.md")
+        git(web, "commit", "-q", "-m", "initial")
+        selection_path = os.path.join(
+            self.root, ".maestro", "runs", "feature-x", "lld-repos.json",
+        )
+        with open(selection_path, "w") as fh:
+            json.dump({"selected": ["mobile-app", "web"], "remaining": []}, fh)
+
+        code, available = run("list", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0)
+        self.assertEqual(available["available_csv"], "mobile-app,web")
+        code, first = run(
+            "init", "--root", self.root, "--slug", "feature-x",
+            "--choice", "pick", "--repos-text", "mobile-app",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(first["selected_csv"], "mobile-app")
+        self.assertEqual(first["deferred_csv"], "web")
+        run("claim", "--root", self.root, "--slug", "feature-x")
+        worktree, branch, commit = self.create_feature_worktree()
+        code, _ = run(
+            "record", "--root", self.root, "--slug", "feature-x",
+            "--repo", "mobile-app", "--branch", branch,
+            "--worktree", worktree, "--commit", commit,
+        )
+        self.assertEqual(code, 0)
+        code, _ = run("finalize", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0)
+        code, deferred = run("check", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0)
+        self.assertTrue(deferred["has_deferred"])
+        self.assertEqual(deferred["deferred_csv"], "web")
+
+        code, second = run(
+            "init", "--root", self.root, "--slug", "feature-x",
+            "--choice", "pick", "--repos-text", "web",
+        )
+        self.assertEqual(code, 0)
+        self.assertEqual(second["selected_csv"], "web")
+        with open(os.path.join(
+            self.root, ".maestro", "runs", "feature-x", "implementation-repos.json",
+        )) as fh:
+            queue = json.load(fh)
+        self.assertIn("mobile-app", queue["implementations"])
+        self.assertEqual(queue["remaining"], ["web"])
+
 
 if __name__ == "__main__":
     unittest.main()

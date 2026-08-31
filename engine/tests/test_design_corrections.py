@@ -71,6 +71,30 @@ class DesignCorrectionsTest(unittest.TestCase):
             parent_before,
         )
 
+    def test_repository_batch_validates_all_names_before_writing(self):
+        self.write(
+            ".maestro/runs/feature/lld-repos.json",
+            json.dumps({"selected": ["backend", "flutter"]}),
+        )
+        with self.assertRaisesRegex(ValueError, "unknown affected repository"):
+            design_corrections.record_repositories(
+                "feature", self.tmp, "backend,missing", "Use the typed failure result.",
+            )
+        approvals = os.path.join(
+            self.tmp, ".maestro", "runs", "feature", "approved-corrections",
+        )
+        self.assertFalse(os.path.exists(approvals))
+
+        result = design_corrections.record_repositories(
+            "feature", self.tmp, "Flutter, backend", "Use the typed failure result.",
+        )
+        self.assertEqual(result["repos_csv"], "flutter,backend")
+        receipts = [
+            json.loads(Path(approvals, name).read_text(encoding="utf-8"))
+            for name in os.listdir(approvals)
+        ]
+        self.assertEqual({item["repo"] for item in receipts}, {"backend", "flutter"})
+
     def test_fold_changes_final_copy_once_and_preserves_original(self):
         original = "openapi: 3.0.0\ninfo:\n  title: Original\n  version: 1.0.0\n"
         source = self.write(".maestro/runs/feature/openapi.yaml", original)

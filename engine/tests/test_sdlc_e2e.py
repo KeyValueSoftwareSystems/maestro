@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import resolver  # noqa: E402
@@ -38,7 +39,8 @@ def canned_agent_outputs(step, action):
         "contract": {"contract_summary": "5 endpoints"},
         "test_cases": {"test_cases_path": "test-cases.md", "case_count": 12},
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
-                        "summary": "sound"},
+                        "summary": "sound", "revision_scope": "none",
+                        "affected_repos_csv": "", "correction_text": ""},
         "tasks": {"task_count": 4, "slice_count": 2},
         "implement": {"branch": "feature/x", "worktree": "/tmp/simulated",
                       "commit": "0" * 40, "summary": "built", "tests_passed": True},
@@ -364,9 +366,13 @@ class SdlcE2E(unittest.TestCase):
                     for rel in act.get("artifacts", []):
                         self.write_agent_artifact(rel, step)
                     node = step.rsplit("/", 1)[-1]
-                    outputs = (overrides.get(node) or
-                               (self.implementation_outputs(act) if node == "implement"
-                                else canned_agent_outputs(step, act)))
+                    override = overrides.get(node)
+                    outputs = (
+                        override() if callable(override) else override
+                    ) or (
+                        self.implementation_outputs(act) if node == "implement"
+                        else canned_agent_outputs(step, act)
+                    )
                     resolver.complete_step(run, step, outputs=outputs)
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
@@ -374,6 +380,7 @@ class SdlcE2E(unittest.TestCase):
                             or any(a.endswith("validate_prd.py") or a.endswith("validate_prd_questions.py")
                                    or a.endswith("validate_hld.py")
                                    for a in act.get("argv", []))
+                            or "record-repositories" in act.get("argv", [])
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    for a in act.get("argv", []))):
@@ -384,7 +391,7 @@ class SdlcE2E(unittest.TestCase):
                         code, out = canned_script(step)
                     resolver.complete_step(run, step, exit_code=code, stdout=out)
                 elif act["action"] == "ask_gate":
-                    if step == "design/lld_workstreams_wait":
+                    if step.endswith("/lld_workstreams_wait"):
                         self.drive_lld_workstreams(trace, gate_script)
                         resolver.record_gate(run, step, "refresh")
                         statemod.save("demo", run.state, self.tmp)
@@ -393,6 +400,8 @@ class SdlcE2E(unittest.TestCase):
                     if decisions is None and step.rsplit("/", 1)[-1] in (
                             "project_context_confirm", "feature_goal_confirm"):
                         decisions = [("confirm", None)] * 20
+                    if decisions is None and step == "impl_scope":
+                        decisions = [("all", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -534,6 +543,44 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("design/contract"), 2)
         self.assertEqual(len([s for s in steps if s.endswith("/lld_approval")]), 2)
 
+    def test_deferred_repo_resumes_without_repeating_design(self):
+        self.prep_tasks_json()
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "contract_approval": [("approve", None)],
+            "impl_scope": [
+                ("pick", "backend"),
+                ("pick", "frontend"),
+            ],
+            "release_approval": [("approve", None), ("approve", None)],
+            "impl_deferred_gate": [("implement_more", None)],
+        }
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertEqual(steps.count("design/author_hld"), 1)
+        self.assertEqual(steps.count("arch_review"), 1)
+        self.assertEqual(steps.count("contract_approval"), 1)
+        self.assertEqual(
+            len([1 for action_name, step in trace
+                 if action_name == "ask_gate" and step == "impl_scope"]),
+            2,
+        )
+        self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 2)
+        self.assertEqual(steps.count("release_approval"), 2)
+
+        queue_path = os.path.join(
+            self.tmp, ".maestro", "runs", "demo", "implementation-repos.json",
+        )
+        with open(queue_path, encoding="utf-8") as fh:
+            queue = json.load(fh)
+        self.assertEqual(queue["schema_version"], 2)
+        self.assertEqual(queue["deferred"], [])
+        self.assertEqual(set(queue["implementations"]), {"backend", "frontend"})
+
     def test_revise_cascade_from_prd_gate(self):
         """PRD feedback re-confirms the feature, interview, and single-write stage."""
         self.prep_tasks_json()
@@ -590,10 +637,79 @@ class SdlcE2E(unittest.TestCase):
             "release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates, agent_overrides={
-            "arch_review": {"review_path": "r.md", "blocking": True, "summary": "risky"},
+            "arch_review": {
+                "review_path": "r.md", "blocking": True, "summary": "risky",
+                "revision_scope": "lld", "affected_repos_csv": "backend",
+                "correction_text": "Use the typed backend failure contract.",
+            },
         })
         self.assertEqual(action["action"], "done", action)
         self.assertIn("arch_gate", [s for a, s in trace if a == "ask_gate"])
+
+    def test_arch_review_lld_only_correction_does_not_revisit_prd_or_hld(self):
+        self.prep_tasks_json()
+        review_calls = {"count": 0}
+
+        def review_outputs():
+            review_calls["count"] += 1
+            if review_calls["count"] == 1:
+                return {
+                    "review_path": "reviews/architecture.md",
+                    "blocking": True,
+                    "summary": "Backend failure behavior is incomplete.",
+                    "revision_scope": "hld",
+                    "affected_repos_csv": "backend",
+                    "correction_text": (
+                        "The backend must return the existing typed failure result and preserve "
+                        "the prior state when the operation fails."
+                    ),
+                }
+            return {
+                "review_path": "reviews/architecture.md",
+                "blocking": False,
+                "summary": "sound",
+                "revision_scope": "none",
+                "affected_repos_csv": "",
+                "correction_text": "",
+            }
+
+        gates = {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "arch_gate": [("lld_only", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
+        }
+        action, trace = self.drive(gates, agent_overrides={"arch_review": review_outputs})
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertEqual(steps.count("design/prd_approval"), 1)
+        self.assertEqual(steps.count("design/author_hld"), 1)
+        self.assertEqual(steps.count("design/lld_scope"), 1)
+        self.assertEqual(steps.count("lld:backend/lld_approval"), 2)
+        self.assertEqual(steps.count("lld:frontend/lld_approval"), 1)
+        self.assertEqual(steps.count("arch_review"), 2)
+
+        queue_path = os.path.join(
+            self.tmp, ".maestro", "runs", "demo", "lld-repos.json",
+        )
+        with open(queue_path, encoding="utf-8") as fh:
+            workstreams = {item["repo"]: item for item in json.load(fh)["workstreams"]}
+        self.assertEqual(workstreams["backend"]["slug"], "demo--lld--backend--v2")
+        self.assertEqual(workstreams["frontend"]["slug"], "demo--lld--frontend")
+
+        corrections_dir = os.path.join(
+            self.tmp, ".maestro", "runs", "demo", "approved-corrections",
+        )
+        receipts = [
+            json.loads(Path(corrections_dir, name).read_text(encoding="utf-8"))
+            for name in os.listdir(corrections_dir)
+        ]
+        self.assertEqual(len(receipts), 1)
+        self.assertEqual(receipts[0]["scope"], "repository")
+        self.assertEqual(receipts[0]["repo"], "backend")
 
     def test_fix_cycle_runs_when_review_blocks(self):
         self.prep_tasks_json()

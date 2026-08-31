@@ -36,7 +36,23 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
-      feedback: "${steps.arch_gate.outputs.feedback} ${steps.contract_approval.outputs.feedback} ${steps.release_approval.outputs.feedback}"
+      feedback: "${steps.contract_approval.outputs.feedback} ${steps.release_approval.outputs.feedback}"
+      upgrade_manifest: "${inputs.upgrade_manifest}"
+    max_visits: 4
+    next: effective_design
+
+  - id: arch_design_revision
+    type: subworkflow
+    label: Scoped architecture-review revision
+    workflow: .maestro/workflows/design.yaml
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      feedback: "${steps.arch_gate.outputs.feedback}"
+      revision_mode: "${steps.arch_gate.outputs.choice}"
+      revision_scope: "${steps.arch_review_validate.outputs.revision_scope}"
+      affected_repos: "${steps.arch_review_validate.outputs.affected_repos_csv}"
+      correction_text: "${steps.arch_review_validate.outputs.correction_text}"
       upgrade_manifest: "${inputs.upgrade_manifest}"
     max_visits: 4
     next: effective_design
@@ -56,16 +72,42 @@ nodes:
       cases, effective-design.json, and approved-corrections.md under
       .maestro/runs/${inputs.slug}/) for soundness, consistency and risk. Approved corrections
       override conflicting base statements.
-      Findings need evidence; set blocking=true only for must-fix issues.
+      Findings need evidence; set blocking=true only for must-fix issues. For a blocking verdict,
+      also identify the earliest authoritative layer that should normally change as revision_scope,
+      name every selected repository whose LLD must reflect the change in affected_repos_csv, and
+      provide one concise correction_text that is complete enough for a human to approve as an
+      effective-design override. For a clean verdict return revision_scope=none and empty strings.
     skill: architecture-review
     agent: reviewer
     model: opus
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.architecture-review}"}
-    outputs: [review_path, blocking, summary]
+    outputs: [review_path, blocking, summary, revision_scope, affected_repos_csv, correction_text]
     artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
     max_visits: 4
+    next: arch_review_validate
+
+  - id: arch_review_validate
+    type: script
+    label: Validate architecture revision routing
+    run:
+      - python3
+      - .maestro/engine/lld_repo_pool.py
+      - validate-review
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --blocking
+      - "${steps.arch_review.outputs.blocking}"
+      - --revision-scope
+      - "${steps.arch_review.outputs.revision_scope}"
+      - --repos-text
+      - "${steps.arch_review.outputs.affected_repos_csv}"
+      - --correction-text
+      - "${steps.arch_review.outputs.correction_text}"
+    on_fail: arch_review
     routes:
-      - {when: "${steps.arch_review.outputs.blocking} == true", to: arch_gate}
+      - {when: "${steps.arch_review_validate.outputs.blocking} == true", to: arch_gate}
       - {to: contract_approval}
 
   - id: arch_gate
@@ -75,8 +117,13 @@ nodes:
       Architecture review found BLOCKING issues:
       ${steps.arch_review.outputs.summary}
       Full review: ${steps.arch_review.outputs.review_path}
+
+      Normal source-layer revision: ${steps.arch_review_validate.outputs.revision_scope}
+      LLDs that must reflect the change: ${steps.arch_review_validate.outputs.affected_repos_csv}
+      Proposed approved correction: ${steps.arch_review_validate.outputs.correction_text}
     options:
-      - {id: revise, label: Revise the design — then describe what to change, to: design, input: feedback}
+      - {id: lld_only, label: Approve correction — update affected LLDs only and continue, to: arch_design_revision}
+      - {id: revise, label: Revise the identified source layer — then add guidance, to: arch_design_revision, input: feedback}
       - {id: waive, label: Waive — proceed anyway, to: contract_approval}
       - {id: reject, label: Abort the run, to: abort}
 
@@ -85,8 +132,8 @@ nodes:
     label: Contract approval
     prompt: |
       Design approved for implementation?
-      Design: ${steps.design.outputs.hld_summary}
-      Contract: ${steps.design.outputs.contract_summary} (${steps.design.outputs.contract_path})
+      Design: ${steps.design.outputs.hld_path}
+      Contract: ${steps.design.outputs.contract_path}
       Architecture review: ${steps.arch_review.outputs.summary}
     options:
       - {id: approve, label: Approve — verify effective design and workspace, to: effective_design_pre_impl}
@@ -110,12 +157,36 @@ nodes:
       # If HEAD moved since the design was grounded, regenerate/reapprove the design before
       # implementation. Continuing at the already-pinned commits falls through immediately.
       - {when: "${steps.workspace_sync_pre_impl.outputs.changed} == true", to: design}
-      - {to: impl_scope_init}
+      - {to: impl_scope_serve}
+
+  - id: impl_scope_serve
+    type: script
+    label: List repositories available for implementation
+    run: [python3, .maestro/engine/implementation_pool.py, list, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: impl_scope
+
+  - id: impl_scope
+    type: gate
+    label: Implementation scope
+    prompt: |
+      Approved repositories available to implement now:
+      ${steps.impl_scope_serve.outputs.available_csv}
+
+      Already implemented in an earlier batch:
+      ${steps.impl_scope_serve.outputs.implemented_csv}
+
+      Choose this delivery batch. Unselected repositories remain deferred and can be resumed from
+      this parent run without repeating PRD, HLD, LLD, contract, or architecture review.
+    options:
+      - {id: all, label: Implement all available repositories, to: impl_scope_init}
+      - {id: pick, label: Pick repositories for this batch, to: impl_scope_init, input: repos_text}
+      - {id: reject, label: Abort implementation, to: abort}
 
   - id: impl_scope_init
     type: script
     label: Initialize implementation repo pool
-    run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}"]
+    run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}", --choice, "${steps.impl_scope.outputs.choice}", --repos-text, "${steps.impl_scope.outputs.repos_text}"]
     on_fail: abort
     next: implement
 
@@ -270,9 +341,31 @@ nodes:
       Review pack: ${steps.review_pack.outputs.pack_path}
       QA: ${steps.qa.outputs.qa_summary}
     options:
-      - {id: approve, label: Approve — archive and finish, to: archive}
+      - {id: approve, label: Approve this implementation batch, to: impl_deferred_check}
       - {id: revise, label: Send back to design — then describe what to change, to: design, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
+
+  - id: impl_deferred_check
+    type: script
+    label: Check deferred implementation repositories
+    run: [python3, .maestro/engine/implementation_pool.py, check, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.impl_deferred_check.outputs.has_deferred} == true", to: impl_deferred_gate}
+      - {to: archive}
+
+  - id: impl_deferred_gate
+    type: gate
+    label: Deferred implementation repositories
+    prompt: |
+      This batch is approved. These approved repositories remain deferred:
+      ${steps.impl_deferred_check.outputs.deferred_csv}
+
+      You can leave this run at this gate and resume it later without repeating design.
+    options:
+      - {id: implement_more, label: Implement another deferred batch now, to: effective_design_pre_impl}
+      - {id: finish, label: Finish this feature with those repositories deferred, to: archive}
+      - {id: reject, label: Abort the remaining feature work, to: abort}
 
   - id: archive
     type: subworkflow
@@ -284,7 +377,7 @@ nodes:
     next: end
 
 outputs:
-  hld: "${steps.design.outputs.hld_path}"
-  contract: "${steps.design.outputs.contract_path}"
+  hld: ".maestro/runs/${inputs.slug}/hld.md"
+  contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
   review_pack: "${steps.review_pack.outputs.pack_path}"
   implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"

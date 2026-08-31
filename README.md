@@ -88,7 +88,7 @@ workspace sync → requirement → PRD (confirm context → Grill unclear decisi
    → API contract
    → functional test cases → effective design (base approvals + approved corrections)
    → architecture review → [approve]
-   → implement selected repos (parallel, sliced, reviewed, exact commit handoff)
+   → choose implementation batch → implement selected repos (parallel, sliced, reviewed)
    → QA → review pack → [approve → archive: fold corrections + harvest lessons + publish docs]
 ```
 
@@ -259,9 +259,25 @@ repair is a narrow fallback only when validation fails. Each team reviews and ap
 child slug. Approval publishes a hash-bound LLD and receipt into the parent feature; the API
 contract cannot start until every selected child is approved against the current HLD.
 
+Architecture review classifies every blocking verdict by its earliest source-of-truth layer and
+the exact repositories whose LLDs must reflect the change. The gate always offers an LLD-only fast
+path: approving it writes immutable repository correction receipts, preserves the approved PRD and
+HLD, creates fresh child ledgers only for the affected repositories, and waits for those LLDs to be
+approved again. Maestro then regenerates the contract and test cases and reruns architecture review
+before implementation. Choosing source-layer revision instead reopens only the classified layer;
+product/cross-cutting findings retain the full-design fallback.
+
 Resuming the parent while those workstreams are pending always opens an LLD selector showing each
 repo's status plus a parent-coordinator option. A developer can therefore return with
 `/maestro my-feature` and choose backend, frontend, or Flutter without remembering the child slug.
+
+After contract approval, a separate implementation-scope gate chooses all available repositories
+or a smaller delivery batch such as backend only. The implementation queue records the complete
+designed scope, completed repositories, and deferred repositories independently. After a batch is
+reviewed and approved, the parent either archives when nothing remains or parks at a deferred-work
+gate. Resuming that gate can implement another batch without rerunning PRD, HLD, LLD, contract, or
+architecture review; the normal pre-implementation workspace drift check still protects stale
+designs.
 
 If implementation discovery changes an already-approved product or architecture decision, Maestro
 offers two explicit paths: revise the base documents now, or record the human-approved decision as

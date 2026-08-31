@@ -10,6 +10,7 @@ inputs:
   repo_path: {type: string, required: true}
   feature: {type: string, default: "${inputs.parent_slug}"}
   imported_lld: {type: string, default: "", description: legacy LLD draft imported by the one-time run upgrade}
+  review_feedback: {type: string, default: "", description: approved architecture-review correction for this repository revision}
 defaults:
   model: opus
   agent: planner
@@ -55,7 +56,7 @@ nodes:
       parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
       parent_deferred_questions: ".maestro/runs/${inputs.parent_slug}/open-questions.json"
       decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
-      revision_feedback: "${steps.lld_approval.outputs.feedback}"
+      revision_feedback: "${steps.lld_approval.outputs.feedback} ${inputs.review_feedback}"
       validator: ".maestro/engine/validate_prd_questions.py"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
