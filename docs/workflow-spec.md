@@ -359,7 +359,8 @@ it cannot redirect writes outside `.maestro/runs/<slug>/`.
 
 ## State — `.maestro/runs/<slug>/state.yaml`
 
-Written **only** by `engine/maestroctl.py` (fcntl-locked, atomic tmp+rename). Records workflow
+Written **only** by `engine/maestroctl.py` (fcntl-locked, atomic tmp+rename; a lock held longer
+than `MAESTRO_LOCK_TIMEOUT`, default 120s, fails the command instead of hanging). Records workflow
 file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run status + cursor
 (active frontier), per-step status / attempts / visits / timing / outputs / artifacts,
 interview answers, append-only gate decision history, and parallel-branch bookkeeping.

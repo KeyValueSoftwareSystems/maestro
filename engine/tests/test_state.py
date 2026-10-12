@@ -110,5 +110,37 @@ class StateTest(unittest.TestCase):
         self.assertEqual(summary["status"], "needs-upgrade")
 
 
+
+class LockTimeoutTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="maestro-lock-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+
+    @unittest.skipUnless(statemod._LOCKING == "fcntl", "fcntl locking only")
+    def test_a_stuck_holder_fails_fast_instead_of_hanging(self):
+        import subprocess
+        import time
+        holder = subprocess.Popen([sys.executable, "-c", (
+            "import sys,time; sys.path.insert(0, %r); import state as s\n"
+            "with s.locked('slug', %r):\n    print('held', flush=True); time.sleep(30)\n"
+        ) % (os.path.join(os.path.dirname(__file__), ".."), self.tmp)],
+            stdout=subprocess.PIPE, text=True)
+        self.addCleanup(holder.kill)
+        self.assertEqual(holder.stdout.readline().strip(), "held")
+        old = statemod.LOCK_TIMEOUT_S
+        statemod.LOCK_TIMEOUT_S = 0.3
+        self.addCleanup(setattr, statemod, "LOCK_TIMEOUT_S", old)
+        started = time.monotonic()
+        with self.assertRaises(statemod.LockTimeout):
+            with statemod.locked("slug", self.tmp):
+                pass
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_lock_is_reentrant_across_sequential_uses(self):
+        for _ in range(3):
+            with statemod.locked("slug", self.tmp):
+                pass
+
+
 if __name__ == "__main__":
     unittest.main()

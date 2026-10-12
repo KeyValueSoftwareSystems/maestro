@@ -98,7 +98,13 @@ nodes:
       against the LLD, contract, approved-corrections.md, standards and the
       maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
       map to check blast radius, not just the diff in isolation. Findings need file:line
-      evidence; set blocking=true only for must-fix issues.
+      evidence; set blocking=true only for must-fix issues. Record the reviewed commit at the top
+      of the report.
+      If the report from an earlier round exists at
+      .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md, this is a re-review after a
+      fix (${steps.fix.outputs.fix_summary}): read it first, review only the diff from the commit
+      it records to this commit, confirm each earlier blocking finding is resolved, and do not
+      re-audit unchanged code. Then overwrite the report.
     skill: repo-review
     agent: reviewer
     model: opus
@@ -108,6 +114,8 @@ nodes:
       worktree: "${steps.handoff.outputs.worktree}"
       commit: "${steps.handoff.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
+      previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+      fix_summary: "${steps.fix.outputs.fix_summary}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
@@ -134,8 +142,11 @@ nodes:
       ${steps.review.outputs.review_path} (and any failing tests) on branch
       ${steps.handoff.outputs.branch} in exact worktree
       ${steps.handoff.outputs.worktree}. Smallest safe fix; never weaken or delete a
-      failing test. Re-run the failing checks before returning. Do NOT loop — the
-      workflow re-invokes you if needed.
+      failing test. Start from the implement report (${steps.implement.outputs.summary};
+      tests_passed=${steps.implement.outputs.tests_passed}) instead of rediscovering failures.
+      Re-run the failing checks before returning; skip full /verify, since the workflow
+      re-reviews after you. Honour any human guidance: ${steps.impl_gate.outputs.guidance}
+      Do NOT loop — the workflow re-invokes you if needed.
     skill: fix-loop
     inputs:
       slug: "${inputs.slug}"
@@ -143,6 +154,9 @@ nodes:
       branch: "${steps.handoff.outputs.branch}"
       repo_path: "${inputs.repo_path}"
       worktree: "${steps.handoff.outputs.worktree}"
+      review_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+      implement_summary: "${steps.implement.outputs.summary}"
+      guidance: "${steps.impl_gate.outputs.guidance}"
     outputs: [fix_summary, checks_passed]
     max_visits: 3
     on_exhausted: impl_gate

@@ -41,10 +41,26 @@ def _now():
     return datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat()
 
 
+def _git_env():
+    """Never block on a credential/host-key prompt; fail a dead connection fast."""
+    env = dict(os.environ)
+    env.setdefault("GIT_TERMINAL_PROMPT", "0")
+    env.setdefault("GCM_INTERACTIVE", "never")
+    env.setdefault("GIT_HTTP_LOW_SPEED_LIMIT", "1000")
+    env.setdefault("GIT_HTTP_LOW_SPEED_TIME", "30")
+    if "GIT_SSH_COMMAND" not in env and "GIT_SSH" not in env:
+        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o ConnectTimeout=10"
+    return env
+
+
+_GIT_ENV = _git_env()
+
+
 def _git(repo, *args, timeout=60):
     try:
         proc = subprocess.run(
             ["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout,
+            env=_GIT_ENV,
         )
         return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
     except (OSError, subprocess.SubprocessError) as exc:
@@ -85,12 +101,33 @@ def _porcelain_path(line):
     return value.strip('"')
 
 
+def _is_managed_parent(path):
+    """A collapsed untracked dir (`docs/`) that may hold only engine-managed files."""
+    return path.endswith("/") and any(
+        managed.startswith(path)
+        for managed in (*MANAGED_DIRTY_PATHS, *MANAGED_DIRTY_PREFIXES)
+    )
+
+
 def _dirty_paths(repo):
-    rc, out, _ = _git(repo, "status", "--porcelain=v1", "--untracked-files=all")
+    # `normal` lists a new untracked directory once instead of walking every file in it;
+    # only directories that could contain engine-managed paths are expanded.
+    rc, out, _ = _git(repo, "status", "--porcelain=v1", "--untracked-files=normal")
     if rc != 0:
         return ["<status-unavailable>"]
-    paths = []
+    lines = []
     for line in out.splitlines():
+        path = _porcelain_path(line)
+        if line.startswith("?? ") and _is_managed_parent(path):
+            rc, sub, _ = _git(repo, "status", "--porcelain=v1", "--untracked-files=all",
+                              "--", path)
+            if rc != 0:
+                return ["<status-unavailable>"]
+            lines.extend(sub.splitlines())
+        else:
+            lines.append(line)
+    paths = []
+    for line in lines:
         path = _porcelain_path(line)
         if (path in MANAGED_DIRTY_PATHS
                 or any(path == p.rstrip("/") or path.startswith(p)
@@ -133,7 +170,17 @@ def _fetch_one(entry, root):
     repo = os.path.join(root, entry["path"])
     if not entry["upstream"] or not entry["upstream_remote"]:
         return entry["name"], ""
-    rc, _, err = _git(repo, "fetch", "--prune", entry["upstream_remote"], timeout=120)
+    remote = entry["upstream_remote"]
+    args = ["fetch", "--prune", remote]
+    # Fetch only the tracked branch into its own tracking ref — not every branch and tag.
+    rc_m, merge_ref, _ = _git(repo, "config", "--get", f"branch.{entry['branch']}.merge")
+    rc_u, tracking_ref, _ = _git(
+        repo, "rev-parse", "--symbolic-full-name", "@{upstream}",
+    )
+    if (rc_m == 0 and rc_u == 0 and merge_ref.startswith("refs/heads/")
+            and tracking_ref.startswith(f"refs/remotes/{remote}/")):
+        args = ["fetch", "--no-tags", remote, f"+{merge_ref}:{tracking_ref}"]
+    rc, _, err = _git(repo, *args, timeout=60)
     return entry["name"], "" if rc == 0 else (err or "fetch failed")
 
 
@@ -293,11 +340,15 @@ def cmd_plan(root, out, lock=None, knowledge_state=DEFAULT_KNOWLEDGE_STATE, fetc
     out_abs = _resolve(root, out)
     state_abs = _resolve(root, knowledge_state)
     lock_abs = _resolve(root, lock) if lock else None
-    repos = [_branch_facts(name, path, root)
-             for name, path in codebase_scan.discover_repos(root)]
+    discovered = codebase_scan.discover_repos(root)
+    repos = []
+    if discovered:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=min(16, len(discovered))) as pool:
+            repos = list(pool.map(lambda item: _branch_facts(item[0], item[1], root), discovered))
     fetch_errors = {}
     if fetch and repos:
-        workers = min(8, len(repos))
+        # Network-bound: one worker per repo so a slow remote never queues the others.
+        workers = min(32, len(repos))
         with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
             for name, error in pool.map(lambda e: _fetch_one(e, root), repos):
                 fetch_errors[name] = error

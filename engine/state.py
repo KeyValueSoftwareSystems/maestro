@@ -15,6 +15,7 @@ import os
 import re
 import sys
 import time
+import time
 
 try:
     import wf
@@ -24,11 +25,32 @@ except ImportError:  # imported as part of a package (tests)
 # Cross-platform advisory file lock. POSIX uses fcntl; Windows uses msvcrt; if neither is
 # available locking degrades to a no-op with a one-time warning (single-user runs are still
 # safe — the risk is only two concurrent writers on the same slug).
+# A held lock is normally released within milliseconds; a long wait means another process is
+# stuck (e.g. a hung git call inside a locked engine helper). Fail loudly instead of hanging.
+LOCK_TIMEOUT_S = float(os.environ.get("MAESTRO_LOCK_TIMEOUT", "120"))
+
+
+class LockTimeout(RuntimeError):
+    pass
+
+
 try:
     import fcntl
 
     def _lock_fh(fh):
-        fcntl.flock(fh.fileno(), fcntl.LOCK_EX)
+        deadline = time.monotonic() + LOCK_TIMEOUT_S
+        while True:
+            try:
+                fcntl.flock(fh.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise LockTimeout(
+                        f"run ledger lock {fh.name} still held after {LOCK_TIMEOUT_S:.0f}s — "
+                        f"another maestro command on this slug is stuck; stop it and retry "
+                        f"(set MAESTRO_LOCK_TIMEOUT to wait longer)"
+                    ) from None
+                time.sleep(0.05)
 
     def _unlock_fh(fh):
         fcntl.flock(fh.fileno(), fcntl.LOCK_UN)

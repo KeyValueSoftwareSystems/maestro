@@ -30,6 +30,9 @@ nodes:
       author tests ONLY against those worktree paths; never use codebase/<repo> or another
       default checkout. If any identity check fails, report a failed integrity check and do
       not test a different revision.
+      On a re-run after a fix round, reuse the existing suite under .maestro/runs/${inputs.slug}/qa/:
+      re-run the specs that failed in the previous report first, author only specs that are still
+      missing, and run the full suite once at the end — do not re-author passing specs.
     skill: qa-automation
     inputs:
       slug: "${inputs.slug}"
@@ -52,9 +55,12 @@ nodes:
       You may fix only a genuine test-harness bug under .maestro/runs/${inputs.slug}/qa/;
       never weaken or delete a legitimate assertion. Do NOT change product code or any
       worktree listed in ${inputs.implementation_manifest}: that would invalidate its
-      reviewed commit identity. If the failure is a product bug, return checks_passed=false
-      with the diagnosis so the bounded loop reaches the human escalation gate. Re-run the
-      failing specs before returning. Do NOT loop — the workflow re-invokes you if needed.
+      reviewed commit identity. If the failure is a product bug (or any other hard stop), return
+      checks_passed=false and escalate=true with the diagnosis — the workflow goes straight to the
+      human escalation gate instead of re-running the suite. Re-run the failing specs before
+      returning; skip full /verify, since the workflow re-runs QA after you. Honour any human
+      guidance: ${steps.qa_gate.outputs.guidance}
+      Do NOT loop — the workflow re-invokes you if needed.
     skill: fix-loop
     agent: implementer
     inputs:
@@ -62,17 +68,21 @@ nodes:
       report: ".maestro/runs/${inputs.slug}/qa/report.md"
       implementation_manifest: "${inputs.implementation_manifest}"
       implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
-    outputs: [fix_summary, checks_passed]
+      guidance: "${steps.qa_gate.outputs.guidance}"
+    outputs: [fix_summary, checks_passed, escalate]
     max_visits: 3
     on_exhausted: qa_gate
-    next: qa_run
+    routes:
+      - {when: "${steps.qa_fix.outputs.escalate} == true", to: qa_gate}
+      - {to: qa_run}
 
   - id: qa_gate
     type: gate
     label: QA escalation
     prompt: |
-      QA is still failing after the automated fix rounds.
+      QA is still failing after the automated fix rounds, or the fix step escalated.
       Last run: ${steps.qa_run.outputs.summary}
+      Last fix attempt: ${steps.qa_fix.outputs.fix_summary}
       Report: .maestro/runs/${inputs.slug}/qa/report.md
     options:
       - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}

@@ -16,7 +16,13 @@ and repo instructions. Cover correctness, security/authz, input bounds, error be
 compatibility, data migration safety, concurrency/idempotency, performance, observability,
 and meaningful positive/negative tests as applicable to that repository's technology.
 Findings require `file:line` evidence. A blocker or major finding makes `blocking=true`.
-Review read-only; write the requested report artifact outside the product worktree.
+Review read-only; write the requested report artifact outside the product worktree. Record the
+reviewed commit in the report.
+
+**Re-review.** When your instructions supply a previous review (a re-review after a fix), read it
+first and review only the diff from the commit it records to the supplied commit: confirm each
+earlier blocker/major is resolved and check the new change for regressions. Do not re-audit
+unchanged code or raise new minor findings on it.
 
 ## Output contract
 

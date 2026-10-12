@@ -154,7 +154,8 @@ writes every artifact under `.maestro/runs/my-feature/` — while editing the ac
 under `codebase/` in their own worktrees.
 
 At feature start and again before implementation, Maestro fetches the upstream of each child
-repo's current branch in parallel. Current workspaces continue silently. Otherwise one gate
+repo's current branch in parallel (only that branch, no tags; git never prompts, and a dead
+remote fails within seconds and is reported). Current workspaces continue silently. Otherwise one gate
 summarizes behind, dirty or diverged repos and stale knowledge; approved clean updates are
 fast-forward-only, affected docs are refreshed once, and exact commits are pinned in the run's
 `workspace-lock.json`. A repo with local changes is never updated automatically.

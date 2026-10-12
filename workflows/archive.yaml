@@ -23,7 +23,6 @@ nodes:
 
   - id: fold_corrections
     type: agent
-    execution: lead
     label: Apply approved corrections to final design copies
     model: haiku
     instruction: |
