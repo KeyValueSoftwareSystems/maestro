@@ -103,8 +103,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
     [--input feature="..." ...]
 ```
 
-- `init` is a safe no-op when the run already exists (that IS the resume path — say
-  "resuming" and continue).
+- `init` is safe when the run already exists (that IS the resume path — say "resuming" and
+  continue); it only releases worker claims left by an interrupted session.
 - If it exits 3 with a "workflow changed" message: STOP and ask the user to DECIDE between
   "accept the edit and continue" and "start over (discards all progress)". Never pick for
   them — but once they choose, YOU run the command (`python3 .maestro/engine/maestroctl.py rebase
@@ -153,7 +153,13 @@ python3 .maestro/engine/maestroctl.py next --slug <slug>       # add --serial in
 
 `next` prints ONE JSON action. Dispatch on its `action` field, then loop. Every
 mutating command below itself prints the FOLLOWING action, so use its output directly
-as the next iteration — call `next` only when you need to re-read the current action.
+as the next iteration. **Act on every action the engine returns** — serving a worker step
+claims it, so a returned action you ignore is never served again until the run is resumed.
+To re-read the current action without claiming anything, use `next --peek`.
+
+The engine runs its own helper scripts (`python3 .maestro/engine/*.py`) inside these calls
+and completes them before answering; they are listed under `auto_scripts` in the returned
+action. Never run or complete those steps yourself — at most mention them in narration.
 
 **Keep the loop moving.** After every mutation command, immediately act on the FOLLOWING action
 it printed — do NOT end your turn between a report and the next
@@ -208,10 +214,29 @@ The engine owns retries and failure routing — never loop on a step yourself.
 
 A parallel wave. On Claude Code, spawn ALL listed Task calls in ONE message. On Codex,
 spawn one native subagent per listed action in the same turn so independent work runs in
-parallel. Use each action's exact prompt and the same model rule as `run_agent`. As each
-finishes, `complete` (or `fail`) it individually. Finish the whole wave before acting on
-whatever action the last `complete` returns. If the host has no subagent tools, inline mode's
-`--serial` contract prevents the engine from serving `run_agents`.
+parallel. Use each action's exact prompt and the same model rule as `run_agent`. If the host
+has no subagent tools, inline mode's `--serial` contract prevents the engine from serving
+`run_agents`.
+
+Served worker steps are claimed: later calls never re-serve them, they return only NEWLY
+ready work. Record results in whichever way matches how your workers report back:
+
+- **Workers return together** (parallel Task calls in one message): record the whole wave in
+  ONE call, then act on the single action it returns:
+
+```bash
+python3 .maestro/engine/maestroctl.py complete-batch --slug <slug> --results \
+    '[{"step":"<step>","outputs":{...}},{"step":"<step>","fail":"<one line>"}]'
+```
+
+  Each entry applies independently. The output's `batch` list reports each step; an
+  `error` entry (exit code 4) was NOT recorded — apply the `run_agent` retry protocol to that
+  step alone (re-spawn once, then `complete` or `fail` it), while still acting on the
+  returned action for everything else.
+- **Workers finish one at a time** (background workers that notify you): `complete` each as it
+  arrives and immediately act on the action that call returns — dispatch newly ready
+  workers, answer a gate — while the others keep running. A slow worker never holds back
+  another branch.
 
 Preflight every pinned skill in the wave using the `run_agent` rule BEFORE spawning any
 worker. If one is missing, report all missing names and stop with no partial wave dispatched.
@@ -291,9 +316,17 @@ decision, pause before acting on the returned action and follow **Capturing out-
 that response. Never analyze or interrupt between popup chunks; correction handling happens only
 after the complete batch is durably recorded.
 
+### `wait`
+
+Every unfinished step is a worker already in flight; there is nothing new to dispatch.
+Keep waiting for those workers and record each as it finishes. If they are not actually
+running (the session restarted and lost them), run `init` again — it releases the claims
+and the next call re-serves them.
+
 ### `run_script`
 
-Run `argv` with the Bash tool (respect `timeout`, which is in seconds), capturing stdout.
+Only scripts that are not engine helpers reach you (engine helpers run inside the engine
+call). Run `argv` with the Bash tool (respect `timeout`, which is in seconds), capturing stdout.
 `argv` is a **list, not a shell string**: run it as the exact argument vector given, shell-
 quoting each element so an interpolated value can never break out of its argument. Never
 concatenate the elements into a raw command or `eval` them.
@@ -353,10 +386,11 @@ Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reas
 A run does NOT need to finish in one turn, and an interrupted turn is normal — the engine
 ledger holds all progress. To resume after ANY interruption (turn ended, session closed, you
 came back later), just re-invoke `/maestro <slug>` (Claude Code / Cursor), `$maestro <slug>`
-(Codex), or call `next` and continue the loop from whatever action it serves: `init` on an
-existing run is a no-op that says "resuming", and
-`next` always returns the one action the run is currently waiting on (often a gate you left
-open). Never restart from scratch and never re-run completed steps — the state ledger, not
+(Codex), which calls `init` and then `next`, and continue the loop from whatever action it
+serves. `init` on an existing run says "resuming" and releases any worker claims left by the
+interrupted session, so `next` re-serves workers that were in flight and otherwise returns the
+action the run is currently waiting on (often a gate you left open). Always `init` before
+`next` when resuming; without it, lost in-flight workers show as `wait`. Never restart from scratch and never re-run completed steps — the state ledger, not
 your memory of where you were, decides what happens next. If the user asks "where did we leave
 off?", run `status --slug <slug>` and tell them, then resume.
 

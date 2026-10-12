@@ -99,7 +99,7 @@ def now_ms():
 
 def mark_step_started(entry, **metadata):
     """Record wall-clock timing and stable execution metadata for one visit."""
-    for key in ("finished_at", "duration_ms", "telemetry"):
+    for key in ("finished_at", "duration_ms", "telemetry", "dispatched_at"):
         entry.pop(key, None)
     entry["started_at"] = now_iso()
     entry["started_at_ms"] = now_ms()
@@ -111,6 +111,7 @@ def mark_step_started(entry, **metadata):
 def mark_step_finished(entry, telemetry=None):
     """Close the current visit timing; optional host metrics must be factual scalars."""
     finished_ms = now_ms()
+    entry.pop("dispatched_at", None)  # a finished step is no longer in flight
     entry["finished_at"] = now_iso()
     started_ms = entry.get("started_at_ms")
     if isinstance(started_ms, int):

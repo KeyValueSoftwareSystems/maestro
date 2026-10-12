@@ -41,7 +41,7 @@ runtime. It ships:
   are NOT pinned in any workflow node, so they are exempt from the SDLC-step contract (no
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
-  agent shells out to: `validate · init · next · complete · gate-record · fail · reset
+  agent shells out to: `validate · init · next · complete · complete-batch · gate-record · fail · reset
   · rebase · status · graph · note · upgrade-run · correction-record`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
@@ -143,11 +143,16 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 
 **The action loop** (engine ↔ lead agent): `maestroctl next` prints exactly ONE action as
 JSON — `run_agent`, `run_agents` (a parallel wave), `run_lead`, `run_script`,
-`ask_interview`, `ask_interview_batch`, `ask_gate`, `ask_input`, `done`, or `failed`. `run_lead`
+`ask_interview`, `ask_interview_batch`, `ask_gate`, `ask_input`, `wait`, `done`, or `failed`. Every
+serving call first runs engine-owned script steps (`python3 .maestro/engine/*.py`) itself, outside
+the ledger lock, and lists them in `auto_scripts`; only other scripts reach the lead. Served worker
+steps are claimed (`dispatched_at`), so later calls return only newly ready work (ready workers
+before gates) or `wait`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
 atomic batch without dropping unresolved questions.
 Input-bearing gate choices deliberately become a second durable `ask_input` action before
-routing. The lead reports back via `complete`, `interview-record`, `interview-record-batch`, `gate-record`,
+routing. The lead reports back via `complete`, `complete-batch` (a whole wave in one call),
+`interview-record`, `interview-record-batch`, `gate-record`,
 `gate-input-record`, or `fail`. The LLM never interprets the graph or writes state.
 
 ## Running checks

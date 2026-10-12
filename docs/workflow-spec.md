@@ -380,11 +380,15 @@ maestroctl validate <wf>                 # refuse to start on errors
 maestroctl init --slug S --workflow <wf> [--input k=v ...]
 maestroctl upgrade-run --slug S --workflow <wf> [--apply]  # preview, then one-time upgrade
 loop:
-  maestroctl next --slug S [--serial]    # → ONE action JSON
+  maestroctl next --slug S [--serial]    # → ONE action JSON (claims workers; --peek re-reads)
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'
-    run_agents → spawn all listed subagents in one parallel wave → complete each
+    run_agents → spawn all listed subagents → complete-batch --results '[...]' when they return
+                 together, or complete each as it finishes (background workers)
+    wait       → only claimed workers remain in flight → record them as they finish
     run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
+                 (engine helpers never reach the lead: every serving call runs
+                 `python3 .maestro/engine/*.py` steps itself and lists them in `auto_scripts`)
     ask_interview → ask one decision → interview-record --section X (--accept | --answer TEXT)
     ask_interview_batch → ask the served round once → interview-record-batch --responses JSON
     ask_gate   → ask the human for a choice → gate-record --option X
@@ -392,6 +396,13 @@ loop:
     done | failed → report and stop
   on step failure: maestroctl fail --step P --reason '...'
 ```
+
+Served worker steps are **claimed** (`dispatched_at`): later calls return only newly ready
+work, and ready workers are served before gates, interviews and lead work so one branch
+waiting on a human never stalls another branch. `init` on an existing run releases claims so
+a resumed session re-serves workers it lost. Engine-run scripts execute outside the ledger
+lock (several helpers take it themselves); `MAESTRO_AUTO_SCRIPTS=0` serves them to the lead
+instead.
 
 The action payload is fully resolved — placeholders substituted, prompts pre-rendered. The lead
 agent performs zero graph interpretation, never edits state, and never skips a gate. It reads
