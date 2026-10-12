@@ -85,6 +85,9 @@ they are internal and must not appear in the PRD.
 - Do not mark the queue clear merely because every earlier question has an answer.
 - Keep the conversation moving; no essays between questions.
 
+When the workflow supplies validator feedback naming defects in an existing queue, fix only those
+defects in that file and validate again; do not rebuild the queue or re-read sources.
+
 ## Safety
 
 Write only the workflow-supplied question-queue artifact. The engine owns durable interview state

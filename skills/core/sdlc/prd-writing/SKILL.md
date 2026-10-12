@@ -92,6 +92,14 @@ unrelated sections or make the document longer unless the missing precision requ
 existing acceptance-criteria IDs when their meaning is unchanged; otherwise restore one unique,
 gap-free `AC-01` sequence.
 
+## Revision mode
+
+When the workflow supplies reviewer feedback on an existing PRD, apply it as a targeted edit:
+change only the sections the feedback affects, keep every other section, confirmed decision and
+ID unchanged, and read only the sources the change needs. Do not regenerate the document. If the
+feedback needs a new product decision that the confirmed decisions cannot settle, do not guess: leave the
+document unchanged and report `needs_clarification` as true so the decision is clarified first.
+
 ## Safety
 
 Write only the workflow-supplied PRD artifact. Never edit requirements, confirmed context, code,
@@ -100,4 +108,5 @@ or run state.
 ## Output contract
 
 Return `summary`: one short sentence stating that the final PRD was written or which validator
-defects were repaired.
+defects were repaired. In revision mode also return `needs_clarification`: true only when
+the feedback needs a product decision that must be clarified before editing, else false.

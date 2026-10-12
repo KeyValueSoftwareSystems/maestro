@@ -30,12 +30,16 @@ def canned_agent_outputs(step, action):
         "prepare_prd_questions": {"summary": "Prepared the next focused product questions"},
         "author_prd": {"summary": "PRD written from confirmed context"},
         "repair_prd": {"summary": "PRD repaired to match the contract"},
+        "revise_prd": {"summary": "Applied review feedback", "needs_clarification": False},
         "prepare_hld_questions": {"summary": "Prepared architecture questions"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
         "repair_hld": {"hld_summary": "Repaired the HLD"},
+        "revise_hld": {"hld_summary": "Applied review feedback", "needs_clarification": False},
         "prepare_lld_questions": {"summary": "Prepared repository design questions"},
         "author_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
         "repair_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
+        "revise_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes",
+                       "needs_clarification": False},
         "contract": {"contract_summary": "5 endpoints"},
         "test_cases": {"test_cases_path": "test-cases.md", "case_count": 12},
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
@@ -581,12 +585,12 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(queue["deferred"], [])
         self.assertEqual(set(queue["implementations"]), {"backend", "frontend"})
 
-    def test_revise_cascade_from_prd_gate(self):
-        """PRD feedback re-confirms the feature, interview, and single-write stage."""
+    def test_rescope_cascade_from_prd_gate(self):
+        """PRD rescope re-confirms the feature, interview, and single-write stage."""
         self.prep_tasks_json()
         gates = {
             "design/collect_references": [("none", None)],
-            "design/prd_approval": [("revise", "sharpen the scope"), ("approve", None)],
+            "design/prd_approval": [("rescope", "sharpen the scope"), ("approve", None)],
             "design/hld_approval": [("approve", None)],
             "design/lld_scope": [("all", None)],
             "contract_approval": [("approve", None)],
@@ -599,6 +603,64 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("design/author_prd"), 2)
         self.assertEqual(steps.count("design/prd_interview"), 1)
         self.assertEqual(steps.count("design/author_hld"), 1)
+        self.assertNotIn("design/revise_prd", steps)
+
+    def _design_gates(self, prd, hld):
+        return {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": prd,
+            "design/hld_approval": hld,
+            "design/lld_scope": [("all", None)],
+            "contract_approval": [("approve", None)],
+            "release_approval": [("approve", None)],
+        }
+
+    def test_prd_revise_is_a_targeted_edit(self):
+        """Revise edits the PRD in place and re-validates — no goal confirm, interview, or rewrite."""
+        self.prep_tasks_json()
+        action, trace = self.drive(self._design_gates(
+            [("revise", "rename the role"), ("revise", "tighten AC-02"), ("approve", None)],
+            [("approve", None)]))
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("design/revise_prd"), 2)
+        self.assertEqual(steps.count("design/author_prd"), 1)
+        self.assertEqual(steps.count("design/feature_goal"), 1)
+        self.assertEqual(steps.count("design/prepare_prd_questions"), 2)  # initial loop only
+        self.assertEqual(steps.count("design/validate_prd"), 3)
+
+    def test_hld_revise_is_a_targeted_edit(self):
+        self.prep_tasks_json()
+        action, trace = self.drive(self._design_gates(
+            [("approve", None)], [("revise", "name the cache owner"), ("approve", None)]))
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("design/revise_hld"), 1)
+        self.assertEqual(steps.count("design/author_hld"), 1)
+        self.assertEqual(steps.count("design/prepare_hld_questions"), 2)
+        self.assertEqual(steps.count("design/validate_hld"), 2)
+
+    def test_hld_revise_needing_a_decision_falls_back_to_clarification(self):
+        self.prep_tasks_json()
+        action, trace = self.drive(
+            self._design_gates([("approve", None)],
+                               [("revise", "support offline mode"), ("approve", None)]),
+            agent_overrides={"revise_hld": {"hld_summary": "needs a decision",
+                                            "needs_clarification": True}})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("design/revise_hld"), 1)
+        self.assertEqual(steps.count("design/prepare_hld_questions"), 3)
+        self.assertEqual(steps.count("design/author_hld"), 2)
+
+    def test_hld_rethink_runs_the_full_clarification_pass(self):
+        self.prep_tasks_json()
+        action, trace = self.drive(self._design_gates(
+            [("approve", None)], [("rethink", "split the service"), ("approve", None)]))
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertNotIn("design/revise_hld", steps)
+        self.assertEqual(steps.count("design/author_hld"), 2)
 
     def test_repo_lld_revise_is_isolated_and_requires_feedback(self):
         self.prep_tasks_json()
@@ -617,6 +679,9 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         self.assertIn(("ask_input", "lld:backend/lld_approval"), trace)
+        backend_steps = [s for _, s in trace if s.startswith("lld:backend/")]
+        self.assertEqual(backend_steps.count("lld:backend/revise_lld"), 1)
+        self.assertEqual(backend_steps.count("lld:backend/author_lld"), 1)
         state = statemod.load("demo--lld--backend", self.tmp)
         revisions = [g for g in state["gates"]
                      if g["step"] == "lld_approval" and g["option"] == "revise"]

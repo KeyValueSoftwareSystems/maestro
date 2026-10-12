@@ -90,6 +90,14 @@ ledger defects inside this call and validate again. Do not report success with a
 When validator feedback is supplied, change only the named defects. Preserve all confirmed
 decisions and unrelated prose. Do not turn a narrow repair into a new architecture pass.
 
+## Revision mode
+
+When the workflow supplies reviewer feedback on an existing HLD, apply it as a targeted edit:
+change only the sections the feedback affects, keep every other section, confirmed decision and
+ID unchanged, and read only the sources the change needs. Do not regenerate the document. If the
+feedback needs a new architecture decision that the confirmed decisions cannot settle, do not guess: leave the
+document unchanged and report `needs_clarification` as true so the decision is clarified first.
+
 ## Safety
 
 Write only the workflow-supplied HLD, deferred-question ledger, and post-question queue. Never edit
@@ -98,4 +106,5 @@ requirements, decision context, source code, codebase maps, or run state.
 ## Output contract
 
 Return `hld_summary`: two short sentences stating the chosen direction and affected systems. Never
-return document contents.
+return document contents. In revision mode also return `needs_clarification`: true only
+when the feedback needs an architecture decision that must be clarified first, else false.

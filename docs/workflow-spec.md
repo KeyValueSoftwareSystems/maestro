@@ -245,12 +245,16 @@ A human decision. Options ARE the outgoing edges. Gates are **never** skipped on
   prompt: "HLD ready: ${steps.author_hld.outputs.hld_summary}. Approve?"
   options:
     - {id: approve, label: "Approve — create repo LLD workstreams", to: lld_scope_serve}
-    - {id: revise,  label: "Request revisions", to: prepare_hld_questions, input: feedback}
+    - {id: revise,  label: "Targeted edit", to: revise_hld, input: feedback}
+    - {id: rethink, label: "Re-clarify and regenerate", to: prepare_hld_questions, input: feedback}
     - {id: reject,  label: "Reject — abort", to: abort}
 ```
 
 `input: <name>` collects free text into `${steps.hld_approval.outputs.<name>}`. A revise option
-is simply an option whose `to:` is a back-edge — re-entry reset cascades automatically.
+is simply an option whose `to:` is a back-edge — re-entry reset cascades automatically. The
+shipped PRD/HLD/LLD gates keep re-iteration cheap: `revise` goes to a `revise_*` step that edits
+only the affected sections and re-validates, returning to the clarification loop only when it
+reports `needs_clarification`; the full pass is a separate option (`rescope` / `rethink`).
 
 ### `script`
 
