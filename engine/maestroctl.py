@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""maestroctl — the deterministic engine CLI behind the /maestro lead agent.
+"""maestroctl — the deterministic engine CLI behind the Maestro lead agent.
 
 The lead agent's whole protocol:
 
@@ -11,9 +11,13 @@ The lead agent's whole protocol:
         maestroctl complete --slug S --step P --outputs '<json>'
         maestroctl complete --slug S --step P --exit-code N [--stdout '<text>']
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
+        maestroctl gate-input-record --slug S --step P --input '<text>'
+        maestroctl interview-record --slug S --step P --section X (--accept | --answer '<text>')
+        maestroctl interview-record-batch --slug S --step P --responses '<json>'
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, reset (--step/--all, --cascade), rebase, graph, note (capture out-of-band input).
+Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
+upgrade-run, and correction-record.
 
 Exit codes: 0 ok · 1 validation errors · 2 internal error · 3 setup/hash problem ·
 4 invalid transition (wrong step, missing outputs/artifacts, unknown option).
@@ -99,14 +103,47 @@ def cmd_complete(args):
             raise resolver.RunError(f"--outputs is not valid JSON: {exc}", code=4)
         if not isinstance(outputs, dict):
             raise resolver.RunError("--outputs must be a JSON object", code=4)
+    telemetry = None
+    if args.telemetry:
+        try:
+            telemetry = json.loads(args.telemetry)
+        except ValueError as exc:
+            raise resolver.RunError(f"--telemetry is not valid JSON: {exc}", code=4)
+        if not isinstance(telemetry, dict):
+            raise resolver.RunError("--telemetry must be a JSON object", code=4)
     return _mutate(args, lambda run: resolver.complete_step(
         run, args.step, outputs=outputs, exit_code=args.exit_code, stdout=args.stdout,
+        telemetry=telemetry,
     ))
 
 
 def cmd_gate_record(args):
     return _mutate(args, lambda run: resolver.record_gate(
         run, args.step, args.option, input_text=args.input,
+    ))
+
+
+def cmd_gate_input_record(args):
+    return _mutate(args, lambda run: resolver.record_gate_input(
+        run, args.step, args.input,
+    ))
+
+
+def cmd_interview_record(args):
+    return _mutate(args, lambda run: resolver.record_interview(
+        run, args.step, args.section, answer=args.answer, accept=args.accept,
+    ))
+
+
+def cmd_interview_record_batch(args):
+    try:
+        responses = json.loads(args.responses)
+    except ValueError as exc:
+        raise resolver.RunError(f"--responses is not valid JSON: {exc}", code=4) from None
+    if not isinstance(responses, dict):
+        raise resolver.RunError("--responses must be a JSON object", code=4)
+    return _mutate(args, lambda run: resolver.record_interview_batch(
+        run, args.step, responses,
     ))
 
 
@@ -143,8 +180,30 @@ def cmd_note(args):
     return 0
 
 
-def _fmt_secs(secs):
-    secs = max(int(secs), 0)
+def cmd_upgrade_run(args):
+    import run_upgrade
+    result = (
+        run_upgrade.apply(args.slug, args.root, args.workflow)
+        if args.apply else run_upgrade.inspect(args.slug, args.root, args.workflow)
+    )
+    _print(result)
+    return 0
+
+
+def cmd_correction_record(args):
+    import design_corrections
+    result = design_corrections.record(
+        args.slug, args.root, args.scope, args.text, repo=args.repo,
+        parent_slug=args.parent_slug,
+    )
+    _print(result)
+    return 0
+
+
+def _fmt_ms(ms):
+    secs = max(int(ms), 0) // 1000
+    if ms < 1000:
+        return f"{max(int(ms), 0)}ms"
     if secs < 60:
         return f"{secs}s"
     if secs < 3600:
@@ -153,13 +212,12 @@ def _fmt_secs(secs):
 
 
 def _step_time(entry):
-    """Duration of a finished step, or elapsed-so-far (`+`) for an active one."""
-    if isinstance(entry.get("duration_s"), int):
-        return _fmt_secs(entry["duration_s"])
-    started = entry.get("started_at")
-    if started and entry.get("status") in ("pending", "running"):
-        secs = statemod.elapsed_s(started)
-        return "-" if secs is None else "+" + _fmt_secs(secs)
+    """Duration of a finished visit, or elapsed-so-far (`+`) for an active one."""
+    if isinstance(entry.get("duration_ms"), int):
+        return _fmt_ms(entry["duration_ms"])
+    started = entry.get("started_at_ms")
+    if isinstance(started, int) and entry.get("status") in ("pending", "running"):
+        return "+" + _fmt_ms(statemod.now_ms() - started)
     return "-"
 
 
@@ -178,22 +236,23 @@ def cmd_status(args):
     print(f"active:   {', '.join(run_info.get('cursors') or []) or '-'}")
     print()
     width = max((len(p) for p in data["steps"]), default=10)
-    print(f"{'step'.ljust(width)}  {'status'.ljust(8)}  visits  {'time'.ljust(8)}  outputs")
+    print(f"{'step'.ljust(width)}  {'status'.ljust(8)}  visits  duration  outputs")
     for path in sorted(data["steps"]):
         entry = data["steps"][path]
         keys = ",".join(entry.get("outputs") or {}) or "-"
         print(f"{path.ljust(width)}  {str(entry.get('status')).ljust(8)}  "
               f"{str(entry.get('visits', 0)).ljust(6)}  {_step_time(entry).ljust(8)}  {keys}")
     timed = sorted(
-        ((e["duration_s"], p) for p, e in data["steps"].items()
-         if isinstance(e.get("duration_s"), int) and "[" not in p.rsplit("/", 1)[-1]),
+        ((e["duration_ms"], p) for p, e in data["steps"].items()
+         if isinstance(e.get("duration_ms"), int)
+         and e.get("node_type") not in ("parallel", "subworkflow")),
         reverse=True,
     )
     if timed:
         print()
-        print("slowest (last visit; gates include human wait):")
-        for secs, path in timed[:5]:
-            print(f"  {_fmt_secs(secs).rjust(8)}  {path}")
+        print("slowest (latest visit; gates include human wait):")
+        for ms, path in timed[:5]:
+            print(f"  {_fmt_ms(ms).rjust(8)}  {path}")
     if data.get("gates"):
         print()
         print("gate decisions:")
@@ -205,6 +264,12 @@ def cmd_status(args):
 
 def cmd_runs(args):
     _print({"runs": statemod.list_runs(args.root)})
+    return 0
+
+
+def cmd_workstreams(args):
+    import lld_repo_pool
+    _print(lld_repo_pool.workstream_summary(args.slug, args.root))
     return 0
 
 
@@ -263,6 +328,7 @@ def build_parser():
     p.add_argument("--outputs", help="JSON object the subagent returned")
     p.add_argument("--exit-code", type=int, help="script exit code")
     p.add_argument("--stdout", help="script stdout (last line parsed as JSON outputs)")
+    p.add_argument("--telemetry", help="optional factual JSON metrics from the host")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_complete)
 
@@ -273,6 +339,35 @@ def build_parser():
     p.add_argument("--input", help="free text collected by the option")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_gate_record)
+
+    p = sub.add_parser("gate-input-record", help="record required free text after a gate choice")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--input", required=True, help="free text requested by the pending gate option")
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_gate_input_record)
+
+    p = sub.add_parser("interview-record", help="confirm the current interview section")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--section", required=True)
+    group = p.add_mutually_exclusive_group(required=True)
+    group.add_argument("--accept", action="store_true", help="accept the engine-served proposal")
+    group.add_argument("--answer", help="confirmed replacement answer")
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_interview_record)
+
+    p = sub.add_parser(
+        "interview-record-batch", help="confirm clear answers from a served interview batch",
+    )
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument(
+        "--responses", required=True,
+        help='JSON object: {"question-id":{"accept":true}, "other":{"answer":"text"}}',
+    )
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_interview_record_batch)
 
     p = sub.add_parser("fail", help="record a step failure (engine applies retries/on_fail)")
     p.add_argument("--slug", required=True)
@@ -300,6 +395,30 @@ def build_parser():
     p.add_argument("--step", help="step it relates to (default: the active step[s])")
     p.set_defaults(fn=cmd_note)
 
+    p = sub.add_parser(
+        "upgrade-run", help="inspect or apply the one-time current-format run upgrade",
+    )
+    p.add_argument("--slug", required=True)
+    p.add_argument("--workflow", default=".maestro/workflows/sdlc-main.yaml")
+    p.add_argument(
+        "--apply", action="store_true",
+        help="back up and upgrade after the human accepts the inspection preview",
+    )
+    p.set_defaults(fn=cmd_upgrade_run)
+
+    p = sub.add_parser(
+        "correction-record", help="record one human-approved effective-design correction",
+    )
+    p.add_argument("--slug", required=True, help="feature parent or repository LLD child")
+    p.add_argument("--parent-slug", help="explicit feature parent (normally inferred)")
+    p.add_argument(
+        "--scope", required=True,
+        choices=("product", "architecture", "repository", "contract", "verification", "cross-cutting"),
+    )
+    p.add_argument("--repo", help="required for repository scope unless inferred from a child")
+    p.add_argument("--text", required=True, help="the approved correction, verbatim")
+    p.set_defaults(fn=cmd_correction_record)
+
     p = sub.add_parser("status", help="human-readable run status")
     p.add_argument("--slug", required=True)
     p.add_argument("--json", action="store_true")
@@ -311,6 +430,12 @@ def build_parser():
 
     p = sub.add_parser("runs", help="list every run under .maestro/runs/ as JSON (read-only)")
     p.set_defaults(fn=cmd_runs)
+
+    p = sub.add_parser(
+        "workstreams", help="list repo-owned LLD child runs for resume selection (read-only)",
+    )
+    p.add_argument("--slug", required=True, help="parent feature or repo LLD child slug")
+    p.set_defaults(fn=cmd_workstreams)
     return parser
 
 

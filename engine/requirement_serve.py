@@ -6,7 +6,7 @@ workflow's script node can route on the `state` field (the "script stdout JSON
 becomes routable outputs" pattern, same as oq_serve.py):
 
   {"state": "have"}  -> at least one non-empty file exists -> author the HLD
-  {"state": "need"}  -> the folder is missing or empty      -> intake / brainstorm
+  {"state": "need"}  -> the folder is missing or empty      -> intake / clarification
 
 Routing is on `state`, never the exit code: this always exits 0 so a missing
 folder is a normal "need", not a script failure.

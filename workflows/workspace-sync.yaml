@@ -1,0 +1,177 @@
+# Fast, deterministic workspace sync used at feature boundaries. Fetch/status/fast-forward,
+# provenance and commit pinning are engine-owned; Sonnet is invoked only when living docs
+# genuinely need judgement-based refresh.
+version: 1
+name: workspace-sync
+description: Fetch repository upstreams, safely update on approval, refresh stale knowledge, and pin commits.
+inputs:
+  slug: {type: string, required: true}
+  checkpoint: {type: string, default: feature-start}
+defaults:
+  model: haiku
+  agent: analyst
+  max_visits: 6
+start: plan
+nodes:
+  - id: plan
+    type: script
+    label: Fetch and inspect workspace
+    run:
+      - python3
+      - .maestro/engine/workspace_sync.py
+      - plan
+      - --root
+      - .
+      - --out
+      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-plan.json"
+      - --lock
+      - ".maestro/runs/${inputs.slug}/workspace-lock.json"
+    on_fail: abort
+    routes:
+      - {when: "${steps.plan.outputs.needs_attention} == true", to: sync_gate}
+      - {to: lock}
+
+  - id: sync_gate
+    type: gate
+    label: Workspace updates available
+    prompt: |
+      Maestro fetched the upstream for each repository's current branch.
+
+      ${steps.plan.outputs.summary}
+
+      Safe updates use fast-forward only. Dirty, detached or diverged repositories are never
+      modified automatically. A documentation refresh runs only when commit provenance says
+      the living technical/functional knowledge or codebase maps are stale. Continuing uses
+      committed HEADs; uncommitted application changes are not part of the feature lock or its
+      implementation worktrees.
+    options:
+      - {id: sync, label: Apply safe updates; leave blocked repos unchanged, to: apply}
+      - {id: current, label: Continue without updating — use committed HEADs, to: lock}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: apply
+    type: script
+    label: Fast-forward approved repositories
+    run:
+      - python3
+      - .maestro/engine/workspace_sync.py
+      - apply
+      - --root
+      - .
+      - --plan
+      - "${steps.plan.outputs.plan_path}"
+      - --plan-sha256
+      - "${steps.plan.outputs.plan_sha256}"
+      - --out
+      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-result.json"
+    on_fail: abort
+    routes:
+      - {when: "${steps.apply.outputs.refresh_needed} == true", to: map_plan}
+      - {to: lock}
+
+  - id: map_plan
+    type: script
+    label: Plan incremental map refresh
+    run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
+    routes:
+      - {when: "${steps.map_plan.outputs.stale} == true", to: snapshot_maps}
+      - {to: refresh_knowledge}
+
+  - id: snapshot_maps
+    type: script
+    label: Snapshot stale maps
+    run:
+      - python3
+      - .maestro/engine/codebase_scan.py
+      - snapshot
+      - --root
+      - .
+      - --out
+      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-map-snapshot.json"
+    on_fail: abort
+    next: refresh_knowledge
+
+  - id: refresh_knowledge
+    type: agent
+    label: Refresh affected workspace knowledge
+    model: sonnet
+    instruction: |
+      Refresh only the living knowledge affected by the fetched/current commit changes.
+      Read ${steps.plan.outputs.plan_path} for per-repo provenance and changed files, and
+      ${steps.apply.outputs.result_path} for repositories actually fast-forwarded.
+
+      For every stale repo, update its docs/codebase-map.md only where the changed files alter
+      modules, flows, execution modes, APIs or conventions. Do not touch its engine-owned
+      maestro-codebase-map marker. Update the central docs/technical/<domain>.md and
+      docs/functional/<domain>.md files for affected domains. Update docs/architecture.md only
+      when services, components, ownership, protocols or data flows changed; otherwise preserve
+      it byte-for-byte. Create missing knowledge surfaces when this is the first indexed run.
+      Preserve unrelated sections and human edits. Do not edit application code.
+
+      Write a concise audit of files assessed, docs changed, and why unchanged docs remained
+      valid to .maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md.
+    skill: build-knowledge
+    inputs:
+      slug: "${inputs.slug}"
+      checkpoint: "${inputs.checkpoint}"
+      plan_path: "${steps.plan.outputs.plan_path}"
+      updated_repos: "${steps.apply.outputs.updated_repos_csv}"
+    outputs: [domains_written, architecture_path, summary]
+    artifact:
+      - docs/architecture.md
+      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md"
+    routes:
+      - {when: "${steps.map_plan.outputs.stale} == true", to: record_maps}
+      - {to: record_knowledge}
+
+  - id: record_maps
+    type: script
+    label: Verify and record refreshed maps
+    run:
+      - python3
+      - .maestro/engine/codebase_scan.py
+      - record
+      - --root
+      - .
+      - --snapshot
+      - "${steps.snapshot_maps.outputs.snapshot_path}"
+      - --snapshot-sha256
+      - "${steps.snapshot_maps.outputs.snapshot_sha256}"
+    on_fail: abort
+    next: record_knowledge
+
+  - id: record_knowledge
+    type: script
+    label: Record knowledge provenance
+    run:
+      - python3
+      - .maestro/engine/workspace_sync.py
+      - record-knowledge
+      - --root
+      - .
+      - --evidence
+      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md"
+    on_fail: abort
+    next: lock
+
+  - id: lock
+    type: script
+    label: Pin exact workspace commits
+    run:
+      - python3
+      - .maestro/engine/workspace_sync.py
+      - lock
+      - --root
+      - .
+      - --out
+      - ".maestro/runs/${inputs.slug}/workspace-lock.json"
+      - --result
+      - "${steps.apply.outputs.result_path}"
+    on_fail: abort
+    next: end
+
+outputs:
+  changed: "${steps.lock.outputs.changed}"
+  updated: "${steps.lock.outputs.updated}"
+  lock_path: "${steps.lock.outputs.lock_path}"
+  lock_sha256: "${steps.lock.outputs.lock_sha256}"

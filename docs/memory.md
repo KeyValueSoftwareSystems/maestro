@@ -46,6 +46,11 @@ docs/
   domains + `architecture.md` after a feature. Both are LLM-judgement skills — swap them
   freely; the *structure* is fixed here and in their workflow node instructions, not baked
   into engine code.
+- **`.maestro/index/knowledge-state.json`** is the engine-owned provenance record: the exact
+  commit of every repository these docs were last assessed against, plus hashes of the docs
+  and refresh evidence. `/maestro` compares it after a parallel upstream fetch. Matching SHAs
+  mean zero knowledge-model work; drift opens one consolidated sync gate and refreshes only
+  affected domains/files after explicit approval.
 
 ## Surface 2 — the corroborated lessons (`.maestro/memory/`)
 

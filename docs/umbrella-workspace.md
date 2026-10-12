@@ -10,9 +10,10 @@ Set this up once per project, then run every feature from the umbrella root. It'
 setup you do manually — the pack doesn't scaffold it for you (yet).
 
 ```
-my-project/                 ← umbrella repo (git init once; this is where you run /maestro)
+my-project/                 ← umbrella repo (git init once; run Maestro here)
 ├── maestro                 ← the ./maestro wrapper           ┐  installed by install.sh
-├── .claude/  .cursor/      ← skills / commands / agents      ┘
+├── .claude/  .cursor/      ← Claude/Cursor skills + commands ┘
+├── .agents/                ← Codex repo-scoped skills
 ├── .maestro/               ← everything Maestro ships lives here:
 │   ├── engine/  ui/          ← runtime (regenerated on upgrade)
 │   ├── workflows/  docs/     ← committed, customize freely
@@ -20,9 +21,9 @@ my-project/                 ← umbrella repo (git init once; this is where you 
 │   └── runs/<slug>/          ← per-feature requirement + artifacts + run ledger
 ├── codebase/               ← service repos, each cloned here, each GITIGNORED
 │   ├── frontend/           ← independent repo: own branches, PRs, CI
-│   │   └── CLAUDE.md        ← that repo's conventions (or .cursor/rules/*.mdc)
+│   │   └── AGENTS.md        ← that repo's conventions (or host equivalent)
 │   ├── backend/
-│   │   └── CLAUDE.md
+│   │   └── AGENTS.md
 │   └── payments-service/
 ├── docs/                   ← centralised, cross-repo (technical / functional / business)
 ├── test/                   ← cross-repo integration + UI-automation suites
@@ -39,11 +40,12 @@ my-project/                 ← umbrella repo (git init once; this is where you 
   `workspace.yaml` manifest listing the repos keeps the checkout reproducible for teammates.
 
 - **Give every child repo its own agent guidance file.** Each service repo under `codebase/` should
-  carry a `CLAUDE.md` (Claude Code) and/or a `.cursor/rules/*.mdc` / `.cursorrules` (Cursor) at its
+  carry an `AGENTS.md` (Codex), a `CLAUDE.md` (Claude Code), and/or a
+  `.cursor/rules/*.mdc` / `.cursorrules` (Cursor) at its
   root, describing *that repo's* conventions — stack, build/test/run commands, directory layout,
-  house style, gotchas. When the agent edits `codebase/backend/`, its `CLAUDE.md` is what tells it
-  how that service is built and tested. Keep these committed **in each service repo** (they're
-  repo-specific and useful outside Maestro too); the umbrella's own `CLAUDE.md`, if any, covers only
+  house style, gotchas. When the agent edits `codebase/backend/`, that repo's host instruction
+  file tells it how the service is built and tested. Keep these committed **in each service repo**
+  (they're repo-specific and useful outside Maestro too); the umbrella's own instruction file covers only
   cross-repo/workspace concerns. Without them the agent guesses per-repo conventions from the code —
   the files make its output match each team's norms.
 
@@ -53,15 +55,30 @@ my-project/                 ← umbrella repo (git init once; this is where you 
   and all generated artifacts — lives there. The umbrella is the agent's working surface; the child
   repos under `codebase/` are what it edits.
 
-- **Seed domain knowledge.** After installing, run `/build-knowledge` once from the umbrella
-  root to populate `.maestro/memory/knowledge/` from the cloned repos + their `CLAUDE.md` and
+- **Seed domain knowledge.** After installing, run `/build-knowledge` (Claude/Cursor) or
+  `$build-knowledge` (Codex) once from the umbrella root to populate
+  `.maestro/memory/knowledge/` from the cloned repos + their host instruction files and
   the centralised `docs/`. Feature runs read this (frozen at init) to ground their designs and
   reviews; it's re-runnable and merges. See [memory.md](memory.md).
+
+- **Per-repo codebase map.** `build-knowledge` also writes a **`docs/codebase-map.md` inside
+  each repo under `codebase/`** — the standing, per-repo description of that repo's modules,
+  flows and execution modes that the HLD step reads before choosing an architecture. Each map
+  is git-tracked in its own repo; the engine (`codebase_scan.py`) records the commit it
+  reflects, so re-running `/build-knowledge` and the post-feature refresh (in the archive
+  phase) only re-examine the diff since that commit, then commit + push the updated map back to
+  each repo. Keeping the maps per repo is why they stay accurate as each service evolves
+  independently.
 
 - **Git prerequisite still applies per child repo.** The per-stack implement steps run in isolated
   `git worktree`s, so each service repo you touch must be an initialised git repo with at least one
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so
   the run ledger (`.maestro/runs/<slug>/`) is tracked and a run resumes on any machine.
+
+- **LLD ownership is per repository.** After the shared HLD is approved, Maestro creates child
+  slugs such as `<feature>--lld--backend`. Commit those child directories when handing work to
+  the teams. Each team resumes only its slug and publishes only its LLD; the parent feature waits
+  until every selected repo has an approval receipt bound to the current HLD.
 
 - **Docs + tests centralised in the umbrella.** Keep the per-feature docs tree
   (`docs/technical`, `docs/functional`, `docs/business`) and the cross-repo integration +
@@ -128,13 +145,19 @@ never creates or commits them.
 From the umbrella root, exactly as in a single repo:
 
 ```
-/maestro my-feature                          # full pipeline across the cloned stack
-/maestro my-feature workflows/design.yaml    # just one phase
+/maestro my-feature                          # Claude Code / Cursor
+$maestro my-feature                          # Codex; same full pipeline and ledger
 ```
 
-The lead agent scaffolds `.maestro/my-feature/requirement/`, reads the whole workspace, and writes
-every artifact under `.maestro/my-feature/` — while editing the actual service repos under
-`codebase/` in their own worktrees.
+The lead agent scaffolds `.maestro/runs/my-feature/requirement/`, reads the whole workspace, and
+writes every artifact under `.maestro/runs/my-feature/` — while editing the actual service repos
+under `codebase/` in their own worktrees.
+
+At feature start and again before implementation, Maestro fetches the upstream of each child
+repo's current branch in parallel. Current workspaces continue silently. Otherwise one gate
+summarizes behind, dirty or diverged repos and stale knowledge; approved clean updates are
+fast-forward-only, affected docs are refreshed once, and exact commits are pinned in the run's
+`workspace-lock.json`. A repo with local changes is never updated automatically.
 
 > Release ordering: **approve release → archival (harvest lessons into memory + publish
 > curated docs) → merge the feature branch to master.** Archival is the last automated phase;

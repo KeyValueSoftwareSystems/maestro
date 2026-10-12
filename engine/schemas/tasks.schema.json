@@ -7,7 +7,7 @@
   "required": ["schema_version", "stack", "feature_slug", "context_manifest", "slices", "tasks"],
   "properties": {
     "schema_version": { "const": 1 },
-    "stack": { "enum": ["backend", "frontend", "qa"] },
+    "stack": { "type": "string", "minLength": 1 },
     "feature_slug": { "type": "string", "minLength": 1 },
     "context_manifest": {
       "type": "object",

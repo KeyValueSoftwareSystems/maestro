@@ -12,7 +12,7 @@ launched in, so the builder no longer needs the browser File System Access API:
     GET  /api/runs             [{"slug","state"}] from <root>/.maestro/runs/*/state.yaml
 
 This is dev tooling: it reads/serves and writes workflow SOURCE only. It never touches
-.maestro/runs/**/state.yaml and never drives a run — the /maestro skill + engine remain the
+.maestro/runs/**/state.yaml and never drives a run — the Maestro skill + engine remain the
 sole execution path and the only writer of run state. Bound to 127.0.0.1 exclusively.
 """
 
@@ -38,7 +38,7 @@ MAX_SCAN = 2000            # ceiling on files listed, a runaway backstop
 # trees. .maestro is NOT skipped wholesale anymore — the pack now lives there
 # (.maestro/workflows is the workflow source the builder reads/edits) — but its
 # engine-owned subtrees below ARE pruned.
-SKIP_DIRS = {".git", ".claude", ".cursor", "node_modules",
+SKIP_DIRS = {".git", ".claude", ".cursor", ".agents", ".codex", "node_modules",
              "__pycache__", ".venv", "venv", ".idea", ".vscode", ".mypy_cache"}
 # Engine-owned subtrees under .maestro/: run state, shared memory, and the copied
 # runtime. Never listed as workflow source and never written to. (.maestro/workflows +

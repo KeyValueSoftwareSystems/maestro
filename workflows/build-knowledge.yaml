@@ -12,14 +12,30 @@ inputs:
 defaults:
   model: haiku
   agent: analyst
-start: build
+start: plan_maps
 nodes:
+  - id: plan_maps
+    type: script
+    label: Plan codebase-map refresh
+    run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
+    routes:
+      - {when: "${steps.plan_maps.outputs.stale} == true", to: snapshot_maps}
+      - {to: build}
+
+  - id: snapshot_maps
+    type: script
+    label: Snapshot maps before refresh
+    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json"]
+    on_fail: abort
+    next: build
+
   - id: build
     type: agent
     label: Build the knowledge base
     instruction: |
       Scan this workspace and build its living knowledge base under docs/. Read the repos
-      under codebase/ (or the single repo), each repo's CLAUDE.md / .cursor/rules, and any
+      under codebase/ (or the single repo), each repo's AGENTS.md / CLAUDE.md /
+      .cursor/rules, and any
       existing docs/. Then:
       1. Identify the domains / bounded contexts the code is organised around (kebab-case,
          e.g. auth, order-management, catalog, payments).
@@ -31,7 +47,14 @@ nodes:
          section giving, per edge, the protocol (REST/gRPC/GraphQL/event/queue/shared DB),
          direction, sync vs async, the data that flows, and how calls are authenticated
          between services; note which datastore each service owns.
-      4. Optionally seed cross-cutting REVIEW lessons (not domain docs) as an authoritative
+      4. For EACH repo write docs/codebase-map.md — the standing per-repo grounding the HLD
+         reads: entry points, key modules, the primary flows and EVERY distinct execution mode
+         each runs in (single-turn/multi-turn, sync/async, batch/streaming, …) and what selects
+         it, the data model, APIs exposed/consumed, auth pattern and conventions, cited to
+         file:line. Run `python3 .maestro/engine/codebase_scan.py plan` to see which repos to
+         map (bootstrap = full). Do NOT write the `<!-- maestro-codebase-map commit=… -->`
+         marker — the engine stamps it next.
+      5. Optionally seed cross-cutting REVIEW lessons (not domain docs) as an authoritative
          drop to .maestro/memory/incoming/bootstrap.json
          ({"slug":"bootstrap","lessons":[{"domain":"backend-review","key":"<kebab>","text":"...",
          "authoritative":true}]}) — the engine renders those; do not write knowledge/ yourself.
@@ -39,6 +62,25 @@ nodes:
     skill: build-knowledge
     outputs: [domains_written, architecture_path, summary]
     artifact: "docs/architecture.md"
+    routes:
+      - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
+      - {to: record_knowledge}
+
+  - id: record_maps
+    type: script
+    label: Record codebase-map commits (engine)
+    # Stamp each repo's current HEAD into its docs/codebase-map.md marker, so the next
+    # build-knowledge / retrospect run refreshes only the diff. Owned by the engine, not the
+    # skill — swapping build-knowledge can't change how incremental tracking works.
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
+    on_fail: build
+    next: record_knowledge
+
+  - id: record_knowledge
+    type: script
+    label: Record living-doc provenance (engine)
+    run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ., --evidence, docs/architecture.md]
+    on_fail: abort
     next: consolidate
 
   - id: consolidate

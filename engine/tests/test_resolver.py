@@ -147,6 +147,53 @@ nodes:
     next: end
 """
 
+INTERVIEW_WF = """\
+version: 1
+name: interview
+inputs:
+  slug: {type: string, required: true}
+start: summarize
+nodes:
+  - id: summarize
+    type: agent
+    execution: lead
+    instruction: Summarize the feature.
+    skill: prd-interview
+    outputs: [summary]
+    next: clarify
+  - id: clarify
+    type: interview
+    skill: prd-interview
+    context: "Context: ${steps.summarize.outputs.summary}"
+    sections:
+      - {id: users, title: Users, proposal: Admins}
+      - {id: scope, title: Scope, prompt: What is in scope?}
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: end
+"""
+
+DYNAMIC_INTERVIEW_WF = """\
+version: 1
+name: dynamic-interview
+inputs:
+  slug: {type: string, required: true}
+start: first
+nodes:
+  - id: first
+    type: interview
+    questions_artifact: ".maestro/runs/${inputs.slug}/questions-1.json"
+    batch_size: 12
+    presentation: popup
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: second
+  - id: second
+    type: interview
+    questions_artifact: ".maestro/runs/${inputs.slug}/questions-2.json"
+    batch_size: 12
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+    next: end
+"""
+
 
 class Sim(unittest.TestCase):
     """Harness: tmp repo dir, helpers to drive a run without any LLM."""
@@ -179,9 +226,13 @@ class Sim(unittest.TestCase):
         with open(full, "w") as fh:
             fh.write("content\n")
 
-    def complete(self, step, outputs=None, exit_code=None, stdout=None, slug="feat"):
+    def complete(self, step, outputs=None, exit_code=None, stdout=None, slug="feat",
+                 telemetry=None):
         run = self.run_obj(slug)
-        resolver.complete_step(run, step, outputs=outputs, exit_code=exit_code, stdout=stdout)
+        resolver.complete_step(
+            run, step, outputs=outputs, exit_code=exit_code, stdout=stdout,
+            telemetry=telemetry,
+        )
         statemod.save(slug, run.state, self.tmp)
         return resolver.next_action(run)
 
@@ -247,6 +298,135 @@ class BackEdgeTest(Sim):
         st = self.state()
         self.assertEqual(st["run"]["status"], "failed")
         self.assertEqual(st["gates"][-1]["option"], "giveup")
+
+
+class LeadInterviewTest(Sim):
+    def test_lead_action_and_durable_interview(self):
+        self.start(self.write_wf("interview.yaml", INTERVIEW_WF))
+        action = self.nxt()
+        self.assertEqual((action["action"], action["step"]), ("run_lead", "summarize"))
+        self.assertEqual(action["skill"], "prd-interview")
+        action = self.complete(
+            "summarize", {"summary": "A small admin product"},
+            telemetry={"input_tokens": 120, "cached": True, "ignored": ["not scalar"]},
+        )
+        self.assertEqual(action["action"], "ask_interview")
+        self.assertEqual((action["section"], action["title"]), ("users", "Users"))
+        self.assertEqual(action["context"], "Context: A small admin product")
+        self.assertIn("Admins", action["prompt"])
+
+        run = self.run_obj()
+        resolver.record_interview(run, "clarify", "users", accept=True)
+        statemod.save("feat", run.state, self.tmp)
+        action = resolver.next_action(run)
+        self.assertEqual(action["section"], "scope")
+        self.assertEqual(action["progress"], {"confirmed": 1, "total": 2})
+
+        resolver.record_interview(run, "clarify", "scope", answer="Export reports only")
+        statemod.save("feat", run.state, self.tmp)
+        self.assertEqual(resolver.next_action(run)["action"], "done")
+        with open(os.path.join(self.tmp, ".maestro", "runs", "feat", "prd-context.json")) as fh:
+            context = json.load(fh)
+        self.assertEqual(
+            [decision["answer"] for decision in context["decisions"]],
+            ["Admins", "Export reports only"],
+        )
+        self.assertEqual(context["schema_version"], 2)
+        self.assertEqual(len(context["rounds"]), 1)
+        self.assertEqual(context["context"], "Context: A small admin product")
+        state = self.state()
+        self.assertGreaterEqual(state["steps"]["summarize"]["duration_ms"], 0)
+        self.assertEqual(state["steps"]["summarize"]["telemetry"], {
+            "input_tokens": 120, "cached": True,
+        })
+        self.assertEqual(state["steps"]["clarify"]["interview"]["turns"][0]["source"],
+                         "accepted-proposal")
+
+    def test_interview_rejects_out_of_order_answer(self):
+        self.start(self.write_wf("interview.yaml", INTERVIEW_WF))
+        self.complete("summarize", {"summary": "context"})
+        with self.assertRaises(resolver.RunError) as ctx:
+            resolver.record_interview(self.run_obj(), "clarify", "scope", answer="too early")
+        self.assertEqual(ctx.exception.code, 4)
+        self.assertIn("expected section 'users'", str(ctx.exception))
+
+    def test_dynamic_questions_append_cumulative_decisions(self):
+        self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
+        run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
+        first_questions = [
+            {"id": "double-booking", "title": "Booking conflict",
+             "question": "What should happen if the slot was just taken?",
+             "why": "This decides the visible conflict behavior.",
+             "proposal": "Reject and show the next available slots.",
+             "must_resolve": ["visible losing-booking outcome", "recovery action"]},
+            {"id": "stale-form", "title": "Stale form",
+             "question": "Should entered details remain after a stale request is rejected?",
+             "why": "This decides whether the user must repeat work.",
+             "proposal": "Keep all still-valid entered details.",
+             "must_resolve": ["whether entered details remain"]},
+        ]
+        second_questions = [{
+            "id": "cancel-cutoff", "title": "Cancellation cutoff",
+            "question": "How late may a patient cancel a booking?",
+            "why": "This changes eligibility and user messaging.",
+            "proposal": "Allow cancellation until two hours before start.",
+            "must_resolve": ["cancellation cutoff"],
+        }]
+        os.makedirs(run_dir, exist_ok=True)
+        for number, questions in ((1, first_questions), (2, second_questions)):
+            with open(os.path.join(run_dir, f"questions-{number}.json"), "w") as fh:
+                json.dump({
+                    "schema_version": 2,
+                    "questions": questions,
+                    "audit": {"unresolved": [q["id"] for q in questions], "contradictions": []},
+                }, fh)
+
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual(action["presentation"], "popup")
+        self.assertEqual([q["section"] for q in action["questions"]],
+                         ["double-booking", "stale-form"])
+        self.assertEqual(action["questions"][0]["why"],
+                         "This decides the visible conflict behavior.")
+
+        # One invalid answer rejects the entire command; nothing is partially recorded.
+        run = self.run_obj()
+        with self.assertRaises(resolver.RunError):
+            resolver.record_interview_batch(run, "first", {
+                "double-booking": {"accept": True},
+                "stale-form": {"answer": ""},
+            })
+        self.assertEqual(run.state["steps"]["first"]["interview"]["answers"], {})
+
+        resolver.record_interview_batch(run, "first", {
+            "double-booking": {"accept": True},
+        })
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual([q["section"] for q in action["questions"]], ["stale-form"])
+        run = self.run_obj()
+        resolver.record_interview_batch(run, "first", {
+            "stale-form": {"answer": "Keep the form values"},
+        })
+        statemod.save("feat", run.state, self.tmp)
+
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual(action["questions"][0]["section"], "cancel-cutoff")
+        run = self.run_obj()
+        resolver.record_interview_batch(run, "second", {
+            "cancel-cutoff": {"answer": "Any time before start"},
+        })
+        statemod.save("feat", run.state, self.tmp)
+        self.assertEqual(self.nxt()["action"], "done")
+
+        with open(os.path.join(run_dir, "prd-context.json")) as fh:
+            context = json.load(fh)
+        self.assertEqual([item["id"] for item in context["decisions"]],
+                         ["double-booking", "stale-form", "cancel-cutoff"])
+        self.assertEqual(context["decisions"][0]["must_resolve"],
+                         ["visible losing-booking outcome", "recovery action"])
+        self.assertEqual(len(context["rounds"]), 2)
 
 
 # An upstream producer feeds a loop (serve <-> ask); a later gate can revise back to the
@@ -321,37 +501,6 @@ class CascadeUpstreamTest(Sim):
         st = self.state()
         self.assertEqual(st["steps"]["produce"]["status"], "pending")
         self.assertEqual(st["steps"]["produce"]["outputs"], {})
-
-
-class TimingTest(Sim):
-    def test_steps_record_start_finish_and_duration(self):
-        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
-        self.nxt()
-        st = self.state()
-        self.assertIn("started_at", st["steps"]["work"])
-        self.assertNotIn("duration_s", st["steps"]["work"])
-        self.touch(".maestro/feat/work.md")
-        self.complete("work", {"note": "x"})
-        work = self.state()["steps"]["work"]
-        self.assertIn("finished_at", work)
-        self.assertIsInstance(work["duration_s"], int)
-        self.assertGreaterEqual(work["duration_s"], 0)
-        # the next step is stamped on entry, not yet finished
-        review = self.state()["steps"]["review"]
-        self.assertIn("started_at", review)
-        self.assertNotIn("finished_at", review)
-
-    def test_reentry_restarts_the_clock(self):
-        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
-        self.nxt()
-        self.touch(".maestro/feat/work.md")
-        self.complete("work", {"note": "x"})
-        self.complete("review", {"blocking": True})  # back-edge -> work
-        work = self.state()["steps"]["work"]
-        self.assertEqual(work["status"], "pending")
-        self.assertIn("started_at", work)
-        self.assertNotIn("finished_at", work)
-        self.assertNotIn("duration_s", work)
 
 
 class ArtifactTest(Sim):
@@ -563,7 +712,7 @@ class ResumeTest(Sim):
 
 
 class GateInputTest(Sim):
-    def test_option_input_required_and_exposed(self):
+    def test_option_input_is_a_durable_second_action(self):
         wf_text = """\
 version: 1
 name: g
@@ -584,10 +733,38 @@ nodes:
 """
         self.start(self.write_wf("w.yaml", wf_text))
         run = self.run_obj()
+        resolver.record_gate(run, "ask", "give")
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_input")
+        self.assertEqual(action["field"], "feedback")
+        self.assertIn("nothing will regenerate", action["prompt"].lower())
         with self.assertRaises(resolver.RunError):
-            resolver.record_gate(run, "ask", "give")  # missing input text
-        action = self.gate("ask", "give", input_text="tighten scope")
+            resolver.record_gate_input(self.run_obj(), "ask", "   ")
+        run = self.run_obj()
+        resolver.record_gate_input(run, "ask", "tighten scope")
+        statemod.save("feat", run.state, self.tmp)
+        action = resolver.next_action(run)
         self.assertIn("Apply: tighten scope", action["prompt"])
+        state = self.state()
+        self.assertEqual(state["gates"][-1]["input"], "tighten scope")
+
+    def test_atomic_gate_input_remains_compatible(self):
+        wf_text = """\
+version: 1
+name: g
+start: ask
+nodes:
+  - id: ask
+    type: gate
+    prompt: Feedback?
+    options:
+      - {id: give, label: Give feedback, to: end, input: feedback}
+"""
+        self.start(self.write_wf("atomic.yaml", wf_text))
+        action = self.gate("ask", "give", input_text="one call")
+        self.assertEqual(action["action"], "done")
+        self.assertEqual(self.state()["gates"][-1]["input"], "one call")
 
 
 SELF_EXHAUST_WF = """\
@@ -709,7 +886,17 @@ nodes:
         # or a pack-only skills/<name>/SKILL.md path
         self.assertIn("backend-implement", action["prompt"])
         self.assertNotIn("${inputs.stack}", action["prompt"])
-        self.assertNotIn("skills/backend-implement/SKILL.md", action["prompt"])
+        self.assertNotIn("`skills/backend-implement/SKILL.md`", action["prompt"])
+        self.assertIn(
+            ".agents/skills/backend-implement/SKILL.md", action["prompt"]
+        )
+        self.assertIn(
+            ".claude/skills/backend-implement/SKILL.md", action["prompt"]
+        )
+        self.assertIn(
+            ".cursor/skills/backend-implement/SKILL.md", action["prompt"]
+        )
+        self.assertIn("never use a global `find` or `locate`", action["prompt"])
 
 
 class NestedPlaceholderTest(Sim):

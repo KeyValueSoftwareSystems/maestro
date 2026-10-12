@@ -7,7 +7,7 @@ Guidance for working in this repo (`kv-skills` — Maestro, the KeyValue AI-SDLC
 ## What this repo is
 
 A **deterministic workflow orchestrator for agentic coding harnesses** (Claude Code,
-Cursor), shipped with an **example** AI-SDLC pack. The engine is the product; the SDLC
+Cursor, Codex), shipped with an **example** AI-SDLC pack. The engine is the product; the SDLC
 skills + workflows are a worked example meant to be forked or replaced. The load-bearing
 separation: **the workflow owns *what/where/when*** (instruction, inputs, artifact path,
 output fields, ordering) and **a skill owns only *how*** — so any agent step's skill can
@@ -30,7 +30,8 @@ runtime. It ships:
   A skill's IDENTITY is its frontmatter `name` (unique across the tree), never its path —
   workflows pin by name, harness discovery and stack filtering key off `name`/`tags:`. The
   folder is organization only; **`install.sh` flattens the tree on install** — the installed
-  `.claude/skills/<name>/` stays one dir per skill.
+  `.claude/skills/<name>/`, `.cursor/skills/<name>/`, or `.agents/skills/<name>/` stays one
+  dir per skill.
 - **Stack tags & per-stack packs.** A skill/agent tagged `stack:<x>` (e.g. `stack:go`,
   `stack:react`) is a per-stack pack; anything WITHOUT a `stack:` tag is **core** and always
   installs. `install.sh --stack go,react` installs core + only those stacks; `/maestro-init`
@@ -41,13 +42,14 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · init · next · complete · gate-record · fail · reset
-  · rebase · status · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · rebase · status · graph · note · upgrade-run · correction-record`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec (`docs/workflow-spec.md`, machine contract
   `engine/schemas/workflow.schema.json`).
-- **Agents** (`agents/*.md`) — subagent definitions (tools + role prompt) installed
-  into `.claude/agents/`.
+- **Agents** (`agents/*.md`) — Claude Code subagent definitions (tools + role prompt)
+  installed into `.claude/agents/`. Codex uses its native subagents, driven by the exact
+  prompt and named skill served by the engine; Cursor uses inline mode.
 - **The builder UI** (`ui/builder.html`) — single-file visual workflow editor, plus a
   read-only **Runs** view that reads `.maestro/runs/<slug>/state.yaml` and colours each run's
   graph by step status (done/running/failed/pending). Works offline from `file://` (browser
@@ -57,10 +59,10 @@ runtime. It ships:
 - **`bin/maestro`** — a repo-local dev wrapper `install.sh` drops at the consumer repo root
   as `./maestro`. Exactly two subcommands: `maestro ui` (serve the builder via
   `engine/ui_server.py`) and `maestro install` (proxy to `install.sh`). It is dev tooling
-  only — it NEVER drives a run or writes run state; the `/maestro` skill + engine stay the
+  only — it NEVER drives a run or writes run state; the Maestro skill + engine stay the
   sole execution path and only state writer.
 - **`install.sh`** — the installer. There is deliberately NO **execution** CLI and NO config
-  file: workflows only ever run through the /maestro skill + engine (the `maestro` bin above
+  file: workflows only ever run through the Maestro skill + engine (the `maestro` bin above
   is viewer/installer tooling, not an executor). Artifact paths, inputs and the output
   contract are declared on the **workflow node** and injected into the subagent prompt by
   the engine — skills do NOT hardcode paths (that keeps them swappable). Accepts an optional
@@ -79,7 +81,7 @@ runtime. It ships:
   the same layout in a tmp dir.
 
 There is **no headless runner and no API-key dependency** — workflows execute inside
-the user's interactive session (Claude Code, Cursor). Conductor is gone.
+the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 
 ## The engine — module map & the action loop
 
@@ -95,10 +97,13 @@ the user's interactive session (Claude Code, Cursor). Conductor is gone.
   ref renders empty rather than aborting — but `model:`/`max_visits:` and typed init inputs
   resolve strictly), and
   **`render_agent_prompt`** (assembles instruction + inputs + skill pin + artifact list +
-  the last-line-JSON output contract into the subagent prompt). `complete_step`,
-  `record_gate`, `init` live here too.
+  the last-line-JSON output contract into the agent prompt). It also owns lead-executed
+  agents (`execution: lead`) and durable interviews (`record_interview`), including validated
+  dynamic question queues and cumulative decision artifacts.
+  `complete_step`, `record_gate`, `init` live here too.
 - **`state.py`** — the ledger: load/save with `fcntl` lock + atomic tmp/rename, `step_entry`,
-  `sha256_file`, `new_state`. The ONLY writer of `.maestro/runs/<slug>/state.yaml`.
+  step wall-clock timing, `sha256_file`, `new_state`. The ONLY writer of
+  `.maestro/runs/<slug>/state.yaml`.
 - **`validate.py`** — schema check + graph lint (start/route-target existence, reachability,
   default-route-on-branches, placeholder resolvability, subworkflow depth, cycle lint).
 - **`condctl.py`** — the ~4-form route-condition grammar (`==`, `!=`, `in […]`, truthy);
@@ -108,6 +113,27 @@ the user's interactive session (Claude Code, Cursor). Conductor is gone.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
+- **`validate_prd.py` / `validate_prd_questions.py` / `validate_hld.py` / `validate_lld.py`** —
+  deterministic PRD, HLD, and repository LLD structure, acceptance-ID, readability, question-queue,
+  and deferred-ledger checks. They never make product or architecture decisions.
+- **`lld_repo_pool.py` / `workflows/repo-lld.yaml`** — create one child run per selected repo,
+  run a lead-owned bounded clarification and single-write LLD flow, publish only human-approved
+  LLDs back to the parent, bind approvals to the current HLD hash, selectively reopen only the
+  repositories named by an approved architecture correction, and let the parent join only after
+  all repo-owned ledgers are complete.
+- **`implementation_pool.py`** — separate approved design scope from the current implementation
+  batch, preserve verified repository handoffs across batches, keep unselected repositories as
+  durable deferred work, and build the QA manifest only from exact verified worktree commits.
+- **`run_upgrade.py`** — inspect and apply the explicit one-time semantic run-format upgrade.
+  Backs up old state/artifacts, stamps compatible ledgers, and rebuilds legacy ledgers from
+  validated PRD/HLD plus independently re-approved imported LLD drafts; never maps removed steps.
+- **`design_corrections.py`** — immutable per-correction approval receipts, deterministic
+  effective-design rendering for downstream consumers, repository-batch receipts for the
+  architecture-review LLD-only path, and validated archive-time folding into final document copies
+  without mutating original hash-bound approvals.
+- **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
+  fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
+  exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
 - **`ui_server.py`** — the stdlib `http.server` behind `maestro ui`: serves `builder.html`
   and exposes the repo (`/api/workflows` recursively lists every YAML, tagging maestro
   workflows; `/api/workflow` GET+PUT; `/api/runs`; `/api/health`) so the builder is
@@ -116,10 +142,13 @@ the user's interactive session (Claude Code, Cursor). Conductor is gone.
   under root EXCEPT `.git`/`.maestro` (run state stays engine-only) — workflow SOURCE only.
 
 **The action loop** (engine ↔ lead agent): `maestroctl next` prints exactly ONE action as
-JSON — `run_agent`, `run_agents` (a parallel wave), `run_script`, `ask_gate`, `done`, or
-`failed`. The lead agent (`skills/maestro`) dispatches it (spawn subagent / run argv / ask
-human), then reports back via `complete`, `gate-record`, or `fail` — each of which itself
-prints the FOLLOWING action. The LLM never interprets the graph and never writes state.
+JSON — `run_agent`, `run_agents` (a parallel wave), `run_lead`, `run_script`,
+`ask_interview`, `ask_interview_batch`, `ask_gate`, `ask_input`, `done`, or `failed`. `run_lead`
+is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
+atomic batch without dropping unresolved questions.
+Input-bearing gate choices deliberately become a second durable `ask_input` action before
+routing. The lead reports back via `complete`, `interview-record`, `interview-record-batch`, `gate-record`,
+`gate-input-record`, or `fail`. The LLM never interprets the graph or writes state.
 
 ## Running checks
 
@@ -145,8 +174,9 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
 - **Minimal authoring defaults**: only `nodes:` is required — `version` defaults to 1,
   `start` to the first node, node `type` to `agent`, omitted routing to `next: end`.
   Keep these defaults working; they are the "simple workflow creation" promise.
-- **5 node types**: `agent` (instruction required, `skill:` optional pin — omitted =
-  harness auto-discovery), `gate` (options ARE the edges; never skipped on resume),
+- **6 node types**: `agent` (instruction required, optional `execution: lead`, `skill:`
+  optional pin — omitted = harness auto-discovery), `interview` (ordered, durable human
+  clarification with an engine-written JSON artifact), `gate` (options ARE the edges),
   `script` (stdout JSON becomes routable outputs — the `oq_serve` pattern), `parallel`
   (branches may contain agent/gate/script/subworkflow, never nested parallel),
   `subworkflow` (child steps namespaced `parent/child` in state; depth ≤ 4).
@@ -201,11 +231,11 @@ whole suite — the parser underpins everything.
   skill with their own, would a guarantee the workflow relies on break?* If yes, it belongs
   in the engine. (This is why memory consolidation is `engine/mem_consolidate.py`, not the
   retired `consolidate-memory` skill.)
-- **`skills/` is the source of truth for skill prose.** `.claude/skills/`, `.cursor/skills/`
+- **`skills/` is the source of truth for skill prose.** `.claude/skills/`, `.cursor/skills/`, `.agents/skills/`
   etc. are installed copies (gitignored, regenerated by `install.sh`) — never edit those.
   The source is organized into category folders (`core/sdlc`, `core/bootstrap`,
   `stacks/<stack>`, plus `maestro`); a new skill goes in the folder matching its role
-  (`stacks/<stack>` = its `stack:` tag). Install flattens all of them into `.claude/skills/`,
+  (`stacks/<stack>` = its `stack:` tag). Install flattens all of them into the selected host's skills directory,
   so the path is organization only — never reference a skill by folder path, only by `name`.
 - **`skills/maestro/SKILL.md` is the orchestrator's contract.** Its hard rules (never
   edit state, never read artifacts into context, never skip gates, dispatch verbatim)

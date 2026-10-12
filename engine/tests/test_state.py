@@ -79,7 +79,19 @@ class StateTest(unittest.TestCase):
         self.assertEqual(by_slug["beta"]["active"], ["author_hld"])
         # every entry is a lightweight summary, never the full ledger
         self.assertEqual(set(runs[0]),
-                         {"slug", "status", "workflow", "active", "updated_at"})
+                         {"slug", "status", "workflow", "active", "updated_at", "kind",
+                          "parent_slug", "repo"})
+
+    def test_list_runs_labels_repo_lld_children(self):
+        child = statemod.new_state(
+            "feat--lld--backend", "workflows/repo-lld.yaml", "h",
+            {"slug": "feat--lld--backend", "parent_slug": "feat", "repo": "backend"},
+        )
+        statemod.save("feat--lld--backend", child, self.tmp)
+        summary = statemod.list_runs(self.tmp)[0]
+        self.assertEqual(summary["kind"], "repo-lld")
+        self.assertEqual(summary["parent_slug"], "feat")
+        self.assertEqual(summary["repo"], "backend")
 
     def test_list_runs_skips_non_run_dirs(self):
         # a stray directory that isn't a run (no valid state.yaml) is ignored
@@ -88,6 +100,31 @@ class StateTest(unittest.TestCase):
         statemod.save("real", good, self.tmp)
         self.assertEqual([r["slug"] for r in statemod.list_runs(self.tmp)], ["real"])
 
+    def test_list_runs_surfaces_corrupt_ledger_for_upgrade(self):
+        path = statemod.state_path("legacy", self.tmp)
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            fh.write("<<<<<<< ours\n")
+        summary = statemod.list_runs(self.tmp)[0]
+        self.assertEqual(summary["slug"], "legacy")
+        self.assertEqual(summary["status"], "needs-upgrade")
+
+
+
+class StatusTimeTest(unittest.TestCase):
+    def test_durations_are_human_readable(self):
+        import maestroctl
+        self.assertEqual(maestroctl._fmt_ms(420), "420ms")
+        self.assertEqual(maestroctl._fmt_ms(42_000), "42s")
+        self.assertEqual(maestroctl._fmt_ms(1_212_000), "20m12s")
+        self.assertEqual(maestroctl._fmt_ms(3_720_000), "1h02m")
+
+    def test_active_step_shows_elapsed(self):
+        import maestroctl
+        entry = {"status": "pending", "started_at_ms": statemod.now_ms() - 5_000}
+        self.assertTrue(maestroctl._step_time(entry).startswith("+"))
+        self.assertEqual(maestroctl._step_time({"status": "done", "duration_ms": 90_000}), "1m30s")
+        self.assertEqual(maestroctl._step_time({"status": "pending"}), "-")
 
 if __name__ == "__main__":
     unittest.main()

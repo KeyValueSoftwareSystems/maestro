@@ -7,12 +7,12 @@ tags: [sdlc, qa, verify]
 
 # verify
 
-Run the relevant deterministic checks from `CLAUDE.md` and produce proof. **Deterministic
+Run the relevant deterministic checks from `AGENTS.md`/`CLAUDE.md` and produce proof. **Deterministic
 checks are the proof — the model's claim is not.** Never modify code (you write only the
 proof artifacts below).
 
 ## Steps
-1. **Discover** the project's real commands (from `CLAUDE.md`/scripts); don't assume.
+1. **Discover** the project's real commands (from `AGENTS.md`/`CLAUDE.md`/scripts); don't assume.
 2. **Bring up the env** if integration/E2E need it (`stack up` → seed → ready_check);
    ensure teardown afterward.
 3. **Run each check**, capturing the exact command, exit code, and a short output tail.

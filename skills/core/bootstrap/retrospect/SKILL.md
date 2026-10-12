@@ -42,6 +42,11 @@ wrong while running** — because both are where a future run can do better from
    - **Architectural** (`docs/architecture.md`) — whenever the feature added or changed a
      service, component, connection, or data flow: add the new node(s)/edge(s) to the Mermaid
      diagram(s) and the matching entry in the "How services connect" section.
+   - **Per-repo codebase map** (`docs/codebase-map.md` in each affected repo) — run
+     `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed since
+     the map was last recorded; update ONLY those areas (new/changed flows, execution modes,
+     APIs, conventions). A repo reported `current` is unchanged — skip it. Do NOT touch the
+     `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps it after you write.
    Create files that don't exist yet; edit existing ones in place (never duplicate). Skip a
    surface only when the feature genuinely did not affect it — but wherever it did, ADD the
    content, don't just tweak.
@@ -72,7 +77,9 @@ wrong while running** — because both are where a future run can do better from
 - Keep `text` short; injected knowledge is paid for in tokens on every future run.
 
 ## Safety
-- Read-only against the run; write only the single incoming JSON file named in your instruction.
+- Read-only against application code; writes are limited to the incoming JSON drop named in
+  your instruction and the living docs it refreshes (the central `docs/` tree and each repo's
+  `docs/codebase-map.md`). Never edit application code or run state.
 
 ## Output contract
 Return `incoming_path` (the JSON file written), `lessons_count` (integer), and `summary`

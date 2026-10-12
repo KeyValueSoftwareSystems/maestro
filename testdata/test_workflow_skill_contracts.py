@@ -65,14 +65,14 @@ def output_contract_text(skill_name):
     return "\n".join(out)
 
 
-def iter_agent_nodes(nodes):
+def iter_skilled_nodes(nodes):
     for node in nodes or []:
         ntype = node.get("type", "agent")
-        if ntype == "agent":
+        if ntype in ("agent", "interview"):
             yield node
         elif ntype == "parallel":
             for branch in node.get("branches") or []:
-                yield from iter_agent_nodes(branch.get("steps"))
+                yield from iter_skilled_nodes(branch.get("steps"))
 
 
 def main():
@@ -81,7 +81,7 @@ def main():
         if not fname.endswith(".yaml"):
             continue
         doc = wf.load_file(os.path.join(WORKFLOWS_DIR, fname))
-        for node in iter_agent_nodes(doc.get("nodes")):
+        for node in iter_skilled_nodes(doc.get("nodes")):
             skill = node.get("skill")
             outputs = node.get("outputs") or []
             for skill_name in expand_skill(skill):

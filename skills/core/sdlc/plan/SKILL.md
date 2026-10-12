@@ -1,124 +1,119 @@
 ---
 name: plan
-description: Produce a high-level design (HLD) for a feature — frame the problem, weigh options with trade-offs, choose an approach, define non-functional requirements and risks, and write a standardized hld.md. Read-only (writes only the HLD doc). Front door for /plan.
+description: Produce a concise, decision-focused high-level design (HLD) for a feature. Ground the direction in requirements and the existing system, record only material trade-offs, and write a developer-readable hld.md. Read-only except for the HLD and open-question artifacts. Front door for /plan.
 allowed-tools: Read, Grep, Glob, Bash, Write, AskUserQuestion
 tags: [sdlc, design, hld]
 ---
 
 # plan — high-level design
 
-Turn a feature request + requirement files into a **high-level design**: the shape of the solution, the
-options considered, the chosen approach, and the risks — enough for a human to approve the
-*direction*. This is a design artifact, not code — don't design APIs, schemas, or code here.
+Write the shortest HLD that lets a human confidently approve the architectural direction and lets
+downstream LLD and implementation agents continue without rediscovering or re-deciding that
+direction. The document explains what changes, why this direction was chosen, how the main parts
+interact, and which material risks or questions remain. It is not a transcript of the design process
+and it does not contain file-level implementation, API field lists, schemas, or code.
 
-## Inputs
-Your instructions name what to read — the requirement FOLDER — and the artifact path(s) to
-write. **Read every file in the folder** as the feature requirement (it may hold a PRD, notes,
-mockups, etc.). Standalone? read the requirement and write to a path you choose (and tell the user where).
+## Inputs and grounding
 
-## Steps
-1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
-   For the codebase, start from its living docs (architecture overview, per-domain technical
-   docs) when your instructions name them or the repo has them, and read only the domains the
-   feature touches. Open source files only to verify a specific claim the design depends on —
-   an HLD needs the shape of the system, not a survey of it; unbounded exploration is the main
-   cost of this step. Identify the users, the job-to-be-done, and hard constraints
-   (deadlines, platforms, compliance, budget).
-2. **Clarify unknowns** — list assumptions explicitly; ask the human when a business rule,
-   SLA, or data-ownership question is genuinely ambiguous. Do not silently guess.
-3. **Diverge** — generate 2–3 genuinely different approaches (when running interactively,
-   optionally via the `brainstorming` skill — see below). Run a quick pre-mortem on each
-   ("how would this fail?").
-4. **Evaluate & choose** — score options against effort, risk, NFRs, and reversibility.
-   Recommend one; say *why it wins* and what you're trading away.
-5. **Sketch** — components, data flow, and the cross-repo boundary (which stacks change).
-6. **Nail the NFRs and risks** — sections below.
-7. **Write** the artifact (HLD + `open-questions.json`) and, if running
-   interactively, resolve the open questions in a loop — see "Open-question loop".
+Your instructions name the requirement folder and artifact paths. Read every requirement file,
+related ADRs, and relevant project guidance. Then read each affected repo's maintained
+`docs/codebase-map.md` (umbrella: `codebase/<repo>/docs/codebase-map.md`; single repo:
+`./docs/codebase-map.md`). Treat the map as the baseline for existing modules, flows, and execution
+modes. Inspect source only when a decision depends on detail the map does not establish.
 
-## What to cover (standard HLD sections — write all)
-1. **Context & problem** — what, why, who; link the requirement files.
-2. **Goals / non-goals** — explicit scope boundaries.
-3. **Options considered** — 2–3 approaches, each with trade-offs (cost, risk, effort, time-to-value).
-4. **Chosen approach** — the recommendation and the reasoning.
-5. **Architecture sketch** — components, data flow, boundaries, external dependencies.
-6. **Non-functional requirements** — security & privacy (authz model, PII, threat surface),
-   scale/throughput, availability/SLO, latency budget, cost, compliance/data residency.
-7. **Data lifecycle** — what data is created/read/updated/deleted, retention, ownership,
-   and any backfill/migration of existing data.
-8. **Backward compatibility & migration** — impact on existing clients/data; additive vs breaking.
-9. **Dependencies & sequencing** — other teams/services, feature flags, order of rollout.
-10. **Rollout & backout** — flagging, phased rollout, metrics to watch, how to revert.
-11. **Risks & mitigations** — top risks each with a mitigation and an owner.
-12. **Open questions** — anything a human must resolve before LLD.
+Use the project's established domain terms consistently. If two sources use conflicting terms,
+state the ambiguity as an open question instead of alternating between them.
 
-## Edge cases & failure modes to think through now
-- Ambiguous or conflicting requirements; multiple stakeholders wanting different things.
-- Greenfield vs brownfield (existing constraints, legacy data, in-flight migrations).
-- Multi-tenant / data-isolation needs; regulated data (PII/PHI/PCI).
-- Large existing dataset requiring backfill; zero-downtime migration.
-- Third-party dependency risk (rate limits, outages, cost, lock-in).
-- High-concurrency or spiky load; graceful degradation under partial failure.
-- Reversibility: can we ship behind a flag and roll back cleanly?
+## Process
 
-## External skill (provision — ideation)
-If the `brainstorming` skill (from the Superpowers pack) is installed **and you are running
-interactively**, you may use it to diverge and pressure-test — but **you remain responsible**
-for the coverage above. As a non-interactive subagent, skip it and diverge yourself: it is
-built for a conversation and only adds latency there. Whatever the external
-skill does, ensure it produced: alternatives with trade-offs, surfaced assumptions, and a
-pre-mortem. If it is not installed, do this yourself.
-## Output — write these artifacts
-Write two artifacts to the paths your instructions specify:
-- the HLD with all sections above, including an "Open questions" section
-  (human-readable prose).
-- an `open-questions.json` — the machine-readable mirror of that section, conforming to
-  `engine/schemas/open-questions.schema.json`. Each question carries `why` it matters
-  and 2–4 suggested `options`. Validate it with
+1. Extract the problem, scope, hard constraints, affected systems, ownership boundaries, and
+   decisions an approver or downstream design agent must understand. Do not repeat the PRD's feature
+   inventory.
+2. Check the proposed direction against every relevant existing execution mode. If a mode is not
+   supported, make that an explicit scope constraint.
+3. Choose the simplest direction that satisfies the requirements. Discuss alternatives only for a
+   material decision with a genuine trade-off; do not invent alternatives to fill a template.
+4. Apply the relevance test to every possible detail: include it only when it changes the
+   architecture, approval decision, delivery plan, or material risk. Otherwise omit it.
+5. Surface unresolved business rules, ownership, security, data, or compatibility decisions in the
+   HLD and `open-questions.json`.
+6. Edit once for the reader: lead with the decision, remove repeated context and process narration,
+   and make every paragraph earn its place.
+
+## HLD shape
+
+Use these core sections in this order:
+
+1. **Decision summary** — five to eight bullets covering the problem, chosen direction, affected
+   systems and responsibilities, key constraint, and most important consequence.
+2. **Context and scope** — only the current behavior, users, goals, non-goals, and constraints needed
+   to understand this design.
+3. **Proposed design** — responsibilities, boundaries, and the main data or control flow. Add a
+   diagram only when it communicates the flow more clearly than a short paragraph.
+4. **Key decisions and trade-offs** — one compact entry per material decision: decision, reason,
+   and consequence. Include rejected alternatives only when the choice was real and future readers
+   would otherwise revisit it.
+5. **Delivery and risks** — only relevant migration, compatibility, rollout/backout, security,
+   privacy, reliability, performance, compliance, dependency, or operational concerns. Group
+   related concerns; do not create empty subsections.
+6. **Open questions** — unresolved questions that could change the approved direction. If none
+   remain, say `None`.
+
+The first four sections are always useful. Within **Delivery and risks**, omit concerns that do not
+apply; never add `n/a` headings or generic assurances.
+
+## Writing contract
+
+- Write for an engineer or technical approver who will scan before reading deeply.
+- Put the conclusion before its supporting detail. Use active voice, short sentences, specific
+  nouns and verbs, and one idea per paragraph.
+- Prefer bullets for summaries and a table for repeated mappings or decision comparisons. Use prose
+  for reasoning that would be distorted by a table.
+- Define a domain term once, then use the same term everywhere.
+- State concrete behavior and consequences. Delete filler such as "robust", "seamless",
+  "scalable", or "follows best practices" unless the document gives a measurable meaning.
+- Do not restate the PRD, narrate research, show a checklist, or include code and file touch lists.
+- Use the shortest wording that preserves every material architectural decision and its necessary
+  context. There is no word-count target or ceiling; remove repetition and template padding, never
+  information needed for approval or downstream design.
+
+## Revision mode
+
+Review feedback is an instruction to rewrite the artifact, not content for the artifact. Apply the
+feedback silently so the HLD reads as one current design. Do not include revision history, reviewer
+commentary, phrases such as "based on feedback", or descriptions of what changed. Keep a rejected
+approach only when it remains a useful architectural trade-off.
+
+## Output artifacts
+
+Write:
+
+- the HLD at the requested path; and
+- `open-questions.json`, mirroring the HLD's **Open questions** section and conforming to
+  `engine/schemas/open-questions.schema.json`. Each question includes why it matters and two to four
+  useful options. Validate it with
   `python3 engine/validate_open_questions.py <path>`.
 
-## Refine mode
-When your instructions are to fold resolved open questions into an existing HLD, make a
-targeted edit: change only the sections the answers affect, do not re-gather codebase
-context or rewrite the document, and add a new open question only when an answer directly
-creates one.
+## Open-question loop (standalone only)
 
-## Open-question loop (interactive only)
-When run standalone with `AskUserQuestion` available (a developer running `/plan`
-in Claude Code), run the interactive open-question loop yourself; when run as an
-orchestrated (non-interactive) step, just WRITE `open-questions.json` — the workflow's OQ loop
-(script serve → human gate → record → refine) drives resolution.
+In an orchestrated step, write the artifacts and stop; the workflow serves and records answers. In
+standalone mode with `AskUserQuestion`, present the open questions together when the interface
+permits, including `You decide` and `Skip / defer` choices.
 
-If `AskUserQuestion` is available **and** `open-questions.json` has any `open`
-questions, resolve them in a loop:
-
-1. For each `open` question, ask via `AskUserQuestion` — offer its suggested
-   `options` (the tool auto-adds **Other** for a custom answer), plus explicit
-   **"You decide"** and **"Skip / defer"** choices.
-2. Record the answer into `open-questions.json`:
-   - a suggestion or Other → `status: resolved`, `resolution.kind`
-     `picked`/`other`;
-   - **You decide** → `status: resolved`, `resolution.kind: you-decide` (you pick
-     a sensible default and record it in the HLD as a **stated assumption**);
-   - **Skip / defer** → `status: deferred`, `resolution.kind: skip` (the question
-     stays in the HLD "Open questions" section and does not block).
-3. Fold every `resolved` answer into the HLD prose (mark it `folded`), then
-   **re-derive** open questions — refinement often surfaces new ones; append them
-   as new `open` entries.
-4. Repeat from step 1 until no `open` questions remain (deferred ones may stay).
-
-Keep `open-questions.json` valid at every step. When `AskUserQuestion` is not
-available, just write the artifacts and stop — resolution happens downstream.
+Record picked or custom answers as resolved, `You decide` as a documented assumption, and skipped
+answers as deferred. Fold resolved answers into the relevant design section, not into a revision
+log. Re-derive the remaining questions and keep the JSON valid until no open questions remain.
 
 ## Definition of done
-Every section present; ≥2 options with trade-offs; NFRs and risks concrete (not "TBD");
-open questions listed. Do not proceed to detailed design or implementation — this artifact
-stops at the *direction*.
+
+The direction is understandable from the summary; every statement needed for approval is grounded;
+the proposed design covers all relevant execution modes; material trade-offs and risks are concrete;
+the HLD and question JSON agree; and irrelevant template sections are absent. A downstream LLD agent
+can proceed without re-deciding system responsibilities, boundaries, or the chosen direction. Stop
+at architectural direction—do not proceed into detailed design or implementation.
 
 ## Output contract
-Return `hld_path` and `hld_summary` (2–3 sentences). When invoked in **refine mode**
-(folding resolved open questions back into an existing HLD), return `refined_summary`
-instead — a one-line note of what changed. Do **not** return open questions as a separate
-structured output field — they live in the file (a prior attempt to return them as an agent
-output failed schema validation). The file is the single source of truth; the HLD prose
-section is its human mirror.
+
+Return `hld_path` and `hld_summary` in two or three sentences. In refine mode, return
+`refined_summary` as a one-line description for the workflow; do not put that description in the
+HLD. Questions live in the artifacts rather than a separate structured output field.

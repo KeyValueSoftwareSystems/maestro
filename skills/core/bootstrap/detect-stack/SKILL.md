@@ -13,8 +13,8 @@ with no `stack:` tag) install regardless. This is a one-time (re-runnable) boots
 
 ## Inputs
 Run from the root of the target repo (or a `codebase/`-of-repos umbrella). No artifact
-inputs — you discover everything from the files on disk. If your instruction names IDE
-targets (`claude-code`, `cursor`), use them; otherwise infer them (below).
+inputs — you discover everything from the files on disk. If your instruction names harness
+targets (`claude-code`, `cursor`, `codex`), use them; otherwise infer them (below).
 
 ## Stack vocabulary
 Emit only these tokens (they match the `stack:` tags on the skills/agents):
@@ -47,16 +47,20 @@ Emit only these tokens (they match the `stack:` tags on the skills/agents):
 3. **De-duplicate and sort** the tokens.
 
 ## Install step
-1. **Pick IDE targets.** `.cursor/` present ⇒ include `cursor`; otherwise (or if `.claude/`
-   present) use `claude-code`. Default `claude-code`.
+1. **Pick harness targets.** Include every already-installed Maestro host you can evidence:
+   `.claude/skills/maestro/SKILL.md` ⇒ `claude-code`,
+   `.cursor/skills/maestro/SKILL.md` ⇒ `cursor`, and
+   `.agents/skills/maestro/SKILL.md` ⇒ `codex`. If none is present, default to
+   `claude-code`. Do not treat a generic `.agents/` folder as proof that Maestro was installed
+   for Codex.
 2. **Run the installer with the detected filter.** Prefer the repo-local wrapper; fall back
    to the installer script:
    ```bash
-   ./maestro install <ide-targets> --stack <detected-tokens>
+   ./maestro install <harness-targets> --stack <detected-tokens>
    # or, if there is no ./maestro wrapper:
-   bash install.sh <ide-targets> --stack <detected-tokens>
+   bash install.sh <harness-targets> --stack <detected-tokens>
    ```
-   e.g. `./maestro install claude-code --stack go,react,db`. The installer always adds the
+   e.g. `./maestro install codex --stack go,react,db`. The installer always adds the
    core SDLC skills; `--stack` only gates the per-stack ones.
 3. **Report** what installed (the installer prints `N installed, M skipped by --stack`).
 
@@ -69,7 +73,7 @@ Emit only these tokens (they match the `stack:` tags on the skills/agents):
 
 ## Safety
 - Read-only against application code. The only thing you run is the installer, which writes
-  ONLY into IDE config dirs (`.claude/`, `.cursor/`) — never application code, never
+  ONLY into harness config dirs (`.claude/`, `.cursor/`, `.agents/`) — never application code, never
   `.maestro/` run state.
 - If no stack is detected, install just the core pack (`--stack` with no tokens installs
   everything; to install core-only, pass a token that matches nothing is wrong — instead
@@ -77,4 +81,4 @@ Emit only these tokens (they match the `stack:` tags on the skills/agents):
 
 ## Output contract
 Return `stacks` (the detected stack tokens, comma-separated), `installed_count` (skills +
-agents installed), and `summary` (one line naming the stacks and IDE targets).
+agents installed), and `summary` (one line naming the stacks and harness targets).

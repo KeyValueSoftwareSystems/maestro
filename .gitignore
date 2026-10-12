@@ -4,13 +4,14 @@
 # NOTE: .maestro/runs/<slug>/ (feature requirement + all generated artifacts) is
 # intentionally NOT ignored — it is git-tracked for now.
 
-# installed copies (Claude Code / Cursor). Sources of truth are ./skills/,
+# installed copies (Claude Code / Cursor / Codex). Sources of truth are ./skills/,
 # ./commands/, ./agents/; these dirs are populated by install.sh. Never the source.
 .claude/skills/
 .claude/commands/
 .claude/agents/
 .cursor/skills/
 .cursor/commands/
+.agents/skills/
 
 # Python bytecode (from workflows/*.py helpers + their tests)
 __pycache__/
