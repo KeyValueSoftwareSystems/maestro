@@ -273,7 +273,10 @@ it cannot redirect writes outside `.maestro/runs/<slug>/`.
 Written **only** by `engine/maestroctl.py` (fcntl-locked, atomic tmp+rename). Records workflow
 file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run status + cursor
 (active frontier), per-step status / attempts / visits / outputs / artifacts, append-only gate
-decision history, and parallel-branch bookkeeping.
+decision history, and parallel-branch bookkeeping. Each step also carries wall-clock timing for
+its latest visit — `started_at` on entry, `finished_at` + `duration_s` on a terminal status
+(retries included; a gate's time is human wait); `maestroctl status` prints it and the slowest
+steps.
 
 Resume: `done` steps are skipped only while their artifacts still exist non-empty on disk;
 interrupted (`running`) steps are re-served; gates always re-ask.

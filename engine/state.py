@@ -89,6 +89,37 @@ def now_iso():
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
+def _parse_iso(text):
+    return _dt.datetime.strptime(text, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=_dt.timezone.utc)
+
+
+def elapsed_s(started):
+    """Whole seconds since an ISO `started_at` stamp; None if it does not parse."""
+    try:
+        return int((_dt.datetime.now(_dt.timezone.utc) - _parse_iso(started)).total_seconds())
+    except ValueError:
+        return None
+
+
+def stamp_start(entry):
+    """Mark a step active: wall clock from entry to its terminal status (retries included)."""
+    entry["started_at"] = now_iso()
+    entry.pop("finished_at", None)
+    entry.pop("duration_s", None)
+
+
+def stamp_end(entry):
+    """Mark a step terminal; records `duration_s` when its start was stamped."""
+    entry["finished_at"] = now_iso()
+    started = entry.get("started_at")
+    if started:
+        try:
+            delta = _parse_iso(entry["finished_at"]) - _parse_iso(started)
+            entry["duration_s"] = int(delta.total_seconds())
+        except ValueError:
+            pass
+
+
 def sha256_file(path):
     h = hashlib.sha256()
     with open(path, "rb") as fh:

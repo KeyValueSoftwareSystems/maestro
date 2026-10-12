@@ -323,6 +323,37 @@ class CascadeUpstreamTest(Sim):
         self.assertEqual(st["steps"]["produce"]["outputs"], {})
 
 
+class TimingTest(Sim):
+    def test_steps_record_start_finish_and_duration(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        self.nxt()
+        st = self.state()
+        self.assertIn("started_at", st["steps"]["work"])
+        self.assertNotIn("duration_s", st["steps"]["work"])
+        self.touch(".maestro/feat/work.md")
+        self.complete("work", {"note": "x"})
+        work = self.state()["steps"]["work"]
+        self.assertIn("finished_at", work)
+        self.assertIsInstance(work["duration_s"], int)
+        self.assertGreaterEqual(work["duration_s"], 0)
+        # the next step is stamped on entry, not yet finished
+        review = self.state()["steps"]["review"]
+        self.assertIn("started_at", review)
+        self.assertNotIn("finished_at", review)
+
+    def test_reentry_restarts_the_clock(self):
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        self.nxt()
+        self.touch(".maestro/feat/work.md")
+        self.complete("work", {"note": "x"})
+        self.complete("review", {"blocking": True})  # back-edge -> work
+        work = self.state()["steps"]["work"]
+        self.assertEqual(work["status"], "pending")
+        self.assertIn("started_at", work)
+        self.assertNotIn("finished_at", work)
+        self.assertNotIn("duration_s", work)
+
+
 class ArtifactTest(Sim):
     def test_complete_refuses_missing_artifact(self):
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))

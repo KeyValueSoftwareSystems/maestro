@@ -143,6 +143,26 @@ def cmd_note(args):
     return 0
 
 
+def _fmt_secs(secs):
+    secs = max(int(secs), 0)
+    if secs < 60:
+        return f"{secs}s"
+    if secs < 3600:
+        return f"{secs // 60}m{secs % 60:02d}s"
+    return f"{secs // 3600}h{secs % 3600 // 60:02d}m"
+
+
+def _step_time(entry):
+    """Duration of a finished step, or elapsed-so-far (`+`) for an active one."""
+    if isinstance(entry.get("duration_s"), int):
+        return _fmt_secs(entry["duration_s"])
+    started = entry.get("started_at")
+    if started and entry.get("status") in ("pending", "running"):
+        secs = statemod.elapsed_s(started)
+        return "-" if secs is None else "+" + _fmt_secs(secs)
+    return "-"
+
+
 def cmd_status(args):
     data = statemod.load(args.slug, args.root)
     if data is None:
@@ -158,12 +178,22 @@ def cmd_status(args):
     print(f"active:   {', '.join(run_info.get('cursors') or []) or '-'}")
     print()
     width = max((len(p) for p in data["steps"]), default=10)
-    print(f"{'step'.ljust(width)}  {'status'.ljust(8)}  visits  outputs")
+    print(f"{'step'.ljust(width)}  {'status'.ljust(8)}  visits  {'time'.ljust(8)}  outputs")
     for path in sorted(data["steps"]):
         entry = data["steps"][path]
         keys = ",".join(entry.get("outputs") or {}) or "-"
         print(f"{path.ljust(width)}  {str(entry.get('status')).ljust(8)}  "
-              f"{str(entry.get('visits', 0)).ljust(6)}  {keys}")
+              f"{str(entry.get('visits', 0)).ljust(6)}  {_step_time(entry).ljust(8)}  {keys}")
+    timed = sorted(
+        ((e["duration_s"], p) for p, e in data["steps"].items()
+         if isinstance(e.get("duration_s"), int) and "[" not in p.rsplit("/", 1)[-1]),
+        reverse=True,
+    )
+    if timed:
+        print()
+        print("slowest (last visit; gates include human wait):")
+        for secs, path in timed[:5]:
+            print(f"  {_fmt_secs(secs).rjust(8)}  {path}")
     if data.get("gates"):
         print()
         print("gate decisions:")

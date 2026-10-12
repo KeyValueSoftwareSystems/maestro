@@ -18,13 +18,17 @@ mockups, etc.). Standalone? read the requirement and write to a path you choose 
 
 ## Steps
 1. **Gather context** — read every file in `requirement_dir`, related ADRs, `CLAUDE.md`, and any existing design.
-   Identify the users, the job-to-be-done, and hard constraints (deadlines, platforms,
-   compliance, budget).
+   For the codebase, start from its living docs (architecture overview, per-domain technical
+   docs) when your instructions name them or the repo has them, and read only the domains the
+   feature touches. Open source files only to verify a specific claim the design depends on —
+   an HLD needs the shape of the system, not a survey of it; unbounded exploration is the main
+   cost of this step. Identify the users, the job-to-be-done, and hard constraints
+   (deadlines, platforms, compliance, budget).
 2. **Clarify unknowns** — list assumptions explicitly; ask the human when a business rule,
    SLA, or data-ownership question is genuinely ambiguous. Do not silently guess.
-3. **Diverge** — generate 2–3 genuinely different approaches (delegating to the
-   `brainstorming` skill if installed). Run a quick pre-mortem on each ("how would this
-   fail?").
+3. **Diverge** — generate 2–3 genuinely different approaches (when running interactively,
+   optionally via the `brainstorming` skill — see below). Run a quick pre-mortem on each
+   ("how would this fail?").
 4. **Evaluate & choose** — score options against effort, risk, NFRs, and reversibility.
    Recommend one; say *why it wins* and what you're trading away.
 5. **Sketch** — components, data flow, and the cross-repo boundary (which stacks change).
@@ -58,8 +62,10 @@ mockups, etc.). Standalone? read the requirement and write to a path you choose 
 - Reversibility: can we ship behind a flag and roll back cleanly?
 
 ## External skill (provision — ideation)
-If the `brainstorming` skill (from the Superpowers pack) is installed, use it to diverge and
-pressure-test — but **you remain responsible** for the coverage above. Whatever the external
+If the `brainstorming` skill (from the Superpowers pack) is installed **and you are running
+interactively**, you may use it to diverge and pressure-test — but **you remain responsible**
+for the coverage above. As a non-interactive subagent, skip it and diverge yourself: it is
+built for a conversation and only adds latency there. Whatever the external
 skill does, ensure it produced: alternatives with trade-offs, surfaced assumptions, and a
 pre-mortem. If it is not installed, do this yourself.
 ## Output — write these artifacts
@@ -70,6 +76,12 @@ Write two artifacts to the paths your instructions specify:
   `engine/schemas/open-questions.schema.json`. Each question carries `why` it matters
   and 2–4 suggested `options`. Validate it with
   `python3 engine/validate_open_questions.py <path>`.
+
+## Refine mode
+When your instructions are to fold resolved open questions into an existing HLD, make a
+targeted edit: change only the sections the answers affect, do not re-gather codebase
+context or rewrite the document, and add a new open question only when an answer directly
+creates one.
 
 ## Open-question loop (interactive only)
 When run standalone with `AskUserQuestion` available (a developer running `/plan`

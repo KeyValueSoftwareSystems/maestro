@@ -423,6 +423,7 @@ def _enter(run, frame, node_id, via_gate=False):
 def _enter_inner(run, frame, node):
     path = frame.path(node["id"])
     entry = statemod.step_entry(run.state, path)
+    statemod.stamp_start(entry)
     kind = ntype(node)
     if kind == "parallel":
         entry["status"] = "running"
@@ -611,6 +612,7 @@ def _frame_end(run, frame, last_outputs):
             outputs[key] = run.resolve_value(value, frame, missing_ok=True)
         entry["outputs"] = outputs
         entry["status"] = "done"
+        statemod.stamp_end(entry)
         _advance(run, frame.parent, node, outputs)
     else:  # branch
         _branch_terminal(run, frame, "done", last_outputs)
@@ -627,6 +629,7 @@ def _frame_abort(run, frame, reason):
         entry = statemod.step_entry(run.state, path)
         entry["status"] = "failed"
         entry["reason"] = reason
+        statemod.stamp_end(entry)
         _apply_on_fail(run, frame.parent, node, reason)
     else:
         _branch_terminal(run, frame, "failed", {}, reason)
@@ -648,6 +651,7 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
         if mode == "fail_all":
             entry["status"] = "failed"
             entry["reason"] = f"branch {branch_id} failed: {reason or 'aborted'}"
+            statemod.stamp_end(entry)
             _cancel_branches(run, parent, node)
             _apply_on_fail(run, parent, node, entry["reason"])
             return
@@ -666,15 +670,18 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
     if join == "any" and status == "done":
         _cancel_branches(run, parent, node, keep=branch_id)
         entry["status"] = "done"
+        statemod.stamp_end(entry)
         _advance(run, parent, node)
         return
     if len(terminal) == len(node.get("branches", [])):
         if join == "any" and not any(r.get("status") == "done" for r in terminal.values()):
             entry["status"] = "failed"
             entry["reason"] = "no branch completed"
+            statemod.stamp_end(entry)
             _apply_on_fail(run, parent, node, entry["reason"])
             return
         entry["status"] = "done"
+        statemod.stamp_end(entry)
         _advance(run, parent, node)
 
 
@@ -943,6 +950,7 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None):
         entry["artifact"] = arts
     entry["status"] = "done"
     entry["attempts"] = 0
+    statemod.stamp_end(entry)
     _advance(run, frame, node, entry["outputs"])
     return entry
 
@@ -965,6 +973,7 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout):
     if exit_code == 0:
         entry["status"] = "done"
         entry["attempts"] = 0
+        statemod.stamp_end(entry)
         _advance(run, frame, node, outputs)
     else:
         _register_failure(run, frame, node, path, entry,
@@ -989,6 +998,7 @@ def _register_failure(run, frame, node, path, entry, reason):
         entry["status"] = "pending"  # stays in cursors; next re-serves it
         return
     entry["status"] = "failed"
+    statemod.stamp_end(entry)
     _apply_on_fail(run, frame, node, reason)
 
 
@@ -1035,6 +1045,7 @@ def record_gate(run, path, option_id, input_text=None):
         outputs[option["input"]] = input_text
     entry["outputs"] = outputs
     entry["status"] = "done"
+    statemod.stamp_end(entry)
     _leave_to(run, frame, node, option["to"], outputs, via_gate=True)
     return entry
 
@@ -1061,6 +1072,7 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
         elif option_id == "skip":
             entry.pop("pending_ask", None)
             entry["status"] = "skipped"
+            statemod.stamp_end(entry)
             target = _default_target(node)
             if target is None:
                 raise RunError(f"cannot skip {path!r}: node has no default route", code=4)
@@ -1109,6 +1121,7 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
             }
             if len(terminal) == len(node.get("branches", [])):
                 entry["status"] = "done"
+                statemod.stamp_end(entry)
                 _advance(run, frame, node)
         elif option_id == "abort":
             _drop_cursor(run, path)
