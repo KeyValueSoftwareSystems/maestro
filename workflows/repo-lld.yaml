@@ -47,6 +47,9 @@ nodes:
       2 with 3-7 grouped questions when several gaps remain, fewer when nearly clear, and an empty
       queue only when every blocking repo decision is concrete and consistent. Validate it before
       completing.
+      If validator_feedback names defects (anything other than "Question queue is valid"), the
+      previous queue failed validation: fix only those defects in the existing file and validate
+      again — do not rebuild the queue or re-read sources.
     skill: lld-interview
     inputs:
       slug: "${inputs.slug}"
@@ -58,6 +61,7 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
       revision_feedback: "${steps.lld_approval.outputs.feedback} ${inputs.review_feedback}"
       validator: ".maestro/engine/validate_prd_questions.py"
+      validator_feedback: "${steps.validate_lld_questions.outputs.issues_summary}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
     max_visits: 8
@@ -122,6 +126,11 @@ nodes:
       Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
       post-check. Keep it empty unless synthesis reveals a genuinely new blocking repo decision;
       never guess. Run both validators and repair deterministic defects inside this same call.
+
+      If the LLD already exists from an earlier pass, update it in place: change only the sections
+      whose decisions changed. If post_check_feedback names defects (anything other than "Question
+      queue is valid"), only the post-check file failed validation: fix just that file and leave
+      the LLD untouched.
     skill: lld-writing
     inputs:
       slug: "${inputs.slug}"
@@ -135,6 +144,7 @@ nodes:
       post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
+      post_check_feedback: "${steps.validate_lld_post_questions.outputs.issues_summary}"
       lessons: "${memory.knowledge.repo-design}"
     outputs: [lld_path, contract_notes]
     artifact:
@@ -168,7 +178,7 @@ nodes:
     type: script
     label: Validate LLD structure and contracts
     run: [python3, .maestro/engine/validate_lld.py, ".maestro/runs/${inputs.slug}/lld.md", --parent-slug, "${inputs.parent_slug}", --repo, "${inputs.repo}", --report]
-    max_visits: 3
+    max_visits: 12
     on_exhausted: abort
     routes:
       - {when: "${steps.validate_lld.outputs.valid} == true", to: lld_approval}
@@ -176,7 +186,6 @@ nodes:
 
   - id: repair_lld
     type: agent
-    execution: lead
     label: Repair LLD validation defects
     model: haiku
     instruction: |
@@ -202,7 +211,7 @@ nodes:
     artifact:
       - ".maestro/runs/${inputs.slug}/lld.md"
       - ".maestro/runs/${inputs.slug}/lld-post-questions.json"
-    max_visits: 2
+    max_visits: 6
     next: validate_lld
 
   - id: lld_approval
@@ -215,8 +224,40 @@ nodes:
       ${inputs.repo}; it cannot approve another team's LLD.
     options:
       - {id: approve, label: Approve and publish this repository LLD, to: publish}
-      - {id: revise, label: Request revisions, to: prepare_lld_questions, input: feedback}
+      - {id: revise, label: Request changes — targeted edit of this LLD, to: revise_lld, input: feedback}
+      - {id: rethink, label: Re-clarify repository decisions and regenerate, to: prepare_lld_questions, input: feedback}
       - {id: reject, label: Reject and abort this workstream, to: abort}
+
+  # Fast revision: a targeted LLD edit, then re-validation. Only feedback that needs a new
+  # repository decision goes back through clarification; 'rethink' is the full pass.
+  - id: revise_lld
+    type: agent
+    execution: lead
+    label: Apply LLD review feedback
+    instruction: |
+      Apply this review feedback to .maestro/runs/${inputs.slug}/lld.md for "${inputs.repo}" as a
+      targeted edit: ${steps.lld_approval.outputs.feedback}
+      Change only the sections the feedback affects; keep every other section, confirmed decision,
+      and approved correction unchanged. Read only the LLD, the confirmed decisions at
+      .maestro/runs/${inputs.slug}/lld-context.json, and source/tests the change itself depends on
+      — do not re-run clarification, scan the repository, or rewrite the LLD. If the feedback needs
+      a new repository design decision the confirmed decisions cannot settle, do not guess: leave
+      the LLD unchanged and return needs_clarification true; otherwise return false.
+    skill: lld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      repo: "${inputs.repo}"
+      repo_path: "${inputs.repo_path}"
+      lld_path: ".maestro/runs/${inputs.slug}/lld.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      lld_validator: ".maestro/engine/validate_lld.py"
+      revision_feedback: "${steps.lld_approval.outputs.feedback}"
+    outputs: [lld_path, contract_notes, needs_clarification]
+    artifact: ".maestro/runs/${inputs.slug}/lld.md"
+    max_visits: 10
+    routes:
+      - {when: "${steps.revise_lld.outputs.needs_clarification} == true", to: prepare_lld_questions}
+      - {to: validate_lld}
 
   - id: publish
     type: script

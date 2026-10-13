@@ -59,6 +59,9 @@ Use only the workflow's native grouped popup. If the host limits popup size, col
 chunks without analyzing or writing between them, then record the complete round atomically. Never
 fall back to ordinary chat.
 
+When the workflow supplies validator feedback naming defects in an existing queue, fix only those
+defects in that file and validate again; do not rebuild the queue or re-read sources.
+
 ## Safety
 
 Write only the workflow-supplied question queue. Never edit the LLD, source, parent artifacts, or

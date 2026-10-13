@@ -69,6 +69,9 @@ record the complete round atomically. Do not fall back to ordinary chat.
 - Never draft or edit the HLD in this skill.
 - Keep the exchange short; no essays between rounds.
 
+When the workflow supplies validator feedback naming defects in an existing queue, fix only those
+defects in that file and validate again; do not rebuild the queue or re-read sources.
+
 ## Safety
 
 Write only the workflow-supplied question queue. The engine owns durable interview state and the

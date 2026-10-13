@@ -116,6 +116,14 @@ Run every supplied validator. Repair deterministic structure, clarity, readabili
 defects inside the same call and validate again. In repair mode, change only named defects and
 preserve all confirmed decisions and unrelated prose.
 
+## Revision mode
+
+When the workflow supplies reviewer feedback on an existing LLD, apply it as a targeted edit:
+change only the sections the feedback affects, keep every other section, confirmed decision and
+ID unchanged, and read only the sources the change needs. Do not regenerate the document. If the
+feedback needs a new repository design decision that the confirmed decisions cannot settle, do not guess: leave the
+document unchanged and report `needs_clarification` as true so the decision is clarified first.
+
 ## Safety
 
 Write only the supplied LLD and post-question queue. Never edit source, parent artifacts, codebase
@@ -123,4 +131,6 @@ maps, decision context, or state.
 
 ## Output contract
 
-Return `lld_path` and `contract_notes`; never return document text.
+Return `lld_path` and `contract_notes`; never return document text. In revision mode also
+return `needs_clarification`: true only when the feedback needs a repository design decision
+that must be clarified first, else false.

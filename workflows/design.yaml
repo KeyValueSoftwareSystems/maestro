@@ -289,6 +289,9 @@ nodes:
       explicit and no decisions conflict. Every question declares 1-4 short must_resolve facts.
       Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
       Validate the file with the supplied deterministic validator before completing.
+      If validator_feedback names defects (anything other than "Question queue is valid"), the
+      previous queue failed validation: fix only those defects in the existing file and validate
+      again — do not rebuild the queue or re-read sources.
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
@@ -299,6 +302,7 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
       validator: ".maestro/engine/validate_prd_questions.py"
       revision_feedback: "${steps.prd_approval.outputs.feedback}"
+      validator_feedback: "${steps.validate_prd_questions.outputs.issues_summary}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
     max_visits: 8
@@ -354,7 +358,9 @@ nodes:
       observable AC. Never omit necessary context merely to shorten the PRD. Before completing, run
       `python3 .maestro/engine/validate_prd.py
       .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical`; repair any remaining named
-      defect inside this same call and run it again. This is the only normal PRD write.
+      defect inside this same call and run it again. This is the only normal PRD write. If the
+      PRD already exists from an earlier pass, update it in place: change only the sections whose
+      decisions changed and keep unchanged sections and AC IDs as they are.
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
@@ -372,7 +378,7 @@ nodes:
     type: script
     label: Validate PRD structure and clarity
     run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --fix-mechanical, --report]
-    max_visits: 3
+    max_visits: 12
     on_exhausted: abort
     routes:
       - {when: "${steps.validate_prd.outputs.valid} == true", to: prd_approval}
@@ -380,7 +386,6 @@ nodes:
 
   - id: repair_prd
     type: agent
-    execution: lead
     label: Repair PRD validation defects
     model: haiku
     instruction: |
@@ -403,7 +408,7 @@ nodes:
       validator_feedback: "${steps.validate_prd.outputs.issues_summary}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
-    max_visits: 2
+    max_visits: 6
     next: validate_prd
 
   - id: prd_approval
@@ -416,8 +421,39 @@ nodes:
       accurate; design/technical concerns are handled later at the HLD/LLD.
     options:
       - {id: approve, label: Approve — author the HLD, to: check_codebase_map}
-      - {id: revise, label: Correct the feature context and regenerate, to: feature_goal, input: feedback}
+      - {id: revise, label: Request changes — targeted edit of this PRD, to: revise_prd, input: feedback}
+      - {id: rescope, label: Correct the feature goal and regenerate, to: feature_goal, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
+
+  # Fast revision: a targeted edit of the approved-draft PRD, then re-validation. Only feedback that
+  # needs a new product decision goes back through the Grill loop; 'rescope' is the full restart.
+  - id: revise_prd
+    type: agent
+    execution: lead
+    label: Apply PRD review feedback
+    instruction: |
+      Apply this review feedback to .maestro/runs/${inputs.slug}/requirement/prd.md as a targeted
+      edit: ${steps.prd_approval.outputs.feedback}
+      Change only the sections the feedback affects; keep every other section, confirmed decision,
+      and AC ID unchanged. Read only the PRD, the confirmed decisions at
+      .maestro/runs/${inputs.slug}/prd-context.json, and what the change needs — do not re-run the
+      interview, scan the repository, or rewrite the PRD. If the feedback needs a new product
+      decision the confirmed decisions cannot settle, do not guess: leave the PRD unchanged and
+      return needs_clarification true. Otherwise run `python3 .maestro/engine/validate_prd.py
+      .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical` and return false.
+    skill: prd-writing
+    inputs:
+      slug: "${inputs.slug}"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/prd-context.json"
+      validator: ".maestro/engine/validate_prd.py"
+      revision_feedback: "${steps.prd_approval.outputs.feedback}"
+    outputs: [summary, needs_clarification]
+    artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    max_visits: 10
+    routes:
+      - {when: "${steps.revise_prd.outputs.needs_clarification} == true", to: prepare_prd_questions}
+      - {to: validate_prd}
 
   # ---- Codebase-map freshness gate: catches drift from commits made OUTSIDE Maestro
   # (a manual implementation) since the map was last recorded. Staleness is a deterministic
@@ -525,6 +561,9 @@ nodes:
       and an empty queue only when all material architecture facts are concrete and consistent.
       Every question declares 1-4 short must_resolve facts. Include audit.unresolved and
       audit.contradictions; both must be empty with an empty queue. Validate before completing.
+      If validator_feedback names defects (anything other than "Question queue is valid"), the
+      previous queue failed validation: fix only those defects in the existing file and validate
+      again — do not rebuild the queue or re-read sources.
     skill: hld-interview
     inputs:
       feature: "${inputs.feature}"
@@ -533,6 +572,7 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
       validator: ".maestro/engine/validate_prd_questions.py"
       revision_feedback: "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"
+      validator_feedback: "${steps.validate_hld_questions.outputs.issues_summary}"
       codebase_lessons: "${memory.knowledge.codebase}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
@@ -594,6 +634,11 @@ nodes:
       new material gap emerged during synthesis. If a new blocking gap did emerge, put only that
       gap in the post-check; do not silently guess. Validate the HLD, deferred-question ledger, and
       post-check before completing, repairing deterministic defects inside this same call.
+
+      If the HLD already exists from an earlier pass, update it in place: change only the sections
+      whose decisions changed. If post_check_feedback names defects (anything other than "Question
+      queue is valid"), only the post-check file failed validation: fix just that file and leave
+      the HLD untouched.
     skill: hld-writing
     inputs:
       feature: "${inputs.feature}"
@@ -605,6 +650,7 @@ nodes:
       post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
       hld_validator: ".maestro/engine/validate_hld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
+      post_check_feedback: "${steps.validate_hld_post_questions.outputs.issues_summary}"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
@@ -640,7 +686,7 @@ nodes:
     type: script
     label: Validate HLD structure and readability
     run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --report]
-    max_visits: 3
+    max_visits: 12
     on_exhausted: abort
     routes:
       - {when: "${steps.validate_hld.outputs.valid} == true", to: hld_approval}
@@ -648,7 +694,6 @@ nodes:
 
   - id: repair_hld
     type: agent
-    execution: lead
     label: Repair HLD validation defects
     model: haiku
     instruction: |
@@ -670,7 +715,7 @@ nodes:
       - ".maestro/runs/${inputs.slug}/hld.md"
       - ".maestro/runs/${inputs.slug}/open-questions.json"
       - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
-    max_visits: 2
+    max_visits: 6
     next: validate_hld
 
   - id: hld_approval
@@ -682,8 +727,40 @@ nodes:
       Review the document, then choose.
     options:
       - {id: approve, label: Approve — write the detailed designs, to: lld_scope_serve}
-      - {id: revise, label: Request HLD revisions — then describe what to change, to: prepare_hld_questions, input: feedback}
+      - {id: revise, label: Request changes — targeted edit of this HLD, to: revise_hld, input: feedback}
+      - {id: rethink, label: Re-clarify the architecture and regenerate, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
+
+  # Fast revision: a targeted HLD edit, then re-validation. Only feedback that needs a new
+  # architecture decision goes back through the clarification loop; 'rethink' is the full pass.
+  - id: revise_hld
+    type: agent
+    execution: lead
+    label: Apply HLD review feedback
+    instruction: |
+      Apply this review feedback to .maestro/runs/${inputs.slug}/hld.md as a targeted edit:
+      ${steps.hld_approval.outputs.feedback}
+      Change only the sections the feedback affects; keep every other section and confirmed
+      decision unchanged. Read only the HLD, the confirmed decisions at
+      .maestro/runs/${inputs.slug}/hld-context.json, and source the change itself depends on — do
+      not re-run clarification, survey the codebase, or rewrite the HLD. Keep
+      open-questions.json consistent with the edit. If the feedback needs a new architecture
+      decision the confirmed decisions cannot settle, do not guess: leave the HLD unchanged and
+      return needs_clarification true; otherwise return false.
+    skill: hld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      revision_feedback: "${steps.hld_approval.outputs.feedback}"
+    outputs: [hld_summary, needs_clarification]
+    artifact: ".maestro/runs/${inputs.slug}/hld.md"
+    max_visits: 10
+    routes:
+      - {when: "${steps.revise_hld.outputs.needs_clarification} == true", to: prepare_hld_questions}
+      - {to: validate_hld}
 
   # ---- LLD workstreams: one child run and approval ledger per selected repository. ----
   # The parent owns the shared PRD/HLD and waits here. Backend, frontend, Flutter, or any other
