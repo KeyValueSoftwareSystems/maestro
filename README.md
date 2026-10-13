@@ -353,18 +353,19 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
   | Your `.maestro/workflows/<name>.yaml` | Upgrade does |
   |---|---|
   | missing | adds it |
-  | an unedited stock copy (matches the last install or any past release) | replaces it — the old copy goes to `.maestro/backups/<ts>/` |
+  | byte-identical to a stock copy (the last install or any past release) | replaces it |
   | edited, upstream changed it | keeps yours, writes upstream's as `<name>.yaml.upstream` |
   | edited, upstream unchanged | keeps yours |
   | your own file name (e.g. `my-sdlc.yaml`) | never touched |
 
-  Content is compared after parsing, so re-formatting and comment-only edits are not "edits".
+  Matching is strict: any change — even a comment, re-formatting or a re-save from the builder —
+  counts as an edit, so only untouched stock copies are ever replaced (no backups needed).
   Reconcile each `.upstream` into your file — or `mv` it over yours to take upstream, after which
-  the file auto-updates again — then delete it. Commit `.maestro/workflow-manifest.json` (the record
-  of what the last upgrade offered); gitignore `.maestro/backups/`. Every workflow is validated
-  afterwards and failures are listed. Customising a copy under your own name avoids `.upstream`
-  reconciliation entirely. A workflow that changes still halts an in-flight run until
-  `maestroctl rebase --slug <slug>`. On the next `/maestro` resume, an old run is detected and
+  the file auto-updates again — then delete it. Commit `.maestro/workflow-manifest.json` (the
+  record of what the last upgrade offered). Every workflow is validated afterwards and failures
+  are listed. Customising a copy under your own name avoids `.upstream` reconciliation entirely.
+  A workflow that changes still halts an in-flight run until `maestroctl rebase --slug <slug>`.
+  On the next `/maestro` resume, an old run is detected and
   upgraded once only after your confirmation.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`, `.cursor/…`,
   `.agents/skills/`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` —

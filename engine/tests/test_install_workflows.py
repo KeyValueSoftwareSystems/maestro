@@ -76,13 +76,6 @@ class WorkflowUpgradeTest(unittest.TestCase):
     def upstream_path(self, name):
         return os.path.join(self.dest, name + iw.UPSTREAM_SUFFIX)
 
-    def backups(self):
-        base = os.path.join(self.root, iw.BACKUP_REL)
-        found = []
-        for dirpath, _, files in os.walk(base):
-            found += [os.path.join(dirpath, f) for f in files]
-        return found
-
     # -- cases ---------------------------------------------------------------
     def test_fresh_install_adds_and_writes_manifest(self):
         self.ship("a.yaml", V1)
@@ -169,16 +162,25 @@ class WorkflowUpgradeTest(unittest.TestCase):
         self.assertEqual(self.local("a.yaml"), V3)
         self.assertFalse(os.path.exists(self.upstream_path("a.yaml")))
 
-    def test_formatting_and_comments_are_not_edits(self):
+    def test_comment_or_formatting_change_counts_as_edit(self):
         self.ship("a.yaml", V1)
         self.install()
-        self.local("a.yaml", "# my note\nnodes:\n- id: a\n  instruction: 'one'\n")
+        reformatted = "# my note\nnodes:\n- id: a\n  instruction: 'one'\n"
+        self.local("a.yaml", reformatted)
+        self.ship("a.yaml", V2)
+        self.install()
+        self.assertEqual(self.local("a.yaml"), reformatted)
+        self.assertEqual(self.read(self.upstream_path("a.yaml")), V2)
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".maestro", "backups")))
+
+    def test_crlf_checkout_is_not_an_edit(self):
+        self.ship("a.yaml", V1)
+        self.install()
+        with open(os.path.join(self.dest, "a.yaml"), "wb") as fh:
+            fh.write(V1.replace("\n", "\r\n").encode())
         self.ship("a.yaml", V2)
         self.install()
         self.assertEqual(self.local("a.yaml"), V2)
-        backups = self.backups()
-        self.assertEqual(len(backups), 1)
-        self.assertIn("# my note", self.read(backups[0]))
 
     def test_user_owned_workflow_untouched(self):
         self.ship("a.yaml", V1)

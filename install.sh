@@ -194,7 +194,6 @@ done
 #   .maestro/workflows  .maestro/docs  — committed, customize freely
 #   .maestro/index   .maestro/memory  .maestro/runs/<slug>/ — committed engine provenance/state
 #   .maestro/workflow-manifest.json  — committed: what the last upgrade offered per workflow
-#   .maestro/backups/<ts>/           — stock workflow copies replaced by an upgrade (gitignore)
 say "Copying runtime into $DEST/.maestro"
 mkdir -p "$DEST/.maestro/workflows" "$DEST/.maestro/engine" "$DEST/.maestro/ui" "$DEST/.maestro/docs"
 cp -R "$SRC/engine/." "$DEST/.maestro/engine/" && note ".maestro/engine/ (stdlib-only python3)"

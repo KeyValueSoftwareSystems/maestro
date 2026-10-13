@@ -15,50 +15,39 @@ Rules, per upstream file:
 
   missing locally                       -> added   (copy upstream)
   local == upstream                     -> current (nothing to do)
-  local matches manifest or a release   -> updated (stock copy: back up, replace)
+  local matches manifest or a release   -> updated (stock copy: replace)
   edited, upstream changed since offer  -> review  (keep local, write <name>.upstream)
   edited, upstream unchanged            -> kept    (keep local; any pending .upstream stays)
 
-A local edit is NEVER written to. YAML is compared by its parsed content, so
-re-formatting (e.g. a save from the builder) or comment-only edits do not count as
-edits; any stock copy that gets replaced is first copied to .maestro/backups/<ts>/.
-Files the user added under their own names are never touched. Files upstream stopped
-shipping are reported, never deleted. After a real install every workflow is
-validated and failures are reported (they never abort the install).
+A local edit is NEVER written to. Comparison is strict — the exact file bytes (line
+endings normalised) — so ANY change, including comments, formatting or a re-save from
+the builder, counts as an edit. Only a byte-identical stock copy is ever replaced, so
+nothing is lost and no backup is kept. Files the user added under their own names are
+never touched. Files upstream stopped shipping are reported, never deleted. After a
+real install every workflow is validated and failures are reported (they never abort
+the install).
 
 Usage: install_workflows.py --src <pack>/workflows --root <consumer repo> [--dry-run]
 """
 import argparse
-import datetime
 import hashlib
 import json
 import os
-import shutil
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-import wf  # noqa: E402
-
 RELEASES = os.path.join(HERE, "workflow_releases.json")
 MANIFEST_REL = os.path.join(".maestro", "workflow-manifest.json")
 DEST_REL = os.path.join(".maestro", "workflows")
-BACKUP_REL = os.path.join(".maestro", "backups")
 UPSTREAM_SUFFIX = ".upstream"
 
 
-def content_hash(data, name):
-    """Stable identity of a workflow's CONTENT. YAML hashes its parsed form, so
-    formatting and comments are ignored; anything unparseable hashes its raw bytes."""
-    if name.endswith((".yaml", ".yml")):
-        try:
-            doc = wf.loads(data.decode("utf-8"))
-            canon = json.dumps(doc, sort_keys=True, ensure_ascii=False, default=str)
-            return "yaml:" + hashlib.sha256(canon.encode("utf-8")).hexdigest()
-        except (ValueError, UnicodeDecodeError):
-            pass
-    return "raw:" + hashlib.sha256(data).hexdigest()
+def content_hash(data, name=None):
+    """Strict identity of a file: its exact bytes. CRLF is folded to LF only so a
+    git checkout with autocrlf is not mistaken for an edit."""
+    return "sha256:" + hashlib.sha256(data.replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _read(path):
@@ -119,18 +108,12 @@ def plan(src, root, releases):
     return actions, retired, manifest_out
 
 
-def apply(actions, manifest_out, root, stamp):
+def apply(actions, manifest_out, root):
     dest = os.path.join(root, DEST_REL)
-    backup_dir = os.path.join(root, BACKUP_REL, stamp, "workflows")
-    backups = []
     for name, action, new in actions:
         local_path = os.path.join(dest, name)
         pending = local_path + UPSTREAM_SUFFIX
         if action in ("added", "updated"):
-            if action == "updated" and _read(local_path) != new:
-                os.makedirs(backup_dir, exist_ok=True)
-                shutil.copy2(local_path, os.path.join(backup_dir, name))
-                backups.append(name)
             _write_atomic(local_path, new)
         elif action == "review":
             _write_atomic(pending, new)
@@ -140,7 +123,6 @@ def apply(actions, manifest_out, root, stamp):
     manifest = {"version": 1, "files": manifest_out}
     _write_atomic(os.path.join(root, MANIFEST_REL),
                   (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode("utf-8"))
-    return backup_dir if backups else None
 
 
 def validate_all(root):
@@ -167,7 +149,7 @@ LABELS = {
 }
 
 
-def report(actions, retired, dry_run, backup_dir, failures, root):
+def report(actions, retired, dry_run, failures):
     out = []
     head = "Workflow upgrade plan (dry run — nothing written)" if dry_run else "Workflows"
     out.append(f"  {head}:")
@@ -178,8 +160,6 @@ def report(actions, retired, dry_run, backup_dir, failures, root):
         out.append(f"    {name:<24} {label}")
     for name in retired:
         out.append(f"    {name:<24} no longer shipped upstream — left in place")
-    if backup_dir:
-        out.append(f"  replaced stock copies backed up to {os.path.relpath(backup_dir, root)}")
     if any(a == "review" for _, a, _ in actions):
         out.append("  Reconcile each *.upstream into your file (or `mv` it over yours to take "
                    "upstream), then delete it.")
@@ -202,12 +182,11 @@ def main(argv=None):
         print("  .maestro/workflows is the pack source itself — nothing to upgrade")
         return 0
     actions, retired, manifest_out = plan(args.src, root, _load_json(args.releases, {}))
-    backup_dir, failures = None, []
+    failures = []
     if not args.dry_run:
-        stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-        backup_dir = apply(actions, manifest_out, root, stamp)
+        apply(actions, manifest_out, root)
         failures = validate_all(root)
-    report(actions, retired, args.dry_run, backup_dir, failures, root)
+    report(actions, retired, args.dry_run, failures)
     return 0
 
 
