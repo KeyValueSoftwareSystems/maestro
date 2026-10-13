@@ -75,6 +75,12 @@ findings:
 blocking: <true if any blocker/major remains>
 ```
 
+## Re-review
+When your instructions point at a previous review of this design (a re-review after a revision or
+an approved correction), read it first: confirm each earlier blocking finding is resolved, and
+re-check only the changed documents and their consistency with the rest. Do not re-audit
+unchanged documents.
+
 ## Decide & output
 Sort findings blocker → major → minor → suggestion; `blocking = true` if any blocker/major
 remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write the report

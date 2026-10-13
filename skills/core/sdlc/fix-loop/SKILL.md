@@ -30,7 +30,8 @@ predict the fix, and confirm. If it is not installed, follow the same discipline
 3. **Smallest fix** — edit **only** files related to that root cause; no broad refactors,
    no unrelated "drive-by" changes.
 4. **Re-run the failing check**; record the result.
-5. If green, run full verification (`/verify`). If a new failure appears, report it — the
+5. If green, run full verification (`/verify`) — unless your instructions say a re-review or
+   re-run follows this attempt, in which case skip it. If a new failure appears, report it — the
    workflow's next invocation (a fresh attempt) handles it; do not chain fixes here.
 
 ## Classify before you "fix"

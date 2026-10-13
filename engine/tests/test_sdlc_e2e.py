@@ -51,6 +51,7 @@ def canned_agent_outputs(step, action):
         "review": {"review_path": "reviews/summary.md", "blocking": False, "summary": "clean"},
         "fix": {"fix_summary": "fixed", "checks_passed": True},
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
+        "qa_fix": {"fix_summary": "harness wait fixed", "checks_passed": True, "escalate": False},
         "review_pack": {"pack_path": "review-pack.md", "recommendation": "ready",
                         "summary": "ready"},
         "retrospect": {"incoming_path": ".maestro/memory/incoming/demo.json",
@@ -689,6 +690,42 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("rotate refresh tokens", revisions[0]["input"].lower())
         frontend = statemod.load("demo--lld--frontend", self.tmp)
         self.assertFalse(any(g["option"] == "revise" for g in frontend["gates"]))
+
+    def _qa_gates(self, qa_gate):
+        return {
+            "design/collect_references": [("none", None)],
+            "design/prd_approval": [("approve", None)],
+            "design/hld_approval": [("approve", None)],
+            "design/lld_scope": [("all", None)],
+            "contract_approval": [("approve", None)],
+            "qa/qa_gate": qa_gate,
+            "release_approval": [("approve", None)],
+        }
+
+    def test_qa_product_bug_escalates_without_rerunning_the_suite(self):
+        self.prep_tasks_json()
+        action, trace = self.drive(self._qa_gates([("accept", None)]), agent_overrides={
+            "qa_run": {"passed": False, "failed_count": 2, "summary": "2 failing"},
+            "qa_fix": {"fix_summary": "product bug in booking", "checks_passed": False,
+                       "escalate": True},
+        })
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("qa/qa_run"), 1)
+        self.assertEqual(steps.count("qa/qa_fix"), 1)
+        self.assertIn("qa/qa_gate", steps)
+
+    def test_qa_harness_fix_reruns_the_suite(self):
+        self.prep_tasks_json()
+        runs = iter([{"passed": False, "failed_count": 1, "summary": "1 flaky"},
+                     {"passed": True, "failed_count": 0, "summary": "all green"}])
+        action, trace = self.drive(self._qa_gates([]), agent_overrides={
+            "qa_run": lambda: next(runs)})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("qa/qa_run"), 2)
+        self.assertEqual(steps.count("qa/qa_fix"), 1)
+        self.assertNotIn("qa/qa_gate", steps)
 
     def test_blocking_arch_review_gate_waive(self):
         self.prep_tasks_json()

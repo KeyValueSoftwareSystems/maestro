@@ -62,6 +62,42 @@ class WorkspaceSyncTest(unittest.TestCase):
             fh.write("indexed\n")
         quiet(ws.cmd_record_knowledge, self.tmp, self.evidence)
 
+    def test_untracked_managed_dir_is_not_dirty_but_other_dirs_are_listed_once(self):
+        # docs/ is untracked and holds only the engine-managed codebase map
+        self.assertEqual(ws._dirty_paths(self.repo), [])
+        big = os.path.join(self.repo, "generated")
+        os.makedirs(big)
+        for i in range(50):
+            with open(os.path.join(big, f"f{i}.txt"), "w") as fh:
+                fh.write("x\n")
+        self.assertEqual(ws._dirty_paths(self.repo), ["generated/"])
+        with open(os.path.join(self.repo, "docs", "notes.md"), "w") as fh:
+            fh.write("user doc\n")
+        self.assertEqual(sorted(ws._dirty_paths(self.repo)), ["docs/notes.md", "generated/"])
+
+    def test_fetch_takes_only_the_tracked_branch_and_no_tags(self):
+        clone = os.path.join(self.tmp, "writer2")
+        subprocess.run(["git", "clone", "-q", self.remote, clone], check=True)
+        git(clone, "config", "user.email", "w@example.com")
+        git(clone, "config", "user.name", "W")
+        git(clone, "switch", "-q", "-c", "other")
+        git(clone, "push", "-q", "origin", "other")
+        git(clone, "tag", "v9")
+        git(clone, "push", "-q", "origin", "v9")
+        remote_main = self.remote_commit("v3\n")
+        entry = ws._branch_facts("backend", self.repo, self.tmp)
+        name, error = ws._fetch_one(entry, self.tmp)
+        self.assertEqual((name, error), ("backend", ""))
+        self.assertEqual(git(self.repo, "rev-parse", "origin/main"), remote_main)
+        refs = git(self.repo, "for-each-ref", "--format=%(refname)")
+        self.assertNotIn("refs/remotes/origin/other", refs)
+        self.assertNotIn("refs/tags/v9", refs)
+
+    def test_git_never_prompts(self):
+        self.assertEqual(ws._GIT_ENV.get("GIT_TERMINAL_PROMPT"), "0")
+        if "GIT_SSH" not in os.environ:
+            self.assertIn("BatchMode=yes", ws._GIT_ENV.get("GIT_SSH_COMMAND", ""))
+
     def remote_commit(self, content="v2\n"):
         clone = os.path.join(self.tmp, "writer")
         subprocess.run(["git", "clone", "-q", self.remote, clone], check=True)

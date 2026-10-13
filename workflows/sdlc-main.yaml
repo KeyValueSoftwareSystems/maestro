@@ -77,6 +77,10 @@ nodes:
       name every selected repository whose LLD must reflect the change in affected_repos_csv, and
       provide one concise correction_text that is complete enough for a human to approve as an
       effective-design override. For a clean verdict return revision_scope=none and empty strings.
+      If .maestro/runs/${inputs.slug}/reviews/architecture.md exists from an earlier round, this is a
+      re-review after a design revision or approved correction: read it first, confirm each earlier
+      blocking finding is resolved, and re-check only the documents that changed and their
+      consistency with the rest — do not re-audit unchanged documents. Then overwrite the report.
     skill: architecture-review
     agent: reviewer
     model: opus
@@ -318,14 +322,16 @@ nodes:
     label: Human review pack
     instruction: |
       Assemble the release review pack for this feature: what was built (per stack),
-      review outcomes, QA results, open risks, and how to verify locally. Digest the
-      artifacts under .maestro/runs/${inputs.slug}/ — the pack is what the human reads at
-      the release gate. Treat implementation-manifest.json as the source of truth for every
+      review outcomes, QA results, open risks, and how to verify locally. Read only these
+      inputs: implementation-manifest.json, each repo's <repo>/reviews/summary.md,
+      reviews/architecture.md, qa/report.md, and approved-corrections.md under
+      .maestro/runs/${inputs.slug}/ — summarize them; do not re-read the design documents or
+      source. The pack is what the human reads at the release gate. Treat implementation-manifest.json as the source of truth for every
       repository's exact branch, worktree, and commit; include all of them in the pack.
       Treat approved-corrections.md as authoritative over conflicting base design text.
     skill: human-review-pack
     agent: analyst
-    model: opus
+    model: sonnet
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     outputs: [pack_path, recommendation, summary]
     artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
