@@ -25,6 +25,11 @@
 #                      always installed. /maestro-init passes this automatically after
 #                      detecting your repo's stack.
 #
+# Upgrades (re-run) never overwrite a workflow you edited: stock copies are replaced,
+# edited ones are kept and the new upstream version lands beside them as
+# .maestro/workflows/<name>.upstream (engine/install_workflows.py).
+#   --dry-run          print the workflow upgrade plan and exit without writing anything
+#
 # Env overrides:
 #   KV_SKILLS_REPO   pack's GitHub slug      (default KeyValueSoftwareSystems/kv-skills)
 #   KV_SKILLS_REF    git ref for the tarball (default main)
@@ -38,10 +43,12 @@ DEST="${DEST:-$PWD}"
 
 AGENTS=""
 STACKS=""              # empty => install everything (back-compat)
+DRY_RUN=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --stack)   shift; STACKS="$STACKS ${1:-}" ;;
     --stack=*) STACKS="$STACKS ${1#*=}" ;;
+    --dry-run) DRY_RUN=1 ;;
     -*) echo "unknown flag: $1" >&2; exit 2 ;;
     *)  AGENTS="$AGENTS $1" ;;
   esac
@@ -142,6 +149,12 @@ if [ -z "$SRC" ]; then
 fi
 trap '[ -n "$CLEANUP" ] && rm -rf "$CLEANUP"' EXIT
 
+if [ -n "$DRY_RUN" ]; then
+  say "Dry run — $REPO workflows vs $DEST/.maestro/workflows"
+  python3 "$SRC/engine/install_workflows.py" --src "$SRC/workflows" --root "$DEST" --dry-run
+  exit $?
+fi
+
 # ---------------------------------------------------------------- 1. skills/commands/agents
 copy_tree() { # copy_tree <src-subdir> <dst-dir>
   mkdir -p "$2"
@@ -180,11 +193,17 @@ done
 #   .maestro/engine  .maestro/ui       — regenerated runtime (gitignore)
 #   .maestro/workflows  .maestro/docs  — committed, customize freely
 #   .maestro/index   .maestro/memory  .maestro/runs/<slug>/ — committed engine provenance/state
+#   .maestro/workflow-manifest.json  — committed: what the last upgrade offered per workflow
 say "Copying runtime into $DEST/.maestro"
 mkdir -p "$DEST/.maestro/workflows" "$DEST/.maestro/engine" "$DEST/.maestro/ui" "$DEST/.maestro/docs"
 cp -R "$SRC/engine/." "$DEST/.maestro/engine/" && note ".maestro/engine/ (stdlib-only python3)"
 rm -rf "$DEST/.maestro/engine/tests" "$DEST/.maestro/engine/__pycache__" 2>/dev/null
-cp -R "$SRC/workflows/." "$DEST/.maestro/workflows/" && note ".maestro/workflows/ (example pack — customize freely)"
+# Workflows are user-editable: upgrade them file by file, never over a local edit.
+if command -v python3 >/dev/null 2>&1; then
+  python3 "$SRC/engine/install_workflows.py" --src "$SRC/workflows" --root "$DEST"
+else
+  echo "  python3 not found — workflows NOT installed/upgraded (the engine needs python3)" >&2
+fi
 cp "$SRC/ui/builder.html" "$DEST/.maestro/ui/builder.html" && note ".maestro/ui/builder.html (visual workflow builder)"
 cp "$SRC/docs/workflow-spec.md" "$DEST/.maestro/docs/workflow-spec.md" 2>/dev/null && note ".maestro/docs/workflow-spec.md"
 # The repo-local dev wrapper + a copy of this installer, so `./maestro ui` and

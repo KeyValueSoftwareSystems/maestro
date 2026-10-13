@@ -166,8 +166,9 @@ Installs: our skills/commands/agents into `.claude/` or `.cursor/`, or repo-scop
 skills into `.agents/skills/`; the engine + `workflows/` + `ui/` + `docs/` all live under a
 single **`.maestro/`** parent. The engine is stdlib-only python3 — no execution CLI, config
 file, or additional package to install. When it finishes it prints host-specific next steps
-and points at **`./maestro help`**. **Upgrade** by re-running the same command (it re-fetches
-and overwrites `.maestro/engine/`/`.maestro/ui/`). *(Private-repo fork? The piped `curl`
+and points at **`./maestro help`**. **Upgrade** by re-running the same command (it re-fetches,
+overwrites `.maestro/engine/`/`.maestro/ui/`, and never overwrites a workflow you edited — see
+[Upgrade](#upgrade--uninstall--troubleshooting)). *(Private-repo fork? The piped `curl`
 can't authenticate — clone it and run `./install.sh` from the checkout.)*
 
 ### Finish setup: Maestro init (recommended)
@@ -345,8 +346,27 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
 
 ## Upgrade / uninstall / troubleshooting
 
-- **Upgrade:** re-run the install one-liner. It overwrites `.maestro/engine/` and `.maestro/ui/`; your `.maestro/workflows/`, `.maestro/index/` provenance and `.maestro/runs/` are left alone. On the
-  next `/maestro` resume, an old run is detected and upgraded once only after your confirmation.
+- **Upgrade:** re-run the install one-liner (add `--dry-run` to preview). It overwrites
+  `.maestro/engine/`, `.maestro/ui/` and the installed skills; `.maestro/index/` provenance and
+  `.maestro/runs/` are left alone. Workflows upgrade **file by file, never over a local edit**:
+
+  | Your `.maestro/workflows/<name>.yaml` | Upgrade does |
+  |---|---|
+  | missing | adds it |
+  | byte-identical to a stock copy (the last install or any past release) | replaces it |
+  | edited, upstream changed it | keeps yours, writes upstream's as `<name>.yaml.upstream` |
+  | edited, upstream unchanged | keeps yours |
+  | your own file name (e.g. `my-sdlc.yaml`) | never touched |
+
+  Matching is strict: any change — even a comment, re-formatting or a re-save from the builder —
+  counts as an edit, so only untouched stock copies are ever replaced (no backups needed).
+  Reconcile each `.upstream` into your file — or `mv` it over yours to take upstream, after which
+  the file auto-updates again — then delete it. Commit `.maestro/workflow-manifest.json` (the
+  record of what the last upgrade offered). Every workflow is validated afterwards and failures
+  are listed. Customising a copy under your own name avoids `.upstream` reconciliation entirely.
+  A workflow that changes still halts an in-flight run until `maestroctl rebase --slug <slug>`.
+  On the next `/maestro` resume, an old run is detected and
+  upgraded once only after your confirmation.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`, `.cursor/…`,
   `.agents/skills/`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` —
   that's your work.
