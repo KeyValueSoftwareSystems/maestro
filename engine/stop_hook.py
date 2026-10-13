@@ -7,8 +7,10 @@ it blocks the stop (exit 2) and tells the lead agent to keep driving the dispatc
 loop. At a human gate, when the run is done/failed, or when nothing is running, it
 lets the turn end normally (exit 0) — the human is meant to be in charge at gates.
 
-It is **read-only**: it calls the same next-action resolver the loop uses, which does
-NOT write state (`maestroctl next` never saves). A Stop hook must never crash or trap
+It is **read-only**: it asks the resolver for the next action WITHOUT claiming anything
+(`exclude_claimed=True`, the same view `maestroctl next` serves, minus its writes). Workers
+already handed out are in flight, not pending — a run that is only waiting on them (`wait`)
+lets the turn end so background workers can report back. A Stop hook must never crash or trap
 the user, so every failure path falls through to exit 0 (allow the stop). Claude Code
 also re-runs the hook with `stop_hook_active: true` after it blocks, and hard-caps
 consecutive blocks — both are honoured below.
@@ -54,7 +56,7 @@ def main():
             run = resolver.Run(slug, root)
             if (run.state.get("run") or {}).get("status") != "running":
                 continue
-            action = resolver.next_action(run)
+            action = resolver.next_action(run, exclude_claimed=True)
         except Exception:
             continue  # unreadable / changed-workflow halt / mid-step — skip, don't trap
         if action.get("action") in AUTONOMOUS:

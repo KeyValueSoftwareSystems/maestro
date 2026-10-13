@@ -6,9 +6,10 @@ The lead agent's whole protocol:
     maestroctl validate <workflow>
     maestroctl init --slug S --workflow <workflow> [--input k=v ...]
     loop:
-        maestroctl next --slug S [--serial]          # ONE action as JSON
+        maestroctl next --slug S [--serial]          # ONE action as JSON (claims workers)
         # dispatch it, then one of:
         maestroctl complete --slug S --step P --outputs '<json>'
+        maestroctl complete-batch --slug S --results '[{"step":P,"outputs":{...}}, ...]'
         maestroctl complete --slug S --step P --exit-code N [--stdout '<text>']
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
         maestroctl gate-input-record --slug S --step P --input '<text>'
@@ -17,7 +18,14 @@ The lead agent's whole protocol:
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
-upgrade-run, and correction-record.
+upgrade-run, and correction-record. `next --peek` re-reads without claiming or running.
+
+Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
+steps itself — argv `python3 .maestro/engine/<script>.py ...` — and completes them, so the lead
+never round-trips them; the action lists them under `auto_scripts`. Other scripts are still
+served as `run_script`. Disable with MAESTRO_AUTO_SCRIPTS=0. Worker steps are claimed when
+served: later calls return only newly ready work (or `wait`), and `init` releases the claims
+of a resumed run so lost workers are re-served.
 
 Exit codes: 0 ok · 1 validation errors · 2 internal error · 3 setup/hash problem ·
 4 invalid transition (wrong step, missing outputs/artifacts, unknown option).
@@ -27,7 +35,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import subprocess
 import sys
+import time
 
 import resolver
 import state as statemod
@@ -66,6 +77,9 @@ def cmd_init(args):
         raise resolver.RunError(f"workflow has {len(errors)} validation error(s); fix them first", code=1)
     with statemod.locked(args.slug, args.root):
         data, created = resolver.init_run(args.slug, args.workflow, inputs, args.root, force=args.force)
+        if not created and resolver.release_claims(data):
+            # Resume: workers handed out by a previous session are gone — re-serve them.
+            statemod.save(args.slug, data, args.root)
     _print({
         "ok": True,
         "created": created,
@@ -77,11 +91,83 @@ def cmd_init(args):
     return 0
 
 
-def cmd_next(args):
-    run = resolver.Run(args.slug, args.root)
-    action = resolver.next_action(run, serial=args.serial)
-    _print(action)
+MAX_AUTO_SCRIPTS = 200  # backstop; script visit caps bound real loops long before this
+
+
+def _auto_scripts_enabled():
+    return os.environ.get("MAESTRO_AUTO_SCRIPTS", "1").strip().lower() not in ("0", "false", "no")
+
+
+def _engine_owned(argv, root):
+    """True for `python3 .maestro/engine/<x>.py ...` — pack code the engine may run itself."""
+    if len(argv) < 2 or os.path.basename(argv[0]) not in ("python3", "python"):
+        return False
+    engine_dir = os.path.realpath(os.path.join(root, ".maestro", "engine"))
+    script = os.path.realpath(os.path.join(root, argv[1]))
+    return script.startswith(engine_dir + os.sep) and script.endswith(".py")
+
+
+def _run_engine_script(action, root):
+    argv = [sys.executable, *action["argv"][1:]]
+    timeout = action.get("timeout") or resolver.DEFAULT_SCRIPT_TIMEOUT
+    try:
+        proc = subprocess.run(argv, cwd=root, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return 124, f"timed out after {timeout}s"
+    except OSError as exc:
+        return 127, str(exc)
+    out = proc.stdout
+    if proc.returncode != 0 and not out.strip():
+        out = proc.stderr[-2000:]
+    return proc.returncode, out
+
+
+def _serve_action(args, peek=False):
+    """The next action the lead must handle, after running engine-owned scripts.
+
+    Scripts run OUTSIDE the ledger lock: several engine helpers take that lock themselves.
+    Their completion re-checks under the lock that the step is still the active visit.
+    """
+    serial = getattr(args, "serial", False)
+    if peek:
+        return resolver.next_action(resolver.Run(args.slug, args.root), serial=serial)
+    ran = []
+    auto = _auto_scripts_enabled()
+    for _ in range(MAX_AUTO_SCRIPTS):
+        with statemod.locked(args.slug, args.root):
+            run = resolver.Run(args.slug, args.root)
+            action = resolver.next_action(run, serial=serial, claim=True)
+            if action["action"] in ("run_agent", "run_agents"):
+                statemod.save(args.slug, run.state, args.root)
+            visits = (run.state["steps"].get(action.get("step") or "") or {}).get("visits")
+        if not (auto and action["action"] == "run_script"
+                and _engine_owned(action["argv"], args.root)):
+            break
+        started = time.monotonic()
+        code, out = _run_engine_script(action, args.root)
+        with statemod.locked(args.slug, args.root):
+            run = resolver.Run(args.slug, args.root)
+            entry = run.state["steps"].get(action["step"]) or {}
+            if (action["step"] not in (run.state["run"].get("cursors") or [])
+                    or entry.get("visits") != visits):
+                continue  # superseded while it ran (e.g. a concurrent reset) — re-serve
+            resolver.complete_step(run, action["step"], exit_code=code, stdout=out,
+                                   telemetry={"executor": "engine"})
+            statemod.save(args.slug, run.state, args.root)
+        ran.append({"step": action["step"], "exit_code": code,
+                    "seconds": round(time.monotonic() - started, 1)})
+    if ran:
+        action = {**action, "auto_scripts": ran}
+    return action
+
+
+def _serve(args, peek=False):
+    _print(_serve_action(args, peek=peek))
     return 0
+
+
+def cmd_next(args):
+    return _serve(args, peek=args.peek)
 
 
 def _mutate(args, fn):
@@ -89,9 +175,7 @@ def _mutate(args, fn):
         run = resolver.Run(args.slug, args.root)
         fn(run)
         statemod.save(args.slug, run.state, args.root)
-        action = resolver.next_action(run, serial=getattr(args, "serial", False))
-    _print(action)
-    return 0
+    return _serve(args)
 
 
 def cmd_complete(args):
@@ -115,6 +199,42 @@ def cmd_complete(args):
         run, args.step, outputs=outputs, exit_code=args.exit_code, stdout=args.stdout,
         telemetry=telemetry,
     ))
+
+
+def cmd_complete_batch(args):
+    """Record a finished parallel wave in one call; one returned action to act on."""
+    try:
+        results = json.loads(args.results)
+    except ValueError as exc:
+        raise resolver.RunError(f"--results is not valid JSON: {exc}", code=4) from None
+    if not isinstance(results, list) or not all(
+            isinstance(r, dict) and isinstance(r.get("step"), str) for r in results):
+        raise resolver.RunError(
+            '--results must be a JSON list of {"step": ..., "outputs": {...}} or '
+            '{"step": ..., "fail": "<reason>"}', code=4)
+    report = []
+
+    def fn(run):
+        # Each result applies independently: one invalid completion (missing artifact/field)
+        # is reported back for the lead's retry protocol and never blocks its siblings.
+        for item in results:
+            try:
+                if "fail" in item:
+                    resolver.fail_step(run, item["step"], str(item["fail"]))
+                    report.append({"step": item["step"], "status": "failed-recorded"})
+                else:
+                    resolver.complete_step(run, item["step"], outputs=item.get("outputs") or {},
+                                           telemetry=item.get("telemetry"))
+                    report.append({"step": item["step"], "status": "done"})
+            except resolver.RunError as exc:
+                report.append({"step": item["step"], "status": "error", "error": str(exc)})
+
+    with statemod.locked(args.slug, args.root):
+        run = resolver.Run(args.slug, args.root)
+        fn(run)
+        statemod.save(args.slug, run.state, args.root)
+    _print({**_serve_action(args), "batch": report})
+    return 4 if any(r["status"] == "error" for r in report) else 0
 
 
 def cmd_gate_record(args):
@@ -286,10 +406,20 @@ def build_parser():
     p.add_argument("--force", action="store_true", help="restart even if a run exists")
     p.set_defaults(fn=cmd_init)
 
-    p = sub.add_parser("next", help="print the next action as JSON (read-only)")
+    p = sub.add_parser("next", help="serve the next action as JSON (claims workers, runs "
+                                    "engine scripts)")
     p.add_argument("--slug", required=True)
     p.add_argument("--serial", action="store_true", help="never batch parallel agents")
+    p.add_argument("--peek", action="store_true",
+                   help="read-only: show the current action without claiming or running")
     p.set_defaults(fn=cmd_next)
+
+    p = sub.add_parser("complete-batch", help="record a finished parallel wave in one call")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--results", required=True,
+                   help='JSON list of {"step","outputs"} or {"step","fail"} objects')
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_complete_batch)
 
     p = sub.add_parser("complete", help="record a finished agent/script step and advance")
     p.add_argument("--slug", required=True)

@@ -737,7 +737,31 @@ def _apply_on_fail(run, frame, node, reason):
 
 # ---------------------------------------------------------------- actions (read-only)
 
-def next_action(run, serial=False):
+CLAIM_KEY = "dispatched_at"
+
+
+def release_claims(state):
+    """Forget which worker steps were handed out (a resumed session re-serves them)."""
+    released = []
+    for path, entry in (state.get("steps") or {}).items():
+        if entry.pop(CLAIM_KEY, None) is not None:
+            released.append(path)
+    return released
+
+
+def next_action(run, serial=False, claim=False, exclude_claimed=False):
+    """Serve ONE action.
+
+    Default (claim=False): pure and read-only — every runnable cursor is eligible, in the
+    historical priority order (scripts, gates, interviews, lead agents, workers).
+
+    claim=True: incremental dispatch. Worker steps already handed out (stamped with
+    `dispatched_at`) are skipped, newly served worker steps are stamped, and ready workers
+    are served BEFORE gates/interviews/lead work so one branch waiting on a human never
+    holds back another branch's subagents. When only claimed workers remain, the action is
+    `wait`. The caller must save the state. exclude_claimed=True gives the same view
+    without stamping (read-only).
+    """
     status = run.state["run"].get("status")
     if status == "done":
         return {
@@ -752,11 +776,12 @@ def next_action(run, serial=False):
         return {"action": "failed", "reason": "no active steps (inconsistent state) — reset the run"}
 
     gates, scripts, interviews, lead_agents, worker_agents = [], [], [], [], []
+    in_flight, pending_inputs = [], []
     for path in cursors:
         frame, node = run.node_at(path)
         entry = statemod.step_entry(run.state, path)
         if entry.get("pending_gate_input"):
-            gates.append(_gate_input_action(run, frame, node, path, entry))
+            pending_inputs.append(_gate_input_action(run, frame, node, path, entry))
         elif entry.get("pending_ask"):
             gates.append(_synth_gate_action(run, path, node, entry))
         elif ntype(node) == "gate":
@@ -767,6 +792,8 @@ def next_action(run, serial=False):
             action = _agent_action(run, frame, node, path)
             if action["action"] == "run_lead":
                 lead_agents.append(action)
+            elif (claim or exclude_claimed) and entry.get(CLAIM_KEY):
+                in_flight.append(path)
             else:
                 worker_agents.append(action)
         elif ntype(node) == "interview":
@@ -776,6 +803,27 @@ def next_action(run, serial=False):
 
     if scripts:
         return scripts[0]
+    if pending_inputs:
+        # the human just picked an option that needs text: finish that interaction first
+        return pending_inputs[0]
+    if claim or exclude_claimed:
+        if worker_agents:
+            served = worker_agents if not serial else worker_agents[:1]
+            if claim:
+                now = statemod.now_iso()
+                for action in served:
+                    statemod.step_entry(run.state, action["step"])[CLAIM_KEY] = now
+            if len(served) > 1:
+                return {"action": "run_agents", "agents": served}
+            return served[0]
+        if not (gates or interviews or lead_agents) and in_flight:
+            return {
+                "action": "wait",
+                "in_flight": in_flight,
+                "hint": "Nothing new to dispatch. Complete each in-flight step as its worker "
+                        "finishes. If these workers are no longer running (e.g. a restarted "
+                        "session), run `init` again to re-serve them.",
+            }
     if gates:
         return gates[0]
     if interviews:
@@ -1396,6 +1444,7 @@ def _register_failure(run, frame, node, path, entry, reason):
     entry["reason"] = reason
     if entry["attempts"] <= retries:
         entry["status"] = "pending"  # stays in cursors; next re-serves it
+        entry.pop(CLAIM_KEY, None)
         return
     entry["status"] = "failed"
     statemod.mark_step_finished(entry)
