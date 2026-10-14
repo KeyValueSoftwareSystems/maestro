@@ -160,6 +160,9 @@ def _stub_agent(root, act):
                 "proposal": "Keep their input and show a retry action.",
                 "must_resolve": ["visible failure outcome", "recovery action"],
             }]
+            if questions and context_name != "prd-context.json":
+                # HLD/LLD queues close only after the human confirms the assembled direction.
+                questions[0]["kind"] = "direction"
             with open(full, "w", encoding="utf-8") as fh:
                 json.dump({
                     "schema_version": 2,

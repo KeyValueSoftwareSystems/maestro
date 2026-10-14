@@ -45,7 +45,8 @@ _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
               "inputs", "outputs", "artifact", "retries", "isolate", "ui"} | _ROUTING_KEYS,
     "interview": {"id", "type", "label", "skill", "context", "sections",
-                  "questions_artifact", "batch_size", "presentation", "artifact", "ui", "next",
+                  "questions_artifact", "batch_size", "presentation", "discuss", "artifact",
+                  "ui", "next",
                   "routes", "max_visits", "on_exhausted"},
     "gate": {"id", "type", "label", "prompt", "options", "max_visits", "on_exhausted", "ui"},
     "script": {"id", "type", "label", "run", "timeout", "ui"} | _ROUTING_KEYS,
@@ -233,6 +234,19 @@ def _validate_node(node, ids, declared_inputs, where):
         batch_size = node.get("batch_size", 1)
         if not isinstance(batch_size, int) or isinstance(batch_size, bool) or batch_size < 1:
             err("bad-batch-size", "interview batch_size must be a positive integer")
+        discuss = node.get("discuss")
+        if discuss is not None:
+            if not isinstance(discuss, dict):
+                err("bad-type", "interview discuss must be a map")
+            else:
+                for key in discuss:
+                    if key not in ("inputs", "agent", "model"):
+                        err("unknown-key", f"interview discuss has unknown key {key!r}")
+                if not isinstance(discuss.get("inputs", {}), dict):
+                    err("bad-type", "interview discuss.inputs must be a map")
+                for key in ("agent", "model"):
+                    if key in discuss and not isinstance(discuss[key], str):
+                        err("bad-type", f"interview discuss.{key} must be a string")
         if node.get("presentation", "chat") not in ("chat", "popup"):
             err("bad-type", "interview presentation must be 'chat' or 'popup'")
     elif ntype == "gate":

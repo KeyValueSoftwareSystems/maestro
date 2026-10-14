@@ -97,6 +97,7 @@ class LldWorkstreamTest(unittest.TestCase):
                             "why": "The result changes the repository contract.",
                             "proposal": "Use the existing typed failure result.",
                             "must_resolve": ["failure result"],
+                            "kind": "direction",
                         }]
                         with open(full, "w", encoding="utf-8") as fh:
                             json.dump({

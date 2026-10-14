@@ -83,8 +83,8 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
 workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
-   → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
-   → per-repo LLDs (bounded code seam → grouped Grill → write once → validate → approve)
+   → HLD (Grill architecture with options → confirm direction → write once → conditional new-gap popup → validate → approve)
+   → per-repo LLDs (bounded code seam → grouped Grill with options → confirm direction → write once → validate → approve)
    → API contract
    → functional test cases → effective design (base approvals + approved corrections)
    → architecture review → [approve]
@@ -383,13 +383,13 @@ After install, in your project repo:
   skills/     one SKILL.md per SDLC step + maestro (the lead agent) + bootstrap
               (detect-stack, maestro-init, build-knowledge, retrospect)
               + per-stack reference packs tagged stack:<x>
-  agents/     core subagents (planner, implementer, reviewer, qa, analyst, general)
+  agents/     core subagents (planner, implementer, reviewer, qa, analyst, general, discussant)
               + per-stack reviewers tagged stack:<x>
-  commands/   /maestro and /maestro-init slash-command shims (steps are invoked as skills)
+  commands/   /maestro, /maestro-init and /maestro-discuss slash-command shims (steps are invoked as skills)
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · interview-record · interview-record-batch · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              · interview-record · interview-record-batch · interview-brief · gate-input-record · fail · reset · rebase · status · graph · note · runs)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)

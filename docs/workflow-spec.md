@@ -192,6 +192,35 @@ Set `presentation: popup` to require the lead to collect the served round throug
 native question UI. If the UI caps questions per popup, the lead opens consecutive popups but does
 not process or record between them. `chat` is the backward-compatible default.
 
+A round is a conversation, not a form. After collecting it, the lead discusses each item the human
+was unsure about or asked back on, and invites points the human wants to raise; only then does it
+record the round. Each response is exactly one of:
+
+| Response | Recorded `source` | Meaning |
+|---|---|---|
+| `accept: true` | `accepted-proposal` | the served recommendation, confirmed |
+| `option: N` | `chosen-alternative` | served alternative N (1-based) with its trade-off |
+| `answer: TEXT` | `user-answer` | the human's own words, verbatim |
+| `assume: true` | `assumption` | the recommendation adopted as an unverified working assumption |
+| `defer: TEXT` | `deferred` | parked with the human's note; never a confirmed decision |
+
+Any response may add `discussion`, a one-sentence summary of what was explored, so the next queue
+builds on it instead of re-asking.
+
+A discussion never runs in the lead's context. `maestroctl interview-brief --step P --section X`
+renders a read-only brief for one served, unresolved question: the question, recommendation,
+alternatives, `must_resolve` facts, the node's evidence `discuss.inputs` (plus the decision
+artifact), and the interview skill whose read boundary applies. In the default `subagent` mode
+the lead sends it verbatim to an isolated read-only `discussant` (`discuss.agent`/`discuss.model`
+override it; model falls back to `defaults.model`) and only relays replies; the subagent ends each
+reply with `{"status","candidate","summary"}`. In `--mode side` the human runs the brief's
+`/maestro-discuss` (`$maestro-discuss`) command in a separate session, which talks to them
+directly and records the outcome with `interview-record-batch --peek`: `--peek` records without
+claiming the next worker or running engine scripts, so the main session's `next` still receives
+them. A partial batch recorded before the handoff keeps the rest of the round pending. `--raise TEXT` (repeatable) records a point the human
+raised unprompted as a `user-raised` decision under a fresh `raised-N` id. Completion outputs
+`assumption_count`, `deferred_count`, and `raised_count` for routing.
+
 ```yaml
 - id: prd_interview
   type: interview
@@ -206,9 +235,14 @@ not process or record between them. `chat` is the backward-compatible default.
 
 For feature-specific follow-ups, a preceding agent writes a JSON queue containing
 `schema_version: 2`, `questions`, and `audit`; every question has `id`, `title`, `question`,
-`why`, `proposal`, and one to four short `must_resolve` facts. `audit.unresolved` and
-`audit.contradictions` explain why another round exists. Both arrays must be empty before an empty
-queue may declare the interview clear. The engine appends each completed queue, including its
+`why`, `proposal`, and one to four short `must_resolve` facts. A question may add up to two
+`alternatives` (`{label, tradeoff}`) and a `kind`: `decision` (default) or `direction`, whose
+proposal (up to 150 words) summarises the whole intended design for the human to confirm or
+challenge. `audit.unresolved` and `audit.contradictions` explain why another round exists. Both
+arrays must be empty before an empty queue may declare the interview clear. With
+`validate_prd_questions.py --require-direction` (the shipped HLD and LLD queues), an empty queue
+also needs a confirmed `direction` decision no older than any other decision, so a design document
+is never written from answers the human has not seen assembled. The engine appends each completed queue, including its
 resolution facts, to the cumulative decision artifact. Schema version 1 remains readable so an
 installed run can be upgraded in place.
 
@@ -218,6 +252,9 @@ installed run can be upgraded in place.
   questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
   batch_size: 12
   presentation: popup
+  discuss:                 # optional: evidence an isolated discussion may read
+    inputs:
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
   artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
   next: find_more_gaps
 ```
@@ -394,8 +431,9 @@ loop:
     run_script → execute argv → complete --exit-code N --stdout '...'
                  (engine helpers never reach the lead: every serving call runs
                  `python3 .maestro/engine/*.py` steps itself and lists them in `auto_scripts`)
-    ask_interview → ask one decision → interview-record --section X (--accept | --answer TEXT)
-    ask_interview_batch → ask the served round once → interview-record-batch --responses JSON
+    ask_interview → ask one decision → interview-record --section X
+                 (--accept | --option N | --answer TEXT | --assume | --defer TEXT) [--raise TEXT]
+    ask_interview_batch → collect, discuss, then record once → interview-record-batch --responses JSON
     ask_gate   → ask the human for a choice → gate-record --option X
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop

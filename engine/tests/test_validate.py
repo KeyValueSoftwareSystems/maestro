@@ -169,5 +169,19 @@ class InterviewValidationTest(unittest.TestCase):
         self.assertIn("bad-type", {i.code for i in issues})
 
 
+class InterviewDiscussTest(unittest.TestCase):
+    def codes(self, discuss):
+        node = {"id": "ask", "type": "interview", "questions_artifact": "q.json",
+                "artifact": "d.json", "discuss": discuss}
+        return {issue.code for issue in validate.validate_doc({"nodes": [node]})
+                if issue.level == "error"}
+
+    def test_discuss_block(self):
+        self.assertEqual(self.codes({"inputs": {"map": "docs/map.md"}, "model": "sonnet"}), set())
+        self.assertIn("unknown-key", self.codes({"evidence": {}}))
+        self.assertIn("bad-type", self.codes({"inputs": ["docs/map.md"]}))
+        self.assertIn("bad-type", self.codes("docs/map.md"))
+
+
 if __name__ == "__main__":
     unittest.main()

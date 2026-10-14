@@ -65,9 +65,11 @@ description is the seed for the workflow's bounded PRD interview when no require
    rebase/reset/status/…`) — never hand the user an engine command to type. The human's
    only inputs are gate decisions and the requirement folder; everything else you execute.
 2. **Never read worker-produced artifacts** (HLD, LLDs, diffs, reports) into your own
-   context. The only exception is an explicit `run_lead`: read and write only the exact paths
-   served in that action's prompt. `ask_interview` / `ask_interview_batch` never grant
-   permission to scan application code. Your context must stay small enough to drive a long pipeline.
+   context. Exceptions: an explicit `run_lead` (read and write only the exact paths served in
+   that action's prompt) and a design-approval question (see `ask_gate`). Interview
+   discussions never happen in your context: they go to an isolated `discussant` subagent or a
+   side chat (see `ask_interview_batch`). Your context must stay small enough to drive a long
+   pipeline.
 3. **Never skip, invent, or auto-answer a gate.** Gates exist to put a human in charge.
 4. **Relay honestly.** If a step failed, say so and report it via `fail` — never mark
    work done that is not.
@@ -252,23 +254,23 @@ real error or invalid output, use the same single retry then `fail` protocol as 
 
 ### `ask_interview`
 
-This is a durable, one-decision-at-a-time PRD Grill interview. Preflight `prd-interview`. On the
+This is a durable, one-decision-at-a-time Grill interview. Preflight the served skill. On the
 first question, show the served compact context once. Then show the current title, direct prompt,
-short `why`, and recommendation when present. Do not call it a PRD section and do not repeat the
-context on later questions or rounds. WAIT and never auto-answer for the human.
+short `why`, the recommendation, and any served `alternatives` with their trade-offs. Do not call
+it a document section and do not repeat the context on later questions or rounds. WAIT and never
+auto-answer for the human. If they are unsure or ask something back, run the isolated
+**discussion** described under `ask_interview_batch` before recording.
 
-- If the reply clearly accepts the proposal, record:
-
-```bash
-python3 .maestro/engine/maestroctl.py interview-record --slug <slug> --step <step> \
-    --section <section-id> --accept
-```
-
-- If the reply gives a clear correction or replacement, preserve it verbatim and record:
+Record exactly one outcome — the response kinds are the same as in a batch:
 
 ```bash
 python3 .maestro/engine/maestroctl.py interview-record --slug <slug> --step <step> \
-    --section <section-id> --answer '<human text verbatim>'
+    --section <section-id> --accept                       # the recommendation
+#   --option <n>                                           # served alternative n (1-based)
+#   --answer '<human text verbatim>'                       # their own answer
+#   --assume                                               # recommendation as a working assumption
+#   --defer '<human note verbatim>'                        # parked, not decided
+#   [--discussion '<one-sentence summary>'] [--raise '<point verbatim>' ...]
 ```
 
 If the reply is ambiguous, ask a short follow-up and do not record it. Each successful record
@@ -282,34 +284,77 @@ answer; it applies only when the human or served question identifies a real upst
 
 ### `ask_interview_batch`
 
-This is the fast path for a full Grill round. Preflight `prd-interview` and collect every served
-answer before recording any of them.
+A full Grill round, run as a conversation in three phases. Preflight the served skill (`prd-
+interview`, `hld-interview`, or `lld-interview`) and record nothing until all three are done
+(the only exception is the partial record before a side-chat handoff).
 
-When `presentation` is `popup`, use the host's native question UI (`AskUserQuestion` on Claude or
-`request_user_input` on Codex when available). Never print the question batch into normal chat.
-Put as many questions in each popup as the host supports, then immediately open the next popup
-until the entire served round is covered. This UI chunking is presentation only: do not analyze,
-run a command, generate follow-ups, or record answers between popups.
+**1. Collect.** When `presentation` is `popup`, use the host's native question UI
+(`AskUserQuestion` on Claude or `request_user_input` on Codex when available). Never print the
+question batch into normal chat. Put as many questions in each popup as the host supports, then
+immediately open the next popup until the round is covered; do not analyze, run a command, or
+record between popups. Each item shows the title, direct prompt, short `why`, and these options:
 
-For each popup item, include the title, direct prompt, short `why`, and recommendation. Let the
-human accept the recommendation or enter a custom answer through the popup's free-form option.
-Keep the collected mapping in memory. Clarify an ambiguous response through another popup before
-recording. If `presentation` requires a popup but the host exposes no native question tool, do not
-fall back to a normal chat questionnaire and do not mutate the run; report the missing capability
-in one line and stop.
+- the recommendation (`proposal`) labelled as recommended;
+- each served `alternative`, its `tradeoff` as the option description;
+- **Not sure — let's discuss**;
+- the host's free-form option, for the human's own answer or a side question ("btw, how does
+  billing handle this today?").
 
-When `presentation` is `chat`, use one numbered chat message as the compatibility fallback.
+A `kind: direction` item presents the proposed overall design for the human to confirm, challenge,
+or discuss — give its summary room (the option description or preview). End the round's last
+popup with one extra item, **Anything to add?** (`Nothing to add` / `I want to raise something`),
+so the human can lead, not only respond. If `presentation` requires a popup but the host exposes
+no native question tool, do not fall back to a chat questionnaire and do not mutate the run;
+report the missing capability in one line and stop. When `presentation` is `chat`, use one
+numbered chat message as the compatibility fallback, listing the same options.
 
-Map only answers that are clear. Never infer, silently accept, or drop an answer. After all popup
-chunks are complete, record the entire collected round in ONE command:
+**2. Discuss — never in your context.** Take each item where the human chose *Not sure*, asked
+something back, or left a `must_resolve` fact open, one at a time. The reading and reasoning for a
+discussion must never enter your context, so you only relay. Get the engine's brief first:
+
+```bash
+python3 .maestro/engine/maestroctl.py interview-brief --slug <slug> --step <step> \
+    --section <question-id>                # add --mode side for a side chat
+```
+
+*Default — isolated subagent.* Preflight the brief's `skill`, then spawn its `agent_type` with its
+`model` (Claude Code `Task`; Codex native subagent). Send the brief's `prompt` VERBATIM followed by
+the human's message verbatim. Show the human the subagent's reply verbatim, minus its final JSON
+line. Relay each follow-up to the SAME subagent (`SendMessage` on Claude Code); where the host
+cannot continue a subagent, start a fresh one with the brief, the last JSON `summary`, and the new
+message. Never answer from your own reading, never read the evidence yourself, and never
+paraphrase or extend a reply. Keep only each final JSON line (`status`, `candidate`, `summary`);
+let the reply text go.
+
+*Side chat — for a deep dive, or the human's choice.* Offer it whenever the human wants room to
+dig ("take it to a side chat"), and use it always where there is no subagent support (inline
+mode). First record every other clear answer of the round with `interview-record-batch` (a partial
+batch is valid and leaves the rest pending). Then run `interview-brief --mode side` and show the
+human its `side_chat` command for their harness: open a new chat, run it, come back and say
+*continue*. End your turn. On *continue*, call `next`: a question settled in the side chat is gone
+from the served round; one still open is served again — ask whether to discuss it again or answer.
+
+Close each subagent discussion with a native selector: the subagent's `candidate` (when present),
+the recommendation, any served alternative, *Use the recommendation as a working assumption*,
+*Park it as an open item*, *Take it to a side chat*, plus the free-form option. For *I want to raise
+something*, take the point in their words and confirm the exact wording to record; route any
+question it prompts through the same discussion path.
+
+**3. Record.** Map only answers the human actually gave. Never infer, silently accept, or drop an
+answer. Record the whole round, discussed items and raised points included, in ONE command:
 
 ```bash
 python3 .maestro/engine/maestroctl.py interview-record-batch --slug <slug> --step <step> \
-    --responses '{"question-id":{"accept":true},"other-id":{"answer":"human text verbatim"}}'
+    --responses '{"a":{"accept":true},"b":{"option":2},"c":{"answer":"verbatim","discussion":"…"},
+                  "d":{"assume":true},"e":{"defer":"verbatim note"}}' \
+    [--raise '<raised point verbatim>' ...]
 ```
 
-The engine validates the whole batch before recording anything, so one malformed response cannot
-partially update the run. Continue immediately with the returned action.
+`accept` and `assume` both take the recommendation; `assume` marks it unverified. `defer` parks the
+decision — it is never confirmed. `discussion` is the subagent's final JSON `summary`, so the next
+queue does not re-ask what was explored; never put the human's answer there. The engine validates the
+whole batch before recording anything, so one malformed response cannot partially update the run.
+Continue immediately with the returned action.
 
 Exception: after the atomic record, if an LLD response explicitly changes an approved parent
 decision, pause before acting on the returned action and follow **Capturing out-of-band input** for
@@ -360,6 +405,12 @@ open a conditional text box after a click. Never combine or skip the two interac
 Actions with `"synthesized"` set are engine-generated recovery gates (retry/skip/abort,
 continue/abort) — treat them exactly the same.
 
+**Questions at a design-approval gate.** If, instead of choosing, the human asks about the PRD,
+HLD, or LLD the gate names ("why one service?", "what happens on retry?"), answer it: read only the
+artifact the gate prompt names, and only the part the question needs. Explain, do not edit, and do
+not record anything. Then present the same gate again. If the conversation produces a change they
+want, that is their *revise* option's feedback — never apply it yourself.
+
 ### `ask_input`
 
 The human already selected the option named in the action. Show the action's prompt and
@@ -405,8 +456,9 @@ per-step models are ignored (everything runs on this session's model)."*
   branches one step at a time (never expect `run_agents`).
 - For `run_agent`: execute the served prompt YOURSELF — load the named skill and do the
   work — then call `complete` exactly as a subagent would have been completed.
-- `run_lead`, `ask_interview`, and `ask_interview_batch` behave the same in every harness; they
-  never spawn workers.
+- `run_lead`, `ask_interview`, and `ask_interview_batch` behave the same in every harness,
+  except that interview discussions always use the side chat: with no subagent, there is no
+  other way to keep them out of this context.
 - Context discipline still applies: after each inline step, carry forward only the JSON
   outputs; do not keep artifact contents in mind — re-read from disk in the step that
   needs them.

@@ -144,6 +144,8 @@ class SdlcE2E(unittest.TestCase):
                 "proposal": "Reject the stale request, explain why, and preserve entered data.",
                 "must_resolve": ["visible stale-request outcome", "recovery action"],
             }]
+            if questions and context_name != "prd-context.json":
+                questions[0]["kind"] = "direction"
             with open(full, "w") as fh:
                 json.dump({
                     "schema_version": 2,

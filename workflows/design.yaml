@@ -270,13 +270,18 @@ nodes:
       requirement files, explicit references, revision feedback, and earlier decisions when the
       decisions file exists. Ask only unanswered product decisions that materially change scope,
       user-visible behaviour, acceptance, or risk. Each item must resolve one decision, explain
-      briefly why it matters, and include a grounded recommendation when possible.
+      briefly why it matters, and include a grounded recommendation when possible. When a real
+      choice exists, add up to two alternatives, each with its concrete trade-off, so the human
+      can weigh options instead of only confirming yours.
 
       First audit every earlier answer against that question's must_resolve facts. A saved answer
       is not automatically complete. Use only the stored answer as confirmed when its source is
       user-answer; never fill its missing facts from the unaccepted proposal. Ask focused follow-ups
       for missing facts, concrete values, or contradictions between decisions. Use a new ID for a
-      follow-up so both answers remain visible.
+      follow-up so both answers remain visible. An assumption is a working answer the human could
+      not confirm; a deferred decision is parked, never settled; a user-raised point is the human's
+      own input that the queue must account for. Read each decision's discussion summary before
+      re-asking anything the human already explored.
 
       Test only relevant lenses: actor permissions; lifecycle and state transitions; timing and
       limits; conflicts or concurrent actions from the user's perspective; cancel, retry, and
@@ -328,6 +333,11 @@ nodes:
     questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
     batch_size: 12
     presentation: popup
+    discuss:
+      inputs:
+        requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+        references: "${steps.collect_references.outputs.refs}"
+        project_summaries: "AGENTS.md, CLAUDE.md, docs/architecture.md, docs/functional/, docs/technical/"
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: prepare_prd_questions
 
@@ -555,12 +565,21 @@ nodes:
       support, migration, rollout, or a material trade-off. Do not ask for endpoint fields, table
       columns, filenames, task breakdowns, or other LLD details. Audit earlier answers against their
       must_resolve facts and each other; a saved answer is not automatically complete. Use only the
-      stored answer as confirmed for user-answer decisions, never its unaccepted proposal.
+      stored answer as confirmed for user-answer decisions, never its unaccepted proposal. Treat
+      user-raised points as the human's own constraints, honour discussion summaries, re-ask a
+      blocking deferred decision with sharper options, and keep a non-blocking one deferred to LLD.
+
+      Make it a design conversation, not a questionnaire: give every genuine trade-off its
+      recommendation plus up to two real alternatives with their concrete consequences. When no
+      other gap remains, ask one kind "direction" question whose proposal summarises the intended
+      architecture (owners, main flow, key trade-offs) for the human to confirm, challenge, or
+      discuss; ask a fresh one whenever later answers change it.
 
       Write schema_version 2 with 4-8 questions when several gaps remain, fewer when nearly clear,
-      and an empty queue only when all material architecture facts are concrete and consistent.
-      Every question declares 1-4 short must_resolve facts. Include audit.unresolved and
-      audit.contradictions; both must be empty with an empty queue. Validate before completing.
+      and an empty queue only when all material architecture facts are concrete and consistent and
+      the latest direction is confirmed. Every question declares 1-4 short must_resolve facts.
+      Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
+      Validate before completing.
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
       again — do not rebuild the queue or re-read sources.
@@ -583,7 +602,7 @@ nodes:
   - id: validate_hld_questions
     type: script
     label: Validate architecture question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --require-direction, --report]
     routes:
       - {when: "${steps.validate_hld_questions.outputs.valid} == false", to: prepare_hld_questions}
       - {when: "${steps.validate_hld_questions.outputs.state} == clear", to: author_hld}
@@ -599,6 +618,11 @@ nodes:
     questions_artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
     batch_size: 12
     presentation: popup
+    discuss:
+      inputs:
+        requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+        codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
+        source: "only the files that settle this question"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     next: prepare_hld_questions
 
@@ -679,6 +703,11 @@ nodes:
     questions_artifact: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
     batch_size: 12
     presentation: popup
+    discuss:
+      inputs:
+        requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+        hld_draft: ".maestro/runs/${inputs.slug}/hld.md"
+        codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     next: author_hld
 
