@@ -165,7 +165,11 @@ def validate_doc(doc, where=""):
                 warn("unreachable-node", f"node {nid!r} is unreachable from start")
         for cyc in _find_cycles(ids):
             kinds = {ids[n].get("type") for n in cyc}
-            if "gate" not in kinds and "script" not in kinds:
+            # A subworkflow that routes on its child's reported outputs is a deterministic brake
+            # too: the stage's own gates decide, the parent only acts on the recorded choice.
+            routed_stage = any(ids[n].get("type") == "subworkflow" and ids[n].get("routes")
+                               for n in cyc)
+            if "gate" not in kinds and "script" not in kinds and not routed_stage:
                 warn("cycle-no-brake",
                      f"cycle {' -> '.join(cyc)} contains no gate and no script — "
                      f"agent-only loops burn tokens with nothing deterministic to stop them")

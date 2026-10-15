@@ -865,6 +865,60 @@ class SubworkflowTest(Sim):
         self.assertEqual((action["action"], action["step"]), ("run_agent", "child/qa"))
 
 
+STAGE_CHILD = """\
+version: 1
+name: stage
+nodes:
+  - id: approval
+    type: gate
+    prompt: Ship it?
+    options:
+      - {id: approve, label: Approve, to: end}
+      - {id: revise, label: Send back, to: end, input: feedback}
+outputs:
+  choice: "${steps.approval.outputs.choice}"
+  feedback: "${steps.approval.outputs.feedback}"
+"""
+
+STAGE_PARENT = """\
+version: 1
+name: staged
+nodes:
+  - id: build
+    type: script
+    run: [echo, "{}"]
+    max_visits: 1
+    on_exhausted: abort
+    next: stage
+  - id: stage
+    type: subworkflow
+    workflow: workflows/stage.yaml
+    routes:
+      - {when: "${steps.stage.outputs.choice} == revise", to: build}
+      - {to: end}
+"""
+
+
+class StageDecisionTest(Sim):
+    """A stage that ends through a human gate option carries that decision to its parent: the
+    parent's back-edge is human-bounded exactly like the gate edge was before the split."""
+
+    def test_child_gate_decision_bypasses_parent_visit_cap(self):
+        self.write_wf("stage.yaml", STAGE_CHILD)
+        self.start(self.write_wf("staged.yaml", STAGE_PARENT))
+        for _ in range(3):  # `build` allows one visit; each human "revise" still re-runs it
+            action = self.nxt()
+            self.assertEqual((action["action"], action["step"]), ("run_script", "build"))
+            action = self.complete("build", exit_code=0, stdout="{}")
+            self.assertEqual((action["action"], action["step"]), ("ask_gate", "stage/approval"))
+            self.gate("stage/approval", "revise", input_text="tighten it")
+        self.assertEqual(self.state()["steps"]["build"]["visits"], 4)
+        self.assertEqual(self.state()["steps"]["stage"]["outputs"]["feedback"], "tighten it")
+        self.complete("build", exit_code=0, stdout="{}")
+        action = self.gate("stage/approval", "approve")
+        self.assertEqual(action["action"], "done")
+
+
 class ResumeTest(Sim):
     def test_next_is_idempotent(self):
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))

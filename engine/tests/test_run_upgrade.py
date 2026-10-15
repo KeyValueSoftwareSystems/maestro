@@ -146,5 +146,154 @@ class RunUpgradeTest(unittest.TestCase):
         self.assertEqual(queue["hld_sha256"], statemod.sha256_file(hld))
 
 
+class StageRelayoutTest(unittest.TestCase):
+    """Format 2 -> 3: inline steps re-nest under the stage children that now declare them."""
+
+    REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="maestro-relayout-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        shutil.copytree(os.path.join(self.REPO, "workflows"),
+                        os.path.join(self.tmp, ".maestro", "workflows"))
+        wrapper = os.path.join(self.tmp, ".maestro", "workflows", "wrapper.yaml")
+        with open(wrapper, "w", encoding="utf-8") as fh:
+            fh.write(
+                "version: 1\nname: wrapper\nnodes:\n"
+                "  - id: design\n    type: subworkflow\n"
+                "    workflow: .maestro/workflows/design.yaml\n"
+                "    inputs: {slug: \"${inputs.slug}\", feature: Demo}\n"
+            )
+
+    @staticmethod
+    def done(**outputs):
+        return {"status": "done", "attempts": 0, "visits": 1, "outputs": outputs}
+
+    @staticmethod
+    def pending():
+        return {"status": "pending", "attempts": 0, "visits": 1, "outputs": {}}
+
+    def legacy_layout(self, prefix):
+        """A format-2 ledger paused at the HLD interview, PRD approved inline."""
+        steps = {
+            prefix + "upgrade_entry": self.done(state="normal"),
+            prefix + "assert_requirement": self.done(state="have"),
+            prefix + "project_context": self.done(project_context="ctx"),
+            prefix + "prd_approval": self.done(choice="approve"),
+            prefix + "check_codebase_map": self.done(stale=False),
+            prefix + "prepare_hld_questions": self.pending(),
+        }
+        return steps, [prefix + "prepare_hld_questions"], [
+            {"step": prefix + "prd_approval", "option": "approve", "at": "t"}]
+
+    def upgrade(self, slug, workflow, steps, cursors, gates, frames=None):
+        data, _ = resolver.init_run(slug, workflow, {"feature": "Demo"}, self.tmp)
+        data["steps"] = steps
+        data["run"]["cursors"] = cursors
+        data["gates"] = gates
+        data["frames"] = frames or {}
+        data.pop("run_format")
+        statemod.save(slug, data, self.tmp)
+        self.assertEqual(run_upgrade.inspect(slug, self.tmp, workflow)["mode"], "compatible-rebase")
+        self.assertTrue(run_upgrade.apply(slug, self.tmp, workflow)["applied"])
+        return statemod.load(slug, self.tmp)
+
+    def test_main_frame_steps_move_under_stage_children(self):
+        state = self.upgrade("feature", ".maestro/workflows/design.yaml", *self.legacy_layout(""))
+        self.assertEqual(state["run"]["cursors"], ["hld/prepare_hld_questions"])
+        self.assertIn("upgrade_entry", state["steps"])
+        self.assertEqual(state["steps"]["intake/project_context"]["outputs"],
+                         {"project_context": "ctx"})
+        self.assertEqual(state["steps"]["intake"]["outputs"]["project_context"], "ctx")
+        self.assertEqual(state["steps"]["prd"]["status"], "done")
+        self.assertEqual(state["frames"]["prd"]["inputs"]["project_context"], "ctx")
+        self.assertEqual(state["steps"]["prd"]["outputs"]["prd_path"],
+                         ".maestro/runs/feature/requirement/prd.md")
+        self.assertEqual(state["steps"]["map"]["status"], "done")
+        self.assertIn("map/check_codebase_map", state["steps"])
+        self.assertEqual(state["steps"]["hld"]["status"], "running")
+        self.assertEqual(state["frames"]["hld"]["inputs"]["slug"], "feature")
+        self.assertNotIn("lld", state["frames"])
+        self.assertNotIn("import", state["frames"])
+        self.assertEqual(state["gates"][0]["step"], "prd/prd_approval")
+        run = resolver.Run("feature", self.tmp)
+        self.assertEqual(resolver.next_action(run)["step"], "hld/prepare_hld_questions")
+
+    def test_nested_design_frame_and_contract_name_clash(self):
+        design = ".maestro/workflows/design.yaml"
+        frames = {"design": {
+            "workflow": design, "sha256": "stale",
+            "inputs": {"slug": "nested", "feature": "Demo"},
+        }}
+        steps, cursors, gates = self.legacy_layout("design/")
+        running = {"status": "running", "attempts": 0, "visits": 1, "outputs": {},
+                   "node_type": "subworkflow"}
+        state = self.upgrade("nested", ".maestro/workflows/wrapper.yaml",
+                             {"design": running, **steps}, cursors, gates, frames=frames)
+        self.assertEqual(state["run"]["cursors"], ["design/hld/prepare_hld_questions"])
+        self.assertEqual(state["steps"]["design/prd"]["status"], "done")
+        self.assertIn("design/prd/prd_approval", state["steps"])
+        self.assertIn("design/intake/assert_requirement", state["steps"])
+        self.assertNotIn("design/prd_approval", state["steps"])
+        # `contract` is both the old inline agent and the new stage node id.
+        data = statemod.load("nested", self.tmp)
+        relaid = resolver.Run("nested", self.tmp, state_data={
+            **data, "steps": {"design/contract": self.done(contract_summary="old")},
+            "frames": {"design": data["frames"]["design"]},
+            "run": {"status": "running", "cursors": ["design/test_cases"]}, "gates": [],
+        })
+        run_upgrade.relayout_stages(relaid)
+        self.assertEqual(relaid.state["steps"]["design/contract/contract"]["outputs"],
+                         {"contract_summary": "old"})
+        self.assertEqual(relaid.state["steps"]["design/contract"]["status"], "running")
+        self.assertEqual(relaid.state["run"]["cursors"], ["design/contract/test_cases"])
+        # Already in the stage layout: a second pass changes nothing.
+        before = json.dumps(relaid.state, sort_keys=True)
+        self.assertEqual(run_upgrade.relayout_stages(relaid), [])
+        self.assertEqual(json.dumps(relaid.state, sort_keys=True), before)
+
+    def test_sdlc_main_stages_keep_a_run_parked_at_release(self):
+        """Old flat sdlc-main: review steps, subworkflow frames and parallel branches move too."""
+        sub = lambda: {"status": "done", "attempts": 0, "visits": 1, "outputs": {},
+                       "node_type": "subworkflow"}
+        steps = {
+            "design": {**sub(), "outputs": {"hld_path": "h.md", "contract_path": "c.yaml"}},
+            "effective_design": self.done(),
+            "arch_review": self.done(summary="sound", blocking=False),
+            "arch_review_validate": self.done(blocking=False, revision_scope="none"),
+            "contract_approval": self.done(choice="approve"),
+            "implement": {**sub(), "node_type": "parallel"},
+            "implement[slot_1]/claim": self.done(done=True),
+            "finalize_implementation": self.done(manifest_path="m.json"),
+            "qa": sub(),
+            "qa/qa_run": self.done(passed=True),
+            "review_pack": self.done(pack_path="pack.md"),
+            "release_approval": self.pending(),
+        }
+        frames = {
+            "design": {"workflow": ".maestro/workflows/design.yaml", "sha256": "stale",
+                       "inputs": {"slug": "shipit"}},
+            "qa": {"workflow": ".maestro/workflows/qa.yaml", "sha256": "stale",
+                   "inputs": {"slug": "shipit"}},
+        }
+        gates = [{"step": "contract_approval", "option": "approve", "at": "t"}]
+        state = self.upgrade("shipit", ".maestro/workflows/sdlc-main.yaml", steps,
+                             ["release_approval"], gates, frames=frames)
+        self.assertEqual(state["run"]["cursors"], ["delivery/release_approval"])
+        self.assertIn("design", state["frames"])
+        self.assertIn("delivery/qa", state["frames"])
+        self.assertNotIn("qa", state["frames"])
+        self.assertIn("delivery/qa/qa_run", state["steps"])
+        self.assertIn("delivery/implement[slot_1]/claim", state["steps"])
+        self.assertEqual(state["steps"]["review"]["status"], "done")
+        self.assertEqual(state["steps"]["review"]["outputs"]["approval"], "approve")
+        self.assertEqual(state["frames"]["review"]["inputs"]["hld_path"], "h.md")
+        self.assertEqual(state["steps"]["delivery"]["status"], "running")
+        self.assertEqual(state["gates"][0]["step"], "review/contract_approval")
+        run = resolver.Run("shipit", self.tmp)
+        action = resolver.next_action(run)
+        self.assertEqual((action["action"], action["step"]), ("ask_gate", "delivery/release_approval"))
+
+
 if __name__ == "__main__":
     unittest.main()

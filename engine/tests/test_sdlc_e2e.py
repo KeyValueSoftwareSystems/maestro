@@ -407,7 +407,7 @@ class SdlcE2E(unittest.TestCase):
                     if decisions is None and step.rsplit("/", 1)[-1] in (
                             "project_context_confirm", "feature_goal_confirm"):
                         decisions = [("confirm", None)] * 20
-                    if decisions is None and step == "impl_scope":
+                    if decisions is None and step == "delivery/impl_scope":
                         decisions = [("all", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
@@ -462,12 +462,12 @@ class SdlcE2E(unittest.TestCase):
     def test_happy_path(self):
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
@@ -477,8 +477,8 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertIn("workspace_sync_initial/plan", steps)
         self.assertIn("workspace_sync_initial/lock", steps)
-        self.assertIn("workspace_sync_pre_impl/plan", steps)
-        self.assertIn("workspace_sync_pre_impl/lock", steps)
+        self.assertIn("delivery/workspace_sync_pre_impl/plan", steps)
+        self.assertIn("delivery/workspace_sync_pre_impl/lock", steps)
         self.assertNotIn("workspace_sync_initial/refresh_knowledge", steps)
         # both selected repos implemented through runtime claims, not hard-coded stacks
         impl_steps = [s for s in steps if s.endswith("/impl/implement")]
@@ -486,13 +486,13 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(len(impl_steps), 2)
         self.assertEqual(len(review_steps), 2)
         # the lead confirms context, grills one material edge, and writes once before HLD
-        self.assertIn("design/project_context", steps)
-        self.assertIn("design/prd_interview", steps)
-        self.assertIn("design/author_prd", steps)
-        self.assertLess(steps.index("design/author_prd"), steps.index("design/author_hld"))
+        self.assertIn("design/intake/project_context", steps)
+        self.assertIn("design/prd/prd_interview", steps)
+        self.assertIn("design/prd/author_prd", steps)
+        self.assertLess(steps.index("design/prd/author_prd"), steps.index("design/hld/author_hld"))
         # the LLDs are approved by a human before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
-        self.assertIn("design/lld_workstreams_wait", gate_steps)
+        self.assertIn("design/lld/lld_workstreams_wait", gate_steps)
         child_approvals = [step for step in gate_steps if step.endswith("/lld_approval")]
         self.assertEqual(len(child_approvals), 2)
         child_authors = [step for step in steps if step.endswith("/author_lld")]
@@ -505,10 +505,10 @@ class SdlcE2E(unittest.TestCase):
         ))
         self.assertFalse(any(step.endswith("/lld_post_interview") for step in steps))
         self.assertFalse(any(step.endswith("/repair_lld") for step in steps))
-        self.assertLess(steps.index("design/lld_workstreams_wait"), steps.index(impl_steps[0]))
+        self.assertLess(steps.index("design/lld/lld_workstreams_wait"), steps.index(impl_steps[0]))
         # design ran before implementation, qa after
-        self.assertLess(steps.index("design/author_hld"), steps.index("arch_review"))
-        self.assertLess(steps.index("finalize_implementation"), steps.index("qa/qa_run"))
+        self.assertLess(steps.index("design/hld/author_hld"), steps.index("review/arch_review"))
+        self.assertLess(steps.index("delivery/finalize_implementation"), steps.index("delivery/qa/qa_run"))
 
     def test_valid_existing_prd_uses_fast_path(self):
         self.prep_tasks_json()
@@ -516,68 +516,68 @@ class SdlcE2E(unittest.TestCase):
             ".maestro/runs/demo/requirement/prd.md", "existing-prd-fixture"
         )
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
-        self.assertIn("design/check_existing_prd", steps)
-        self.assertNotIn("design/prepare_prd_questions", steps)
-        self.assertNotIn("design/prd_interview", steps)
-        self.assertNotIn("design/author_prd", steps)
+        self.assertIn("design/prd/check_existing_prd", steps)
+        self.assertNotIn("design/prd/prepare_prd_questions", steps)
+        self.assertNotIn("design/prd/prd_interview", steps)
+        self.assertNotIn("design/prd/author_prd", steps)
 
     def test_revise_cascade_from_contract_gate(self):
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None), ("none", None)],
-            "design/prd_approval": [("approve", None), ("approve", None)],
-            "design/hld_approval": [("approve", None), ("approve", None)],
-            "design/lld_scope": [("all", None), ("all", None)],
-            "contract_approval": [("revise", "tighten the API"), ("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None), ("none", None)],
+            "design/prd/prd_approval": [("approve", None), ("approve", None)],
+            "design/hld/hld_approval": [("approve", None), ("approve", None)],
+            "design/lld/lld_scope": [("all", None), ("all", None)],
+            "review/contract_approval": [("revise", "tighten the API"), ("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
         # Shared design ran twice. Repo approvals remain separate child ledgers and are reused
         # only because the deterministic fixture produced the same HLD bytes.
-        self.assertEqual(steps.count("design/author_hld"), 2)
-        self.assertEqual(steps.count("design/contract"), 2)
+        self.assertEqual(steps.count("design/hld/author_hld"), 2)
+        self.assertEqual(steps.count("design/contract/contract"), 2)
         self.assertEqual(len([s for s in steps if s.endswith("/lld_approval")]), 2)
 
     def test_deferred_repo_resumes_without_repeating_design(self):
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "impl_scope": [
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/impl_scope": [
                 ("pick", "backend"),
                 ("pick", "frontend"),
             ],
-            "release_approval": [("approve", None), ("approve", None)],
-            "impl_deferred_gate": [("implement_more", None)],
+            "delivery/release_approval": [("approve", None), ("approve", None)],
+            "delivery/impl_deferred_gate": [("implement_more", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
-        self.assertEqual(steps.count("design/author_hld"), 1)
-        self.assertEqual(steps.count("arch_review"), 1)
-        self.assertEqual(steps.count("contract_approval"), 1)
+        self.assertEqual(steps.count("design/hld/author_hld"), 1)
+        self.assertEqual(steps.count("review/arch_review"), 1)
+        self.assertEqual(steps.count("review/contract_approval"), 1)
         self.assertEqual(
             len([1 for action_name, step in trace
-                 if action_name == "ask_gate" and step == "impl_scope"]),
+                 if action_name == "ask_gate" and step == "delivery/impl_scope"]),
             2,
         )
         self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 2)
-        self.assertEqual(steps.count("release_approval"), 2)
+        self.assertEqual(steps.count("delivery/release_approval"), 2)
 
         queue_path = os.path.join(
             self.tmp, ".maestro", "runs", "demo", "implementation-repos.json",
@@ -592,30 +592,30 @@ class SdlcE2E(unittest.TestCase):
         """PRD rescope re-confirms the feature, interview, and single-write stage."""
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("rescope", "sharpen the scope"), ("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("rescope", "sharpen the scope"), ("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
         # PRD authored twice (revision forces the interview path despite a valid old file).
-        self.assertEqual(steps.count("design/author_prd"), 2)
-        self.assertEqual(steps.count("design/prd_interview"), 1)
-        self.assertEqual(steps.count("design/author_hld"), 1)
-        self.assertNotIn("design/revise_prd", steps)
+        self.assertEqual(steps.count("design/prd/author_prd"), 2)
+        self.assertEqual(steps.count("design/prd/prd_interview"), 1)
+        self.assertEqual(steps.count("design/hld/author_hld"), 1)
+        self.assertNotIn("design/prd/revise_prd", steps)
 
     def _design_gates(self, prd, hld):
         return {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": prd,
-            "design/hld_approval": hld,
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": prd,
+            "design/hld/hld_approval": hld,
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
 
     def test_prd_revise_is_a_targeted_edit(self):
@@ -626,11 +626,11 @@ class SdlcE2E(unittest.TestCase):
             [("approve", None)]))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/revise_prd"), 2)
-        self.assertEqual(steps.count("design/author_prd"), 1)
-        self.assertEqual(steps.count("design/feature_goal"), 1)
-        self.assertEqual(steps.count("design/prepare_prd_questions"), 2)  # initial loop only
-        self.assertEqual(steps.count("design/validate_prd"), 3)
+        self.assertEqual(steps.count("design/prd/revise_prd"), 2)
+        self.assertEqual(steps.count("design/prd/author_prd"), 1)
+        self.assertEqual(steps.count("design/prd/feature_goal"), 1)
+        self.assertEqual(steps.count("design/prd/prepare_prd_questions"), 2)  # initial loop only
+        self.assertEqual(steps.count("design/prd/validate_prd"), 3)
 
     def test_hld_revise_is_a_targeted_edit(self):
         self.prep_tasks_json()
@@ -638,10 +638,10 @@ class SdlcE2E(unittest.TestCase):
             [("approve", None)], [("revise", "name the cache owner"), ("approve", None)]))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/revise_hld"), 1)
-        self.assertEqual(steps.count("design/author_hld"), 1)
-        self.assertEqual(steps.count("design/prepare_hld_questions"), 2)
-        self.assertEqual(steps.count("design/validate_hld"), 2)
+        self.assertEqual(steps.count("design/hld/revise_hld"), 1)
+        self.assertEqual(steps.count("design/hld/author_hld"), 1)
+        self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 2)
+        self.assertEqual(steps.count("design/hld/validate_hld"), 2)
 
     def test_hld_revise_needing_a_decision_falls_back_to_clarification(self):
         self.prep_tasks_json()
@@ -652,9 +652,9 @@ class SdlcE2E(unittest.TestCase):
                                             "needs_clarification": True}})
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/revise_hld"), 1)
-        self.assertEqual(steps.count("design/prepare_hld_questions"), 3)
-        self.assertEqual(steps.count("design/author_hld"), 2)
+        self.assertEqual(steps.count("design/hld/revise_hld"), 1)
+        self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 3)
+        self.assertEqual(steps.count("design/hld/author_hld"), 2)
 
     def test_hld_rethink_runs_the_full_clarification_pass(self):
         self.prep_tasks_json()
@@ -662,22 +662,22 @@ class SdlcE2E(unittest.TestCase):
             [("approve", None)], [("rethink", "split the service"), ("approve", None)]))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertNotIn("design/revise_hld", steps)
-        self.assertEqual(steps.count("design/author_hld"), 2)
+        self.assertNotIn("design/hld/revise_hld", steps)
+        self.assertEqual(steps.count("design/hld/author_hld"), 2)
 
     def test_repo_lld_revise_is_isolated_and_requires_feedback(self):
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
             "lld:backend": [
                 ("revise", "Rotate refresh tokens and document the failure path."),
                 ("approve", None),
             ],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
@@ -695,13 +695,13 @@ class SdlcE2E(unittest.TestCase):
 
     def _qa_gates(self, qa_gate):
         return {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "qa/qa_gate": qa_gate,
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/qa/qa_gate": qa_gate,
+            "delivery/release_approval": [("approve", None)],
         }
 
     def test_qa_product_bug_escalates_without_rerunning_the_suite(self):
@@ -713,9 +713,9 @@ class SdlcE2E(unittest.TestCase):
         })
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("qa/qa_run"), 1)
-        self.assertEqual(steps.count("qa/qa_fix"), 1)
-        self.assertIn("qa/qa_gate", steps)
+        self.assertEqual(steps.count("delivery/qa/qa_run"), 1)
+        self.assertEqual(steps.count("delivery/qa/qa_fix"), 1)
+        self.assertIn("delivery/qa/qa_gate", steps)
 
     def test_qa_harness_fix_reruns_the_suite(self):
         self.prep_tasks_json()
@@ -725,20 +725,20 @@ class SdlcE2E(unittest.TestCase):
             "qa_run": lambda: next(runs)})
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("qa/qa_run"), 2)
-        self.assertEqual(steps.count("qa/qa_fix"), 1)
-        self.assertNotIn("qa/qa_gate", steps)
+        self.assertEqual(steps.count("delivery/qa/qa_run"), 2)
+        self.assertEqual(steps.count("delivery/qa/qa_fix"), 1)
+        self.assertNotIn("delivery/qa/qa_gate", steps)
 
     def test_blocking_arch_review_gate_waive(self):
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "arch_gate": [("waive", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/arch_gate": [("waive", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates, agent_overrides={
             "arch_review": {
@@ -748,7 +748,7 @@ class SdlcE2E(unittest.TestCase):
             },
         })
         self.assertEqual(action["action"], "done", action)
-        self.assertIn("arch_gate", [s for a, s in trace if a == "ask_gate"])
+        self.assertIn("review/arch_gate", [s for a, s in trace if a == "ask_gate"])
 
     def test_arch_review_lld_only_correction_does_not_revisit_prd_or_hld(self):
         self.prep_tasks_json()
@@ -778,23 +778,23 @@ class SdlcE2E(unittest.TestCase):
             }
 
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "arch_gate": [("lld_only", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/arch_gate": [("lld_only", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates, agent_overrides={"arch_review": review_outputs})
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
-        self.assertEqual(steps.count("design/prd_approval"), 1)
-        self.assertEqual(steps.count("design/author_hld"), 1)
-        self.assertEqual(steps.count("design/lld_scope"), 1)
+        self.assertEqual(steps.count("design/prd/prd_approval"), 1)
+        self.assertEqual(steps.count("design/hld/author_hld"), 1)
+        self.assertEqual(steps.count("design/lld/lld_scope"), 1)
         self.assertEqual(steps.count("lld:backend/lld_approval"), 2)
         self.assertEqual(steps.count("lld:frontend/lld_approval"), 1)
-        self.assertEqual(steps.count("arch_review"), 2)
+        self.assertEqual(steps.count("review/arch_review"), 2)
 
         queue_path = os.path.join(
             self.tmp, ".maestro", "runs", "demo", "lld-repos.json",
@@ -848,12 +848,12 @@ class SdlcE2E(unittest.TestCase):
         globals()["canned_agent_outputs"] = patched
         try:
             gates = {
-                "design/collect_references": [("none", None)],
-                "design/prd_approval": [("approve", None)],
-                "design/hld_approval": [("approve", None)],
-                "design/lld_scope": [("all", None)],
-                "contract_approval": [("approve", None)],
-                "release_approval": [("approve", None)],
+                "design/intake/collect_references": [("none", None)],
+                "design/prd/prd_approval": [("approve", None)],
+                "design/hld/hld_approval": [("approve", None)],
+                "design/lld/lld_scope": [("all", None)],
+                "review/contract_approval": [("approve", None)],
+                "delivery/release_approval": [("approve", None)],
             }
             action, trace = self.drive(gates)
         finally:
@@ -866,22 +866,22 @@ class SdlcE2E(unittest.TestCase):
         """The HLD resolves one grouped architecture round before writing once."""
         self.prep_tasks_json()
         gates = {
-            "design/collect_references": [("none", None)],
-            "design/prd_approval": [("approve", None)],
-            "design/hld_approval": [("approve", None)],
-            "design/lld_scope": [("all", None)],
-            "contract_approval": [("approve", None)],
-            "release_approval": [("approve", None)],
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
-        self.assertEqual(steps.count("design/hld_interview"), 1)
-        self.assertEqual(steps.count("design/author_hld"), 1)
-        self.assertIn("design/validate_hld_post_questions", steps)
-        self.assertIn("design/validate_hld", steps)
-        self.assertNotIn("design/hld_post_interview", steps)
-        self.assertNotIn("design/repair_hld", steps)
+        self.assertEqual(steps.count("design/hld/hld_interview"), 1)
+        self.assertEqual(steps.count("design/hld/author_hld"), 1)
+        self.assertIn("design/hld/validate_hld_post_questions", steps)
+        self.assertIn("design/hld/validate_hld", steps)
+        self.assertNotIn("design/hld/hld_post_interview", steps)
+        self.assertNotIn("design/hld/repair_hld", steps)
 
     def test_prd_interview_path_when_requirement_empty(self):
         """An empty requirement uses lead-only clarification and a durable interview."""
@@ -916,16 +916,17 @@ class SdlcE2E(unittest.TestCase):
                 resolver.complete_step(run, step, exit_code=proc.returncode,
                                        stdout=proc.stdout)
             elif action["action"] == "ask_gate":
-                if step == "requirement_intake":
+                gate = step.rsplit("/", 1)[-1]  # phase children nest paths: prd/<gate>
+                if gate == "requirement_intake":
                     resolver.record_gate(run, step, "clarify")
-                elif step == "collect_references":
+                elif gate == "collect_references":
                     resolver.record_gate(run, step, "provide")
                     resolver.record_gate_input(run, step, "https://figma.com/file/demo")
-                elif step in ("project_context_confirm", "feature_goal_confirm"):
+                elif gate in ("project_context_confirm", "feature_goal_confirm"):
                     resolver.record_gate(run, step, "confirm")
-                elif step == "prd_approval":
+                elif gate == "prd_approval":
                     resolver.record_gate(run, step, "approve")
-                elif step == "map_stale_gate":
+                elif gate == "map_stale_gate":
                     resolver.record_gate(run, step, "proceed")
                 else:
                     self.fail(f"unexpected gate {step}")

@@ -46,7 +46,7 @@ class LldWorkstreamTest(unittest.TestCase):
             "feature", ".maestro/workflows/sdlc-main.yaml", "parent-hash",
             {"slug": "feature", "feature": "Feature"},
         )
-        parent_state["run"]["cursors"] = ["design/lld_workstreams_wait"]
+        parent_state["run"]["cursors"] = ["design/lld/lld_workstreams_wait"]
         statemod.save("feature", parent_state, self.root)
         self.assertEqual(lld_repo_pool.cmd_init(SimpleNamespace(
             root=self.root, slug="feature", choice="all", repos_text="",

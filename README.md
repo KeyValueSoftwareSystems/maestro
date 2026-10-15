@@ -427,6 +427,9 @@ After install, in your project repo:
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
   workflows/  the example pack: sdlc-main / workspace-sync / design / impl / qa,
+              split into small stages: sdlc-main's design-review / delivery,
+              design's design-import / -intake / -prd / -map / -hld / -lld /
+              -contract (+ repo-lld per repository),
               plus archive / build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)
   docs/       workflow-spec.md (the workflow spec)
