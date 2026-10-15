@@ -8,7 +8,10 @@ tags: [sdlc, requirement]
 # PRD interview
 
 Build shared understanding before prose. This skill runs in the lead agent's context so the
-conversation stays warm; never delegate it to a worker.
+conversation stays warm; never delegate it to a worker. The one exception is discussing a single
+question the user is unsure about: that runs in an isolated discussion agent or a side chat, under
+this skill's read boundary and conversation standards, so its reading never fills the lead's
+context.
 
 ## Read boundary
 
@@ -31,8 +34,9 @@ The served instruction selects one mode:
    prior answers against their declared resolution facts before finding new gaps. Use an empty
    `questions` array only when no material ambiguity or contradiction remains.
 4. **Interview turn** — collect every question served in the current action through the requested
-   presentation surface. Show each short reason and grounded recommendation. Accumulate answers
-   across UI chunks without processing them, then record the complete round in one batch operation.
+   presentation surface, with its reason, recommendation, alternatives, and a *not sure* option.
+   Then discuss each item the human is unsure about or asked about, take any point they raise, and
+   record the complete round in one batch operation (see **Conversation**).
 
 ## Grill method
 
@@ -44,6 +48,8 @@ requirements, references, revision feedback, and earlier answers.
 - Explain in one short sentence why the answer changes the product.
 - Recommend an answer only when evidence supports it. A recommendation is not confirmed until the
   user accepts it.
+- When the decision is a genuine choice, add up to two `alternatives`, each a short `label` and the
+  concrete `tradeoff` a product owner would weigh. Do not pad a clear decision with straw options.
 - Challenge the happy path only through relevant lenses: permissions; lifecycle transitions;
   timing and limits; visible conflict/concurrency; cancellation, retry, and recovery; invalid or
   stale input; notifications and external effects; privacy and visibility; admin overrides;
@@ -60,6 +66,13 @@ A recorded answer is not automatically a resolved decision.
   settle one fact and leave another open.
 - Treat only the stored `answer` as confirmed. Do not copy an unanswered part of `proposal` into a
   decision when `source` is `user-answer`.
+- Read every `source`: `chosen-alternative` and `accepted-proposal` are confirmed; `assumption` is
+  a working answer the user could not verify; `deferred` is parked and settles nothing;
+  `user-raised` is the user's own requirement or concern — reconcile it with the other decisions
+  and ask a follow-up if it is incomplete. A `discussion` summary records what was already
+  explored; build on it instead of re-asking.
+- Re-ask a deferred decision only when the PRD cannot be written honestly without it, and then with
+  a sharper question or options that make it answerable; otherwise leave it parked.
 - Compare decisions with each other. If two rules disagree about an actor, state, boundary, limit,
   or timing condition, ask one focused reconciliation question.
 - Ask a follow-up only for the missing or conflicting fact. Give it a new feature-specific ID so
@@ -70,9 +83,21 @@ A recorded answer is not automatically a resolved decision.
 
 The queue JSON has `schema_version: 2`, `questions`, and an `audit` object. Each question has `id`,
 `title`, `question`, `why`, `proposal`, and `must_resolve`: one to four short facts the answer must
-make explicit. `audit.unresolved` and `audit.contradictions` briefly name the gaps that produced the
+make explicit. Optional `alternatives` holds at most two `{label, tradeoff}` objects. `audit.unresolved` and `audit.contradictions` briefly name the gaps that produced the
 queue. Both arrays must be empty when `questions` is empty. Keep IDs stable and feature-specific;
 they are internal and must not appear in the PRD.
+
+## Conversation
+
+The user may not know an answer. That is a normal outcome, not a failure — help them get there.
+
+- When they are unsure or ask something back, explain what the decision changes for users, why you
+  recommend what you do, and when an alternative would win. Answer side questions from the
+  requirement files, references, and maintained summaries; say when those do not cover it.
+- If a fact belongs to someone else (legal, ops, a client), say so and offer to record the
+  recommendation as a working assumption or park the decision.
+- Invite the user to raise what you missed. Their points are as binding as your questions.
+- Keep turns short and let the user steer; this is a conversation, not a lecture.
 
 ## Standards
 

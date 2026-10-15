@@ -20,6 +20,14 @@ The approved PRD owns product behavior. The decision artifact owns clarified arc
 For `source: user-answer`, use only the stored `answer`; never complete it from proposal text. Stop
 instead of writing if a blocking `must_resolve` fact is absent or confirmed decisions conflict.
 
+Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, and
+`user-raised` are confirmed. State an `assumption` as the chosen direction marked unverified, and
+list the risk of it being wrong under Delivery and risks. A `deferred` decision is not settled: a
+non-blocking one goes to Open questions and the deferred-question ledger; a blocking one belongs in
+the post-check, never in the design body. The confirmed `kind: direction` decision is the shape the
+user agreed to; the HLD must not depart from it. Where a decision records a chosen or rejected
+alternative, Key decisions names the alternative and why it lost.
+
 ## Required HLD shape
 
 Start with one concise level-1 title containing `HLD`, the workflow-supplied feature slug, and

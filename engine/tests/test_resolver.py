@@ -429,6 +429,214 @@ class LeadInterviewTest(Sim):
         self.assertEqual(len(context["rounds"]), 2)
 
 
+class InterviewConversationTest(Sim):
+    """Answers the human could not give outright: chosen alternatives, discussed answers,
+    working assumptions, parked decisions, and points the human raised unprompted."""
+
+    def test_response_kinds_are_recorded_truthfully(self):
+        self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
+        run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
+        os.makedirs(run_dir, exist_ok=True)
+
+        def question(qid, **extra):
+            value = {"id": qid, "title": qid.replace("-", " ").title(),
+                     "question": f"What should happen for {qid}?",
+                     "why": "It changes visible behavior.",
+                     "proposal": "Use the recommended behavior.",
+                     "must_resolve": ["visible behavior"]}
+            value.update(extra)
+            return value
+
+        alternatives = [{"label": "Retry silently", "tradeoff": "Hides transient errors."},
+                        {"label": "Fail fast", "tradeoff": "Simple, but noisier."}]
+        queue = [question("retry-policy", alternatives=alternatives),
+                 question("audit-trail"), question("data-retention"), question("cutoff"),
+                 question("shape", kind="direction")]
+        for number in (1, 2):
+            with open(os.path.join(run_dir, f"questions-{number}.json"), "w") as fh:
+                json.dump({"schema_version": 2, "questions": queue if number == 1 else [],
+                           "audit": {"unresolved": ["gaps"] if number == 1 else [],
+                                     "contradictions": []}}, fh)
+
+        action = self.nxt()
+        served = {q["section"]: q for q in action["questions"]}
+        self.assertEqual(served["retry-policy"]["alternatives"], alternatives)
+        self.assertEqual(served["shape"]["kind"], "direction")
+        self.assertEqual(served["cutoff"]["must_resolve"], ["visible behavior"])
+
+        run = self.run_obj()
+        bad = [
+            {"retry-policy": {"option": 3}},
+            {"retry-policy": {"option": True}},
+            {"retry-policy": {"accept": True, "assume": True}},
+            {"retry-policy": {"defer": "  "}},
+            {"retry-policy": {"answer": "x", "discussion": ""}},
+            {"retry-policy": {"answer": "x", "verdict": "y"}},
+        ]
+        for responses in bad:
+            with self.assertRaises(resolver.RunError, msg=responses):
+                resolver.record_interview_batch(run, "first", responses)
+        with self.assertRaises(resolver.RunError):
+            resolver.record_interview_batch(run, "first", {}, raised=["  "])
+        self.assertEqual(run.state["steps"]["first"]["interview"]["answers"], {})
+
+        resolver.record_interview_batch(run, "first", {
+            "retry-policy": {"option": 2},
+            "audit-trail": {"answer": "Keep 90 days of audit rows",
+                            "discussion": "Compared 30 vs 90 days against the compliance ask."},
+            "data-retention": {"assume": True},
+            "cutoff": {"defer": "Legal owns this; ask them next week"},
+            "shape": {"accept": True},
+        }, raised=["Admins must be able to export the audit trail"])
+        statemod.save("feat", run.state, self.tmp)
+        self.assertEqual(self.state()["steps"]["first"]["outputs"]["deferred_count"], 1)
+        self.assertEqual(self.state()["steps"]["first"]["outputs"]["assumption_count"], 1)
+
+        with open(os.path.join(run_dir, "prd-context.json")) as fh:
+            context = json.load(fh)
+        by_id = {item["id"]: item for item in context["decisions"]}
+        self.assertEqual(
+            {key: (value["source"], value["answer"]) for key, value in by_id.items()},
+            {
+                "retry-policy": ("chosen-alternative", "Fail fast — Simple, but noisier."),
+                "audit-trail": ("user-answer", "Keep 90 days of audit rows"),
+                "data-retention": ("assumption", "Use the recommended behavior."),
+                "cutoff": ("deferred", "Legal owns this; ask them next week"),
+                "shape": ("accepted-proposal", "Use the recommended behavior."),
+                "raised-1": ("user-raised", "Admins must be able to export the audit trail"),
+            },
+        )
+        self.assertEqual(by_id["audit-trail"]["discussion"],
+                         "Compared 30 vs 90 days against the compliance ask.")
+        self.assertEqual(by_id["shape"]["kind"], "direction")
+        self.assertIn("raised-1", context["rounds"][-1]["question_ids"])
+
+    def test_single_record_supports_new_kinds_and_raised_points(self):
+        self.start(self.write_wf("interview.yaml", INTERVIEW_WF))
+        self.complete("summarize", {"summary": "A small admin product"})
+        run = self.run_obj()
+        resolver.record_interview(run, "clarify", "users", assume=True,
+                                  raised=["Support staff also need read access"])
+        resolver.record_interview(run, "clarify", "scope", defer="Product to confirm",
+                                  discussion="Export vs. sharing were both plausible.")
+        statemod.save("feat", run.state, self.tmp)
+        with open(os.path.join(self.tmp, ".maestro", "runs", "feat", "prd-context.json")) as fh:
+            context = json.load(fh)
+        self.assertEqual([(d["id"], d["source"]) for d in context["decisions"]], [
+            ("users", "assumption"), ("scope", "deferred"), ("raised-1", "user-raised"),
+        ])
+        self.assertEqual(context["decisions"][1]["discussion"],
+                         "Export vs. sharing were both plausible.")
+
+
+DISCUSS_WF = """\
+version: 1
+name: discuss
+inputs:
+  slug: {type: string, required: true}
+defaults:
+  model: opus
+start: ask
+nodes:
+  - id: ask
+    type: interview
+    skill: hld-interview
+    context: "Feature: booking"
+    questions_artifact: ".maestro/runs/${inputs.slug}/questions.json"
+    batch_size: 12
+    presentation: popup
+    discuss:
+      inputs:
+        codebase_map: "docs/codebase-map.md"
+    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    next: end
+"""
+
+
+class InterviewDiscussionBriefTest(Sim):
+    """A discussion's reading and reasoning happen outside the lead's context: the engine
+    renders a read-only brief for an isolated subagent or a side session."""
+
+    def setUp(self):
+        super().setUp()
+        self.start(self.write_wf("discuss.yaml", DISCUSS_WF))
+        run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
+        os.makedirs(run_dir, exist_ok=True)
+        questions = [{
+            "id": qid, "title": qid.title(), "question": f"Who owns {qid}?",
+            "why": "It sets the service boundary.", "proposal": "The booking service.",
+            "alternatives": [{"label": "A new scheduler", "tradeoff": "Cleaner, but a new deploy."}],
+            "must_resolve": ["owning service"],
+        } for qid in ("slots", "reminders")]
+        with open(os.path.join(run_dir, "questions.json"), "w") as fh:
+            json.dump({"schema_version": 2, "questions": questions,
+                       "audit": {"unresolved": ["owners"], "contradictions": []}}, fh)
+
+    def test_subagent_brief_is_read_only_and_bounded(self):
+        before = json.dumps(self.state(), sort_keys=True)
+        brief = resolver.interview_brief(self.run_obj(), "ask", "reminders")
+        self.assertEqual(json.dumps(self.state(), sort_keys=True), before)
+        self.assertEqual((brief["action"], brief["mode"], brief["section"]),
+                         ("discuss", "subagent", "reminders"))
+        self.assertEqual((brief["agent_type"], brief["model"], brief["skill"]),
+                         ("discussant", "opus", "hld-interview"))
+        prompt = brief["prompt"]
+        for expected in ("Who owns reminders?", "The booking service.",
+                         "Alternative 1: A new scheduler — Cleaner, but a new deploy.",
+                         "owning service", "codebase_map: docs/codebase-map.md",
+                         "confirmed_decisions: .maestro/runs/feat/hld-context.json",
+                         "`.claude/skills/hld-interview/SKILL.md`", "Feature: booking",
+                         '"status":"open|ready"', "under 120 words"):
+            self.assertIn(expected, prompt)
+        self.assertNotIn("interview-record-batch", prompt)
+        self.assertEqual(brief["side_chat"]["claude_or_cursor"], "/maestro-discuss feat ask reminders")
+
+    def test_side_brief_records_without_claiming(self):
+        brief = resolver.interview_brief(self.run_obj(), "ask", "slots", mode="side")
+        self.assertIn("interview-record-batch --slug feat --step ask --peek", brief["prompt"])
+        self.assertIn('"slots":{"answer"', brief["prompt"])
+        self.assertNotIn('"status":"open|ready"', brief["prompt"])
+
+    def test_side_chat_record_leaves_the_next_worker_unclaimed(self):
+        import subprocess
+        wf = DISCUSS_WF.replace("    next: end\n", "    next: work\n") + (
+            "  - id: work\n    instruction: Do the work.\n    next: end\n"
+        )
+        self.start(self.write_wf("discuss-work.yaml", wf), slug="side")
+        run_dir = os.path.join(self.tmp, ".maestro", "runs")
+        shutil.copy(os.path.join(run_dir, "feat", "questions.json"),
+                    os.path.join(run_dir, "side", "questions.json"))
+        ctl = os.path.join(os.path.dirname(__file__), "..", "maestroctl.py")
+
+        def cli(*argv):
+            proc = subprocess.run([sys.executable, ctl, "--root", self.tmp, *argv],
+                                  capture_output=True, text=True)
+            self.assertEqual(proc.returncode, 0, proc.stderr)
+            return json.loads(proc.stdout)
+
+        cli("interview-record-batch", "--slug", "side", "--step", "ask",
+            "--responses", '{"slots":{"accept":true}}')
+        action = cli("interview-record-batch", "--slug", "side", "--step", "ask", "--peek",
+                     "--responses", '{"reminders":{"answer":"Scheduler","discussion":"Compared owners."}}')
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "work"))
+        self.assertNotIn("dispatched_at", self.state("side")["steps"].get("work") or {})
+        # The main session's next call still receives (and claims) the worker.
+        self.assertEqual(cli("next", "--slug", "side")["action"], "run_agent")
+
+    def test_brief_only_for_open_served_questions(self):
+        run = self.run_obj()
+        with self.assertRaises(resolver.RunError):
+            resolver.interview_brief(run, "ask", "missing")
+        with self.assertRaises(resolver.RunError):
+            resolver.interview_brief(run, "ask", "slots", mode="loud")
+        resolver.record_interview_batch(run, "ask", {"slots": {"option": 1}})
+        statemod.save("feat", run.state, self.tmp)
+        with self.assertRaises(resolver.RunError):
+            resolver.interview_brief(self.run_obj(), "ask", "slots")
+        self.assertEqual(resolver.interview_brief(self.run_obj(), "ask", "reminders")["section"],
+                         "reminders")
+
+
 # An upstream producer feeds a loop (serve <-> ask); a later gate can revise back to the
 # producer. Re-entering `serve` inside the loop must not cascade around the cycle and wipe
 # the producer's outputs — the exact bug seen live (author_hld.hld_summary went null while

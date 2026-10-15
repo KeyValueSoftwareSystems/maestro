@@ -353,6 +353,22 @@
             "popup"
           ]
         },
+        "discuss": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "isolated discussion of one question: evidence inputs, agent, model",
+          "properties": {
+            "inputs": {
+              "type": "object"
+            },
+            "agent": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          }
+        },
         "artifact": {
           "type": "string"
         },

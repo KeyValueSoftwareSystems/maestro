@@ -20,6 +20,12 @@ this lead session. Explore further only when a named design fact cannot be groun
 Preserve PRD/HLD decisions. For `source: user-answer`, use only the stored answer. Stop rather than
 guess if a blocking `must_resolve` fact remains absent or decisions conflict.
 
+Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, and
+`user-raised` are confirmed. Mark an `assumption` as unverified where it shapes the design and in
+Verification. A `deferred` decision is unresolved: never write it as decided; if it blocks the LLD,
+put it back in the post-check with sharper options. The confirmed `kind: direction` decision is the
+change the repository team agreed to; the LLD must not depart from it.
+
 ## Required document shape
 
 Start with one concise level-1 title containing `LLD`, then these metadata lines:

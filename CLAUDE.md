@@ -25,7 +25,7 @@ runtime. It ships:
   **per-stack reference skills** (`golang-patterns`, `react-testing`, `springboot-security`,
   …) — the "how" style guides. See the stack-tag note below.
   **Source layout** — the `skills/` tree is organized into category folders (`skills/maestro`
-  the lead agent; `skills/core/sdlc/*` the SDLC steps; `skills/core/bootstrap/*`; and
+  the lead agent; `skills/maestro-discuss` its side-chat partner for one interview question; `skills/core/sdlc/*` the SDLC steps; `skills/core/bootstrap/*`; and
   `skills/stacks/<stack>/*` grouped by `stack:` tag) so new skills have an obvious home.
   A skill's IDENTITY is its frontmatter `name` (unique across the tree), never its path —
   workflows pin by name, harness discovery and stack filtering key off `name`/`tags:`. The
@@ -154,7 +154,9 @@ the ledger lock, and lists them in `auto_scripts`; only other scripts reach the 
 steps are claimed (`dispatched_at`), so later calls return only newly ready work (ready workers
 before gates) or `wait`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
-atomic batch without dropping unresolved questions.
+atomic batch without dropping unresolved questions. Interview discussions never run in the lead's
+context: `interview-brief` renders a read-only brief for an isolated `discussant` subagent (the lead
+only relays) or a `/maestro-discuss` side session that records with `--peek` (no worker claim).
 Input-bearing gate choices deliberately become a second durable `ask_input` action before
 routing. The lead reports back via `complete`, `complete-batch` (a whole wave in one call),
 `interview-record`, `interview-record-batch`, `gate-record`,

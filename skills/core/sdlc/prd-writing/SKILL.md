@@ -22,6 +22,12 @@ For a decision whose `source` is `user-answer`, use only its `answer`. Its unacc
 context, not permission to complete a partial answer. Stop without writing if a `must_resolve` fact
 is absent, a material value remains vague, or two confirmed decisions conflict.
 
+Render every decision by its `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, and
+`user-raised` are confirmed requirements. An `assumption` goes under `Constraints and assumptions`,
+plainly marked as an unconfirmed assumption; it may shape scope but must stay visibly unverified. A
+`deferred` decision is not a requirement: list it under `Dependencies and risks` as an open item
+with the user's note, give it no acceptance criterion, and never write around it as if decided.
+
 ## Required structure
 
 Start with this compact document header:

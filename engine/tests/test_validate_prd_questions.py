@@ -100,6 +100,88 @@ class QuestionQueueValidationTest(unittest.TestCase):
         }), decisions_path=decisions)
         self.assertTrue(any("earlier round" in error for error in errors))
 
+    def v2(self, questions, unresolved=("open gap",)):
+        return {
+            "schema_version": 2,
+            "questions": questions,
+            "audit": {"unresolved": list(unresolved) if questions else [], "contradictions": []},
+        }
+
+    def test_alternatives_carry_tradeoffs(self):
+        question = self.question(must_resolve=["what happens to the booking"], alternatives=[
+            {"label": "Move the booking automatically", "tradeoff": "No admin work, but the "
+             "customer may get a slot they cannot attend."},
+            {"label": "Cancel and notify the customer", "tradeoff": "Simple, but loses the booking."},
+        ])
+        errors, _, _ = validate_prd_questions.validate(self.write(self.v2([question])))
+        self.assertEqual(errors, [])
+
+        question["alternatives"] = question["alternatives"] + [
+            {"label": "Ask support", "tradeoff": "Slow."},
+        ]
+        errors, _, _ = validate_prd_questions.validate(self.write(self.v2([question])))
+        self.assertTrue(any("maximum is 2" in error for error in errors))
+
+        question["alternatives"] = [{"label": question["proposal"], "tradeoff": "Same."}]
+        errors, _, _ = validate_prd_questions.validate(self.write(self.v2([question])))
+        self.assertTrue(any("repeats the proposal" in error for error in errors))
+
+        question["alternatives"] = [{"label": "Cancel it"}]
+        errors, _, _ = validate_prd_questions.validate(self.write(self.v2([question])))
+        self.assertTrue(any("tradeoff" in error for error in errors))
+
+    def test_direction_question_needs_a_summary(self):
+        question = self.question(kind="direction", proposal="", must_resolve=["overall shape"])
+        errors, _, _ = validate_prd_questions.validate(self.write(self.v2([question])))
+        self.assertTrue(any("design direction" in error for error in errors))
+        question["kind"] = "sideways"
+        errors, _, _ = validate_prd_questions.validate(self.write(self.v2([question])))
+        self.assertTrue(any(".kind" in error for error in errors))
+
+    def test_empty_queue_requires_latest_confirmed_direction(self):
+        empty = self.write(self.v2([]))
+
+        def decisions(*rounds):
+            doc = {"schema_version": 2, "decisions": [], "rounds": []}
+            for items in rounds:
+                doc["rounds"].append({"question_ids": [item["id"] for item in items]})
+                doc["decisions"].extend(items)
+            return self.write(doc)
+
+        owner = {"id": "owner", "kind": "decision", "source": "user-answer", "answer": "API"}
+        direction = {"id": "direction-1", "kind": "direction",
+                     "source": "accepted-proposal", "answer": "One service owns it."}
+        parked = dict(direction, id="direction-0", source="deferred")
+        follow_up = dict(owner, id="owner-follow-up")
+
+        # Without the flag an empty queue stays clear (PRD and post-checks).
+        errors, _, _ = validate_prd_questions.validate(empty, decisions_path=decisions([owner]))
+        self.assertEqual(errors, [])
+
+        cases = [
+            (decisions([owner]), "requires a confirmed design direction"),
+            (decisions([owner, parked]), "requires a confirmed design direction"),
+            (decisions([owner], [direction], [follow_up]), "predates later decisions"),
+        ]
+        for path, message in cases:
+            errors, _, _ = validate_prd_questions.validate(
+                empty, decisions_path=path, require_direction=True,
+            )
+            self.assertTrue(any(message in error for error in errors), errors)
+
+        for path in (decisions([owner, direction]), decisions([owner], [direction])):
+            errors, _, _ = validate_prd_questions.validate(
+                empty, decisions_path=path, require_direction=True,
+            )
+            self.assertEqual(errors, [])
+        # The flag only constrains closing the queue; asking questions is always allowed.
+        errors, _, _ = validate_prd_questions.validate(
+            self.write(self.v2([self.question(must_resolve=["fact"])])),
+            decisions_path=decisions([owner]), require_direction=True,
+        )
+        self.assertEqual(errors, [])
+
+
     def test_schema_v1_remains_compatible_with_existing_runs(self):
         errors, warnings, _ = validate_prd_questions.validate(self.write({
             "schema_version": 1, "questions": [self.question()],

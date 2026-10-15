@@ -83,8 +83,8 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
 workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
-   → HLD (Grill architecture → write once → conditional new-gap popup → validate → approve)
-   → per-repo LLDs (bounded code seam → grouped Grill → write once → validate → approve)
+   → HLD (Grill architecture with options → confirm direction → write once → conditional new-gap popup → validate → approve)
+   → per-repo LLDs (bounded code seam → grouped Grill with options → confirm direction → write once → validate → approve)
    → API contract
    → functional test cases → effective design (base approvals + approved corrections)
    → architecture review → [approve]
@@ -228,8 +228,10 @@ Pinned skills are checked only under `.agents/skills`, `.claude/skills`, and `.c
 Step durations are recorded in the run ledger so slow stages are visible.
 
 The HLD stage follows the same clarify-first shape. It batches only unresolved architecture
-decisions into native question popups, keeps accepted decisions in `hld-context.json`, and then
-writes one short, plain-English HLD. A deterministic validator checks its six-section structure,
+decisions into native question popups, each with real alternatives and their trade-offs, then asks
+you to confirm the assembled design direction before anything is written (see
+[Interviews are conversations](#interviews-are-conversations)). It keeps decisions in
+`hld-context.json` and writes one short, plain-English HLD. A deterministic validator checks its six-section structure,
 readability, repetition, and deferred-question ledger without limiting document length. A second popup appears only when synthesis
 uncovers a genuinely new architecture gap; there is no mandatory model-powered folding pass.
 `open-questions.json` contains only explicitly deferred decisions so another reviewer can see
@@ -254,7 +256,8 @@ provided. No artifact is regenerated with empty or inferred suggestions.
 After HLD approval, the parent creates one child run per selected repository—for example
 `my-feature--lld--backend`, `my-feature--lld--frontend`, and `my-feature--lld--flutter`—and waits.
 Each child inspects only the relevant implementation seam, asks material repository decisions in
-one grouped popup, writes the concise LLD once in the lead session, then runs a deterministic shape
+one grouped popup with code-grounded alternatives, confirms the repo's change direction with the
+team, writes the concise LLD once in the lead session, then runs a deterministic shape
 and readability check. A second popup appears only if writing exposes a genuinely new blocking gap;
 repair is a narrow fallback only when validation fails. Each team reviews and approves only its
 child slug. Approval publishes a hash-bound LLD and receipt into the parent feature; the API
@@ -299,6 +302,36 @@ If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --s
 Prefer manual control? Every step is also a skill you can invoke on its own — use its slash
 command in Claude Code/Cursor or mention it with `$` in Codex (`/plan` or `$plan`, for
 example). Same skills, no orchestration.
+
+### Interviews are conversations
+
+PRD, HLD and LLD questions are not a form to fill in. Each popup question offers:
+
+- **the recommendation**, with why it matters;
+- **up to two alternatives**, each with its concrete trade-off;
+- **Not sure — let's discuss**, when you don't know the answer yet;
+- **free text**, for your own answer or a side question ("btw, how does billing handle this today?").
+
+The last popup of each round also asks **Anything to add?**, so you can raise what Maestro missed.
+
+**Drilling down without polluting the run.** When you're unsure, the discussion happens outside
+the lead agent's context, so a long side conversation can't crowd out a long pipeline:
+
+| Mode | How | What reaches the lead |
+|---|---|---|
+| **Isolated subagent** (default) | A read-only `discussant` subagent gets an engine-rendered brief: the question, alternatives, the facts an answer must settle, and the evidence it may read. It does all the reading and reasoning. | Its short replies (≤120 words), relayed verbatim, plus a one-line outcome |
+| **Side chat** (deep dives; always in Cursor) | Say *take it to a side chat*. Maestro saves the round's other answers and shows a command such as `/maestro-discuss my-feature design/hld_interview cache-owner` (`$maestro-discuss` in Codex). Run it in a new chat, settle the question there, then say *continue* in the main chat. | Nothing but the recorded outcome |
+
+Every discussion ends with you choosing the outcome. If you still can't settle it, adopt the
+recommendation as a **working assumption** (the document marks it unverified) or **park it** as an
+open item (it is never treated as decided). Points you raise are recorded in your own words, and
+the next round must account for them.
+
+**You see the design before it's written.** HLD and LLD rounds end with a *direction* question:
+a short summary of the whole intended design for you to confirm, challenge or discuss. The engine
+won't let the queue close until the latest direction is confirmed after every other decision.
+At an approval gate you can also ask about the document ("why one service?") instead of choosing;
+Maestro answers from that document only and asks the gate again.
 
 ### Pausing & resuming a run
 
@@ -383,13 +416,13 @@ After install, in your project repo:
   skills/     one SKILL.md per SDLC step + maestro (the lead agent) + bootstrap
               (detect-stack, maestro-init, build-knowledge, retrospect)
               + per-stack reference packs tagged stack:<x>
-  agents/     core subagents (planner, implementer, reviewer, qa, analyst, general)
+  agents/     core subagents (planner, implementer, reviewer, qa, analyst, general, discussant)
               + per-stack reviewers tagged stack:<x>
-  commands/   /maestro and /maestro-init slash-command shims (steps are invoked as skills)
+  commands/   /maestro, /maestro-init and /maestro-discuss slash-command shims (steps are invoked as skills)
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · interview-record · interview-record-batch · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              · interview-record · interview-record-batch · interview-brief · gate-input-record · fail · reset · rebase · status · graph · note · runs)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)

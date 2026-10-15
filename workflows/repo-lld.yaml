@@ -43,10 +43,20 @@ nodes:
       or privacy, compatibility/migration/rollout, execution modes, or the verification seam. Do
       not reopen PRD/HLD choices or ask for filenames, boilerplate, library syntax, or task estimates.
 
-      Audit prior answers against must_resolve facts and code/HLD constraints. Write schema version
-      2 with 3-7 grouped questions when several gaps remain, fewer when nearly clear, and an empty
-      queue only when every blocking repo decision is concrete and consistent. Validate it before
-      completing.
+      Audit prior answers against must_resolve facts and code/HLD constraints. Treat user-raised
+      points as the human's own constraints and honour discussion summaries. A deferred blocking
+      repo decision must be re-asked with sharper options; it cannot stay parked.
+
+      Make it a design conversation, not a questionnaire: give every genuine trade-off its
+      recommendation plus up to two real alternatives with their concrete consequences, grounded in
+      the code you inspected. When no other gap remains, ask one kind "direction" question whose
+      proposal summarises this repo's intended change (seam, data/state, contract side, failure
+      handling) for the human to confirm, challenge, or discuss; ask a fresh one whenever later
+      answers change it.
+
+      Write schema version 2 with 3-7 grouped questions when several gaps remain, fewer when nearly
+      clear, and an empty queue only when every blocking repo decision is concrete and consistent
+      and the latest direction is confirmed. Validate it before completing.
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
       again — do not rebuild the queue or re-read sources.
@@ -71,7 +81,7 @@ nodes:
   - id: validate_lld_questions
     type: script
     label: Validate repository question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --report]
     routes:
       - {when: "${steps.validate_lld_questions.outputs.valid} == false", to: prepare_lld_questions}
       - {when: "${steps.validate_lld_questions.outputs.state} == clear", to: author_lld}
@@ -88,6 +98,14 @@ nodes:
     questions_artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
     batch_size: 12
     presentation: popup
+    discuss:
+      inputs:
+        repo: "${inputs.repo}"
+        repo_path: "${inputs.repo_path}"
+        parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
+        parent_deferred_questions: ".maestro/runs/${inputs.parent_slug}/open-questions.json"
+        codebase_map: "${inputs.repo_path}/docs/codebase-map.md"
+        source: "only the source and tests around the seam this question concerns"
     artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
     next: prepare_lld_questions
 
@@ -171,6 +189,15 @@ nodes:
     questions_artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
     batch_size: 12
     presentation: popup
+    discuss:
+      inputs:
+        repo: "${inputs.repo}"
+        repo_path: "${inputs.repo_path}"
+        parent_hld: ".maestro/runs/${inputs.parent_slug}/hld.md"
+        parent_deferred_questions: ".maestro/runs/${inputs.parent_slug}/open-questions.json"
+        lld_draft: ".maestro/runs/${inputs.slug}/lld.md"
+        codebase_map: "${inputs.repo_path}/docs/codebase-map.md"
+        source: "only the source and tests around the seam this question concerns"
     artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
     next: author_lld
 

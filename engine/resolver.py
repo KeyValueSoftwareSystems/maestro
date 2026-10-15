@@ -980,6 +980,11 @@ def _interview_sections(run, frame, node):
             "prompt": question["question"].strip(),
             "why": question["why"].strip(),
             "must_resolve": list(question.get("must_resolve") or []),
+            "kind": question.get("kind", "decision"),
+            "alternatives": [
+                {"label": alt["label"].strip(), "tradeoff": alt["tradeoff"].strip()}
+                for alt in question.get("alternatives") or []
+            ],
         } for question in questions]
 
     sections = []
@@ -991,6 +996,8 @@ def _interview_sections(run, frame, node):
             "prompt": run.resolve_text(section.get("prompt", ""), frame, missing_ok=True).strip(),
             "why": "",
             "must_resolve": [],
+            "kind": "decision",
+            "alternatives": [],
         })
     return sections
 
@@ -1019,8 +1026,11 @@ def _interview_action(run, frame, node, path, entry):
         return {
             "section": current["id"],
             "title": current["title"],
+            "kind": current["kind"],
             "proposal": current["proposal"],
+            "alternatives": current["alternatives"],
             "why": current["why"],
+            "must_resolve": current["must_resolve"],
             "prompt": question,
         }
 
@@ -1050,8 +1060,11 @@ def _interview_action(run, frame, node, path, entry):
         "presentation": node.get("presentation", "chat"),
         "section": current_payload["section"],
         "title": current_payload["title"],
+        "kind": current_payload["kind"],
         "proposal": current_payload["proposal"],
+        "alternatives": current_payload["alternatives"],
         "why": current_payload["why"],
+        "must_resolve": current_payload["must_resolve"],
         "context": context,
         "prompt": current_payload["prompt"],
         "confirmed": answers,
@@ -1221,7 +1234,7 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry
     return entry
 
 
-def _write_interview_artifact(run, frame, node, path, sections, answers, turns):
+def _write_interview_artifact(run, frame, node, path, sections, answers, turns, raised=()):
     rel = run.resolve_text(node["artifact"], frame)
     full = rel if os.path.isabs(rel) else os.path.join(run.root, rel)
     parent = os.path.dirname(full)
@@ -1262,19 +1275,50 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns):
     }
     for section in sections:
         turn = source_by_id.get(section["id"], {})
-        by_id[section["id"]] = {
+        decision = {
             "id": section["id"],
             "title": section["title"],
+            "kind": section.get("kind", "decision"),
             "question": section["prompt"],
             "why": section["why"],
             "proposal": section["proposal"],
+            "alternatives": section.get("alternatives", []),
             "must_resolve": section.get("must_resolve", []),
             "answer": answers[section["id"]],
             "source": turn.get("source", "user-answer"),
             "confirmed_at": turn.get("confirmed_at", now),
         }
+        if turn.get("discussion"):
+            decision["discussion"] = turn["discussion"]
+        by_id[section["id"]] = decision
+    # Points the human raised unprompted are their own statements: kept verbatim under fresh
+    # ids so the next queue audit must account for them like any other confirmed input.
+    raised_ids = []
+    next_number = 1 + sum(1 for key in by_id if isinstance(key, str) and key.startswith("raised-"))
+    for item in raised:
+        while f"raised-{next_number}" in by_id:
+            next_number += 1
+        raised_id = f"raised-{next_number}"
+        next_number += 1
+        by_id[raised_id] = {
+            "id": raised_id,
+            "title": "Raised by the human",
+            "kind": "decision",
+            "question": "",
+            "why": "",
+            "proposal": "",
+            "alternatives": [],
+            "must_resolve": [],
+            "answer": item["text"],
+            "source": "user-raised",
+            "confirmed_at": item.get("raised_at", now),
+        }
+        raised_ids.append(raised_id)
     rounds = document.get("rounds") if isinstance(document.get("rounds"), list) else []
-    rounds.append({"confirmed_at": now, "question_ids": [item["id"] for item in sections]})
+    rounds.append({
+        "confirmed_at": now,
+        "question_ids": [item["id"] for item in sections] + raised_ids,
+    })
     document = {
         "schema_version": 2,
         "slug": run.slug,
@@ -1304,11 +1348,18 @@ def _finish_interview_if_complete(run, frame, node, path, entry, sections, inter
         return
     context_path = _write_interview_artifact(
         run, frame, node, path, sections, answers, interview["turns"],
+        raised=interview.get("raised") or [],
     )
+    sources = [turn.get("source") for turn in interview["turns"]]
+    raised_count = len(interview.get("raised") or [])
     entry["outputs"] = {
         "context_path": context_path,
         "confirmed_count": len(answers),
-        "summary": f"Confirmed {len(answers)} product decisions",
+        "assumption_count": sources.count("assumption"),
+        "deferred_count": sources.count("deferred"),
+        "raised_count": raised_count,
+        "summary": f"Recorded {len(answers)} decisions"
+                   + (f" and {raised_count} raised points" if raised_count else ""),
     }
     entry["artifact"] = [context_path]
     entry["status"] = "done"
@@ -1318,7 +1369,98 @@ def _finish_interview_if_complete(run, frame, node, path, entry, sections, inter
     _advance(run, frame, node, entry["outputs"])
 
 
-def record_interview(run, path, section_id, answer=None, accept=False):
+RESPONSE_KINDS = ("accept", "answer", "option", "assume", "defer")
+
+
+def _normalize_interview_response(path, section, response):
+    """Map one human response to (answer, source, discussion) or raise; never mutates state.
+
+    accept   — the served recommendation, confirmed as is.
+    option   — the 1-based served alternative, recorded with its trade-off.
+    answer   — the human's own words, verbatim.
+    assume   — the human cannot settle it now and adopts the recommendation as a working
+               assumption to verify later; downstream documents must flag it as such.
+    defer    — the human cannot settle it now and parks it with a verbatim note; it is never a
+               confirmed decision.
+    discussion (optional) — the lead's short summary of what was explored before answering."""
+    section_id = section["id"]
+    if not isinstance(response, dict):
+        raise RunError(f"interview {path!r}/{section_id}: response must be an object", code=4)
+    unknown_keys = set(response) - set(RESPONSE_KINDS) - {"discussion"}
+    if unknown_keys:
+        raise RunError(
+            f"interview {path!r}/{section_id}: unknown response fields {sorted(unknown_keys)}",
+            code=4,
+        )
+    given = [
+        kind for kind in RESPONSE_KINDS
+        if kind in response and response[kind] not in (None, False)
+    ]
+    if len(given) != 1:
+        raise RunError(
+            f"interview {path!r}/{section_id}: provide exactly one of "
+            f"accept=true, assume=true, option=<n>, answer or defer",
+            code=4,
+        )
+    kind = given[0]
+    value = response[kind]
+    proposal = section["proposal"].strip()
+    if kind in ("accept", "assume"):
+        if value is not True:
+            raise RunError(f"interview {path!r}/{section_id}: {kind} must be true", code=4)
+        if not proposal:
+            raise RunError(
+                f"interview {path!r}/{section_id}: there is no proposed answer to {kind}",
+                code=4,
+            )
+        answer, source = proposal, ("accepted-proposal" if kind == "accept" else "assumption")
+    elif kind == "option":
+        alternatives = section.get("alternatives") or []
+        if isinstance(value, bool) or not isinstance(value, int) \
+                or not 1 <= value <= len(alternatives):
+            raise RunError(
+                f"interview {path!r}/{section_id}: option must be 1..{len(alternatives)}",
+                code=4,
+            )
+        chosen = alternatives[value - 1]
+        answer, source = f"{chosen['label']} — {chosen['tradeoff']}", "chosen-alternative"
+    else:
+        if not isinstance(value, str) or not value.strip():
+            raise RunError(f"interview {path!r}/{section_id}: {kind} cannot be blank", code=4)
+        answer, source = value.strip(), ("user-answer" if kind == "answer" else "deferred")
+    discussion = response.get("discussion")
+    if discussion is not None and (not isinstance(discussion, str) or not discussion.strip()):
+        raise RunError(
+            f"interview {path!r}/{section_id}: discussion must be a non-empty string", code=4,
+        )
+    return answer, source, discussion.strip() if discussion else None
+
+
+def _normalize_raised(path, raised):
+    raised = list(raised or [])
+    for text in raised:
+        if not isinstance(text, str) or not text.strip():
+            raise RunError(f"interview {path!r}: a raised point cannot be blank", code=4)
+    return [text.strip() for text in raised]
+
+
+def _record_interview_turns(interview, normalized, raised):
+    now = statemod.now_iso()
+    answers = interview.setdefault("answers", {})
+    for section_id, value, source, discussion in normalized:
+        answers[section_id] = value
+        turn = {"section": section_id, "source": source, "confirmed_at": now}
+        if discussion:
+            turn["discussion"] = discussion
+        interview["turns"].append(turn)
+    if raised:
+        interview.setdefault("raised", []).extend(
+            {"text": text, "raised_at": now} for text in raised
+        )
+
+
+def record_interview(run, path, section_id, answer=None, accept=False, option=None,
+                     assume=False, defer=None, discussion=None, raised=None):
     """Confirm exactly the currently served interview section and advance when complete."""
     _require_cursor(run, path)
     frame, node = run.node_at(path)
@@ -1335,35 +1477,27 @@ def record_interview(run, path, section_id, answer=None, accept=False):
         raise RunError(
             f"interview {path!r}: expected section {current['id']!r}, got {section_id!r}", code=4,
         )
-    if accept:
-        value = current["proposal"].strip()
-        if not value:
-            raise RunError(
-                f"interview {path!r}/{section_id}: there is no proposed answer to accept", code=4,
-            )
-        source = "accepted-proposal"
-    else:
-        if not isinstance(answer, str) or not answer.strip():
-            raise RunError(f"interview {path!r}/{section_id}: answer cannot be blank", code=4)
-        value = answer
-        source = "user-answer"
-    answers[section_id] = value
-    interview["turns"].append({
-        "section": section_id,
-        "source": source,
-        "confirmed_at": statemod.now_iso(),
-    })
+    response = {
+        "accept": accept or None, "answer": answer, "option": option,
+        "assume": assume or None, "defer": defer, "discussion": discussion,
+    }
+    response = {key: value for key, value in response.items() if value is not None}
+    if "answer" in response and (not isinstance(answer, str) or not answer.strip()):
+        raise RunError(f"interview {path!r}/{section_id}: answer cannot be blank", code=4)
+    value, source, note = _normalize_interview_response(path, current, response)
+    _record_interview_turns(interview, [(section_id, value, source, note)],
+                            _normalize_raised(path, raised))
     _finish_interview_if_complete(run, frame, node, path, entry, sections, interview)
     return entry
 
 
-def record_interview_batch(run, path, responses):
+def record_interview_batch(run, path, responses, raised=None):
     """Atomically confirm any clear answers from the currently served interview batch."""
     _require_cursor(run, path)
     frame, node = run.node_at(path)
     if ntype(node) != "interview":
         raise RunError(f"step {path!r} is not an interview", code=4)
-    if not isinstance(responses, dict) or not responses:
+    if not isinstance(responses, dict) or (not responses and not raised):
         raise RunError("batch interview responses must be a non-empty JSON object", code=4)
 
     entry = statemod.step_entry(run.state, path)
@@ -1384,49 +1518,142 @@ def record_interview_batch(run, path, responses):
     # partially record earlier answers from the same human reply.
     normalized = []
     for section in current_batch:
-        section_id = section["id"]
-        if section_id not in responses:
-            continue
-        response = responses[section_id]
-        if not isinstance(response, dict):
-            raise RunError(f"interview {path!r}/{section_id}: response must be an object", code=4)
-        unknown_keys = set(response) - {"accept", "answer"}
-        if unknown_keys:
-            raise RunError(
-                f"interview {path!r}/{section_id}: unknown response fields {sorted(unknown_keys)}",
-                code=4,
+        if section["id"] in responses:
+            value, source, note = _normalize_interview_response(
+                path, section, responses[section["id"]],
             )
-        accept = response.get("accept") is True
-        answer = response.get("answer")
-        has_answer = isinstance(answer, str) and bool(answer.strip())
-        if accept == has_answer:
-            raise RunError(
-                f"interview {path!r}/{section_id}: provide exactly one of accept=true or answer",
-                code=4,
-            )
-        if accept:
-            value = section["proposal"].strip()
-            if not value:
-                raise RunError(
-                    f"interview {path!r}/{section_id}: there is no proposed answer to accept",
-                    code=4,
-                )
-            source = "accepted-proposal"
-        else:
-            value = answer.strip()
-            source = "user-answer"
-        normalized.append((section_id, value, source))
-
-    now = statemod.now_iso()
-    for section_id, value, source in normalized:
-        answers[section_id] = value
-        interview["turns"].append({
-            "section": section_id,
-            "source": source,
-            "confirmed_at": now,
-        })
+            normalized.append((section["id"], value, source, note))
+    _record_interview_turns(interview, normalized, _normalize_raised(path, raised))
     _finish_interview_if_complete(run, frame, node, path, entry, sections, interview)
     return entry
+
+
+DISCUSSION_REPLY_WORDS = 120
+DISCUSSION_AGENT = "discussant"
+
+
+def interview_brief(run, path, section_id, mode="subagent"):
+    """Read-only brief for discussing ONE served interview question outside the lead's context.
+
+    `subagent` renders the prompt for an isolated, read-only discussion worker whose short
+    replies the lead relays; `side` renders it for a separate session the human opens, which
+    talks to them directly and records the outcome itself. Either way the evidence reading and
+    reasoning never enter the lead's context. Mutates nothing."""
+    if mode not in ("subagent", "side"):
+        raise RunError(f"unknown discussion mode {mode!r}", code=4)
+    _require_cursor(run, path)
+    frame, node = run.node_at(path)
+    if ntype(node) != "interview":
+        raise RunError(f"step {path!r} is not an interview", code=4)
+    entry = run.state.get("steps", {}).get(path) or {}
+    answers = (entry.get("interview") or {}).get("answers") or {}
+    sections = _interview_sections(run, frame, node)
+    unresolved = [section for section in sections if section["id"] not in answers]
+    served = unresolved[:node.get("batch_size", 1)]
+    section = next((item for item in served if item["id"] == section_id), None)
+    if section is None:
+        raise RunError(
+            f"interview {path!r}: {section_id!r} is not an unresolved question in the served "
+            f"round (served: {', '.join(item['id'] for item in served) or 'none'})", code=4,
+        )
+    discuss = node.get("discuss") or {}
+    skill = run.resolve_text(node["skill"], frame) if node.get("skill") else None
+    inputs = {
+        "confirmed_decisions": run.resolve_text(node["artifact"], frame),
+        **{key: run.resolve_value(value, frame, missing_ok=True)
+           for key, value in (discuss.get("inputs") or {}).items()},
+    }
+    context = run.resolve_text(node.get("context", ""), frame, missing_ok=True).strip()
+
+    lines = [
+        "Help a human think through ONE open question from a design interview. They are unsure "
+        "of the answer or asked something back. Your job is to help them decide, not to decide "
+        "for them.",
+        "",
+    ]
+    if context:
+        lines += ["Interview context:", context, ""]
+    lines += [
+        f"Question: {section['title']}",
+        f"- Asked: {section['prompt']}",
+        f"- Why it matters: {section['why'] or '(not stated)'}",
+        f"- Recommendation: {section['proposal'] or '(none — no grounded recommendation yet)'}",
+    ]
+    for number, alternative in enumerate(section["alternatives"], 1):
+        lines.append(f"- Alternative {number}: {alternative['label']} — {alternative['tradeoff']}")
+    if section["must_resolve"]:
+        lines.append("- A usable answer must make explicit: " + "; ".join(section["must_resolve"]))
+    lines += ["", "Evidence you may read (read-only):"]
+    for key, value in inputs.items():
+        lines.append(f"- {key}: {json.dumps(value) if isinstance(value, (list, dict)) else value}")
+    lines.append("")
+    if skill:
+        lines += [
+            f"Load the `{skill}` skill from `.agents/skills/{skill}/SKILL.md`, "
+            f"`.claude/skills/{skill}/SKILL.md`, or `.cursor/skills/{skill}/SKILL.md` and obey "
+            "its read boundary and conversation standards. Do not search the wider filesystem.",
+            "",
+        ]
+    lines += [
+        "How to discuss:",
+        "- Explain plainly what is being decided and what changes downstream with each option.",
+        "- Give the reasoning behind the recommendation and say when an alternative would win; "
+        "add an option the list missed if the evidence shows one.",
+        "- Answer side questions from the evidence above and say what you checked. Never guess; "
+        "if the evidence is silent or the fact belongs to someone else, say so and who could "
+        "settle it.",
+        "- Never edit files, the run state, or the decision artifact.",
+        "",
+    ]
+    if mode == "subagent":
+        lines += [
+            "You run in an isolated context. The lead shows the human your reply verbatim and "
+            "keeps only your final JSON line, so put everything the human needs in the reply.",
+            f"- Keep each reply under {DISCUSSION_REPLY_WORDS} words and ask at most one question "
+            "back.",
+            "- End with ONE final line of compact JSON: "
+            '{"status":"open|ready","candidate":"<the answer the human is converging on, '
+            'in their terms, or empty>","summary":"<one sentence: what was explored>"}. '
+            'Use "ready" only when the human has effectively settled.',
+        ]
+    else:
+        responses = (
+            '{"' + section["id"] + '":{"answer":"<their answer verbatim>",'
+            '"discussion":"<one sentence: what was explored>"}}'
+        )
+        lines += [
+            "You are talking to the human directly in a separate session, so the main run's "
+            "context never sees this discussion. Keep turns short and let them steer.",
+            "When they settle, confirm the exact outcome with them, then record it with ONE "
+            'command (use option:<n>, accept:true, assume:true, or defer:"<note>" instead of '
+            "answer when that is what they chose; add --raise '<point>' for anything new they "
+            "raised):",
+            "",
+            f"python3 .maestro/engine/maestroctl.py interview-record-batch --slug {run.slug} "
+            f"--step {path} --peek --responses '{responses}'",
+            "",
+            "If the command says the question is no longer open, it was already answered in the "
+            "main session: tell the human and stop. Then tell them to return to the main session "
+            "and say continue.",
+        ]
+    return {
+        "action": "discuss",
+        "mode": mode,
+        "step": path,
+        "section": section["id"],
+        "skill": skill,
+        "agent_type": discuss.get("agent") or DISCUSSION_AGENT,
+        "model": run.model_for(discuss, frame),
+        "question": {
+            "title": section["title"], "prompt": section["prompt"], "why": section["why"],
+            "proposal": section["proposal"], "alternatives": section["alternatives"],
+        },
+        "side_chat": {
+            "claude_or_cursor": f"/maestro-discuss {run.slug} {path} {section['id']}",
+            "codex": f"$maestro-discuss {run.slug} {path} {section['id']}",
+        },
+        "prompt": "\n".join(lines).rstrip() + "\n",
+    }
 
 
 def fail_step(run, path, reason):

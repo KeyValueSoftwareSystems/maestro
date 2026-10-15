@@ -13,8 +13,11 @@ The lead agent's whole protocol:
         maestroctl complete --slug S --step P --exit-code N [--stdout '<text>']
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
         maestroctl gate-input-record --slug S --step P --input '<text>'
-        maestroctl interview-record --slug S --step P --section X (--accept | --answer '<text>')
-        maestroctl interview-record-batch --slug S --step P --responses '<json>'
+        maestroctl interview-record --slug S --step P --section X \
+            (--accept | --option N | --answer '<text>' | --assume | --defer '<note>') \
+            [--discussion '<summary>'] [--raise '<text>' ...]
+        maestroctl interview-record-batch --slug S --step P --responses '<json>' [--raise '<text>' ...]
+        maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
@@ -175,7 +178,9 @@ def _mutate(args, fn):
         run = resolver.Run(args.slug, args.root)
         fn(run)
         statemod.save(args.slug, run.state, args.root)
-    return _serve(args)
+    # --peek (a side session recording an interview answer) shows the next action without
+    # claiming workers or running engine scripts, so the main session's `next` still gets them.
+    return _serve(args, peek=getattr(args, "peek", False))
 
 
 def cmd_complete(args):
@@ -252,6 +257,8 @@ def cmd_gate_input_record(args):
 def cmd_interview_record(args):
     return _mutate(args, lambda run: resolver.record_interview(
         run, args.step, args.section, answer=args.answer, accept=args.accept,
+        option=args.option, assume=args.assume, defer=args.defer,
+        discussion=args.discussion, raised=args.raise_,
     ))
 
 
@@ -263,7 +270,7 @@ def cmd_interview_record_batch(args):
     if not isinstance(responses, dict):
         raise resolver.RunError("--responses must be a JSON object", code=4)
     return _mutate(args, lambda run: resolver.record_interview_batch(
-        run, args.step, responses,
+        run, args.step, responses, raised=args.raise_,
     ))
 
 
@@ -353,6 +360,12 @@ def cmd_status(args):
 
 def cmd_runs(args):
     _print({"runs": statemod.list_runs(args.root)})
+    return 0
+
+
+def cmd_interview_brief(args):
+    run = resolver.Run(args.slug, args.root)
+    _print(resolver.interview_brief(run, args.step, args.section, mode=args.mode))
     return 0
 
 
@@ -452,7 +465,16 @@ def build_parser():
     p.add_argument("--section", required=True)
     group = p.add_mutually_exclusive_group(required=True)
     group.add_argument("--accept", action="store_true", help="accept the engine-served proposal")
+    group.add_argument("--option", type=int, help="choose served alternative N (1-based)")
     group.add_argument("--answer", help="confirmed replacement answer")
+    group.add_argument("--assume", action="store_true",
+                       help="adopt the proposal as a working assumption to verify later")
+    group.add_argument("--defer", help="park the decision with the human's note verbatim")
+    p.add_argument("--discussion", help="short summary of what was explored before answering")
+    p.add_argument("--raise", dest="raise_", action="append", default=[],
+                   help="a point the human raised unprompted, verbatim (repeatable)")
+    p.add_argument("--peek", action="store_true",
+                   help="show the next action without claiming it (side-session recording)")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_interview_record)
 
@@ -463,8 +485,14 @@ def build_parser():
     p.add_argument("--step", required=True)
     p.add_argument(
         "--responses", required=True,
-        help='JSON object: {"question-id":{"accept":true}, "other":{"answer":"text"}}',
+        help='JSON object: {"question-id":{"accept":true}, "other":{"answer":"text"}}; '
+             'a response may instead use option=<n>, assume=true, or defer="<note>", '
+             'plus an optional "discussion"',
     )
+    p.add_argument("--raise", dest="raise_", action="append", default=[],
+                   help="a point the human raised unprompted, verbatim (repeatable)")
+    p.add_argument("--peek", action="store_true",
+                   help="show the next action without claiming it (side-session recording)")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_interview_record_batch)
 
@@ -529,6 +557,17 @@ def build_parser():
 
     p = sub.add_parser("runs", help="list every run under .maestro/runs/ as JSON (read-only)")
     p.set_defaults(fn=cmd_runs)
+
+    p = sub.add_parser(
+        "interview-brief",
+        help="brief for discussing one served interview question in isolation (read-only)",
+    )
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--section", required=True)
+    p.add_argument("--mode", choices=("subagent", "side"), default="subagent",
+                   help="subagent: isolated worker the lead relays; side: a session the human opens")
+    p.set_defaults(fn=cmd_interview_brief)
 
     p = sub.add_parser(
         "workstreams", help="list repo-owned LLD child runs for resume selection (read-only)",
