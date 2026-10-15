@@ -34,12 +34,13 @@ PORT_SCAN = 20              # how many ports to try past the default before givi
 MAX_BODY = 1 << 20         # 1 MiB cap on a PUT body
 MAX_SCAN = 2000            # ceiling on files listed, a runaway backstop
 
-# Directories never walked for the list. .git is history; the rest are noise / vendored
+# Directories never walked for the list. .git is history; testdata holds validator fixtures
+# (deliberately broken workflows), not flows to edit; the rest are noise / vendored
 # trees. .maestro is NOT skipped wholesale anymore — the pack now lives there
 # (.maestro/workflows is the workflow source the builder reads/edits) — but its
 # engine-owned subtrees below ARE pruned.
 SKIP_DIRS = {".git", ".claude", ".cursor", ".agents", ".codex", "node_modules",
-             "__pycache__", ".venv", "venv", ".idea", ".vscode", ".mypy_cache"}
+             "__pycache__", ".venv", "venv", ".idea", ".vscode", ".mypy_cache", "testdata"}
 # Engine-owned subtrees under .maestro/: run state, shared memory, and the copied
 # runtime. Never listed as workflow source and never written to. (.maestro/workflows +
 # .maestro/docs are the human-facing trees and stay walkable.)
