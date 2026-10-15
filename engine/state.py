@@ -88,7 +88,8 @@ RUNS_DIR = "runs"          # per-slug run ledgers live under .maestro/runs/<slug
 STATE_VERSION = 1
 # Semantic run layout.  Unlike STATE_VERSION (the YAML serialization contract), this marker
 # advances when shipped workflows require a one-time ledger/artifact upgrade.
-RUN_FORMAT_VERSION = 2
+# 3: sdlc-main and design.yaml moved their inline steps into small stage children.
+RUN_FORMAT_VERSION = 3
 
 # A slug becomes a directory name under .maestro/runs/; keep it a single safe path segment so
 # a stray `/` or `..` can never scatter state outside the feature folder.

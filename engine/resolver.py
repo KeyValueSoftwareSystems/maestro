@@ -429,6 +429,37 @@ def _enter(run, frame, node_id, via_gate=False):
     _enter_inner(run, frame, node)
 
 
+def subworkflow_inputs(run, frame, node, child_workflow):
+    """The inputs a subworkflow node hands its child: resolved in the parent frame, then
+    the child's declarations applied (coercion, required, defaults)."""
+    rel = node["workflow"]
+    # missing_ok: a subworkflow input may reference a gate output that only exists on
+    # some paths (e.g. `feedback` from a revise gate) — unset resolves to empty, same
+    # as agent-node inputs (below), rather than aborting the run on first entry.
+    child_inputs = {
+        k: run.resolve_value(v, frame, missing_ok=True)
+        for k, v in (node.get("inputs") or {}).items()
+    }
+    child_inputs.setdefault("slug", run.state["inputs"].get("slug", run.slug))
+    declared = child_workflow.get("inputs") or {}
+    for name, spec in declared.items():
+        if name in child_inputs:
+            child_inputs[name] = coerce_input(spec, child_inputs[name])
+        elif spec and spec.get("required"):
+            raise RunError(f"subworkflow {rel}: missing required input {name!r}", code=4)
+        elif spec and "default" in spec:
+            default = spec["default"]
+            if isinstance(default, str):
+                def repl(m, res=child_inputs):
+                    ref = m.group(1).strip()
+                    if ref.startswith("inputs.") and ref[7:] in res:
+                        return str(res[ref[7:]])
+                    return m.group(0)
+                default = _PLACEHOLDER_RE.sub(repl, default)
+            child_inputs[name] = coerce_input(spec, default)
+    return child_inputs
+
+
 def _enter_inner(run, frame, node):
     path = frame.path(node["id"])
     entry = statemod.step_entry(run.state, path)
@@ -463,37 +494,13 @@ def _enter_inner(run, frame, node):
         full = os.path.join(run.root, rel)
         if not os.path.exists(full):
             raise RunError(f"subworkflow file missing: {rel}", code=3)
-        # missing_ok: a subworkflow input may reference a gate output that only exists on
-        # some paths (e.g. `feedback` from a revise gate) — unset resolves to empty, same
-        # as agent-node inputs (below), rather than aborting the run on first entry.
-        child_inputs = {
-            k: run.resolve_value(v, frame, missing_ok=True)
-            for k, v in (node.get("inputs") or {}).items()
-        }
-        child_inputs.setdefault("slug", run.state["inputs"].get("slug", run.slug))
-        run.state["frames"][path] = {
-            "workflow": rel, "sha256": statemod.sha256_file(full), "inputs": child_inputs,
-        }
+        sha = statemod.sha256_file(full)
+        run.state["frames"][path] = {"workflow": rel, "sha256": sha}
         run._wf_cache.pop(rel, None)
         entry["status"] = "running"
+        run.state["frames"][path]["inputs"] = subworkflow_inputs(
+            run, frame, node, run.load_workflow(rel, sha))
         child_frame = run._sub_frame(frame, node)
-        # apply child input declarations (defaults / required)
-        declared = child_frame.workflow.get("inputs") or {}
-        for name, spec in declared.items():
-            if name in child_inputs:
-                child_inputs[name] = coerce_input(spec, child_inputs[name])
-            elif spec and spec.get("required"):
-                raise RunError(f"subworkflow {rel}: missing required input {name!r}", code=4)
-            elif spec and "default" in spec:
-                default = spec["default"]
-                if isinstance(default, str):
-                    def repl(m, res=child_inputs):
-                        ref = m.group(1).strip()
-                        if ref.startswith("inputs.") and ref[7:] in res:
-                            return str(res[ref[7:]])
-                        return m.group(0)
-                    default = _PLACEHOLDER_RE.sub(repl, default)
-                child_inputs[name] = coerce_input(spec, default)
         _enter(run, child_frame, child_frame.start)
     else:
         entry["status"] = "pending"
@@ -602,23 +609,26 @@ def _route_target(run, frame, node):
     raise RunError(f"node {frame.path(node['id'])!r}: no route matched and no default route", code=4)
 
 
-def _advance(run, frame, node, last_outputs=None):
+def _advance(run, frame, node, last_outputs=None, via_gate=False):
     """Route away from a completed node."""
     target = _route_target(run, frame, node)
-    _leave_to(run, frame, node, target, last_outputs)
+    _leave_to(run, frame, node, target, last_outputs, via_gate=via_gate)
 
 
 def _leave_to(run, frame, node, target, last_outputs=None, via_gate=False):
     _drop_cursor(run, frame.path(node["id"]))
     if target == "end":
-        _frame_end(run, frame, last_outputs or {})
+        _frame_end(run, frame, last_outputs or {}, via_gate=via_gate)
     elif target == "abort":
         _frame_abort(run, frame, reason=f"aborted at {frame.path(node['id'])}")
     else:
         _enter(run, frame, target, via_gate=via_gate)
 
 
-def _frame_end(run, frame, last_outputs):
+def _frame_end(run, frame, last_outputs, via_gate=False):
+    """A frame reached `end`. via_gate: it ended through a real gate option, so the parent's
+    route away from the finished subworkflow is that human decision carried upward (a child's
+    "send back to design" choice is still human-bounded, not visit-capped, in the parent)."""
     if frame.kind == "main":
         run.state["run"]["status"] = "done"
         run.state["run"]["cursors"] = []
@@ -636,7 +646,7 @@ def _frame_end(run, frame, last_outputs):
         entry["outputs"] = outputs
         entry["status"] = "done"
         statemod.mark_step_finished(entry)
-        _advance(run, frame.parent, node, outputs)
+        _advance(run, frame.parent, node, outputs, via_gate=via_gate)
     else:  # branch
         _branch_terminal(run, frame, "done", last_outputs)
 

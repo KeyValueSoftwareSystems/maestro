@@ -367,7 +367,52 @@ as one wave; elsewhere (`next --serial`) branches run one at a time.
 ### `subworkflow`
 
 Runs another workflow file inline. The child's `outputs:` map becomes the step's outputs; child
-steps are namespaced in state (`design/author_hld`). Maximum nesting depth: 4.
+steps are namespaced in state (`design/hld/author_hld`). Maximum nesting depth: 4.
+
+A child cannot route into its parent: it ends (`end`) with outputs the parent routes on, or
+aborts (`abort` marks the subworkflow step failed and applies its `on_fail`). It reads its own
+inputs and steps; `${steps.x}` also falls back to ancestor frames, but sibling children are
+invisible — pass what a child needs as `inputs:`. Re-entering a subworkflow node restarts the
+child at its `start` with fresh child state.
+
+This is how a large workflow splits into small stages, so no single graph overloads the reader.
+The shipped `sdlc-main.yaml` owns only the stage order and the loops between stages (`design`,
+`design-review`, `delivery`, `archive`); `design.yaml` owns only ordering, scoped re-entry, and
+the legacy-run import (`design-import`, `design-intake`, `design-prd`, `design-map`,
+`design-hld`, `design-lld`, `design-contract`). Each stage keeps its own back-edges, and each
+stage node sets `on_fail: abort` so a rejection fails the parent exactly as an inline step would.
+
+A human decision that must leave its stage ("send back to design") ends the child through a gate
+option (`to: end`); the child reports the choice — and any feedback, since re-entry wipes child
+state — in its `outputs:`, and the parent routes on it. Because the child ended through a real
+gate option, that parent route is gate-driven: the visit cap does not block it, exactly as when
+the gate was inline.
+
+```yaml
+- id: review
+  type: subworkflow
+  workflow: .maestro/workflows/design-review.yaml
+  on_fail: abort
+  routes:
+    - {when: "${steps.review.outputs.approval} == approve", to: delivery}
+    - {when: "${steps.review.outputs.approval} == revise", to: design}
+    - {when: "${steps.review.outputs.arch_choice} in [lld_only, revise]", to: arch_design_revision}
+    - {to: abort}
+```
+
+A child that can be entered at more than one node starts with a route-only script
+(`engine/entry_serve.py`) whose `routes:` branch on the child's inputs:
+
+```yaml
+start: import_entry
+nodes:
+  - id: import_entry
+    type: script
+    run: [python3, .maestro/engine/entry_serve.py, "${inputs.state}"]
+    routes:
+      - {when: "${inputs.state} == ready", to: upgrade_baseline_approval}
+      - {to: upgrade_baseline_invalid}
+```
 
 ```yaml
 - id: design
@@ -438,6 +483,8 @@ loop:
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop
   on step failure: maestroctl fail --step P --reason '...'
+  every init, and any action whose stage picture changed, carries `todo` → mirror it verbatim
+  into the harness task list (`maestroctl todo --slug S` prints the same checklist)
 ```
 
 Served worker steps are **claimed** (`dispatched_at`): later calls return only newly ready

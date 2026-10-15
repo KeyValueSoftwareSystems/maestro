@@ -1,0 +1,151 @@
+# Design child: LLD workstreams — one child run and approval ledger per selected repository.
+# The parent owns the shared PRD/HLD and waits here. Backend, frontend, Flutter, or any other
+# repo team resumes only its child slug, so pushing one team's state cannot advance another.
+# Entered by design.yaml after HLD approval, after a legacy-run import, or directly for an
+# LLD-scoped architecture-review correction.
+version: 1
+name: design-lld
+description: Scope the repositories, run one LLD workstream per repo, and wait for every approval.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
+  revision_mode: {type: string, default: "", description: architecture gate choice for a scoped revision}
+  revision_scope: {type: string, default: "", description: earliest design layer reopened by architecture review}
+  affected_repos: {type: string, default: "", description: comma-separated repositories whose LLDs need the approved change}
+  correction_text: {type: string, default: "", description: architecture-review correction wording approved at the gate}
+  imported_workstreams: {type: boolean, default: false, description: a legacy-run import already created the repository workstreams}
+  imported_workstreams_md: {type: string, default: "", description: workstream list from the legacy-run import}
+defaults:
+  model: opus
+  agent: planner
+  max_visits: 10
+start: lld_entry
+nodes:
+  - id: lld_entry
+    type: script
+    label: Choose LLD entry point
+    run: [python3, .maestro/engine/entry_serve.py, "${inputs.revision_mode}${inputs.revision_scope}"]
+    routes:
+      - {when: "${inputs.revision_mode} == lld_only", to: record_arch_lld_correction}
+      - {when: "${inputs.revision_scope} == lld", to: lld_review_reopen}
+      - {when: "${inputs.imported_workstreams} == true", to: lld_workstreams_check}
+      - {to: lld_scope_serve}
+
+  - id: lld_scope_serve
+    type: script
+    label: Discover repos
+    run: [python3, .maestro/engine/lld_repo_pool.py, list, --root, .]
+    next: lld_scope
+
+  - id: lld_scope
+    type: gate
+    label: LLD scope
+    prompt: |
+      Detected repos: ${steps.lld_scope_serve.outputs.names_csv}
+
+      Write the detailed design for all of them now, or just some?
+    options:
+      - {id: all, label: All of them, to: lld_scope_init}
+      - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
+
+  - id: lld_scope_init
+    type: script
+    label: Validate scope, build the claim queue
+    run:
+      - python3
+      - .maestro/engine/lld_repo_pool.py
+      - init
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --choice
+      - "${steps.lld_scope.outputs.choice}"
+      - --repos-text
+      - "${steps.lld_scope.outputs.repos_text}"
+    on_fail: lld_scope
+    next: lld_workstreams_init
+
+  - id: lld_workstreams_init
+    type: script
+    label: Create independent repository LLD runs
+    run: [python3, .maestro/engine/lld_repo_pool.py, workstreams, --root, ., --slug, "${inputs.slug}", --workflow, .maestro/workflows/repo-lld.yaml, --feature, "${inputs.feature}"]
+    on_fail: abort
+    next: lld_workstreams_check
+
+  - id: record_arch_lld_correction
+    type: script
+    label: Record approved LLD-only architecture correction
+    run:
+      - python3
+      - .maestro/engine/design_corrections.py
+      - record-repositories
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --repos-text
+      - "${inputs.affected_repos}"
+      - --text
+      - "${inputs.correction_text}"
+    on_fail: abort
+    next: lld_review_reopen
+
+  - id: lld_review_reopen
+    type: script
+    label: Reopen only affected repository LLDs
+    run:
+      - python3
+      - .maestro/engine/lld_repo_pool.py
+      - reopen
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --repos-text
+      - "${inputs.affected_repos}"
+      - --feedback
+      - "${inputs.correction_text} ${inputs.feedback}"
+      - --workflow
+      - .maestro/workflows/repo-lld.yaml
+      - --feature
+      - "${inputs.feature}"
+    on_fail: abort
+    next: lld_workstreams_check
+
+  - id: lld_workstreams_check
+    type: script
+    label: Check repository LLD approvals
+    run: [python3, .maestro/engine/lld_repo_pool.py, check, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.lld_workstreams_check.outputs.ready} == true", to: end}
+      - {to: lld_workstreams_wait}
+
+  - id: lld_workstreams_wait
+    type: gate
+    label: Repository LLD workstreams
+    prompt: |
+      Each selected repository has its own run and approval. Team members can work in parallel
+      without sharing one mutable state.yaml:
+
+      ${steps.lld_workstreams_init.outputs.workstreams_md}
+      ${steps.lld_review_reopen.outputs.workstreams_md}
+
+      Current status:
+      ${steps.lld_workstreams_check.outputs.status_md}
+
+      Commit and push each child run after its approval. Once those changes are pulled here,
+      refresh this check. The parent will not create the shared contract early.
+
+      Imported workstreams when this run was upgraded:
+      ${inputs.imported_workstreams_md}
+    options:
+      - {id: refresh, label: Refresh repository approval status, to: lld_workstreams_check}
+      - {id: scope, label: Change selected repositories, to: lld_scope}
+      - {id: reject, label: Abort the parent run, to: abort}
+
+outputs:
+  hld_summary: "${steps.lld_review_reopen.outputs.hld_summary}"
+  repos_csv: "${steps.lld_scope_init.outputs.selected_csv}"

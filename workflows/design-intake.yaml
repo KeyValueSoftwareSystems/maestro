@@ -1,0 +1,82 @@
+# Design child: requirement folder -> optional references -> confirmed project context.
+# Entered by design.yaml first, and again for a product or cross-cutting architecture-review
+# revision. The lead reads maintained summaries and requirement inputs only; it never scans
+# application source. Its outputs ground the PRD phase.
+version: 1
+name: design-intake
+description: Check the requirement, collect references, and confirm the project context.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+defaults:
+  model: opus
+  agent: planner
+  max_visits: 10
+start: assert_requirement
+nodes:
+  - id: assert_requirement
+    type: script
+    label: Requirement present?
+    run: [python3, .maestro/engine/requirement_serve.py, ".maestro/runs/${inputs.slug}/requirement"]
+    routes:
+      - {when: "${steps.assert_requirement.outputs.state} == have", to: collect_references}
+      - {to: requirement_intake}
+
+  - id: requirement_intake
+    type: gate
+    label: No requirement found
+    prompt: |
+      No requirement files in .maestro/runs/${inputs.slug}/requirement/.
+
+      How do you want to supply the requirement for "${inputs.feature}"?
+    options:
+      - {id: add-files, label: I'll add files now — re-check, to: assert_requirement}
+      - {id: clarify, label: Clarify it with me, to: collect_references}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: collect_references
+    type: gate
+    label: Starting references
+    prompt: |
+      Optional: paste any references to ground the PRD for "${inputs.feature}" — Figma links,
+      doc or file paths, tickets, URLs. Local paths are read; links that can't be opened are
+      recorded in the PRD and turned into a question if their content matters. Or pick "none".
+    options:
+      - {id: provide, label: I have references to add, to: project_context, input: refs}
+      - {id: none, label: No references — continue, to: project_context}
+
+  - id: project_context
+    type: agent
+    execution: lead
+    label: Summarize project context
+    instruction: |
+      State this project's product context in at most three short sentences. Read only root
+      AGENTS.md / CLAUDE.md, maintained summaries under docs/ (architecture.md, technical/,
+      functional/), every file under .maestro/runs/${inputs.slug}/requirement/, and explicit
+      references: ${steps.collect_references.outputs.refs}. Do not read application source or
+      search outside this repository. If context is missing, say so plainly. Apply the user's
+      correction when present: ${steps.project_context_confirm.outputs.feedback}
+    skill: prd-interview
+    inputs:
+      slug: "${inputs.slug}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      references: "${steps.collect_references.outputs.refs}"
+      feedback: "${steps.project_context_confirm.outputs.feedback}"
+    outputs: [project_context]
+    next: project_context_confirm
+
+  - id: project_context_confirm
+    type: gate
+    label: Confirm project context
+    prompt: |
+      Project context: ${steps.project_context.outputs.project_context}
+
+      Is this correct?
+    options:
+      - {id: confirm, label: Yes — use this context, to: end}
+      - {id: revise, label: No — correct the context, to: project_context, input: feedback}
+      - {id: reject, label: Abort the run, to: abort}
+
+outputs:
+  project_context: "${steps.project_context.outputs.project_context}"
+  references: "${steps.collect_references.outputs.refs}"

@@ -116,8 +116,8 @@ class UiServerTest(unittest.TestCase):
         # workflows sort before non-workflows
         self.assertTrue(obj[0]["workflow"])
 
-    def test_workflows_list_skips_host_skill_directories(self):
-        for dirname in (".claude", ".cursor", ".agents", ".codex"):
+    def test_workflows_list_skips_host_skill_and_fixture_directories(self):
+        for dirname in (".claude", ".cursor", ".agents", ".codex", "testdata"):
             nested = os.path.join(self.tmp, dirname, "skills", "noise")
             os.makedirs(nested)
             with open(os.path.join(nested, "not-a-workflow.yaml"), "w") as fh:

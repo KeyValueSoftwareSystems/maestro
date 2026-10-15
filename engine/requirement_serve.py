@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the "is a requirement present?" routing state (workflows/design.yaml).
+"""Serve the "is a requirement present?" routing state (workflows/design-prd.yaml).
 
 Reads a requirement folder and prints a JSON object to stdout so the design
 workflow's script node can route on the `state` field (the "script stdout JSON

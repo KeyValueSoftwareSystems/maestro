@@ -1,0 +1,253 @@
+# Child of sdlc-main: one implementation batch -> verified test context -> QA -> review pack ->
+# release approval, repeated per deferred batch. It decides; the parent acts. Leaving for a design
+# revision (the workspace moved since the design was grounded, or the human sent the release back)
+# ends the child and is reported in its outputs: `design_changed` true or `release` revise -> the
+# parent re-runs design; otherwise the parent archives. The deferred-work gate may stay parked
+# between batches; resuming it never repeats design.
+version: 1
+name: delivery
+description: Implement the approved design batch by batch, verify it with QA, and approve the release.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+defaults:
+  model: haiku
+  agent: general
+  max_visits: 10
+start: effective_design_pre_impl
+nodes:
+  - id: effective_design_pre_impl
+    type: script
+    label: Refresh effective design before implementation
+    run: [python3, .maestro/engine/design_corrections.py, render, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: workspace_sync_pre_impl
+
+  - id: workspace_sync_pre_impl
+    type: subworkflow
+    label: Workspace sync (pre-implementation)
+    workflow: .maestro/workflows/workspace-sync.yaml
+    inputs: {slug: "${inputs.slug}", checkpoint: pre-implementation}
+    max_visits: 8
+    routes:
+      # If HEAD moved since the design was grounded, end so the parent regenerates/reapproves
+      # the design before implementation. Continuing at the already-pinned commits falls through immediately.
+      - {when: "${steps.workspace_sync_pre_impl.outputs.changed} == true", to: end}
+      - {to: impl_scope_serve}
+
+  - id: impl_scope_serve
+    type: script
+    label: List repositories available for implementation
+    run: [python3, .maestro/engine/implementation_pool.py, list, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: impl_scope
+
+  - id: impl_scope
+    type: gate
+    label: Implementation scope
+    prompt: |
+      Approved repositories available to implement now:
+      ${steps.impl_scope_serve.outputs.available_csv}
+
+      Already implemented in an earlier batch:
+      ${steps.impl_scope_serve.outputs.implemented_csv}
+
+      Choose this delivery batch. Unselected repositories remain deferred and can be resumed from
+      this parent run without repeating PRD, HLD, LLD, contract, or architecture review.
+    options:
+      - {id: all, label: Implement all available repositories, to: impl_scope_init}
+      - {id: pick, label: Pick repositories for this batch, to: impl_scope_init, input: repos_text}
+      - {id: reject, label: Abort implementation, to: abort}
+
+  - id: impl_scope_init
+    type: script
+    label: Initialize implementation repo pool
+    run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}", --choice, "${steps.impl_scope.outputs.choice}", --repos-text, "${steps.impl_scope.outputs.repos_text}"]
+    on_fail: abort
+    next: implement
+
+  - id: implement
+    type: parallel
+    label: Implementation (repo pool)
+    join: all
+    on_branch_fail: ask
+    branches:
+      - id: slot_1
+        start: claim
+        steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
+          - id: impl
+            type: subworkflow
+            workflow: .maestro/workflows/impl.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+      - id: slot_2
+        start: claim
+        steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
+          - id: impl
+            type: subworkflow
+            workflow: .maestro/workflows/impl.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+      - id: slot_3
+        start: claim
+        steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
+          - id: impl
+            type: subworkflow
+            workflow: .maestro/workflows/impl.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+      - id: slot_4
+        start: claim
+        steps:
+          - id: claim
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
+            max_visits: 40
+            routes:
+              - {when: "${steps.claim.outputs.done} == true", to: end}
+              - {to: impl}
+          - id: impl
+            type: subworkflow
+            workflow: .maestro/workflows/impl.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              stack: "${steps.claim.outputs.repo}"
+              repo_path: "${steps.claim.outputs.repo_path}"
+              feature: "${inputs.feature}"
+            next: record
+          - id: record
+            type: script
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            on_fail: abort
+            next: claim
+    next: finalize_implementation
+
+  - id: finalize_implementation
+    type: script
+    label: Verify implementation test context
+    run: [python3, .maestro/engine/implementation_pool.py, finalize, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: qa
+
+  - id: qa
+    type: subworkflow
+    label: QA phase
+    workflow: .maestro/workflows/qa.yaml
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"
+      implementation_manifest_sha256: "${steps.finalize_implementation.outputs.manifest_sha256}"
+    max_visits: 3
+    next: review_pack
+
+  - id: review_pack
+    type: agent
+    label: Human review pack
+    instruction: |
+      Assemble the release review pack for this feature: what was built (per stack),
+      review outcomes, QA results, open risks, and how to verify locally. Read only these
+      inputs: implementation-manifest.json, each repo's <repo>/reviews/summary.md,
+      reviews/architecture.md, qa/report.md, and approved-corrections.md under
+      .maestro/runs/${inputs.slug}/ — summarize them; do not re-read the design documents or
+      source. The pack is what the human reads at the release gate. Treat implementation-manifest.json as the source of truth for every
+      repository's exact branch, worktree, and commit; include all of them in the pack.
+      Treat approved-corrections.md as authoritative over conflicting base design text.
+    skill: human-review-pack
+    agent: analyst
+    model: sonnet
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [pack_path, recommendation, summary]
+    artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
+    next: release_approval
+
+  - id: release_approval
+    type: gate
+    label: Release approval
+    prompt: |
+      Ready to release?
+      Recommendation: ${steps.review_pack.outputs.recommendation}
+      ${steps.review_pack.outputs.summary}
+      Review pack: ${steps.review_pack.outputs.pack_path}
+      QA: ${steps.qa.outputs.qa_summary}
+    options:
+      - {id: approve, label: Approve this implementation batch, to: impl_deferred_check}
+      - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}
+      - {id: reject, label: Reject — abort, to: abort}
+
+  - id: impl_deferred_check
+    type: script
+    label: Check deferred implementation repositories
+    run: [python3, .maestro/engine/implementation_pool.py, check, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.impl_deferred_check.outputs.has_deferred} == true", to: impl_deferred_gate}
+      - {to: end}
+
+  - id: impl_deferred_gate
+    type: gate
+    label: Deferred implementation repositories
+    prompt: |
+      This batch is approved. These approved repositories remain deferred:
+      ${steps.impl_deferred_check.outputs.deferred_csv}
+
+      You can leave this run at this gate and resume it later without repeating design.
+    options:
+      - {id: implement_more, label: Implement another deferred batch now, to: effective_design_pre_impl}
+      - {id: finish, label: Finish this feature with those repositories deferred, to: end}
+      - {id: reject, label: Abort the remaining feature work, to: abort}
+
+outputs:
+  design_changed: "${steps.workspace_sync_pre_impl.outputs.changed}"
+  release: "${steps.release_approval.outputs.choice}"
+  release_feedback: "${steps.release_approval.outputs.feedback}"
+  pack_path: "${steps.review_pack.outputs.pack_path}"
+  manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"

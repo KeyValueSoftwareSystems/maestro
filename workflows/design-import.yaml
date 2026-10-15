@@ -1,0 +1,143 @@
+# Design child: the one-time legacy-run import. Entered by design.yaml only when
+# `run_upgrade.py resume` reports an imported baseline (`ready`) or one that needs structural
+# repair (`invalid`). It ends by either activating the imported baseline (the parent continues at
+# the repository LLDs) or closing the fast path (`skipped` true: the parent restarts at intake).
+version: 1
+name: design-import
+description: Approve, repair, or set aside a legacy run's imported PRD/HLD baseline.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  upgrade_manifest: {type: string, required: true, description: engine-created one-time legacy run import plan}
+  state: {type: string, default: "", description: "resume state: ready (valid baseline) or invalid (needs repair)"}
+  summary: {type: string, default: "", description: resume summary of the imported documents}
+defaults:
+  model: opus
+  agent: planner
+  max_visits: 10
+start: import_entry
+nodes:
+  - id: import_entry
+    type: script
+    label: Choose import path
+    run: [python3, .maestro/engine/entry_serve.py, "${inputs.state}"]
+    routes:
+      - {when: "${inputs.state} == ready", to: upgrade_baseline_approval}
+      - {to: upgrade_baseline_invalid}
+
+  - id: upgrade_baseline_approval
+    type: gate
+    label: Approve imported design baseline
+    prompt: |
+      Maestro found a valid PRD and HLD in the legacy run:
+      ${inputs.summary}
+
+      Approve these unchanged as the imported baseline? Existing repository LLDs remain drafts:
+      each one must pass the current validator and its own human approval before implementation.
+    options:
+      - {id: approve, label: Approve imported PRD and HLD, to: upgrade_activate}
+      - {id: restart, label: Recheck and repair through the current design flow, to: upgrade_skip}
+      - {id: reject, label: Abort the upgraded run, to: abort}
+
+  - id: upgrade_baseline_invalid
+    type: gate
+    label: Legacy design needs current-format repair
+    prompt: |
+      The legacy documents were preserved, but their old structure cannot pass current validators:
+      ${inputs.summary}
+
+      Convert the existing decisions into the current concise PRD/HLD structure without reopening
+      discovery, restart through the full current design flow, or abort?
+    options:
+      - {id: convert, label: Convert existing PRD and HLD once, to: upgrade_repair}
+      - {id: rediscover, label: Restart through the current design flow, to: upgrade_skip}
+      - {id: reject, label: Abort the upgraded run, to: abort}
+
+  - id: upgrade_repair
+    type: agent
+    execution: lead
+    label: Convert legacy PRD and HLD structure
+    model: sonnet
+    instruction: |
+      Convert the existing legacy PRD and HLD for ${inputs.slug} into the current concise document
+      contracts. The engine preserved immutable originals in the legacy-artifacts paths named by
+      ${inputs.upgrade_manifest}. Read those originals and the current copies only. Preserve every
+      existing product requirement, acceptance behavior, non-goal, architecture decision, trade-off,
+      risk, dependency, and open question. Do not ask new questions, invent missing decisions,
+      broaden scope, or add explanations. This is structural migration, not redesign.
+
+      Rewrite requirement/prd.md using the exact current PRD headings and acceptance IDs only in
+      Acceptance criteria. Rewrite hld.md using the exact six current HLD headings. Keep technical
+      details that belong in the imported repository LLD out of the HLD. Preserve the existing
+      open-questions.json ledger. Run the supplied current validators before returning.
+    skill: run-upgrade-repair
+    inputs:
+      slug: "${inputs.slug}"
+      manifest_path: "${inputs.upgrade_manifest}"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      prd_validator: ".maestro/engine/validate_prd.py"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      validator_feedback: "${steps.upgrade_validate.outputs.issues_summary}"
+    outputs: [summary]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      - ".maestro/runs/${inputs.slug}/hld.md"
+    max_visits: 2
+    on_exhausted: upgrade_repair_limit
+    next: upgrade_validate
+
+  - id: upgrade_validate
+    type: script
+    label: Validate converted legacy baseline
+    run: [python3, .maestro/engine/run_upgrade.py, validate-baseline, --root, ., --manifest, "${inputs.upgrade_manifest}"]
+    routes:
+      - {when: "${steps.upgrade_validate.outputs.valid} == true", to: upgrade_converted_approval}
+      - {to: upgrade_repair}
+
+  - id: upgrade_converted_approval
+    type: gate
+    label: Approve converted design baseline
+    prompt: |
+      The preserved legacy decisions now pass the current PRD and HLD validators:
+      ${steps.upgrade_validate.outputs.summary}
+
+      Approve these converted documents as the imported baseline? Existing repository LLDs remain
+      drafts and still require their own current validation and human approval.
+    options:
+      - {id: approve, label: Approve converted PRD and HLD, to: upgrade_activate}
+      - {id: restart, label: Recheck through the current design flow, to: upgrade_skip}
+      - {id: reject, label: Abort the upgraded run, to: abort}
+
+  - id: upgrade_repair_limit
+    type: gate
+    label: Legacy conversion needs discovery
+    prompt: |
+      The old PRD/HLD could not be converted mechanically after two focused passes:
+      ${steps.upgrade_validate.outputs.issues_summary}
+
+      Continue through current clarification, or abort while preserving the legacy backup?
+    options:
+      - {id: rediscover, label: Continue through current clarification, to: upgrade_skip}
+      - {id: reject, label: Abort and keep the backup, to: abort}
+
+  - id: upgrade_skip
+    type: script
+    label: Close legacy import fast path
+    run: [python3, .maestro/engine/run_upgrade.py, skip, --root, ., --manifest, "${inputs.upgrade_manifest}"]
+    on_fail: abort
+    next: end
+
+  - id: upgrade_activate
+    type: script
+    label: Create current repository LLD workstreams from legacy drafts
+    run: [python3, .maestro/engine/run_upgrade.py, activate, --root, ., --manifest, "${inputs.upgrade_manifest}", --child-workflow, .maestro/workflows/repo-lld.yaml]
+    on_fail: abort
+    next: end
+
+outputs:
+  skipped: "${steps.upgrade_skip.outputs.skipped}"
+  has_workstreams: "${steps.upgrade_activate.outputs.has_workstreams}"
+  workstreams_md: "${steps.upgrade_activate.outputs.workstreams_md}"
+  hld_summary: "${steps.upgrade_activate.outputs.hld_summary}"
+  selected_csv: "${steps.upgrade_activate.outputs.selected_csv}"

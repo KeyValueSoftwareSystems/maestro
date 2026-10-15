@@ -2,9 +2,11 @@
 """One-time upgrade of legacy Maestro runs into the current workflow layout.
 
 The command never translates old step identifiers.  Compatible ledgers are backed up, rebased,
-and stamped.  Truly legacy ledgers are backed up and rebuilt from validated artifacts; the current
-workflow then asks the human to approve the imported PRD/HLD baseline, creates independent LLD
-children, and requires each imported LLD to pass today's validator and approval gate.
+re-nested where a workflow moved inline steps into a stage child (identifiers unchanged, see
+relayout_stages), and stamped.  Truly legacy ledgers are backed up and rebuilt from validated
+artifacts; the current workflow then asks the human to approve the imported PRD/HLD baseline,
+creates independent LLD children, and requires each imported LLD to pass today's validator and
+approval gate.
 """
 
 from __future__ import annotations
@@ -13,6 +15,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -34,6 +37,106 @@ LEGACY_STEP_IDS = {
     "author_llds", "brainstorm_draft", "brainstorm_fold",
     "rq_ask", "rq_fold", "rq_prepare", "rq_validate", "design_review",
 }
+
+
+_HEAD_RE = re.compile(r"[/\[]")
+
+
+def _relayout_frame(run, prefix, created):
+    """Re-key the legacy inline steps of the frame at `prefix` under the stage that owns them."""
+    state = run.state
+    try:
+        frame = run.frame_for(prefix + "_")
+    except resolver.RunError:
+        return
+    stages = [node for node in frame.nodes.values() if resolver.ntype(node) == "subworkflow"]
+    stage_of = {}
+    for node in stages:
+        for child_node in run.load_workflow(node["workflow"])["nodes"]:
+            stage_of.setdefault(child_node["id"], node["id"])
+
+    def owner(head):
+        stage = stage_of.get(head)
+        if stage is None or head not in frame.nodes:
+            return stage
+        # A current node id is legacy only where the old inline step shared its stage's name
+        # (`contract` was an agent and is now the contract stage) and was never that stage.
+        entry = state["steps"].get(prefix + head) or {}
+        if stage != head or prefix + head in state["frames"] or entry.get("node_type") == "subworkflow":
+            return None
+        return stage
+
+    def remap(path):
+        if not path or not path.startswith(prefix):
+            return path
+        rest = path[len(prefix):]
+        stage = owner(_HEAD_RE.split(rest, 1)[0])
+        return f"{prefix}{stage}/{rest}" if stage else path
+
+    moved = {path for path in state["steps"] if remap(path) != path}
+    if not moved:
+        return
+    state["steps"] = {remap(path): entry for path, entry in state["steps"].items()}
+    state["frames"] = {remap(path): info for path, info in state["frames"].items()}
+    state["run"]["cursors"] = [remap(path) for path in state["run"].get("cursors") or []]
+    for gate in state.get("gates") or []:
+        gate["step"] = remap(gate.get("step"))
+    for note in state.get("notes") or []:
+        if isinstance(note.get("at_steps"), list):
+            note["at_steps"] = [remap(path) for path in note["at_steps"]]
+
+    cursors = state["run"]["cursors"]
+    for node in stages:
+        path = prefix + node["id"]
+        inside = [key for key in state["steps"] if key.startswith(path + "/")]
+        if not inside or path in state["frames"]:
+            continue
+        rel = node["workflow"]
+        sha = statemod.sha256_file(os.path.join(run.root, rel))
+        state["frames"][path] = {
+            "workflow": rel, "sha256": sha,
+            "inputs": resolver.subworkflow_inputs(run, frame, node, run.load_workflow(rel, sha)),
+        }
+        if any(cursor.startswith(path + "/") for cursor in cursors):
+            status = "running"
+        elif any(state["steps"][key].get("status") == "failed" for key in inside):
+            status = "failed"
+        else:
+            status = "done"
+        entry = {"status": status, "attempts": 0, "visits": 1, "outputs": {},
+                 "node_type": "subworkflow"}
+        state["steps"][path] = entry
+        if status == "done":
+            child = run._sub_frame(frame, node)
+            entry["outputs"] = {
+                key: run.resolve_value(value, child, missing_ok=True)
+                for key, value in (child.workflow.get("outputs") or {}).items()
+            }
+        created.append(path)
+
+
+def relayout_stages(run):
+    """Run format 2 -> 3: inline steps moved into small stage child workflows.
+
+    Every ledger path a frame owned inline (`design/author_hld`, `qa/run_tests`,
+    `implement[slot_1]/claim`) is re-keyed under the stage subworkflow node whose child now
+    declares it (`design/hld/author_hld`, `delivery/qa/run_tests`) — steps, frames, cursors, gate
+    history and note anchors alike. Each touched stage then gets the subworkflow entry and frame
+    record the resolver would have written on entry: running when a cursor is inside it, otherwise
+    done with its child outputs resolved. Parents are processed before children, so a stage
+    created here is relaid out in turn. The exact cursor survives. Returns the stage paths created;
+    a ledger already in the stage layout is left alone.
+    """
+    state = run.state
+    created, seen = [], set()
+    while True:
+        prefixes = [""] + [path + "/" for path in sorted(
+            state["frames"], key=lambda path: (path.count("/"), path))]
+        todo = [prefix for prefix in prefixes if prefix not in seen]
+        if not todo:
+            return created
+        seen.add(todo[0])
+        _relayout_frame(run, todo[0], created)
 
 
 def _run_dir(slug, root):
@@ -244,6 +347,7 @@ def apply(slug, root, workflow):
                 raise ValueError("compatible upgrade cannot load the existing state")
             run = resolver.Run(slug, root, state_data=state)
             resolver.rebase(run)
+            relayout_stages(run)
             run.state["run_format"] = statemod.RUN_FORMAT_VERSION
             run.state["upgrade"] = {
                 "manifest": os.path.relpath(manifest_path, root),

@@ -1,0 +1,62 @@
+# Design child: approved-corrections context -> API contract -> functional test cases. Entered
+# by design.yaml once every repository LLD is approved, or directly for a contract- or
+# verification-scoped architecture-review revision.
+version: 1
+name: design-contract
+description: Reconcile the approved LLDs into an API contract and the functional test catalog.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  revision_scope: {type: string, default: "", description: earliest design layer reopened by architecture review}
+defaults:
+  model: opus
+  agent: planner
+  max_visits: 10
+start: contract_entry
+nodes:
+  - id: contract_entry
+    type: script
+    label: Choose contract entry point
+    run: [python3, .maestro/engine/entry_serve.py, "${inputs.revision_scope}"]
+    routes:
+      - {when: "${inputs.revision_scope} == verification", to: test_cases}
+      - {to: corrections_context}
+
+  - id: corrections_context
+    type: script
+    label: Materialize effective design context
+    run: [python3, .maestro/engine/design_corrections.py, render, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: contract
+
+  - id: contract
+    type: agent
+    label: API contract
+    instruction: |
+      Reconcile whichever LLD(s) exist under .maestro/runs/${inputs.slug}/lld/ into an OpenAPI
+      contract. If only one side was authored this round, describe that side's exposed contract
+      — do not invent the other side's. Treat approved-corrections.md as authoritative over any
+      conflicting base statement. Flag any mismatch you had to resolve.
+    skill: api-contract
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [contract_summary]
+    artifact: ".maestro/runs/${inputs.slug}/openapi.yaml"
+    next: test_cases
+
+  - id: test_cases
+    type: agent
+    label: Functional test cases
+    instruction: |
+      Produce the functional test-case catalog for this feature from the HLD, LLDs, contract, and
+      approved-corrections.md — the QA source of truth. An approved correction overrides a
+      conflicting base statement.
+    skill: functional-testcases
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    outputs: [test_cases_path, case_count]
+    artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
+    next: end
+
+outputs:
+  contract_summary: "${steps.contract.outputs.contract_summary}"
+  contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"

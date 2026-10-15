@@ -62,7 +62,9 @@ class SyncTest(unittest.TestCase):
         vendor = re.search(r"<script>/\* vendored js-yaml.*?\n(.*?)</script>", self.html, re.S)
         self.assertIsNotNone(vendor, "vendored js-yaml block missing")
         import tempfile
-        for name in ("sdlc-main", "design", "impl", "qa"):
+        for name in ("sdlc-main", "design-review", "delivery", "design", "design-import",
+                     "design-intake", "design-prd", "design-map", "design-hld", "design-lld",
+                     "design-contract", "impl", "qa"):
             path = os.path.join(ROOT, "workflows", f"{name}.yaml")
             with open(path, encoding="utf-8") as fh:
                 original_text = fh.read()

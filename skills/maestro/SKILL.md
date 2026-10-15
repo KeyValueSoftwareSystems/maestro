@@ -2,7 +2,7 @@
 name: maestro
 description: Lead agent for Maestro workflows — drives a workflow.yaml end-to-end by carrying out engine-served lead actions, dispatching workers, and asking humans. Front door for /maestro or $maestro with a feature slug and optional workflow file. Use when the user wants to run, resume, or continue an orchestrated SDLC flow for a feature.
 tags: [orchestration, sdlc, lead-agent]
-allowed-tools: Task, Bash, AskUserQuestion, Read, Write, Grep, Glob
+allowed-tools: Task, Bash, AskUserQuestion, Read, Write, Grep, Glob, TodoWrite
 ---
 
 # Maestro — the lead agent
@@ -106,7 +106,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
 ```
 
 - `init` is safe when the run already exists (that IS the resume path — say "resuming" and
-  continue); it only releases worker claims left by an interrupted session.
+  continue); it only releases worker claims left by an interrupted session. Its output carries
+  `todo`, the run's stage checklist: put it in your task list now (see **Task list**).
 - If it exits 3 with a "workflow changed" message: STOP and ask the user to DECIDE between
   "accept the edit and continue" and "start over (discards all progress)". Never pick for
   them — but once they choose, YOU run the command (`python3 .maestro/engine/maestroctl.py rebase
@@ -430,7 +431,8 @@ remains durably parked on `ask_input` across turns until non-blank text is recor
 
 Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reason`
 (failed), and where the artifacts live (`.maestro/runs/<slug>/`). Suggest
-`python3 .maestro/engine/maestroctl.py status --slug <slug>` for the full step table.
+`python3 .maestro/engine/maestroctl.py status --slug <slug>` for the full step table. The
+final action carries the finished `todo`; mirror it so the task list ends complete.
 
 ## Resuming a run
 
@@ -443,7 +445,8 @@ interrupted session, so `next` re-serves workers that were in flight and otherwi
 action the run is currently waiting on (often a gate you left open). Always `init` before
 `next` when resuming; without it, lost in-flight workers show as `wait`. Never restart from scratch and never re-run completed steps — the state ledger, not
 your memory of where you were, decides what happens next. If the user asks "where did we leave
-off?", run `status --slug <slug>` and tell them, then resume.
+off?", run `todo --slug <slug>` (the stage checklist; `status` has the full step table) and tell
+them, then resume.
 
 ## Harness degradation — inline mode
 
@@ -505,6 +508,19 @@ The per-correction receipt is the approval record; `approved-corrections.md` and
 conflicting base text in LLD authoring, contract/test generation, architecture review,
 implementation, QA, review, and retrospect. Archive folds them once into validated copies under
 `final-design/`; it never changes the original hash-bound approvals.
+
+## Task list
+
+`init`, and every action whose stage picture changed, carries `todo`: the run's stage checklist
+as `[{content, status}]` (`pending` | `in_progress` | `completed`), built by the engine from the
+ledger — stages in order, the running stage's children as `Parent › Child`, and what the run is
+doing or waiting on you for. Mirror it into your harness's own task list (Claude Code's todo
+list, Codex's plan tool, Cursor's todos) by replacing the whole list, in order and verbatim, so
+the human always sees what is done, what is happening, and what comes next. Never add, drop,
+reword, reorder, or tick items yourself — the engine owns the list. An action without `todo`
+means nothing moved: keep the list as it is. In a harness without a task list, skip mirroring.
+When the human asks what is happening, `python3 .maestro/engine/maestroctl.py todo --slug <slug>`
+prints the same checklist for the terminal.
 
 ## Progress narration
 

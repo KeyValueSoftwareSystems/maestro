@@ -1,0 +1,115 @@
+# Child of sdlc-main: effective design -> architecture review -> blocking-findings gate ->
+# contract approval. It decides; the parent acts. A gate choice that leaves this stage (an LLD-only
+# correction, a source-layer revision, or a design revision) ends the child and is reported in
+# its outputs, so the parent routes on it: `arch_choice` lld_only|revise -> the scoped design
+# revision; `approval` revise -> the full design phase; `approval` approve -> delivery.
+version: 1
+name: design-review
+description: Review the effective design for risk, then get the contract approved for implementation.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  hld_path: {type: string, default: "", description: the approved HLD}
+  contract_path: {type: string, default: "", description: the approved API contract}
+defaults:
+  model: haiku
+  agent: general
+  max_visits: 10
+start: effective_design
+nodes:
+  - id: effective_design
+    type: script
+    label: Freeze effective design context
+    run: [python3, .maestro/engine/design_corrections.py, render, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: arch_review
+
+  - id: arch_review
+    type: agent
+    label: Architecture review
+    instruction: |
+      Review the full design set for this feature (HLD, every selected repo LLD, contract, test
+      cases, effective-design.json, and approved-corrections.md under
+      .maestro/runs/${inputs.slug}/) for soundness, consistency and risk. Approved corrections
+      override conflicting base statements.
+      Findings need evidence; set blocking=true only for must-fix issues. For a blocking verdict,
+      also identify the earliest authoritative layer that should normally change as revision_scope,
+      name every selected repository whose LLD must reflect the change in affected_repos_csv, and
+      provide one concise correction_text that is complete enough for a human to approve as an
+      effective-design override. For a clean verdict return revision_scope=none and empty strings.
+      If .maestro/runs/${inputs.slug}/reviews/architecture.md exists from an earlier round, this is a
+      re-review after a design revision or approved correction: read it first, confirm each earlier
+      blocking finding is resolved, and re-check only the documents that changed and their
+      consistency with the rest — do not re-audit unchanged documents. Then overwrite the report.
+    skill: architecture-review
+    agent: reviewer
+    model: opus
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.architecture-review}"}
+    outputs: [review_path, blocking, summary, revision_scope, affected_repos_csv, correction_text]
+    artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+    max_visits: 4
+    next: arch_review_validate
+
+  - id: arch_review_validate
+    type: script
+    label: Validate architecture revision routing
+    run:
+      - python3
+      - .maestro/engine/lld_repo_pool.py
+      - validate-review
+      - --root
+      - "."
+      - --slug
+      - "${inputs.slug}"
+      - --blocking
+      - "${steps.arch_review.outputs.blocking}"
+      - --revision-scope
+      - "${steps.arch_review.outputs.revision_scope}"
+      - --repos-text
+      - "${steps.arch_review.outputs.affected_repos_csv}"
+      - --correction-text
+      - "${steps.arch_review.outputs.correction_text}"
+    on_fail: arch_review
+    routes:
+      - {when: "${steps.arch_review_validate.outputs.blocking} == true", to: arch_gate}
+      - {to: contract_approval}
+
+  - id: arch_gate
+    type: gate
+    label: Blocking architecture findings
+    prompt: |
+      Architecture review found BLOCKING issues:
+      ${steps.arch_review.outputs.summary}
+      Full review: ${steps.arch_review.outputs.review_path}
+
+      Normal source-layer revision: ${steps.arch_review_validate.outputs.revision_scope}
+      LLDs that must reflect the change: ${steps.arch_review_validate.outputs.affected_repos_csv}
+      Proposed approved correction: ${steps.arch_review_validate.outputs.correction_text}
+    options:
+      - {id: lld_only, label: Approve correction — update affected LLDs only and continue, to: end}
+      - {id: revise, label: Revise the identified source layer — then add guidance, to: end, input: feedback}
+      - {id: waive, label: Waive — proceed anyway, to: contract_approval}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: contract_approval
+    type: gate
+    label: Contract approval
+    prompt: |
+      Design approved for implementation?
+      Design: ${inputs.hld_path}
+      Contract: ${inputs.contract_path}
+      Architecture review: ${steps.arch_review.outputs.summary}
+    options:
+      - {id: approve, label: Approve — verify effective design and workspace, to: end}
+      - {id: revise, label: Request design revisions — then describe what to change, to: end, input: feedback}
+      - {id: reject, label: Reject — abort, to: abort}
+
+outputs:
+  arch_choice: "${steps.arch_gate.outputs.choice}"
+  arch_feedback: "${steps.arch_gate.outputs.feedback}"
+  revision_scope: "${steps.arch_review_validate.outputs.revision_scope}"
+  affected_repos_csv: "${steps.arch_review_validate.outputs.affected_repos_csv}"
+  correction_text: "${steps.arch_review_validate.outputs.correction_text}"
+  approval: "${steps.contract_approval.outputs.choice}"
+  approval_feedback: "${steps.contract_approval.outputs.feedback}"
+  summary: "${steps.arch_review.outputs.summary}"
