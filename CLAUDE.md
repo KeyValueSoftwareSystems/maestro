@@ -42,7 +42,7 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · init · next · complete · complete-batch · gate-record · fail · reset
-  · rebase · status · graph · note · upgrade-run · correction-record`. The resolver serves exactly ONE next action as JSON; the
+  · rebase · status · todo · graph · note · upgrade-run · correction-record`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
@@ -109,6 +109,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`state.py`** — the ledger: load/save with `fcntl` lock + atomic tmp/rename, `step_entry`,
   step wall-clock timing, `sha256_file`, `new_state`. The ONLY writer of
   `.maestro/runs/<slug>/state.yaml`.
+- **`todo.py`** — the run's todo list, read-only: stages (subworkflow/parallel nodes) in order,
+  the running stage expanded, optional stages only once entered, plus what the run is doing or
+  waiting on the human for. `maestroctl todo` prints it; `init` and any `next` whose picture
+  changed (digest in `run.todo_digest`) carry it as `todo`, which the lead mirrors verbatim into
+  the harness's task list. Engine-built so every surface shows the same thing.
 - **`validate.py`** — schema check + graph lint (start/route-target existence, reachability,
   default-route-on-branches, placeholder resolvability, subworkflow depth, cycle lint).
 - **`condctl.py`** — the ~4-form route-condition grammar (`==`, `!=`, `in […]`, truthy);
