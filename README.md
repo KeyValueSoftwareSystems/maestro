@@ -30,6 +30,10 @@ spawns each step, asks you at gates, and shows where every artifact landed. You 
 drift: edit the workflow mid-run and the engine halts on a hash mismatch until you explicitly
 rebase.
 
+**New to all this, or only approving work?** Read **[docs/how-to-use.md](docs/how-to-use.md)** —
+a plain-English guide organised by situation: when each scenario applies, what to choose at each
+gate, and what happens next.
+
 ## 30-second quickstart
 
 ```bash
