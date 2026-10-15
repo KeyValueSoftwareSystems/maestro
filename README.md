@@ -215,6 +215,29 @@ different format. When a choice is required, Claude Code uses `AskUserQuestion` 
 `request_user_input` when its current mode exposes that tool. Hosts or modes without a native
 selector fall back to a numbered text prompt.
 
+**Seeing what's happening.** The run keeps your agent's own task list in step with the engine:
+each stage of the flow is a todo (done, in progress, waiting on you, still to come), the running
+stage expands into its parts, and the open step is named — e.g.
+`Design phase › HLD — waiting on you: HLD approval`. The same checklist is one command away in any
+terminal:
+
+```
+$ python3 .maestro/engine/maestroctl.py todo --slug my-feature
+my-feature · sdlc-main · running
+[x] Workspace sync (feature start)
+[>] Design phase
+    [x] Requirement and context
+    [x] PRD
+    [x] Codebase map check
+    [?] HLD
+          ↳ waiting on you: HLD approval
+    [ ] Repository LLDs
+    [ ] API contract and test cases
+[ ] Design review
+[ ] Implementation, QA and release
+[ ] Archival (harvest + publish)
+```
+
 On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:
 
 - **valid existing `prd.md`** → after two short context confirmations, it goes directly to
@@ -422,7 +445,7 @@ After install, in your project repo:
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · interview-record · interview-record-batch · interview-brief · gate-input-record · fail · reset · rebase · status · graph · note · runs)
+              · interview-record · interview-record-batch · interview-brief · gate-input-record · fail · reset · rebase · status · todo · graph · note · runs)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)

@@ -483,6 +483,8 @@ loop:
     ask_input  → ask for required free text → gate-input-record --input '...'
     done | failed → report and stop
   on step failure: maestroctl fail --step P --reason '...'
+  every init, and any action whose stage picture changed, carries `todo` → mirror it verbatim
+  into the harness task list (`maestroctl todo --slug S` prints the same checklist)
 ```
 
 Served worker steps are **claimed** (`dispatched_at`): later calls return only newly ready

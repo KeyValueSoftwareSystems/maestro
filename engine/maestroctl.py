@@ -20,7 +20,7 @@ The lead agent's whole protocol:
         maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
+Also: status, todo, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
 upgrade-run, and correction-record. `next --peek` re-reads without claiming or running.
 
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
@@ -45,6 +45,7 @@ import time
 
 import resolver
 import state as statemod
+import todo as todomod
 import validate as validatemod
 
 
@@ -80,9 +81,13 @@ def cmd_init(args):
         raise resolver.RunError(f"workflow has {len(errors)} validation error(s); fix them first", code=1)
     with statemod.locked(args.slug, args.root):
         data, created = resolver.init_run(args.slug, args.workflow, inputs, args.root, force=args.force)
-        if not created and resolver.release_claims(data):
-            # Resume: workers handed out by a previous session are gone — re-serve them.
-            statemod.save(args.slug, data, args.root)
+        if not created:
+            resolver.release_claims(data)  # resume: a previous session's workers are gone
+        # Start or resume: the lead (re)builds its task list from here; `next` then re-sends
+        # the list only when it changes.
+        todo = todomod.build(resolver.Run(args.slug, args.root, state_data=data))
+        data["run"]["todo_digest"] = todomod.digest(todo)
+        statemod.save(args.slug, data, args.root)
     _print({
         "ok": True,
         "created": created,
@@ -90,6 +95,7 @@ def cmd_init(args):
         "workflow": data["workflow"]["file"],
         "cursors": data["run"]["cursors"],
         "status": data["run"]["status"],
+        "todo": todomod.flat(todo),
     })
     return 0
 
@@ -161,7 +167,20 @@ def _serve_action(args, peek=False):
                     "seconds": round(time.monotonic() - started, 1)})
     if ran:
         action = {**action, "auto_scripts": ran}
-    return action
+    return _with_todo(args, action)
+
+
+def _with_todo(args, action):
+    """Attach the run's todo list when it changed since the lead last received it."""
+    with statemod.locked(args.slug, args.root):
+        run = resolver.Run(args.slug, args.root)
+        todo = todomod.build(run)
+        digest = todomod.digest(todo)
+        if run.state["run"].get("todo_digest") == digest:
+            return action
+        run.state["run"]["todo_digest"] = digest
+        statemod.save(args.slug, run.state, args.root)
+    return {**action, "todo": todomod.flat(todo)}
 
 
 def _serve(args, peek=False):
@@ -358,6 +377,19 @@ def cmd_status(args):
     return 0
 
 
+def cmd_todo(args):
+    data = statemod.load(args.slug, args.root)
+    if data is None:
+        print(f"no run for slug {args.slug!r}", file=sys.stderr)
+        return 3
+    todo = todomod.build(resolver.Run(args.slug, args.root, state_data=data))
+    if args.json:
+        _print({**todo, "tasks": todomod.flat(todo)})
+    else:
+        print(todomod.render(todo))
+    return 0
+
+
 def cmd_runs(args):
     _print({"runs": statemod.list_runs(args.root)})
     return 0
@@ -550,6 +582,11 @@ def build_parser():
     p.add_argument("--slug", required=True)
     p.add_argument("--json", action="store_true")
     p.set_defaults(fn=cmd_status)
+
+    p = sub.add_parser("todo", help="the run's stage checklist: done, running, waiting on you, next")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--json", action="store_true", help="the tree plus the flat harness task list")
+    p.set_defaults(fn=cmd_todo)
 
     p = sub.add_parser("graph", help="nodes+edges JSON for a workflow file (UI helper)")
     p.add_argument("workflow")
