@@ -1,10 +1,11 @@
 # Implementation phase for ONE selected repository.
 #
 # Showcases: a repo-parameterized workflow, engine-validated task DAGs, exact git
-# handoffs, and a bounded fix cycle built from a visit-capped back-edge.
+# handoffs, engine-run verification (build/lint/test from maestro.config.yaml), and a bounded
+# fix cycle built from a visit-capped back-edge.
 version: 1
 name: impl
-description: Build one selected repo from its approved LLD — task DAG, sliced implementation, review, bounded fix loop.
+description: Build one selected repo from its approved LLD — task DAG, sliced implementation, engine verification, review, bounded fix loop.
 inputs:
   slug: {type: string, required: true}
   stack: {type: string, required: true, description: selected repository name}
@@ -87,7 +88,31 @@ nodes:
       - "${steps.implement.outputs.worktree}"
     on_fail: abort
     max_visits: 10
-    next: review
+    next: verify
+
+  # The engine, not an agent, decides whether the code builds and passes its tests: it runs the
+  # repo's commands from maestro.config.yaml in the exact worktree and writes a receipt.
+  # A missing config fails closed (on_fail ask) instead of passing silently.
+  - id: verify
+    type: script
+    label: Build, lint and test (engine)
+    run:
+      - python3
+      - .maestro/engine/repo_checks.py
+      - --root
+      - "."
+      - --repo
+      - "${inputs.stack}"
+      - --worktree
+      - "${steps.handoff.outputs.worktree}"
+      - --out
+      - ".maestro/runs/${inputs.slug}/${inputs.stack}/verify.json"
+    timeout: 3600
+    max_visits: 10
+    on_exhausted: impl_gate
+    routes:
+      - {when: "${steps.verify.outputs.passed} == true", to: review}
+      - {to: fix}
 
   - id: review
     type: agent
@@ -97,9 +122,10 @@ nodes:
       ${steps.handoff.outputs.branch} at exact commit ${steps.handoff.outputs.commit}
       against the LLD, contract, approved-corrections.md, standards and the
       maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
-      map to check blast radius, not just the diff in isolation. Findings need file:line
-      evidence; set blocking=true only for must-fix issues. Record the reviewed commit at the top
-      of the report.
+      map to check blast radius, not just the diff in isolation. Build, lint and tests already
+      passed in the engine's run (receipt: ${steps.verify.outputs.receipt_path}); review the
+      design and code, not whether it compiles. Findings need file:line evidence; set
+      blocking=true only for must-fix issues. Record the reviewed commit at the top of the report.
       If the report from an earlier round exists at
       .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md, this is a re-review after a
       fix (${steps.fix.outputs.fix_summary}): read it first, review only the diff from the commit
@@ -114,6 +140,7 @@ nodes:
       worktree: "${steps.handoff.outputs.worktree}"
       commit: "${steps.handoff.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
+      verify_receipt: "${steps.verify.outputs.receipt_path}"
       previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
       fix_summary: "${steps.fix.outputs.fix_summary}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
@@ -122,31 +149,25 @@ nodes:
     fresh: true
     max_visits: 5
     on_exhausted: impl_gate
-    # The loop-exit guards must read values that UPDATE inside the fix->review loop.
-    # `review.blocking` and `fix.checks_passed` are re-emitted each pass; the frozen
-    # `implement.tests_passed` is only the first-pass trigger (implement never re-runs in
-    # the loop), and the `fix.checks_passed == true` guard above it short-circuits to end
-    # as soon as a fix goes green — so the loop actually converges instead of grinding to
-    # on_exhausted. Guards use `== true`/`== false` (literal booleans), never `!= true`,
-    # so honest prose in an output can never trap the loop.
+    # Only engine-produced signals route this loop: verify decides build/test health and the
+    # review decides design findings. Agent-reported `tests_passed`/`checks_passed` never do.
     routes:
       - {when: "${steps.review.outputs.blocking} == true", to: fix}
-      - {when: "${steps.fix.outputs.checks_passed} == true", to: end}
-      - {when: "${steps.implement.outputs.tests_passed} == false", to: fix}
       - {to: end}
 
   - id: fix
     type: agent
     label: Fix findings
     instruction: |
-      One fix attempt: address the blocking findings in
-      ${steps.review.outputs.review_path} (and any failing tests) on branch
-      ${steps.handoff.outputs.branch} in exact worktree
-      ${steps.handoff.outputs.worktree}. Smallest safe fix; never weaken or delete a
-      failing test. Start from the implement report (${steps.implement.outputs.summary};
-      tests_passed=${steps.implement.outputs.tests_passed}) instead of rediscovering failures.
-      Re-run the failing checks before returning; skip full /verify, since the workflow
-      re-reviews after you. Honour any human guidance: ${steps.impl_gate.outputs.guidance}
+      One fix attempt on branch ${steps.handoff.outputs.branch} in exact worktree
+      ${steps.handoff.outputs.worktree}. Address what sent you here:
+      - failing engine checks "${steps.verify.outputs.failed_checks}" — read the receipt at
+        ${steps.verify.outputs.receipt_path} and the logs it names;
+      - blocking review findings in ${steps.review.outputs.review_path}, when that report exists.
+      Smallest safe fix; never weaken, skip or delete a test. Start from the implement report
+      (${steps.implement.outputs.summary}) instead of rediscovering context. Re-run the failing
+      commands before returning; the engine re-verifies after you. Commit your fix on the branch.
+      Honour any human guidance: ${steps.impl_gate.outputs.guidance}
       Do NOT loop — the workflow re-invokes you if needed.
     skill: fix-loop
     inputs:
@@ -155,6 +176,7 @@ nodes:
       branch: "${steps.handoff.outputs.branch}"
       repo_path: "${inputs.repo_path}"
       worktree: "${steps.handoff.outputs.worktree}"
+      verify_receipt: "${steps.verify.outputs.receipt_path}"
       review_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
       implement_summary: "${steps.implement.outputs.summary}"
       guidance: "${steps.impl_gate.outputs.guidance}"
@@ -168,7 +190,9 @@ nodes:
     label: Implementation escalation
     prompt: |
       The ${inputs.stack} implementation still has problems after the automated fix
-      rounds. Last review: ${steps.review.outputs.summary}
+      rounds.
+      Engine checks: ${steps.verify.outputs.summary}
+      Last review: ${steps.review.outputs.summary}
       Branch: ${steps.handoff.outputs.branch}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
@@ -181,3 +205,4 @@ outputs:
   commit: "${steps.handoff.outputs.commit}"
   summary: "${steps.implement.outputs.summary}"
   review_path: "${steps.review.outputs.review_path}"
+  verify_receipt: "${steps.verify.outputs.receipt_path}"

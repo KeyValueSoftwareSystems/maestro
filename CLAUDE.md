@@ -144,6 +144,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
   repos, missing `build`/`test` commands (errors) and missing `lint`/`e2e` (warnings). Engine
   steps read commands from here, never from skill prose. Spec: `docs/project-config.md`.
+- **`repo_checks.py`** — the `verify` script step: runs a repo's configured setup/build/
+  typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
+  writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
+  routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`entry_serve.py`** — the route-only `script` node a multi-entry child workflow starts with;
   its `routes:` branch on the child's inputs (e.g. design-import enters at the baseline approval
   or the repair gate). Does no work, never fails.
@@ -278,8 +282,9 @@ whole suite — the parser underpins everything.
   skill name (`skill: "${inputs.stack}-implement"` replaces the old dispatch glue).
   Model choice: per-node `model:` → workflow `defaults.model` → `haiku`; values pass to
   the harness as-is (haiku/sonnet/opus).
-- The workflow merge-for-test / contract-check / archive script steps are **POC stubs**
-  (`echo` + exit 0) — a downstream user wires them to their real runners.
+- The archive `publish` script step is a **POC stub** (`echo` + exit 0). Build, lint and test
+  are NOT stubs: `impl.yaml`'s `verify` step runs `engine/repo_checks.py`, which executes the
+  project's commands from `maestro.config.yaml` and fails closed when they are missing.
 - `.maestro/runs/<slug>/` holds a feature's requirement input **and** all generated
   artifacts + the state ledger. Git-tracked on purpose.
 - `install.sh` uses `set -uo pipefail` (not `-e`) on purpose — one failed skill

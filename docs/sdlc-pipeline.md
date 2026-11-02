@@ -15,7 +15,8 @@ workspace sync → requirement → PRD (confirm context → Grill unclear decisi
    → API contract
    → functional test cases → effective design (base approvals + approved corrections)
    → architecture review → [approve]
-   → choose implementation batch → implement selected repos (parallel, sliced, reviewed)
+   → choose implementation batch → implement selected repos (parallel, sliced,
+     engine-verified build/lint/test, reviewed)
    → QA → review pack → [approve → archive: fold corrections + harvest lessons + publish docs]
 ```
 

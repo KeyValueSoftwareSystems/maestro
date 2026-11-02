@@ -110,6 +110,11 @@ class SdlcE2E(unittest.TestCase):
             head = subprocess.run(["git", "-C", path, "rev-parse", "HEAD"], check=True,
                                   capture_output=True, text=True).stdout.strip()
             codebase_scan.write_marker(map_path, head)
+        # Project commands the engine's verify step runs in each implementation worktree.
+        with open(os.path.join(self.tmp, "maestro.config.yaml"), "w") as fh:
+            fh.write("version: 1\nrepos:\n" + "".join(
+                f"  {stack}:\n    commands: {{build: \"true\", lint: \"true\", "
+                f"test: \"test ! -f BROKEN\"}}\n" for stack in ("backend", "frontend")))
         # Simulate the normal /maestro-init result so the happy path proves the new sync
         # checkpoint is zero-agent/no-gate when code and knowledge are already current.
         os.makedirs(os.path.join(self.tmp, "docs"), exist_ok=True)
@@ -398,6 +403,7 @@ class SdlcE2E(unittest.TestCase):
                             or "record-repositories" in act.get("argv", [])
                             or any("mem_consolidate" in a or "lld_repo_pool" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
+                                   or "repo_checks" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -869,6 +875,45 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
         self.assertEqual(len([s for s in steps if s.endswith("/impl/fix")]), 2)
+
+    def test_failed_engine_checks_route_to_fix_before_review(self):
+        """The agent says tests pass; the engine's own run says no — the engine wins."""
+        self.prep_tasks_json()
+        broken = os.path.join(self.tmp, ".maestro", "test-worktrees", "backend", "BROKEN")
+        real_implementation_outputs = self.implementation_outputs
+
+        def implementation_outputs(act):
+            outputs = real_implementation_outputs(act)  # claims tests_passed: True
+            if outputs["worktree"].endswith("backend"):
+                Path(broken).write_text("failing\n")
+            return outputs
+
+        def fix_outputs():
+            os.remove(broken)
+            return {"fix_summary": "fixed the failing test", "checks_passed": True}
+
+        self.implementation_outputs = implementation_outputs
+        gates = {
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
+        }
+        action, trace = self.drive(gates, agent_overrides={"fix": fix_outputs})
+        self.assertEqual(action["action"], "done", action)
+        def slot_steps(slot):
+            return [s.rsplit("/", 1)[-1] for _, s in trace
+                    if s.startswith(f"delivery/implement[{slot}]/impl/")]
+
+        # slot_1 claims backend (repos are claimed in name order); slot_2 claims frontend
+        self.assertEqual(slot_steps("slot_1")[-5:], ["verify", "fix", "handoff", "verify", "review"])
+        self.assertEqual(slot_steps("slot_2")[-2:], ["verify", "review"])
+        receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "backend",
+                                  "verify.json").read_text())
+        self.assertTrue(receipt["passed"])
+        self.assertEqual([c["name"] for c in receipt["checks"]], ["build", "lint", "test"])
 
     def test_hld_clarifies_before_single_write(self):
         """The HLD resolves one grouped architecture round before writing once."""
