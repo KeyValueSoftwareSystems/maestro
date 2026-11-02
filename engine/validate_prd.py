@@ -28,6 +28,7 @@ AC_LINE_RE = re.compile(r"^\s*[-*]\s+(?:\*\*)?AC-(\d{2,})(?:\*\*)?:\s+\S")
 NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
+TO_CONFIRM_RE = re.compile(r"\(to confirm\)", re.IGNORECASE)
 AC_PREFIX_RE = re.compile(r"^(\s*[-*]\s+)(?:\*\*)?AC-\d{2,}(?:\*\*)?:\s*", re.IGNORECASE)
 
 # Existing PRDs do not share a universal heading standard. The fast-path compatibility mode
@@ -217,6 +218,11 @@ def validate(path, compatible=False):
         if ac_ids and ac_ids != list(range(1, len(ac_ids) + 1)):
             errors.append("acceptance criteria: IDs must be unique and sequential from AC-01")
         for name, body in sections.items():
+            if TO_CONFIRM_RE.search(body):
+                # a normalized client PRD marks text that waits on an open question; the
+                # decisions must replace every mark before the PRD can be approved
+                errors.append(f"{name}: unresolved \"(to confirm)\" mark — replace it with "
+                              "the recorded decision")
             if name == "acceptance criteria":
                 continue
             codes = sorted(set(NON_AC_CODE_RE.findall(body)))

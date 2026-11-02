@@ -144,8 +144,9 @@ for the areas it touched.
    $maestro add phone OTP login        # Codex
    ```
    Maestro names the run `add-phone-otp-login` and creates `.maestro/runs/add-phone-otp-login/`.
-2. **Add your requirements (optional).** Put notes, tickets or an existing PRD in
-   `.maestro/runs/<feature>/requirement/`. If the folder is empty, Maestro asks you instead.
+2. **Add your requirements (optional).** Put notes, tickets or an existing PRD (any format) in
+   `.maestro/runs/<feature>/requirement/`. A full PRD is restructured, and only what it leaves
+   open is asked. If the folder is empty, Maestro asks you instead.
 3. **Answer its questions.** Maestro asks only about decisions it can't make on its own. Each
    question shows a recommendation and alternatives. Pick one, type your own answer, or say you
    want to discuss it.

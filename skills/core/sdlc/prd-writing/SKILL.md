@@ -1,6 +1,6 @@
 ---
 name: prd-writing
-description: Write or repair one final PRD from fully confirmed structured context in plain, skimmable technical English. Use only after the PRD interview is complete; never invent missing product decisions.
+description: Write, normalize or repair one final PRD in plain, skimmable technical English — from fully confirmed structured context, or by restructuring the client's own PRD and listing only what it leaves open. Never invent missing product decisions.
 allowed-tools: Read, Write, Bash
 tags: [sdlc, requirement]
 ---
@@ -91,6 +91,25 @@ Run the workflow-supplied validator after writing. Allow its mechanical-fix mode
 wrapping and acceptance-criteria numbering. If it still reports a defect, repair only that defect
 inside this same call and validate again. Do not return success with a failing artifact.
 
+## Normalize mode
+
+When the workflow supplies the client's own PRD (any format) as the source, restructure it into
+the required structure instead of re-deriving it. The client's document is the confirmed input:
+
+- Keep its facts, scope, priorities, limits and names; keep its wording unless a sentence is
+  unclear. Move content into the matching section; never drop a requirement because it does not
+  fit neatly — put it in the closest section.
+- Add nothing the source does not say. Turn each testable requirement into an acceptance criterion;
+  a requirement that cannot be tested as written is a gap, not a criterion you complete yourself.
+- List the gaps as a question queue in the format the workflow's question validator accepts: only
+  material product facts the source leaves unsettled (a missing actor, limit, failure behaviour,
+  success signal, non-goal, or a vague criterion), each with a grounded recommendation and the facts
+  an answer must settle. Never ask what the source already answers, about headings, or about
+  technical design.
+- Where a section depends on an open gap, write the recommendation and mark it "(to confirm)";
+  once the decisions exist, replace each mark with the decision, rendered by its `source` as above.
+- Never edit the source documents.
+
 ## Repair mode
 
 When the workflow supplies validator feedback, change only the named defects. Do not rewrite
@@ -108,11 +127,11 @@ document unchanged and report `needs_clarification` as true so the decision is c
 
 ## Safety
 
-Write only the workflow-supplied PRD artifact. Never edit requirements, confirmed context, code,
-or run state.
+Write only the workflow-supplied PRD artifact (and, in normalize mode, its question queue). Never
+edit the client's source documents, other requirements, confirmed context, code, or run state.
 
 ## Output contract
 
-Return `summary`: one short sentence stating that the final PRD was written or which validator
-defects were repaired. In revision mode also return `needs_clarification`: true only when
+Return `summary`: one short sentence stating that the final PRD was written (in normalize mode,
+how many gaps remain open) or which validator defects were repaired. In revision mode also return `needs_clarification`: true only when
 the feedback needs a product decision that must be clarified before editing, else false.

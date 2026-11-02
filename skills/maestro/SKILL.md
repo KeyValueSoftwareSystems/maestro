@@ -110,7 +110,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   optional **references** (Figma links, doc/file paths, tickets). The lead confirms a compact
   project context and feature goal, then conducts a feature-specific Grill interview over only
   the material unresolved decisions and edge cases. A valid
-  existing PRD takes a direct approval fast path. If you already
+  existing PRD takes a direct approval fast path; a client's PRD in another shape or format is
+  normalized by a worker and only its gaps are asked. If you already
   know the user has a PRD/notes to paste, point them at that folder first; otherwise just
   init and run the loop — the gates will ask. (A workflow with no such handling will simply
   abort on an empty requirement; relay that.)

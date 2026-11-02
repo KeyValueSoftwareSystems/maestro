@@ -96,6 +96,16 @@ class PrdValidationTest(unittest.TestCase):
         errors, _ = validate_prd.validate(self.write(text))
         self.assertTrue(any("allowed only in acceptance criteria" in error for error in errors))
 
+    def test_unresolved_to_confirm_marks_fail_strict_mode_only(self):
+        text = self.valid_text().replace(
+            "A concise confirmed product decision for non goals.",
+            "Bulk export is out of scope (to confirm).",
+        )
+        errors, _ = validate_prd.validate(self.write(text))
+        self.assertTrue(any(e.startswith('non goals: unresolved "(to confirm)"') for e in errors))
+        errors, _ = validate_prd.validate(self.write(text), compatible=True)
+        self.assertEqual(errors, [])
+
     def test_compatible_mode_does_not_require_acceptance_ids(self):
         text = self.valid_text().replace(
             "- AC-01: The confirmed behavior is observable.",

@@ -32,6 +32,7 @@ def canned_agent_outputs(step, action):
         "feature_goal": {"feature_goal": "Deliver the demo feature for test users."},
         "prepare_prd_questions": {"summary": "Prepared the next focused product questions"},
         "author_prd": {"summary": "PRD written from confirmed context"},
+        "normalize_prd": {"summary": "Client PRD normalized; 1 gap open"},
         "repair_prd": {"summary": "PRD repaired to match the contract"},
         "revise_prd": {"summary": "Applied review feedback", "needs_clarification": False},
         "prepare_hld_questions": {"summary": "Prepared architecture questions"},
@@ -354,6 +355,7 @@ class SdlcE2E(unittest.TestCase):
                             or any("mem_consolidate" in a or "lld_set" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    or "repo_checks" in a or "assumptions.py" in a
+                                   or "prd_source.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -490,6 +492,39 @@ class SdlcE2E(unittest.TestCase):
         self.assertNotIn("design/prd/prepare_prd_questions", steps)
         self.assertNotIn("design/prd/prd_interview", steps)
         self.assertNotIn("design/prd/author_prd", steps)
+
+    def write_client_prd(self):
+        path = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement", "client-spec.md")
+        with open(path, "w") as fh:
+            fh.write("# Report export spec\n\n" + " ".join(
+                ["Admins export the filtered report as CSV within the agreed limits."] * 30))
+
+    def test_client_prd_is_normalized_and_only_its_gaps_are_asked(self):
+        self.prep_tasks_json()
+        self.write_client_prd()
+        action, trace = self.drive(dict(self.DESIGN_GATES))
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        prd = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/prd/")]
+        # the client's document is restructured once; its one open gap is asked, then the
+        # writer folds the answer in — no interview from scratch
+        self.assertEqual(prd[:5], ["feature_goal", "check_existing_prd", "prd_source",
+                                   "normalize_prd", "validate_normalized"])
+        self.assertEqual(steps.count("design/prd/normalize_prd"), 1)
+        self.assertEqual(steps.count("design/prd/prd_interview"), 1)
+        self.assertLess(steps.index("design/prd/prd_interview"), steps.index("design/prd/author_prd"))
+        self.assertTrue(os.path.isfile(os.path.join(
+            self.tmp, ".maestro", "runs", "demo", "requirement", "client-spec.md")))
+
+    def test_auto_mode_turns_a_client_prd_into_an_approved_prd_unasked(self):
+        self.prep_tasks_json()
+        self.write_client_prd()
+        action, trace = self.drive({}, mode="auto")
+        self.assertEqual(action["action"], "done", action)
+        steps = [step for _, step in trace]
+        self.assertIn(("auto_interview", "design/prd/prd_interview"), trace)
+        self.assertNotIn("design/prd/prepare_prd_questions", steps)
+        self.assertIn(("auto_gate", "design/prd/prd_approval"), trace)
 
     def test_release_sent_back_to_design_reimplements_every_repo(self):
         """No batches: each delivery pass builds every designed repo against the current design."""

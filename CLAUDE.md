@@ -144,6 +144,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
+- **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
+  own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
+  `prd.original.md`) or clarify a short request through the interview.
 - **`assumptions.py`** — the assumption log: every interview assumption, deferred item and gate
   answered on autopilot, from the decision files and the ledger, rendered to `assumptions.md`
   before the review pack (which shows it first).

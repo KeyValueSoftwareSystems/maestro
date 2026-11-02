@@ -57,13 +57,20 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
 
 - **valid existing `prd.md`** → it goes directly to PRD approval; common equivalent headings
   are accepted because PRDs have no universal format;
-- **partial or nothing** → it summarizes the project context and feature goal without stopping,
+- **the client's own PRD in another shape** (a document of 250+ words, or any PDF/Word/ODT/RTF
+  file) → a worker agent rewrites it into the PRD structure, keeping the client's facts and
+  wording and adding nothing, and lists only the material facts it leaves open. Only those are
+  asked (in `auto` mode, adopted as assumptions), then the writer fills them in. A client file
+  named `prd.md` is kept as `prd.original.md` first; source files are never edited. A PRD still
+  marked "(to confirm)" fails validation;
+- **a short request or nothing** → it summarizes the project context and feature goal without stopping,
   then collects every feature-specific decision and relevant edge case for the current round
   through native question popups. The context and goal summaries are shown at PRD approval, where
   you correct them if needed;
 - **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, repetition, sentence length, and sequential `AC-xx` acceptance criteria. It does not impose a word-count ceiling. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
-The PRD stage does not spawn subagents or scan application source. It reads only repository
+The PRD stage never scans application source, and spawns a subagent only to normalize a client
+PRD, so a long document stays out of the lead's context. It reads only repository
 instructions, maintained project docs, the run's requirement folder, and explicit references.
 Pinned skills are checked only under `.agents/skills`, `.claude/skills`, and `.cursor/skills`.
 Step durations are recorded in the run ledger so slow stages are visible.

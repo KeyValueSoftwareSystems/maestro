@@ -285,7 +285,11 @@ decision of a run into `assumptions.md`; the shipped delivery stage writes it be
 pack.
 
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
-accepts common equivalent headings for its fast path. Maestro-authored PRDs use the exact
+accepts common equivalent headings for its fast path. When that fails, `prd_source.py` decides
+between normalizing the client's own PRD (a 250+ word document or an office/PDF file; a
+client-authored `prd.md` is copied to `prd.original.md` first) and the Grill interview. The
+normalizer writes the PRD plus a queue of only the gaps; strict validation rejects any remaining
+"(to confirm)" mark. Maestro-authored PRDs use the exact
 11-heading contract and are validated in strict mode before approval. Traceability IDs appear
 only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria. Generated PRDs begin
 with one concise level-1 feature title plus `Feature slug` and `Status: Ready for review` metadata.

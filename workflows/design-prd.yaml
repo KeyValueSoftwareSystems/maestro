@@ -1,5 +1,7 @@
 # Design child: feature goal summary -> Grill interview -> one PRD write -> deterministic lint
-# -> human approval. Entered by design.yaml after intake, which supplies the project context.
+# -> human approval. A client's own PRD is normalized into the PRD structure instead, and only
+# the facts it leaves open are asked. Entered by design.yaml after intake, which supplies the
+# project context.
 # The context and goal summaries are shown at PRD approval, where the human corrects them; there
 # is no separate confirmation stop. Every back-edge (revise, rescope, clarify) stays inside this
 # child; a complete existing prd.md takes the fast path straight to approval.
@@ -45,7 +47,67 @@ nodes:
     routes:
       - {when: "${steps.prd_approval.outputs.feedback}", to: prepare_prd_questions}
       - {when: "${steps.check_existing_prd.outputs.valid} == true", to: prd_approval}
+      - {to: prd_source}
+
+  # A client PRD in another shape (or format) is normalized, not re-interviewed from scratch; a
+  # short request goes through the Grill interview. A client-authored prd.md is kept as
+  # prd.original.md before anything is written.
+  - id: prd_source
+    type: script
+    label: Client PRD or short request?
+    run: [python3, .maestro/engine/prd_source.py, --requirement, ".maestro/runs/${inputs.slug}/requirement"]
+    routes:
+      - {when: "${steps.prd_source.outputs.state} == normalize", to: normalize_prd}
       - {to: prepare_prd_questions}
+
+  - id: normalize_prd
+    type: agent
+    label: Normalize the client PRD
+    model: sonnet
+    instruction: |
+      Rewrite the client's own PRD into the required PRD structure at
+      .maestro/runs/${inputs.slug}/requirement/prd.md. Sources: ${steps.prd_source.outputs.sources_csv}
+      Keep the client's facts, scope, priorities and wording; move content into the matching
+      section, tighten only what is unclear, and add nothing the sources do not say. Turn each
+      testable requirement into an acceptance criterion. Do not edit the source files.
+
+      Then write .maestro/runs/${inputs.slug}/prd-questions.json (schema_version 2) with only the
+      material product facts the sources leave unsettled — a missing user, limit, failure
+      behaviour, success signal, non-goal or acceptance criterion that changes scope — each with a
+      grounded recommendation and 1-4 must_resolve facts. Do not ask about anything the sources
+      answer, PRD headings, or technical design. Where a section depends on an open question, write
+      its recommendation and mark it "(to confirm)". An empty questions array means the sources
+      settle everything; audit.unresolved and audit.contradictions must then be empty.
+      Run mode: ${run.mode}. In auto mode nobody answers: each recommendation is adopted as a
+      logged assumption, so make every one specific.
+
+      Validate both files with the supplied validators before completing. If validator_feedback
+      names queue defects (anything other than "Question queue is valid"), fix only those defects.
+    skill: prd-writing
+    inputs:
+      slug: "${inputs.slug}"
+      sources: "${steps.prd_source.outputs.sources_csv}"
+      project_context: "${inputs.project_context}"
+      feature_goal: "${steps.feature_goal.outputs.feature_goal}"
+      prd_validator: ".maestro/engine/validate_prd.py"
+      questions_validator: ".maestro/engine/validate_prd_questions.py"
+      validator_feedback: "${steps.validate_normalized.outputs.issues_summary}"
+    outputs: [summary]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      - ".maestro/runs/${inputs.slug}/prd-questions.json"
+    max_visits: 4
+    next: validate_normalized
+
+  # Only the gaps the client's PRD leaves open are asked; a complete one goes straight to the lint.
+  - id: validate_normalized
+    type: script
+    label: Validate the remaining questions
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_normalized.outputs.valid} == false", to: normalize_prd}
+      - {when: "${steps.validate_normalized.outputs.state} == clear", to: validate_prd}
+      - {to: prd_interview}
 
   - id: prepare_prd_questions
     type: agent
@@ -164,7 +226,8 @@ nodes:
       .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical`; repair any remaining named
       defect inside this same call and run it again. This is the only normal PRD write. If the
       PRD already exists from an earlier pass, update it in place: change only the sections whose
-      decisions changed and keep unchanged sections and AC IDs as they are.
+      decisions changed and keep unchanged sections and AC IDs as they are; replace every
+      "(to confirm)" mark with its recorded decision.
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
@@ -221,6 +284,7 @@ nodes:
     prompt: |
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
 
+      ${steps.prd_source.outputs.summary}
       Project context (agent summary): ${inputs.project_context}
       Feature goal (agent summary): ${steps.feature_goal.outputs.feature_goal}
 
