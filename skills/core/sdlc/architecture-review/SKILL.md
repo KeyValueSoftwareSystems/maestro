@@ -71,6 +71,16 @@ read it first: confirm each earlier blocking finding is resolved and check only 
 its consistency with the rest. Do not re-audit unchanged sections or raise new minor findings on
 them.
 
+**Findings file.** When your instructions give a findings path, also write every finding there as
+JSON — the workflow decides from this file, not from your prose:
+`{"schema_version": 1, "findings": [{"id", "severity": "blocking" | "major" | "minor", "area",
+"finding", "evidence", "status": "open" | "upheld" | "withdrawn" | "resolved"}]}`. Use `blocking`
+for what must change before approval (a blocker, or a major that cannot wait). Keep ids stable
+across rounds; new findings get new ids. On a re-review, read the author's resolutions first: mark a
+fixed finding `resolved` (or keep it `open` if the fix falls short), and answer each contest —
+`withdrawn` when the author is right, `upheld` with your reason when not. A contested finding is
+never silently dropped.
+
 ## Safety
 
 Read-only. Write only the review report.

@@ -140,6 +140,16 @@ ID unchanged, and read only the sources the change needs. Do not regenerate the 
 feedback needs a new repository design decision that the confirmed decisions cannot settle, do not guess: leave the
 document unchanged and report `needs_clarification` as true so the decision is clarified first.
 
+**Resolving review findings.** When your instructions give a reviewer's findings file and a
+resolutions path, answer every blocking finding whose status is `open` or `upheld`, and write
+`{"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]}`:
+
+- `fixed` — make the targeted edit; the note says what changed;
+- `contested` — the finding is wrong; the note gives the evidence (a requirement line, a confirmed
+  decision, the code). A finding the reviewer already `upheld` cannot be contested again;
+- `escalated` — it needs a person's decision (budget, product trade-off, ownership); the note
+  states the decision exactly. Escalate instead of guessing.
+
 ## Safety
 
 Write only the supplied LLDs and post-question queue. Never edit source, the HLD, the contract,

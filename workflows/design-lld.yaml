@@ -362,9 +362,13 @@ nodes:
       and a test case. Every change in the HLD's Infrastructure and operations section (when it
       lists any) needs an LLD in the repository that owns that infrastructure; a missing one is
       blocking. This is not an architecture review; the HLD was reviewed and approved.
-      If .maestro/runs/${inputs.slug}/reviews/lld-readiness.md exists from an earlier round, read it
-      first, confirm each earlier finding is resolved, and check only what changed. Then overwrite
-      the report.
+      Write every finding to .maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json as well as
+      the report (the engine decides from that file; severity blocking only for must-fix). If it
+      exists from an earlier round, this is a re-review: read it and the author's resolutions at
+      .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json first. Mark a fixed finding
+      resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
+      reason; keep ids stable and give new findings new ids. Check only what changed, then
+      overwrite both files.
     skill: lld-readiness
     agent: reviewer
     model: opus
@@ -375,13 +379,27 @@ nodes:
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
     outputs: [review_path, blocking, summary]
-    artifact: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+      - ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
     fresh: true
     max_visits: 6
     on_exhausted: lld_approval
+    next: readiness_verdict
+
+  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag.
+  - id: readiness_verdict
+    type: script
+    label: Blocking readiness findings?
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"]
+    max_visits: 8
+    on_exhausted: lld_approval
     routes:
-      - {when: "${steps.readiness_review.outputs.blocking} == true", to: revise_llds}
+      - {when: "${steps.readiness_verdict.outputs.valid} == false", to: readiness_review}
+      - {when: "${steps.readiness_verdict.outputs.blocking} == true", to: revise_llds}
       - {to: lld_approval}
 
   - id: lld_approval
@@ -391,6 +409,8 @@ nodes:
       Repository LLDs ready: ${steps.lld_scope_init.outputs.lld_paths_csv}
       Test cases: .maestro/runs/${inputs.slug}/test-cases.md
       Readiness check: ${steps.readiness_review.outputs.summary}
+      Blocking findings (engine): ${steps.readiness_verdict.outputs.summary}
+      Escalated by the author: ${steps.readiness_resolution.outputs.escalated_csv} ${steps.readiness_resolution.outputs.summary}
       Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
       Report: .maestro/runs/${inputs.slug}/reviews/lld-readiness.md
 
@@ -402,7 +422,7 @@ nodes:
       - {id: reject, label: Reject — abort the run, to: abort}
     # Design and auto modes approve LLDs that passed the readiness check (the person approved the
     # HLD they implement); blocking findings left after the revision limit stop the run here.
-    auto: {option: approve, when: "${steps.readiness_review.outputs.blocking} == false"}
+    auto: {option: approve, when: "${steps.readiness_verdict.outputs.blocking} == false"}
 
   # Targeted edits from the readiness check, the approval gate, or a contract change.
   - id: revise_llds
@@ -414,7 +434,12 @@ nodes:
       cases at .maestro/runs/${inputs.slug}/test-cases.md when they are affected) for whichever of
       these applies:
       - human feedback: ${steps.lld_approval.outputs.feedback}
-      - readiness findings in .maestro/runs/${inputs.slug}/reviews/lld-readiness.md, when blocking;
+      - blocking readiness findings (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json:
+        resolve each one and record it in .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json as
+        {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed (a targeted
+        edit; the note says what changed), contested (the finding is wrong; the note gives the
+        evidence; never a second time for a finding the reviewer upheld) or escalated (it needs a
+        person's decision; the note states it);
       - the contract changed (${steps.contract_change.outputs.contract_summary}): bring every LLD
         that implements or calls the changed operation in line with it.
       Change only the sections affected; keep every confirmed decision. If a change needs a new
@@ -429,11 +454,26 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       revision_feedback: "${steps.lld_approval.outputs.feedback}"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
     outputs: [summary, contract_change_needed, contract_change, needs_clarification]
     max_visits: 10
     routes:
       - {when: "${steps.revise_llds.outputs.needs_clarification} == true", to: prepare_lld_questions}
       - {when: "${steps.revise_llds.outputs.contract_change_needed} == true", to: contract_change}
+      - {to: readiness_resolution}
+
+  # Engine-owned: with blocking readiness findings open, each must be fixed, contested or
+  # escalated; an escalation (or a second contest) goes to the person at LLD approval.
+  - id: readiness_resolution
+    type: script
+    label: Findings fixed, contested or escalated?
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"]
+    max_visits: 10
+    on_exhausted: lld_approval
+    routes:
+      - {when: "${steps.readiness_resolution.outputs.state} == escalate", to: lld_approval}
+      - {when: "${steps.readiness_resolution.outputs.state} == incomplete", to: revise_llds}
       - {to: validate_llds}
 
   - id: record_approval

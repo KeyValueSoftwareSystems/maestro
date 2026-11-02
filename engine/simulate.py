@@ -208,6 +208,11 @@ def _stub_agent(root, act, slug=None):
             elif rel.endswith("/hld.md"):
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(_simulated_hld())
+            elif rel.endswith("-findings.json") or rel.endswith("-resolutions.json"):
+                key = "findings" if rel.endswith("-findings.json") else "resolutions"
+                with open(full, "w", encoding="utf-8") as fh:
+                    json.dump({"schema_version": 1, key: []}, fh)
+                    fh.write("\n")
             elif rel.endswith("/test-cases.md"):
                 # one case per PRD criterion, so the engine's acceptance-criteria trace holds
                 prd = os.path.join(os.path.dirname(full), "requirement", "prd.md")

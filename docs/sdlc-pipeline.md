@@ -125,7 +125,12 @@ The HLD is reviewed before it is approved. A fresh reviewer agent — one that d
 checks the architecture against the requirement: style, boundaries and data ownership, the
 listed interfaces, security, failure handling, scale, operations, and over- or
 under-engineering. Blocking findings go back to the HLD author for targeted edits and a
-re-review; you see the review next to the HLD at approval. A wrong architecture call found here
+re-review; you see the review next to the HLD at approval. The reviewer records each finding in a
+findings file and the engine — not the reviewer's own verdict — decides what blocks. The HLD author
+answers every blocking finding: fixed (an edit), contested (with evidence, which the reviewer
+then withdraws or upholds — once) or escalated to you. An escalation, or a second contest of an
+upheld finding, stops at HLD approval with the question stated. The LLD readiness check works the
+same way. A wrong architecture call found here
 costs one document edit instead of a redo of the contract, LLDs and code.
 
 The HLD's Interfaces section lists every call or event between repositories, or says None. When

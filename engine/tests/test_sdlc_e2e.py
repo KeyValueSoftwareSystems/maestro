@@ -255,6 +255,27 @@ class SdlcE2E(unittest.TestCase):
             with open(full, "w") as fh:
                 fh.write(f"artifact {next(_ARTIFACT_WRITES)}\n")
 
+    def write_review_files(self, act, node, outputs):
+        """What a reviewer and its author write beside their reports: the reviewer's findings
+        (one open blocking finding exactly when it reports blocking) and the author's resolutions
+        (every active blocking finding fixed)."""
+        findings = next((rel for rel in act.get("artifacts", []) if rel.endswith("-findings.json")),
+                        None)
+        if findings:
+            items = ([{"id": "F1", "severity": "blocking", "area": "fit", "status": "open",
+                       "finding": "A requirement has no mechanism.", "evidence": "hld.md"}]
+                     if outputs.get("blocking") else [])
+            Path(self.tmp, findings).write_text(json.dumps({"schema_version": 1,
+                                                            "findings": items}))
+        resolutions = next((rel for rel in act.get("artifacts", [])
+                            if rel.endswith("-resolutions.json")), None)
+        if node == "revise_llds":
+            resolutions = ".maestro/runs/demo/reviews/lld-readiness-resolutions.json"
+        if resolutions:
+            Path(self.tmp, resolutions).parent.mkdir(parents=True, exist_ok=True)
+            Path(self.tmp, resolutions).write_text(json.dumps({"schema_version": 1, "resolutions": [
+                {"id": "F1", "resolution": "fixed", "note": "added the mechanism"}]}))
+
     def write_llds(self, slug="demo"):
         """What the LLD writer produces: one LLD per selected repository at lld/<repo>.md."""
         for repo in lld_set.selected(slug, self.tmp):
@@ -369,6 +390,7 @@ class SdlcE2E(unittest.TestCase):
                         self.implementation_outputs(act) if node == "implement"
                         else canned_agent_outputs(step, act)
                     )
+                    self.write_review_files(act, node, outputs)
                     resolver.complete_step(run, step, outputs=outputs)
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
@@ -382,6 +404,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "prd_source.py" in a or "ac_trace.py" in a
                                    or "qa_env.py" in a or "deliver.py" in a
                                    or "infra_scan.py" in a or "decision_log.py" in a
+                                   or "findings.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -771,9 +794,10 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         hld = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/hld/")]
         start = hld.index("arch_review")
-        self.assertEqual(hld[start:start + 6], ["arch_review", "revise_from_review",
+        self.assertEqual(hld[start:start + 9], ["arch_review", "review_verdict",
+                                                "revise_from_review", "review_resolution",
                                                 "validate_hld", "sync_decisions", "arch_review",
-                                                "hld_approval"])
+                                                "review_verdict", "hld_approval"])
         self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
 
     def test_design_mode_asks_only_for_prd_and_hld_approval(self):
@@ -928,6 +952,32 @@ class SdlcE2E(unittest.TestCase):
         outputs = statemod.load("demo", self.tmp)["steps"]["design/hld/validate_hld"]["outputs"]
         self.assertEqual((outputs["valid"], outputs["infra_changed"]), (True, True))
 
+    def test_escalated_architecture_finding_goes_to_the_person_at_hld_approval(self):
+        self.prep_tasks_json()
+        blocked = {"review_path": "reviews/architecture.md", "blocking": True, "summary": "1 blocker"}
+        resolutions = Path(self.tmp, ".maestro/runs/demo/reviews/architecture-resolutions.json")
+
+        def escalate():
+            # the author escalates instead of fixing; the test harness's default would fix it
+            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/revise_from_review")
+            return {"hld_summary": "unchanged", "needs_clarification": False}
+        gates = {"design/hld/hld_approval": [("reject", None)],
+                 "design/prd/prd_approval": [("approve", None)]}
+        original = self.write_review_files
+
+        def write_review_files(act, node, outputs):
+            original(act, node, outputs)
+            if node == "revise_from_review":
+                resolutions.write_text(json.dumps({"schema_version": 1, "resolutions": [
+                    {"id": "F1", "resolution": "escalated", "note": "choose the cost ceiling"}]}))
+        self.write_review_files = write_review_files
+        action, trace = self.drive(gates, agent_overrides={"arch_review": blocked,
+                                                           "revise_from_review": escalate})
+        self.assertEqual(action["action"], "failed", action)  # the person rejected at the gate
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("design/hld/revise_from_review"), 1)
+        self.assertIn("choose the cost ceiling", self.prompts["design/hld/hld_approval"][0])
+
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()
         readiness = self.blocking_once({"review_path": "reviews/lld-readiness.md",
@@ -937,9 +987,11 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
-        self.assertEqual(lld[start:start + 8], ["readiness_review", "revise_llds", "validate_llds",
-                                                "test_cases", "trace_test_cases", "sync_decisions",
-                                                "readiness_review", "lld_approval"])
+        self.assertEqual(lld[start:start + 11], ["readiness_review", "readiness_verdict",
+                                                 "revise_llds", "readiness_resolution",
+                                                 "validate_llds", "test_cases", "trace_test_cases",
+                                                 "sync_decisions", "readiness_review",
+                                                 "readiness_verdict", "lld_approval"])
 
     def test_lld_change_request_needs_feedback_and_is_a_targeted_revision(self):
         self.prep_tasks_json()
@@ -973,8 +1025,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("author_llds")
-        self.assertEqual(lld[start:start + 4], ["author_llds", "contract_change", "revise_llds",
-                                                "validate_llds"])
+        self.assertEqual(lld[start:start + 5], ["author_llds", "contract_change", "revise_llds",
+                                                "readiness_resolution", "validate_llds"])
         approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
         self.assertEqual(approval["contract_sha256"], statemod.sha256_file(str(contract)))
 

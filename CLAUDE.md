@@ -147,6 +147,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
+- **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
+  findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
+  `fixed`/`contested`/`escalated` answers → `proceed` (re-review), `incomplete` (back to the author)
+  or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
+  The HLD architecture review and the LLD readiness check route on it.
 - **`brief.py`** — the run brief inlined into every agent prompt by `render_agent_prompt`, at the
   node's `brief:` level (`defaults.brief`, else `minimal`): `minimal` = feature, run mode, this
   step, documents earlier steps produced; `full` adds stages, gate decisions with feedback and

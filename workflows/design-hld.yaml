@@ -304,11 +304,14 @@ nodes:
       (${steps.infra_profile.outputs.platforms_csv}): scaling, capacity, failure domains, secrets,
       rollout and observability. When it is none, raise no infrastructure findings beyond what the
       requirement's targets need. Use the architecture-patterns skill and the matching
-      infrastructure pack as your reference. Findings need evidence; set blocking=true only
+      infrastructure pack as your reference. Findings need evidence; severity blocking only
       for must-fix issues.
-      If .maestro/runs/${inputs.slug}/reviews/architecture.md exists from an earlier round, this is a
-      re-review after a revision: read it first, confirm each earlier blocking finding is resolved,
-      and check only what changed. Then overwrite the report.
+      Write every finding to .maestro/runs/${inputs.slug}/reviews/architecture-findings.json as well as
+      the report (the engine decides from that file). If it exists from an earlier round, this is a
+      re-review: read it and the author's resolutions at .maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json first. Mark a fixed finding
+      resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
+      reason; keep finding ids stable and give new findings new ids. Check only what changed.
+      Then overwrite both files.
     skill: architecture-review
     agent: reviewer
     model: opus
@@ -318,15 +321,29 @@ nodes:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
       infra_profile: "${steps.infra_profile.outputs.profile_path}"
       lessons: "${memory.knowledge.architecture-review}"
     outputs: [review_path, blocking, summary]
-    artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+      - ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
     fresh: true
     max_visits: 6
     on_exhausted: hld_approval
+    next: review_verdict
+
+  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag.
+  - id: review_verdict
+    type: script
+    label: Blocking architecture findings?
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"]
+    max_visits: 8
+    on_exhausted: hld_approval
     routes:
-      - {when: "${steps.arch_review.outputs.blocking} == true", to: revise_from_review}
+      - {when: "${steps.review_verdict.outputs.valid} == false", to: arch_review}
+      - {when: "${steps.review_verdict.outputs.blocking} == true", to: revise_from_review}
       - {to: hld_approval}
 
   # The author resolves the reviewer's blocking findings; the human sees the review at approval.
@@ -335,12 +352,17 @@ nodes:
     execution: lead
     label: Revise the HLD for blocking review findings
     instruction: |
-      Resolve the blocking findings in .maestro/runs/${inputs.slug}/reviews/architecture.md as
-      targeted edits to .maestro/runs/${inputs.slug}/hld.md. Change only what the findings need and
-      keep every confirmed decision that a finding does not contradict. Keep open-questions.json
-      consistent with the edit. If a finding needs a new architecture decision the confirmed
-      decisions cannot settle, do not guess: leave the HLD unchanged and return
-      needs_clarification true; otherwise return false.
+      Resolve each blocking finding (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/architecture-findings.json
+      one way, and record it in .maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json as
+      {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]}:
+      - fixed: a targeted edit to .maestro/runs/${inputs.slug}/hld.md; the note says what changed;
+      - contested: the finding is wrong — the note gives the evidence (requirement, decision, code);
+        a finding the reviewer already upheld cannot be contested again;
+      - escalated: it needs a person's decision — the note states the decision.
+      Change only what the fixes need and keep every confirmed decision a finding does not
+      contradict. Keep open-questions.json consistent with the edit. If a fix needs a new
+      architecture decision the confirmed decisions cannot settle and you are not escalating it,
+      return needs_clarification true; otherwise return false.
     skill: hld-writing
     inputs:
       slug: "${inputs.slug}"
@@ -349,12 +371,29 @@ nodes:
       open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
       hld_validator: ".maestro/engine/validate_hld.py"
       revision_feedback: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
     outputs: [hld_summary, needs_clarification]
-    artifact: ".maestro/runs/${inputs.slug}/hld.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/hld.md"
+      - ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
     max_visits: 3
     on_exhausted: hld_approval
     routes:
       - {when: "${steps.revise_from_review.outputs.needs_clarification} == true", to: prepare_hld_questions}
+      - {to: review_resolution}
+
+  # Engine-owned: fixed and contested findings go back to the reviewer; an escalation, or a second
+  # contest of a finding the reviewer upheld, goes to the person at HLD approval.
+  - id: review_resolution
+    type: script
+    label: Findings fixed, contested or escalated?
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"]
+    max_visits: 8
+    on_exhausted: hld_approval
+    routes:
+      - {when: "${steps.review_resolution.outputs.state} == escalate", to: hld_approval}
+      - {when: "${steps.review_resolution.outputs.state} == incomplete", to: revise_from_review}
       - {to: validate_hld}
 
   - id: hld_approval
@@ -363,6 +402,8 @@ nodes:
     prompt: |
       HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
       Architecture review: ${steps.arch_review.outputs.summary}
+      Blocking findings (engine): ${steps.review_verdict.outputs.summary}
+      Escalated by the author: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
       Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
       Report: .maestro/runs/${inputs.slug}/reviews/architecture.md
 
@@ -374,7 +415,7 @@ nodes:
       - {id: reject, label: Reject — abort the run, to: abort}
     # Autopilot approves only an HLD the fresh architecture review cleared; blocking findings left
     # after the revision limit stop the run here.
-    auto: {option: approve, modes: [auto], when: "${steps.arch_review.outputs.blocking} == false"}
+    auto: {option: approve, modes: [auto], when: "${steps.review_verdict.outputs.blocking} == false"}
 
   # Fast revision: a targeted HLD edit, then re-validation. Only feedback that needs a new
   # architecture decision goes back through the clarification loop; 'rethink' is the full pass.
