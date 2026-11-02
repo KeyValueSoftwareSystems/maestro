@@ -210,8 +210,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   and exposes the repo (`/api/workflows` recursively lists every YAML (skipping host,
   vendored and `testdata/` fixture dirs), tagging maestro workflows; `/api/workflow` GET+PUT;
   `/api/runs`; `/api/health`) so the builder is
-  folder-aware. Reuses `state.load` + `wf.load_file`; binds 127.0.0.1 only; path-traversal
-  guarded (`_safe_repo_yaml`); reads any YAML under root except `.git`; writes any `.yaml`
+  folder-aware. Reuses `state.load` + `wf.load_file`; binds 127.0.0.1 only; refuses any Host
+  other than 127.0.0.1/localhost/[::1] on its port (DNS rebinding) and any write without the
+  per-process `X-Maestro-Token` the served builder page carries (and a foreign Origin);
+  path-traversal guarded (`_safe_repo_yaml`); reads any YAML under root except `.git`; writes any `.yaml`
   under root EXCEPT `.git`/`.maestro` (run state stays engine-only) — workflow SOURCE only.
 
 **The action loop** (engine ↔ lead agent): `maestroctl next` prints exactly ONE action as

@@ -14,12 +14,19 @@ launched in, so the builder no longer needs the browser File System Access API:
 This is dev tooling: it reads/serves and writes workflow SOURCE only. It never touches
 .maestro/runs/**/state.yaml and never drives a run — the Maestro skill + engine remain the
 sole execution path and the only writer of run state. Bound to 127.0.0.1 exclusively.
+
+A local port is reachable from any web page the user opens, so the server also refuses requests
+that do not name it as their Host (127.0.0.1 / localhost / [::1] on its own port — this defeats
+DNS rebinding), and every write must carry the per-process token injected into the builder page it
+served (`X-Maestro-Token`) and, when present, its own Origin. A cross-site page can therefore
+neither read the repository through a rebound name nor write a workflow file.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import secrets
 import os
 import sys
 import webbrowser
@@ -144,7 +151,21 @@ def list_runs(root):
 class Handler(BaseHTTPRequestHandler):
     ROOT = "."
     BUILDER = None
+    TOKEN = secrets.token_urlsafe(24)  # per process; only the served builder page knows it
     server_version = "maestro-ui"
+    LOCAL_HOSTS = ("127.0.0.1", "localhost", "[::1]", "::1")
+
+    # -- request guards ---------------------------------------------------
+    def _host_ok(self):
+        host = (self.headers.get("Host") or "").strip().lower()
+        port = str(self.server.server_address[1])
+        return any(host == f"{name}:{port}" for name in self.LOCAL_HOSTS)
+
+    def _write_ok(self):
+        origin = self.headers.get("Origin")
+        if origin is not None and origin.lower() != f"http://{(self.headers.get('Host') or '').lower()}":
+            return False
+        return secrets.compare_digest(self.headers.get("X-Maestro-Token") or "", self.TOKEN)
 
     def log_message(self, *args):  # silence the default per-request stderr spam
         pass
@@ -156,6 +177,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Referrer-Policy", "no-referrer")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -168,6 +192,8 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- routing ----------------------------------------------------------
     def do_GET(self):
+        if not self._host_ok():
+            return self._fail(403, "requests must address this server as 127.0.0.1 or localhost")
         url = urlparse(self.path)
         path = url.path
         if path in ("/", "/index.html"):
@@ -188,6 +214,10 @@ class Handler(BaseHTTPRequestHandler):
         self.do_GET()
 
     def do_PUT(self):
+        if not self._host_ok():
+            return self._fail(403, "requests must address this server as 127.0.0.1 or localhost")
+        if not self._write_ok():
+            return self._fail(403, "writes need the token from the builder page this server served")
         url = urlparse(self.path)
         if url.path == "/api/workflow":
             return self._put_workflow(parse_qs(url.query))
@@ -200,6 +230,9 @@ class Handler(BaseHTTPRequestHandler):
                 body = fh.read()
         except OSError as exc:
             return self._fail(500, f"cannot read builder: {exc}")
+        tag = f"<script>window.MAESTRO_TOKEN = {json.dumps(self.TOKEN)};</script>".encode()
+        head = body.lower().find(b"<head>")
+        body = body[:head + 6] + tag + body[head + 6:] if head >= 0 else tag + body
         return self._send(200, body, "text/html; charset=utf-8")
 
     def _get_workflow(self, query):

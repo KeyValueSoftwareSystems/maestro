@@ -87,6 +87,10 @@ Anything without a `stack:` tag is core and always installs; `--stack all` (or n
 - **Author visually** — **New** blank canvas, **Open** any workflow in the repo, or **Paste** YAML. Drag nodes and arrows; an arrow pointing back is a loop (dashed, with its repeat-limit badge). Nodes are instruction-first (skill defaults to *Auto*), gates' options *are* their edges, and parallel branches drill in. Live validation, and **Save** (`⌘S`) exports YAML the engine accepts.
 - **Runs** (top-right) — a read-only live status board: pick a slug and the graph colours in as it progresses (**green** done, **orange** running, **red** failed, grey pending).
 
+The UI server answers only requests addressed to `127.0.0.1` or `localhost` on its port, and saves
+only from the builder page it served (a per-session token), so another web page you have open
+cannot read your repository or write a workflow file through it.
+
 `./maestro ui` and `./maestro install` are dev tooling only — the wrapper never drives a run or writes `.maestro/**/state.yaml` (that stays the Maestro skill + engine's job).
 
 ## Engine commands

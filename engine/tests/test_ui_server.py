@@ -73,9 +73,12 @@ class UiServerTest(unittest.TestCase):
         code, body = self._get(path)
         return code, json.loads(body)
 
-    def _req(self, method, path, body=None):
+    def _req(self, method, path, body=None, headers=None, token=True):
         data = body.encode() if isinstance(body, str) else body
-        req = urllib.request.Request(self._url(path), data=data, method=method)
+        headers = dict(headers or {})
+        if token:
+            headers.setdefault("X-Maestro-Token", ui_server.Handler.TOKEN)
+        req = urllib.request.Request(self._url(path), data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req) as r:
                 return r.status, r.read()
@@ -176,6 +179,30 @@ class UiServerTest(unittest.TestCase):
         # a YAML anchor is outside wf.py's accepted subset -> 400
         code, _ = self._req("PUT", "/api/workflow?file=demo.yaml", "a: &x 1\nb: *x\n")
         self.assertEqual(code, 400)
+
+    def test_builder_page_carries_the_write_token(self):
+        _code, body = self._get("/")
+        self.assertIn(f'window.MAESTRO_TOKEN = "{ui_server.Handler.TOKEN}"'.encode(), body)
+
+    def test_writes_need_the_token_and_the_same_origin(self):
+        code, _ = self._req("PUT", "/api/workflow?file=workflows/x.yaml", WF, token=False)
+        self.assertEqual(code, 403)
+        code, _ = self._req("PUT", "/api/workflow?file=workflows/x.yaml", WF,
+                            headers={"X-Maestro-Token": "guess"})
+        self.assertEqual(code, 403)
+        code, _ = self._req("PUT", "/api/workflow?file=workflows/x.yaml", WF,
+                            headers={"Origin": "https://evil.example"})
+        self.assertEqual(code, 403)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "workflows", "x.yaml")))
+        code, _ = self._req("PUT", "/api/workflow?file=workflows/x.yaml", WF,
+                            headers={"Origin": f"http://127.0.0.1:{self.port}"})
+        self.assertEqual(code, 200)
+
+    def test_rebound_host_names_are_refused(self):
+        code, _ = self._req("GET", "/api/runs", headers={"Host": f"attacker.example:{self.port}"})
+        self.assertEqual(code, 403)
+        code, _ = self._req("GET", "/api/runs", headers={"Host": f"localhost:{self.port}"})
+        self.assertEqual(code, 200)
 
     def test_unknown_path_404(self):
         code, _ = self._req("GET", "/api/nope")

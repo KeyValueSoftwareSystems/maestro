@@ -2384,7 +2384,8 @@ $("#exp-save").addEventListener("click", async () => {
       if (!path) { toast("Enter a file path"); return; }
       if (!/\.ya?ml$/.test(path)) path += ".yaml";
       const res = await fetch("/api/workflow?file=" + encodeURIComponent(path),
-        { method: "PUT", body: exportYaml() });
+        { method: "PUT", body: exportYaml(),
+          headers: { "X-Maestro-Token": window.MAESTRO_TOKEN || "" } });
       if (!res.ok) { const j = await res.json().catch(() => ({})); throw new Error(j.error || res.status); }
       ed.fileHandle = { server: path }; ed.fileName = path;
     } else {
