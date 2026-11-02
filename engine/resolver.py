@@ -47,6 +47,10 @@ class RunError(RuntimeError):
 DEFAULT_MAX_VISITS = 10
 DEFAULT_SCRIPT_TIMEOUT = 300
 RESERVED_TARGETS = ("end", "abort")
+# Run modes: who answers the gates. `human` asks every gate; `design` and `auto` let a gate's
+# own `auto:` policy answer it (see auto_gate_option). A gate without one always asks.
+RUN_MODES = ("human", "design", "auto")
+AUTO_MODES = ("design", "auto")
 
 
 def ntype(node):
@@ -332,8 +336,21 @@ def _unusable_ledger_message(slug, root, detail):
     )
 
 
-def init_run(slug, workflow_file, inputs, root=".", force=False):
-    """Create (or no-op onto) the run ledger. Returns (state, created?)."""
+def run_mode(state):
+    return (state.get("run") or {}).get("mode") or "human"
+
+
+def _check_mode(mode):
+    if mode is not None and mode not in RUN_MODES:
+        raise RunError(f"unknown run mode {mode!r} (valid: {', '.join(RUN_MODES)})", code=3)
+
+
+def init_run(slug, workflow_file, inputs, root=".", force=False, mode=None):
+    """Create (or no-op onto) the run ledger. Returns (state, created?).
+
+    mode: human (default) | design | auto. Passing a different mode to an existing run
+    switches it from the next gate on (e.g. take over an autopilot run with `human`)."""
+    _check_mode(mode)
     if not statemod.valid_slug(slug):
         raise RunError(
             f"invalid slug {slug!r}: use lowercase letters, digits, '.', '-', '_' "
@@ -362,6 +379,12 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
                 f"`maestroctl rebase --slug {slug}` accepts the edit; --force restarts.",
                 code=3,
             )
+        if mode is not None and mode != run_mode(existing):
+            existing["run"]["mode"] = mode
+            existing.setdefault("notes", []).append({
+                "at": statemod.now_iso(), "text": f"run mode set to {mode}",
+                "at_steps": list(existing["run"].get("cursors") or []),
+            })
         return existing, False
 
     workflow = wf.load_file(full)
@@ -387,6 +410,7 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
             resolved[name] = coerce_input(spec, default, name)
 
     data = statemod.new_state(slug, workflow_file, digest, resolved)
+    data["run"]["mode"] = mode or "human"
     # Freeze the memory knowledge snapshot for this run — read ONCE here, never re-read
     # live (keeps the run reproducible and immune to concurrent consolidation elsewhere).
     snap_path = memorymod.write_snapshot(slug, root, memorymod.read_knowledge(root))
@@ -890,12 +914,16 @@ def _gate_action(run, frame, node, path):
         {"id": o["id"], "label": o["label"], **({"input": o["input"]} if o.get("input") else {})}
         for o in node["options"]
     ]
-    return {
+    action = {
         "action": "ask_gate",
         "step": path,
         "prompt": run.resolve_text(node["prompt"], frame, missing_ok=True),
         "options": options,
     }
+    if run_mode(run.state) != "human":
+        # an autopilot run reached a gate its policy does not answer: the run stops here
+        action["mode"] = run_mode(run.state)
+    return action
 
 
 def _gate_input_action(run, frame, node, path, entry):
@@ -1749,16 +1777,17 @@ def record_note(run, text, step=None):
     return note
 
 
-def _append_gate_history(run, path, option_id, input_text=None, synthesized=None):
+def _append_gate_history(run, path, option_id, input_text=None, synthesized=None, auto=None):
     run.state["gates"].append({
         "step": path, "option": option_id,
         **({"input": input_text} if input_text else {}),
         "at": statemod.now_iso(),
         **({"synthesized": synthesized} if synthesized else {}),
+        **({"auto": auto} if auto else {}),
     })
 
 
-def _finish_real_gate(run, frame, node, path, entry, option, input_text=None):
+def _finish_real_gate(run, frame, node, path, entry, option, input_text=None, auto=None):
     outputs = {"choice": option["id"]}
     if option.get("input"):
         outputs[option["input"]] = input_text
@@ -1766,9 +1795,55 @@ def _finish_real_gate(run, frame, node, path, entry, option, input_text=None):
     entry["outputs"] = outputs
     entry["status"] = "done"
     statemod.mark_step_finished(entry)
-    _append_gate_history(run, path, option["id"], input_text=input_text)
-    _leave_to(run, frame, node, option["to"], outputs, via_gate=True)
+    _append_gate_history(run, path, option["id"], input_text=input_text, auto=auto)
+    # Only a person's choice lifts the visit cap; an autopilot choice stays loop-bounded.
+    _leave_to(run, frame, node, option["to"], outputs, via_gate=not auto)
     return entry
+
+
+def auto_gate_option(run, frame, node):
+    """The option this gate's `auto:` policy picks in the run's mode, or None (ask a person).
+
+    `auto: {option, modes, when}`: modes defaults to every autopilot mode; `when` is one route
+    condition, evaluated with missing refs empty, so a step that never ran means "ask"."""
+    mode = run_mode(run.state)
+    policy = node.get("auto")
+    if mode == "human" or ntype(node) != "gate" or not isinstance(policy, dict):
+        return None
+    if mode not in (policy.get("modes") or AUTO_MODES):
+        return None
+    cond = policy.get("when")
+    if cond and not condctl.evaluate(
+            cond, lambda text: run.resolve_text(text, frame, missing_ok=True)):
+        return None
+    return next((o for o in node["options"]
+                 if o["id"] == policy.get("option") and not o.get("input")), None)
+
+
+def apply_auto_gates(run, limit=100):
+    """Answer every waiting gate that the run's mode lets its policy answer. -> [record]
+
+    Recording one can reach another (a stage ending into the next stage's gate), so this
+    repeats until no waiting gate is answerable. The caller saves the state."""
+    answered = []
+    for _ in range(limit):
+        for path in list(_cursors(run)):
+            frame, node = run.node_at(path)
+            entry = statemod.step_entry(run.state, path)
+            if ntype(node) != "gate" or entry.get("pending_ask") or entry.get("pending_gate_input"):
+                continue
+            option = auto_gate_option(run, frame, node)
+            if option is None:
+                continue
+            _finish_real_gate(run, frame, node, path, entry, option, auto=run_mode(run.state))
+            answered.append({"step": path, "option": option["id"], "label": option["label"],
+                             "mode": run_mode(run.state)})
+            break
+        else:
+            return answered
+        if run.state["run"].get("status") != "running":
+            return answered
+    return answered
 
 
 def record_gate(run, path, option_id, input_text=None):

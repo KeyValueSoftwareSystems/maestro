@@ -48,7 +48,7 @@ _NODE_KEYS = {
                   "questions_artifact", "batch_size", "presentation", "discuss", "artifact",
                   "ui", "next",
                   "routes", "max_visits", "on_exhausted"},
-    "gate": {"id", "type", "label", "prompt", "options", "max_visits", "on_exhausted", "ui"},
+    "gate": {"id", "type", "label", "prompt", "options", "auto", "max_visits", "on_exhausted", "ui"},
     "script": {"id", "type", "label", "run", "timeout", "ui"} | _ROUTING_KEYS,
     "parallel": {"id", "type", "label", "join", "on_branch_fail", "branches", "isolate", "ui"} | _ROUTING_KEYS,
     "subworkflow": {"id", "type", "label", "workflow", "inputs", "ui"} | _ROUTING_KEYS,
@@ -271,6 +271,33 @@ def _validate_node(node, ids, declared_inputs, where):
             for k in opt:
                 if k not in ("id", "label", "to", "input"):
                     err("unknown-key", f"gate option has unknown key {k!r}")
+        auto = node.get("auto")
+        if auto is not None:
+            if not isinstance(auto, dict):
+                err("bad-type", "gate auto must be a map: {option, modes, when}")
+            else:
+                for k in auto:
+                    if k not in ("option", "modes", "when"):
+                        err("unknown-key", f"gate auto has unknown key {k!r}")
+                picked = next((o for o in options if isinstance(o, dict)
+                               and o.get("id") == auto.get("option")), None)
+                if picked is None:
+                    err("missing-key", f"gate auto.option {auto.get('option')!r} is not an option")
+                elif picked.get("input") or picked.get("to") == "abort":
+                    # autopilot has no text to give and never ends a run on its own
+                    err("bad-type", f"gate auto.option {picked['id']!r} must not need input "
+                                    "or abort")
+                modes = auto.get("modes")
+                if modes is not None and not (
+                        isinstance(modes, list) and modes
+                        and all(m in ("design", "auto") for m in modes)):
+                    err("bad-type", "gate auto.modes must be a non-empty list of design/auto")
+                cond = auto.get("when")
+                if cond is not None:
+                    try:
+                        condctl.parse(cond)
+                    except condctl.CondError as exc:
+                        err("bad-condition", f"gate auto.when: {exc}")
     elif ntype == "script":
         run = node.get("run")
         if not isinstance(run, list) or not run or not all(isinstance(a, str) for a in run):

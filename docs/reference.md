@@ -99,6 +99,10 @@ python3 .maestro/engine/maestroctl.py validate .maestro/workflows/my.yaml   # li
 python3 .maestro/engine/maestroctl.py preflight                             # check maestro.config.yaml (docs/project-config.md)
 ```
 
+**Run modes.** `init --mode human|design|auto` (the lead passes it when you ask for a mode)
+decides which gates the engine answers itself from each gate's `auto:` policy — see
+[Run modes](sdlc-pipeline.md#run-modes). `status` shows the mode and marks autopilot decisions.
+
 If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --slug <slug>` are your recovery levers — see [Working as a team](#working-as-a-team).
 
 ## Pausing & resuming a run

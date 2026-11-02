@@ -289,6 +289,9 @@ nodes:
       - {id: revise, label: Request changes — targeted edit of this HLD, to: revise_hld, input: feedback}
       - {id: rethink, label: Re-clarify the architecture and regenerate, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
+    # Autopilot approves only an HLD the fresh architecture review cleared; blocking findings left
+    # after the revision limit stop the run here.
+    auto: {option: approve, modes: [auto], when: "${steps.arch_review.outputs.blocking} == false"}
 
   # Fast revision: a targeted HLD edit, then re-validation. Only feedback that needs a new
   # architecture decision goes back through the clarification loop; 'rethink' is the full pass.

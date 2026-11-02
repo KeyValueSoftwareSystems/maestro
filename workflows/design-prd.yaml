@@ -225,6 +225,8 @@ nodes:
       - {id: revise, label: Request changes — targeted edit of this PRD, to: revise_prd, input: feedback}
       - {id: rescope, label: Correct the feature goal and regenerate, to: feature_goal, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
+    # Only autopilot approves the PRD itself; design mode keeps the person on the requirement.
+    auto: {option: approve, modes: [auto]}
 
   # Fast revision: a targeted edit of the approved-draft PRD, then re-validation. Only feedback that
   # needs a new product decision goes back through the Grill loop; 'rescope' is the full restart.

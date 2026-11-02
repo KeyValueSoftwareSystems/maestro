@@ -137,6 +137,7 @@ def build(run):
         "slug": state.get("slug") or run.slug,
         "workflow": main.workflow.get("name") or state["workflow"]["file"],
         "status": state["run"]["status"],
+        "mode": state["run"].get("mode") or "human",
         "items": items,
         "now": [_now(run, c) for c in loose],
     }
@@ -188,7 +189,8 @@ def flat(todo):
 
 
 def render(todo):
-    lines = [f"{todo['slug']} · {todo['workflow']} · {todo['status']}"]
+    lines = [f"{todo['slug']} · {todo['workflow']} · {todo['status']}"
+             + (f" · {todo['mode']} mode" if todo.get("mode", "human") != "human" else "")]
 
     def walk(items, depth):
         pad = "    " * depth

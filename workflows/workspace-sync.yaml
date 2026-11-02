@@ -49,6 +49,9 @@ nodes:
       - {id: current, label: Keep current commits; refresh stale docs, to: keep_current}
       - {id: as_is, label: Keep current commits and docs as they are, to: lock}
       - {id: reject, label: Abort the run, to: abort}
+    # Autopilot never moves a person's checkouts: it keeps the current commits and refreshes
+    # only the docs that are stale.
+    auto: {option: current}
 
   # Route-only: refresh stale docs and maps at the current commits, without updating any repo.
   - id: keep_current

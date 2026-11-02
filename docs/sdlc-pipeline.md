@@ -132,6 +132,28 @@ Prefer manual control? Every step is also a skill you can invoke on its own — 
 command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
 `$hld-writing`, for example). Same skills, no orchestration.
 
+## Run modes
+
+Say how much you want to be asked when you start a feature ("run it on autopilot", "only stop
+for design approval"). The mode decides who answers each gate:
+
+| Gate | `human` (default) | `design` | `auto` |
+|---|---|---|---|
+| PRD approval | you | you | approved |
+| HLD approval | you | you | approved if the architecture review has no blocking findings |
+| LLD scope | you | all repositories | all repositories |
+| LLD approval | you | approved if the readiness check passes | same |
+| Workspace updates | you | keep current commits, refresh stale docs | same |
+| Release | you | approved if the engine verified every repository | same |
+| Missing requirement, question limit, stuck fix loop, failing QA | you | you | you |
+
+Each gate's policy lives in the workflow (`auto:` on the gate), and the engine applies it — the
+lead agent never answers a gate. A gate whose check fails stops the run for you, with the reason;
+the ledger and `maestroctl status` mark every autopilot decision. `auto` will not start until
+`maestroctl preflight` passes, since the engine's own build and test runs are what stand in for
+your review. Change the mode of a running feature by asking Maestro to switch; it applies from
+the next gate. Interview questions are still asked in every mode.
+
 ## Interviews are conversations
 
 PRD, HLD and LLD questions are not a form to fill in. Each popup question offers:

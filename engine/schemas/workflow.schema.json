@@ -448,6 +448,32 @@
             }
           }
         },
+        "auto": {
+          "type": "object",
+          "description": "Autopilot policy: in the listed run modes (default design and auto), when `when` holds, the engine records `option` itself. Otherwise a person answers.",
+          "required": [
+            "option"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "option": {
+              "type": "string"
+            },
+            "modes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "design",
+                  "auto"
+                ]
+              }
+            },
+            "when": {
+              "type": "string"
+            }
+          }
+        },
         "max_visits": {
           "type": "integer",
           "minimum": 1

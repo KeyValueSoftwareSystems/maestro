@@ -277,7 +277,8 @@ remaining semantic or structural defect reaches the fast fallback repair agent.
 
 ### `gate`
 
-A human decision. Options ARE the outgoing edges. Gates are **never** skipped on resume.
+A human decision. Options ARE the outgoing edges. Gates are **never** skipped on resume; only
+the run mode's autopilot policy (below) answers one without a person.
 
 ```yaml
 - id: hld_approval
@@ -295,6 +296,21 @@ is simply an option whose `to:` is a back-edge — re-entry reset cascades autom
 shipped PRD/HLD/LLD gates keep re-iteration cheap: `revise` goes to a `revise_*` step that edits
 only the affected sections and re-validates, returning to the clarification loop only when it
 reports `needs_clarification`; the full pass is a separate option (`rescope` / `rethink`).
+
+**Autopilot policy.** A run starts in a mode (`init --mode human|design|auto`, default `human`).
+In `human` mode every gate asks. In `design` and `auto` mode a gate with an `auto:` policy may
+be answered by the engine itself:
+
+```yaml
+  auto: {option: approve, modes: [auto], when: "${steps.arch_review.outputs.blocking} == false"}
+```
+
+`option` must name an option with no `input` and no `to: abort`. `modes` defaults to
+`[design, auto]`. `when` is one route condition; a ref to a step that never ran renders empty,
+so the gate asks. When the policy applies, the serving call records the option (gate history
+`auto: <mode>`) and lists it under `auto_gates`; otherwise the gate asks a person, and in
+`auto` mode that is where the run stops. An autopilot choice is visit-capped like any route
+(only a person's choice lifts the cap), and recovery gates (failure, repeat limit) always ask.
 
 ### `script`
 
@@ -451,7 +467,7 @@ interrupted (`running`) steps are re-served; gates always re-ask.
 
 ```
 maestroctl validate <wf>                 # refuse to start on errors
-maestroctl init --slug S --workflow <wf> [--input k=v ...]
+maestroctl init --slug S --workflow <wf> [--input k=v ...] [--mode human|design|auto]
 loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON (claims workers; --peek re-reads)
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'
@@ -461,7 +477,8 @@ loop:
     run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
                  (engine helpers never reach the lead: every serving call runs
-                 `python3 .maestro/engine/*.py` steps itself and lists them in `auto_scripts`)
+                 `python3 .maestro/engine/*.py` steps itself and lists them in `auto_scripts`;
+                 in design/auto mode it also records policy-answered gates in `auto_gates`)
     ask_interview → ask one decision → interview-record --section X
                  (--accept | --option N | --answer TEXT | --assume | --defer TEXT) [--raise TEXT]
     ask_interview_batch → collect, discuss, then record once → interview-record-batch --responses JSON

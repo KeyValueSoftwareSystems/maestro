@@ -288,7 +288,7 @@ def _collect_input(act, auto):
 MAX_REPEATED_AUTO_CHOICE = 3
 
 
-def run(root, slug, workflow, inputs, auto, max_steps, force=False):
+def run(root, slug, workflow, inputs, auto, max_steps, force=False, mode=None):
     auto_repeat = {}  # (step, option_id) -> consecutive count, for stuck-loop detection
     issues = validatemod.validate_file(workflow, root=root)
     errors = [i for i in issues if i.level == "error"]
@@ -304,11 +304,16 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
         )
 
     with statemod.locked(slug, root):
-        resolver.init_run(slug, workflow, inputs, root, force=force)
-    _log(f"[init] slug={slug!r} workflow={workflow!r} root={root!r}")
+        resolver.init_run(slug, workflow, inputs, root, force=force, mode=mode)
+    _log(f"[init] slug={slug!r} workflow={workflow!r} root={root!r} mode={mode or 'human'}")
 
     for step_count in range(max_steps):
         run_obj = resolver.Run(slug, root)
+        answered = resolver.apply_auto_gates(run_obj)
+        if answered:
+            statemod.save(slug, run_obj.state, root)
+            for gate in answered:
+                _log(f"[gate] {gate['step']} -> {gate['option']} (autopilot, {gate['mode']} mode)")
         action = resolver.next_action(run_obj)
         kind = action["action"]
         if kind == "done":
@@ -430,6 +435,8 @@ def main(argv):
     parser.add_argument("--input", action="append", default=[], help="k=v, repeatable")
     parser.add_argument("--auto", action="store_true",
                         help="auto-pick the first gate option instead of prompting")
+    parser.add_argument("--mode", choices=resolver.RUN_MODES,
+                        help="run mode: gates whose auto: policy covers it answer themselves")
     parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--force", action="store_true",
                         help="replace an existing run ledger for this slug")
@@ -453,7 +460,7 @@ def main(argv):
         )
 
     result = run(args.root, args.slug, args.workflow, inputs, args.auto,
-                 args.max_steps, force=args.force)
+                 args.max_steps, force=args.force, mode=args.mode)
     return {"done": 0, "failed": 1, "stopped": 2}.get(result.get("action"), 1)
 
 

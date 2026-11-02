@@ -946,6 +946,32 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
             }
           }
         },
+        "auto": {
+          "type": "object",
+          "description": "Autopilot policy: in the listed run modes (default design and auto), when `when` holds, the engine records `option` itself. Otherwise a person answers.",
+          "required": [
+            "option"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "option": {
+              "type": "string"
+            },
+            "modes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "design",
+                  "auto"
+                ]
+              }
+            },
+            "when": {
+              "type": "string"
+            }
+          }
+        },
         "max_visits": {
           "type": "integer",
           "minimum": 1
@@ -2130,7 +2156,7 @@ function exportYaml() {
   return jsyaml.dump(clean, YAML_DUMP_OPTS);
 }
 const NODE_KEY_ORDER = ["id", "label", "type", "instruction", "skill", "agent", "model", "inputs", "outputs",
-  "artifact", "retries", "isolate", "prompt", "options", "run", "timeout", "workflow", "join",
+  "artifact", "retries", "isolate", "prompt", "options", "auto", "run", "timeout", "workflow", "join",
   "on_branch_fail", "branches", "max_visits", "on_exhausted", "on_fail", "next", "routes", "ui"];
 const TOP_KEY_ORDER = ["version", "name", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"];
 function orderKeys(obj, order) {

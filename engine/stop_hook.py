@@ -2,9 +2,9 @@
 """Claude Code **Stop hook** — auto-continue an active Maestro run (opt-in).
 
 When Claude tries to end its turn, this asks the engine whether the active run
-still has AUTONOMOUS work pending — an agent/script action, not a human gate. If so
-it blocks the stop (exit 2) and tells the lead agent to keep driving the dispatch
-loop. At a human gate, when the run is done/failed, or when nothing is running, it
+still has AUTONOMOUS work pending — an agent/script action, or a gate the run mode answers
+itself — not a human gate. If so it blocks the stop (exit 2) and tells the lead agent to keep
+driving the dispatch loop. At a human gate, when the run is done/failed, or when nothing is running, it
 lets the turn end normally (exit 0) — the human is meant to be in charge at gates.
 
 It is **read-only**: it asks the resolver for the next action WITHOUT claiming anything
@@ -56,10 +56,12 @@ def main():
             run = resolver.Run(slug, root)
             if (run.state.get("run") or {}).get("status") != "running":
                 continue
+            # In memory only: a gate the run mode answers is work the next `next` call does.
+            autopiloted = resolver.apply_auto_gates(run)
             action = resolver.next_action(run, exclude_claimed=True)
         except Exception:
             continue  # unreadable / changed-workflow halt / mid-step — skip, don't trap
-        if action.get("action") in AUTONOMOUS:
+        if autopiloted or action.get("action") in AUTONOMOUS:
             pending.append((slug, action.get("action")))
 
     if not pending:

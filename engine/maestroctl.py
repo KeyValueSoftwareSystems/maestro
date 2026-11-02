@@ -5,7 +5,7 @@ The lead agent's whole protocol:
 
     maestroctl validate <workflow>
     maestroctl preflight                             # maestro.config.yaml vs the repos on disk
-    maestroctl init --slug S --workflow <workflow> [--input k=v ...]
+    maestroctl init --slug S --workflow <workflow> [--input k=v ...] [--mode human|design|auto]
     loop:
         maestroctl next --slug S [--serial]          # ONE action as JSON (claims workers)
         # dispatch it, then one of:
@@ -27,7 +27,9 @@ Also: status, todo, reset (--step/--all, --cascade), rebase, graph, runs, and no
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
 steps itself — argv `python3 .maestro/engine/<script>.py ...` — and completes them, so the lead
 never round-trips them; the action lists them under `auto_scripts`. Other scripts are still
-served as `run_script`. Disable with MAESTRO_AUTO_SCRIPTS=0. Worker steps are claimed when
+served as `run_script`. Disable with MAESTRO_AUTO_SCRIPTS=0. In `design` and `auto` run modes the
+same calls record each gate whose `auto:` policy answers it (listed under `auto_gates`); any
+other gate is served to a person. Worker steps are claimed when
 served: later calls return only newly ready work (or `wait`), and `init` releases the claims
 of a resumed run so lost workers are re-served.
 
@@ -90,8 +92,21 @@ def cmd_init(args):
         for issue in errors:
             print(str(issue), file=sys.stderr)
         raise resolver.RunError(f"workflow has {len(errors)} validation error(s); fix them first", code=1)
+    if args.mode == "auto":
+        # Autopilot needs the engine's own build/test checks; without them nothing verifies
+        # the agents' work before the release is approved for them.
+        import project_config
+        problems = [i for i in project_config.preflight(args.root) if i.level == "error"]
+        if problems:
+            for issue in problems:
+                print(str(issue), file=sys.stderr)
+            raise resolver.RunError(
+                "auto mode needs a passing `maestroctl preflight` (build and test commands for "
+                "every repository); fix maestro.config.yaml or start in human or design mode",
+                code=3)
     with statemod.locked(args.slug, args.root):
-        data, created = resolver.init_run(args.slug, args.workflow, inputs, args.root, force=args.force)
+        data, created = resolver.init_run(args.slug, args.workflow, inputs, args.root,
+                                          force=args.force, mode=args.mode)
         if not created:
             resolver.release_claims(data)  # resume: a previous session's workers are gone
         # Start or resume: the lead (re)builds its task list from here; `next` then re-sends
@@ -106,6 +121,7 @@ def cmd_init(args):
         "workflow": data["workflow"]["file"],
         "cursors": data["run"]["cursors"],
         "status": data["run"]["status"],
+        "mode": resolver.run_mode(data),
         "todo": todomod.flat(todo),
     })
     return 0
@@ -151,13 +167,15 @@ def _serve_action(args, peek=False):
     serial = getattr(args, "serial", False)
     if peek:
         return resolver.next_action(resolver.Run(args.slug, args.root), serial=serial)
-    ran = []
+    ran, gates = [], []
     auto = _auto_scripts_enabled()
     for _ in range(MAX_AUTO_SCRIPTS):
         with statemod.locked(args.slug, args.root):
             run = resolver.Run(args.slug, args.root)
+            answered = resolver.apply_auto_gates(run)
+            gates.extend(answered)
             action = resolver.next_action(run, serial=serial, claim=True)
-            if action["action"] in ("run_agent", "run_agents"):
+            if answered or action["action"] in ("run_agent", "run_agents"):
                 statemod.save(args.slug, run.state, args.root)
             visits = (run.state["steps"].get(action.get("step") or "") or {}).get("visits")
         if not (auto and action["action"] == "run_script"
@@ -178,6 +196,8 @@ def _serve_action(args, peek=False):
                     "seconds": round(time.monotonic() - started, 1)})
     if ran:
         action = {**action, "auto_scripts": ran}
+    if gates:
+        action = {**action, "auto_gates": gates}
     return _with_todo(args, action)
 
 
@@ -349,6 +369,7 @@ def cmd_status(args):
     print(f"slug:     {data['slug']}")
     print(f"workflow: {data['workflow']['file']}")
     print(f"status:   {run_info['status']}")
+    print(f"mode:     {run_info.get('mode') or 'human'}")
     print(f"active:   {', '.join(run_info.get('cursors') or []) or '-'}")
     print()
     width = max((len(p) for p in data["steps"]), default=10)
@@ -364,6 +385,8 @@ def cmd_status(args):
         print("gate decisions:")
         for g in data["gates"]:
             extra = f" input={g['input']!r}" if g.get("input") else ""
+            if g.get("auto"):
+                extra += f" (autopilot, {g['auto']} mode)"
             print(f"  {g['at']}  {g['step']} -> {g['option']}{extra}")
     return 0
 
@@ -437,6 +460,9 @@ def build_parser():
     p.add_argument("--workflow", required=True)
     p.add_argument("--input", action="append", metavar="K=V")
     p.add_argument("--force", action="store_true", help="restart even if a run exists")
+    p.add_argument("--mode", choices=resolver.RUN_MODES,
+                   help="who answers gates: human (default, every gate), design or auto "
+                        "(each gate's auto: policy); on a resumed run, switches the mode")
     p.set_defaults(fn=cmd_init)
 
     p = sub.add_parser("next", help="serve the next action as JSON (claims workers, runs "

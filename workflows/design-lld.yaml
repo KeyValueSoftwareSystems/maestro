@@ -38,6 +38,7 @@ nodes:
     options:
       - {id: all, label: All of them, to: lld_scope_init}
       - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
+    auto: {option: all}
 
   - id: lld_scope_init
     type: script
@@ -344,6 +345,9 @@ nodes:
       - {id: revise, label: Request changes — targeted edits, to: revise_llds, input: feedback}
       - {id: rethink, label: Re-clarify repository decisions and regenerate, to: prepare_lld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
+    # Design and auto modes approve LLDs that passed the readiness check (the person approved the
+    # HLD they implement); blocking findings left after the revision limit stop the run here.
+    auto: {option: approve, when: "${steps.readiness_review.outputs.blocking} == false"}
 
   # Targeted edits from the readiness check, the approval gate, or a contract change.
   - id: revise_llds

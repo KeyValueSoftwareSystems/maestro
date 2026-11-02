@@ -303,16 +303,22 @@ class SdlcE2E(unittest.TestCase):
 
     # -- driver ----------------------------------------------------------
 
-    def drive(self, gate_script, max_steps=200, agent_overrides=None):
+    def drive(self, gate_script, max_steps=200, agent_overrides=None, mode=None):
         """Run the pipeline: gate_script maps step path -> list of (option, input) taken
-        in order. Returns (final_action, trace)."""
+        in order. Gates the run mode lets the engine answer appear in the trace as
+        ("auto_gate", step). Returns (final_action, trace)."""
         trace = []
         gate_ptr = {}
         overrides = agent_overrides or {}
         with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml", {"feature": "Demo"}, self.tmp)
+            resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml", {"feature": "Demo"},
+                              self.tmp, mode=mode)
         for _ in range(max_steps):
             run = resolver.Run("demo", self.tmp)
+            answered = resolver.apply_auto_gates(run)
+            if answered:
+                trace.extend(("auto_gate", g["step"]) for g in answered)
+                statemod.save("demo", run.state, self.tmp)
             action = resolver.next_action(run)
             kind = action["action"]
             if kind in ("done", "failed"):
@@ -648,6 +654,43 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(hld[start:start + 5], ["arch_review", "revise_from_review",
                                                 "validate_hld", "arch_review", "hld_approval"])
         self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
+
+    def test_design_mode_asks_only_for_prd_and_hld_approval(self):
+        self.prep_tasks_json()
+        action, trace = self.drive({
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+        }, mode="design")
+        self.assertEqual(action["action"], "done", action)
+        self.assertEqual([s for a, s in trace if a == "ask_gate"],
+                         ["design/prd/prd_approval", "design/hld/hld_approval"])
+        self.assertEqual([s for a, s in trace if a == "auto_gate"],
+                         ["design/lld/lld_scope", "design/lld/lld_approval",
+                          "delivery/release_approval"])
+        gates = statemod.load("demo", self.tmp)["gates"]
+        self.assertEqual([(g["step"], g.get("auto")) for g in gates], [
+            ("design/prd/prd_approval", None), ("design/hld/hld_approval", None),
+            ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
+            ("delivery/release_approval", "design")])
+        # the autopilot LLD approval still records the hash-bound approval delivery checks
+        self.assertTrue(os.path.isfile(lld_set.approval_path("demo", self.tmp)))
+
+    def test_auto_mode_runs_from_requirement_to_release_without_a_person(self):
+        self.prep_tasks_json()
+        action, trace = self.drive({}, mode="auto")
+        self.assertEqual(action["action"], "done", action)
+        self.assertEqual([s for a, s in trace if a == "ask_gate"], [])
+        self.assertIn(("auto_gate", "delivery/release_approval"), trace)
+
+    def test_auto_mode_stops_at_hld_approval_while_the_review_still_blocks(self):
+        self.prep_tasks_json()
+        blocked = {"review_path": "reviews/architecture.md", "blocking": True,
+                   "summary": "1 blocker"}
+        action, trace = self.drive({"design/hld/hld_approval": [("reject", None)]},
+                                   agent_overrides={"arch_review": blocked}, mode="auto")
+        self.assertEqual(action["action"], "failed", action)
+        self.assertEqual([s for a, s in trace if a == "ask_gate"], ["design/hld/hld_approval"])
+        self.assertEqual([s for a, s in trace if a == "auto_gate"], ["design/prd/prd_approval"])
 
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()

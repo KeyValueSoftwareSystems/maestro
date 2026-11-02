@@ -167,7 +167,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 JSON — `run_agent`, `run_agents` (a parallel wave), `run_lead`, `run_script`,
 `ask_interview`, `ask_interview_batch`, `ask_gate`, `ask_input`, `wait`, `done`, or `failed`. Every
 serving call first runs engine-owned script steps (`python3 .maestro/engine/*.py`) itself, outside
-the ledger lock, and lists them in `auto_scripts`; only other scripts reach the lead. Served worker
+the ledger lock, and lists them in `auto_scripts`; only other scripts reach the lead. In the
+`design` / `auto` run modes (`init --mode`) the same calls record each gate whose `auto:` policy
+answers it (`auto_gates`); every other gate still goes to the human, which is where autopilot stops. Served worker
 steps are claimed (`dispatched_at`), so later calls return only newly ready work (ready workers
 before gates) or `wait`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an

@@ -71,7 +71,9 @@ description is the seed for the workflow's bounded PRD interview when no require
    discussions never happen in your context: they go to an isolated `discussant` subagent or a
    side chat (see `ask_interview_batch`). Your context must stay small enough to drive a long
    pipeline.
-3. **Never skip, invent, or auto-answer a gate.** Gates exist to put a human in charge.
+3. **Never skip, invent, or auto-answer a gate.** Gates exist to put a human in charge. In
+   `design` and `auto` run modes the ENGINE answers the gates whose policy allows it; every gate
+   it serves you still goes to the human.
 4. **Relay honestly.** If a step failed, say so and report it via `fail` — never mark
    work done that is not.
 5. Pass agent-returned text into `--outputs` VERBATIM as compact JSON. Do not
@@ -82,9 +84,17 @@ description is the seed for the workflow's bounded PRD interview when no require
 ```bash
 python3 .maestro/engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
 python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
-    [--input feature="..." ...]
+    [--input feature="..." ...] [--mode human|design|auto]
 ```
 
+- **Run mode** — who answers the gates. `human` (default): every gate. `design`: the human
+  approves the PRD and the HLD; the engine answers the rest when their checks passed (LLD
+  approval after a clean readiness check, release after engine verification). `auto`: PRD in,
+  release out; the engine answers every gate whose condition holds and the run stops at any
+  other. Pass `--mode` only when the user asked for it ("run this on autopilot", "only stop for
+  design approval"); never pick a faster mode yourself. `auto` refuses to start until
+  `maestroctl preflight` passes — relay that. To take over or hand back a running feature,
+  re-run `init` with the new `--mode`; it applies from the next gate.
 - `init` is safe when the run already exists (that IS the resume path — say "resuming" and
   continue); it only releases worker claims left by an interrupted session. Its output carries
   `todo`, the run's stage checklist: put it in your task list now (see **Task list**).
@@ -120,6 +130,9 @@ To re-read the current action without claiming anything, use `next --peek`.
 The engine runs its own helper scripts (`python3 .maestro/engine/*.py`) inside these calls
 and completes them before answering; they are listed under `auto_scripts` in the returned
 action. Never run or complete those steps yourself — at most mention them in narration.
+Likewise, in `design`/`auto` mode the engine records the gates its policy answers and lists them
+under `auto_gates` (step, option, label): tell the user in one line what was approved for them
+("LLDs approved on autopilot — readiness check clean"), then act on the action itself.
 
 **Keep the loop moving.** After every mutation command, immediately act on the FOLLOWING action
 it printed — do NOT end your turn between a report and the next
@@ -362,6 +375,10 @@ open a conditional text box after a click. Never combine or skip the two interac
 
 Actions with `"synthesized"` set are engine-generated recovery gates (retry/skip/abort,
 continue/abort) — treat them exactly the same.
+
+An `ask_gate` carrying `"mode"` (`design` or `auto`) is a gate the run's mode does not answer:
+its check failed (blocking review findings, unverified release) or it always needs a person.
+Say so plainly — "autopilot stopped: <why, from the prompt>" — then ask exactly as above.
 
 **Questions at a design-approval gate.** If, instead of choosing, the human asks about the PRD,
 HLD, or LLD the gate names ("why one service?", "what happens on retry?"), answer it: read only the
