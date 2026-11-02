@@ -140,10 +140,6 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
   parent. Pull all approved child changes, then refresh the parent LLD status gate.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. The engine refuses to run on a
   ledger with conflict markers and never overwrites it. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
-- **Old-format runs:** selecting one through `/maestro` offers a one-time upgrade. The engine backs
-  up its state and artifacts, converts old PRD/HLD structure without reopening clear decisions,
-  asks one baseline approval, and imports each old LLD as an independently validated, unapproved
-  child draft. It never transfers an old approval merely because a Markdown file exists.
 - If you edit a **workflow file** mid-run, the engine halts on the next command with a hash mismatch — nobody silently diverges from the lead's flow. Accept the edit with `maestroctl rebase --slug <slug>` (it re-validates first) or start over with `reset --slug <slug> --all`.
 
 ## Upgrading in detail
@@ -212,7 +208,7 @@ After install, in your project repo:
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
   workflows/  the example pack: sdlc-main / workspace-sync / design / impl / qa,
               split into small stages: sdlc-main's design-review / delivery,
-              design's design-import / -intake / -prd / -map / -hld / -lld /
+              design's design-intake / -prd / -map / -hld / -lld /
               -contract (+ repo-lld per repository),
               plus archive / build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)

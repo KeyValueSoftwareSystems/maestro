@@ -9,7 +9,7 @@ Items are STAGES — subworkflow and parallel nodes — in declaration order. Sp
 into small stage children is what makes this list readable: `sdlc-main` shows design -> design
 review -> delivery -> archive, and the running stage expands one level (design: intake -> PRD ->
 map -> HLD -> LLDs -> contract). A stage is listed when it is on the workflow's normal path or
-has been entered, so optional stages (the legacy import, a scoped architecture revision) appear
+has been entered, so optional stages (a scoped architecture revision) appear
 only once they actually run. The step the run is on is reported as a `now` line under the
 innermost stage that contains it, marked `waiting` when it needs the human (a gate, an
 interview, an exhausted-loop or failure question).

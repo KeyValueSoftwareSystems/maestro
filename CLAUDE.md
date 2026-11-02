@@ -42,12 +42,12 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · rebase · status · todo · graph · note · upgrade-run · correction-record`. The resolver serves exactly ONE next action as JSON; the
+  · rebase · status · todo · graph · note · correction-record`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
-  `design-review` → `delivery` → `archive`; `design` composes `design-import` / `design-intake` /
+  `design-review` → `delivery` → `archive`; `design` composes `design-intake` /
   `design-prd` / `design-map` / `design-hld` / `design-lld` / `design-contract`. A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
@@ -134,12 +134,6 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`implementation_pool.py`** — separate approved design scope from the current implementation
   batch, preserve verified repository handoffs across batches, keep unselected repositories as
   durable deferred work, and build the QA manifest only from exact verified worktree commits.
-- **`run_upgrade.py`** — inspect and apply the explicit one-time semantic run-format upgrade.
-  Backs up old state/artifacts, stamps compatible ledgers, and rebuilds legacy ledgers from
-  validated PRD/HLD plus independently re-approved imported LLD drafts; never maps removed steps.
-  Format 3 re-nests a ledger's inline steps under the stage child that now declares them
-  (`design/author_hld` → `design/hld/author_hld`, `qa/qa_run` → `delivery/qa/qa_run`, ids
-  unchanged) so the exact cursor survives.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
   repos, missing `build`/`test` commands (errors) and missing `lint`/`e2e` (warnings). Engine
@@ -149,8 +143,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`entry_serve.py`** — the route-only `script` node a multi-entry child workflow starts with;
-  its `routes:` branch on the child's inputs (e.g. design-import enters at the baseline approval
-  or the repair gate). Does no work, never fails.
+  its `routes:` branch on the child's inputs (e.g. design enters at the stage a scoped
+  architecture-review revision names). Does no work, never fails.
 - **`design_corrections.py`** — immutable per-correction approval receipts, deterministic
   effective-design rendering for downstream consumers, repository-batch receipts for the
   architecture-review LLD-only path, and validated archive-time folding into final document copies

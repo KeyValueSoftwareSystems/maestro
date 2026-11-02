@@ -1,4 +1,4 @@
-"""design.yaml composes small stage children (design-import/-intake/-prd/-map/-hld/-lld/-contract).
+"""design.yaml composes small stage children (design-intake/-prd/-map/-hld/-lld/-contract).
 Scoped architecture-review revisions must land on exactly the node the former inline routing chose."""
 
 import os
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 
-ENTRY_STEPS = {"upgrade_entry", "import_entry", "lld_entry", "contract_entry"}
+ENTRY_STEPS = {"entry", "lld_entry", "contract_entry"}
 
 
 class DesignPhaseEntryTest(unittest.TestCase):
@@ -66,13 +66,7 @@ class DesignPhaseEntryTest(unittest.TestCase):
             (".maestro/workflows/design-intake.yaml", {}, "assert_requirement"),
             (".maestro/workflows/design-map.yaml", {}, "check_codebase_map"),
             (".maestro/workflows/design-hld.yaml", {}, "prepare_hld_questions"),
-            (".maestro/workflows/design-import.yaml", {"upgrade_manifest": "m.json", "state": "ready"},
-             "upgrade_baseline_approval"),
-            (".maestro/workflows/design-import.yaml", {"upgrade_manifest": "m.json", "state": "invalid"},
-             "upgrade_baseline_invalid"),
             (".maestro/workflows/design-lld.yaml", {}, "lld_scope_serve"),
-            (".maestro/workflows/design-lld.yaml", {"imported_workstreams": "true"},
-             "lld_workstreams_check"),
             (".maestro/workflows/design-contract.yaml", {}, "corrections_context"),
         ]
         for workflow, inputs, expected in cases:

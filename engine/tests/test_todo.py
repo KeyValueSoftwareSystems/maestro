@@ -90,7 +90,7 @@ class SdlcTodoTest(unittest.TestCase):
                        "status": "in_progress"}, tasks)
         self.assertEqual(tasks[0], {"content": "Workspace sync (feature start)",
                                     "status": "completed"})
-        # The scoped architecture revision and the legacy import never ran: not listed.
+        # The scoped architecture revision never ran: not listed.
         labels = " ".join(task["content"] for task in tasks)
         self.assertNotIn("Scoped architecture-review revision", labels)
         self.assertNotIn("Legacy run import", labels)

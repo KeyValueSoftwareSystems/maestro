@@ -14,7 +14,6 @@ description: Full feature pipeline — requirement to release-ready review pack.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
-  upgrade_manifest: {type: string, default: "", description: engine-created one-time legacy run import plan}
 defaults:
   model: haiku
   agent: general
@@ -38,7 +37,6 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       feedback: "${steps.review.outputs.approval_feedback} ${steps.delivery.outputs.release_feedback}"
-      upgrade_manifest: "${inputs.upgrade_manifest}"
     max_visits: 4
     next: review
 
@@ -54,7 +52,6 @@ nodes:
       revision_scope: "${steps.review.outputs.revision_scope}"
       affected_repos: "${steps.review.outputs.affected_repos_csv}"
       correction_text: "${steps.review.outputs.correction_text}"
-      upgrade_manifest: "${inputs.upgrade_manifest}"
     max_visits: 4
     next: review
 

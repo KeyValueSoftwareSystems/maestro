@@ -1,7 +1,7 @@
 # Design child: LLD workstreams — one child run and approval ledger per selected repository.
 # The parent owns the shared PRD/HLD and waits here. Backend, frontend, Flutter, or any other
 # repo team resumes only its child slug, so pushing one team's state cannot advance another.
-# Entered by design.yaml after HLD approval, after a legacy-run import, or directly for an
+# Entered by design.yaml after HLD approval, or directly for an
 # LLD-scoped architecture-review correction.
 version: 1
 name: design-lld
@@ -14,8 +14,6 @@ inputs:
   revision_scope: {type: string, default: "", description: earliest design layer reopened by architecture review}
   affected_repos: {type: string, default: "", description: comma-separated repositories whose LLDs need the approved change}
   correction_text: {type: string, default: "", description: architecture-review correction wording approved at the gate}
-  imported_workstreams: {type: boolean, default: false, description: a legacy-run import already created the repository workstreams}
-  imported_workstreams_md: {type: string, default: "", description: workstream list from the legacy-run import}
 defaults:
   model: opus
   agent: planner
@@ -29,7 +27,6 @@ nodes:
     routes:
       - {when: "${inputs.revision_mode} == lld_only", to: record_arch_lld_correction}
       - {when: "${inputs.revision_scope} == lld", to: lld_review_reopen}
-      - {when: "${inputs.imported_workstreams} == true", to: lld_workstreams_check}
       - {to: lld_scope_serve}
 
   - id: lld_scope_serve
@@ -138,9 +135,6 @@ nodes:
 
       Commit and push each child run after its approval. Once those changes are pulled here,
       refresh this check. The parent will not create the shared contract early.
-
-      Imported workstreams when this run was upgraded:
-      ${inputs.imported_workstreams_md}
     options:
       - {id: refresh, label: Refresh repository approval status, to: lld_workstreams_check}
       - {id: scope, label: Change selected repositories, to: lld_scope}

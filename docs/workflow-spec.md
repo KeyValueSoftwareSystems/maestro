@@ -380,9 +380,8 @@ child at its `start` with fresh child state.
 
 This is how a large workflow splits into small stages, so no single graph overloads the reader.
 The shipped `sdlc-main.yaml` owns only the stage order and the loops between stages (`design`,
-`design-review`, `delivery`, `archive`); `design.yaml` owns only ordering, scoped re-entry, and
-the legacy-run import (`design-import`, `design-intake`, `design-prd`, `design-map`,
-`design-hld`, `design-lld`, `design-contract`). Each stage keeps its own back-edges, and each
+`design-review`, `delivery`, `archive`); `design.yaml` owns only ordering and scoped re-entry
+(`design-intake`, `design-prd`, `design-map`, `design-hld`, `design-lld`, `design-contract`). Each stage keeps its own back-edges, and each
 stage node sets `on_fail: abort` so a rejection fails the parent exactly as an inline step would.
 
 A human decision that must leave its stage ("send back to design") ends the child through a gate
@@ -454,11 +453,9 @@ file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run st
 (active frontier), per-step status / attempts / visits / timing / outputs / artifacts,
 interview answers, append-only gate decision history, and parallel-branch bookkeeping.
 
-`version` is the serialization contract; `run_format` is the shipped workflow-layout marker. A
-missing/older run-format marker triggers the explicit one-time `upgrade-run` preview instead of
-guessing how removed step identifiers map. Compatible ledgers are backed up, rebased, and stamped;
-legacy ledgers are rebuilt from preserved artifacts and require current validation plus human
-approval before their documents can advance.
+`version` is the serialization contract; `run_format` records the shipped workflow layout the
+run was created under. A ledger the engine cannot read (conflict markers, parse error) is never
+overwritten: commands refuse with a fix-it message and `init --force` keeps the old file aside.
 
 Resume: `done` steps are skipped only while their artifacts still exist non-empty on disk;
 interrupted (`running`) steps are re-served; gates always re-ask.
@@ -468,7 +465,6 @@ interrupted (`running`) steps are re-served; gates always re-ask.
 ```
 maestroctl validate <wf>                 # refuse to start on errors
 maestroctl init --slug S --workflow <wf> [--input k=v ...]
-maestroctl upgrade-run --slug S --workflow <wf> [--apply]  # preview, then one-time upgrade
 loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON (claims workers; --peek re-reads)
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'

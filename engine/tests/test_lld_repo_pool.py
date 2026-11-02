@@ -197,7 +197,7 @@ class LldWorkstreamTest(unittest.TestCase):
         self.assertEqual(statemod.load(backend_slug, self.root)["run"]["status"], "done")
         frontend = statemod.load("feature--lld--frontend", self.root)
         self.assertEqual(frontend["run"]["status"], "running")
-        self.assertEqual(frontend["run"]["cursors"], ["lld_entry"])
+        self.assertEqual(frontend["run"]["cursors"], ["prepare_lld_questions"])
         self.assertEqual(frontend["inputs"]["repo_path"], "codebase/frontend")
 
         self.approve("frontend")

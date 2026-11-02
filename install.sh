@@ -113,7 +113,7 @@ remove_retired_skills() { # $1 = installed skills dir
   # `prd-interview` + `prd-writing` pair; the per-stack design/tasks/implement/review skills,
   # `plan`, `repo-design` and `verify` were folded into the repo-* and *-writing skills and
   # the engine's verify step.
-  for retired in brainstorm plan repo-design verify \
+  for retired in brainstorm plan repo-design verify run-upgrade-repair \
       backend-design frontend-design backend-tasks frontend-tasks \
       backend-implement frontend-implement backend-review frontend-review; do
     target="$1/$retired"

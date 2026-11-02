@@ -9,22 +9,13 @@ inputs:
   repo: {type: string, required: true}
   repo_path: {type: string, required: true}
   feature: {type: string, default: "${inputs.parent_slug}"}
-  imported_lld: {type: string, default: "", description: legacy LLD draft imported by the one-time run upgrade}
   review_feedback: {type: string, default: "", description: approved architecture-review correction for this repository revision}
 defaults:
   model: opus
   agent: planner
   max_visits: 6
-start: lld_entry
+start: prepare_lld_questions
 nodes:
-  - id: lld_entry
-    type: script
-    label: Check for an imported legacy LLD draft
-    run: [python3, .maestro/engine/run_upgrade.py, child-entry, --root, ., --slug, "${inputs.slug}"]
-    routes:
-      - {when: "${steps.lld_entry.outputs.imported} == true", to: validate_lld}
-      - {to: prepare_lld_questions}
-
   - id: prepare_lld_questions
     type: agent
     execution: lead
@@ -217,8 +208,8 @@ nodes:
     model: haiku
     instruction: |
       Repair only these deterministic LLD defects: ${steps.validate_lld.outputs.issues_summary}
-      This may be a legacy imported draft. Bring only its named structural/contract defects to the
-      current nine-section format. Preserve every confirmed design decision, approved correction,
+      Bring only the named structural/contract defects to the nine-section format. Preserve every
+      confirmed design decision, approved correction,
       and unrelated content. Run both validators before completing. This is a narrow fallback, not
       another repository design pass.
     skill: lld-writing

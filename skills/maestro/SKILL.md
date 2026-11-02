@@ -81,27 +81,6 @@ description is the seed for the workflow's bounded PRD interview when no require
 
 ## Setup
 
-Before init, inspect an explicitly selected or resumed slug for the one-time current-format
-upgrade:
-
-```bash
-python3 .maestro/engine/maestroctl.py upgrade-run --slug <slug> --workflow <workflow>
-```
-
-When it returns `needed: true`, show its mode and selected repositories. For `legacy-rebuild`, also
-show the PRD/HLD validation result and existing LLD drafts; `compatible-rebase` preserves the exact
-current cursor and needs no document validation. Ask the human to choose **Upgrade this run once** or **Cancel** using the
-normal native-selector fallback rules. Never apply it silently. If approved, YOU run:
-
-```bash
-python3 .maestro/engine/maestroctl.py upgrade-run --slug <slug> --workflow <workflow> --apply
-```
-
-The engine backs up the old ledger before changing it. After a successful upgrade, continue Setup
-normally. Do not offer the upgrade again when `needed: false`; the current run-format marker makes
-this a one-time operation. Never use `rebase` as a substitute when `upgrade-run` says an upgrade is
-needed.
-
 ```bash
 python3 .maestro/engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
 python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \

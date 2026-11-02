@@ -1,9 +1,9 @@
 # Design phase: requirement -> PRD -> clarify-first HLD -> per-repo LLD workstreams -> API
 # contract -> functional test cases.
 #
-#   upgrade_entry -> [import] -> intake -> prd -> map -> hld -> lld -> contract
+#   entry -> intake -> prd -> map -> hld -> lld -> contract
 #
-# Composition: each stage is its own small child workflow (design-import / -intake / -prd / -map /
+# Composition: each stage is its own small child workflow (design-intake / -prd / -map /
 # -hld / -lld / -contract), so this file owns only the ordering and scoped re-entry. Stages
 # connect strictly forwards; every back-edge (revise, rethink, rescope) stays inside its stage.
 # A scoped architecture-review revision enters the earliest affected stage directly, and that
@@ -20,17 +20,16 @@ inputs:
   revision_scope: {type: string, default: "", description: earliest authoritative design layer affected by architecture review}
   affected_repos: {type: string, default: "", description: comma-separated repositories whose LLDs need the approved change}
   correction_text: {type: string, default: "", description: architecture-review correction wording approved at the gate}
-  upgrade_manifest: {type: string, default: "", description: engine-created one-time legacy run import plan}
 defaults:
   model: opus
   agent: planner
   max_visits: 10
-start: upgrade_entry
+start: entry
 nodes:
-  - id: upgrade_entry
+  - id: entry
     type: script
-    label: Check one-time run upgrade
-    run: [python3, .maestro/engine/run_upgrade.py, resume, --root, ., --manifest, "${inputs.upgrade_manifest}"]
+    label: Choose design entry point
+    run: [python3, .maestro/engine/entry_serve.py, "${inputs.revision_mode}${inputs.revision_scope}"]
     routes:
       # Architecture review is scope-aware: the human can always approve an LLD-only correction,
       # or reopen the earliest authoritative source layer identified by the reviewer.
@@ -40,25 +39,7 @@ nodes:
       - {when: "${inputs.revision_scope} == contract", to: contract}
       - {when: "${inputs.revision_scope} == verification", to: contract}
       - {when: "${inputs.revision_scope} in [product, cross-cutting]", to: intake}
-      # A legacy run with an imported baseline first decides what to keep (design-import).
-      - {when: "${steps.upgrade_entry.outputs.state} in [ready, invalid]", to: import}
       - {to: intake}
-
-  - id: import
-    type: subworkflow
-    label: Legacy run import
-    workflow: .maestro/workflows/design-import.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      upgrade_manifest: "${inputs.upgrade_manifest}"
-      state: "${steps.upgrade_entry.outputs.state}"
-      summary: "${steps.upgrade_entry.outputs.summary}"
-    on_fail: abort
-    routes:
-      # Closing the fast path restarts through the current flow; an activated baseline already
-      # has its PRD and HLD approved, so it continues at the repository LLDs.
-      - {when: "${steps.import.outputs.skipped} == true", to: intake}
-      - {to: lld}
 
   # ---- Stages -------------------------------------------------------------------------------
   - id: intake
@@ -112,8 +93,6 @@ nodes:
       revision_scope: "${inputs.revision_scope}"
       affected_repos: "${inputs.affected_repos}"
       correction_text: "${inputs.correction_text}"
-      imported_workstreams: "${steps.import.outputs.has_workstreams}"
-      imported_workstreams_md: "${steps.import.outputs.workstreams_md}"
     on_fail: abort
     next: contract
 
@@ -129,9 +108,9 @@ nodes:
     next: end
 
 outputs:
-  hld_summary: "${steps.hld.outputs.hld_summary} ${steps.import.outputs.hld_summary} ${steps.lld.outputs.hld_summary}"
+  hld_summary: "${steps.hld.outputs.hld_summary} ${steps.lld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"
   contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
   test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
-  repos_csv: "${steps.lld.outputs.repos_csv}${steps.import.outputs.selected_csv}"
+  repos_csv: "${steps.lld.outputs.repos_csv}"

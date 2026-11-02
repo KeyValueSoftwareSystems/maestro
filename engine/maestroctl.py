@@ -22,7 +22,7 @@ The lead agent's whole protocol:
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, todo, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
-upgrade-run, and correction-record. `next --peek` re-reads without claiming or running.
+and correction-record. `next --peek` re-reads without claiming or running.
 
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
 steps itself — argv `python3 .maestro/engine/<script>.py ...` — and completes them, so the lead
@@ -337,16 +337,6 @@ def cmd_note(args):
     return 0
 
 
-def cmd_upgrade_run(args):
-    import run_upgrade
-    result = (
-        run_upgrade.apply(args.slug, args.root, args.workflow)
-        if args.apply else run_upgrade.inspect(args.slug, args.root, args.workflow)
-    )
-    _print(result)
-    return 0
-
-
 def cmd_correction_record(args):
     import design_corrections
     result = design_corrections.record(
@@ -567,17 +557,6 @@ def build_parser():
     p.add_argument("--text", required=True, help="the user's instruction, verbatim")
     p.add_argument("--step", help="step it relates to (default: the active step[s])")
     p.set_defaults(fn=cmd_note)
-
-    p = sub.add_parser(
-        "upgrade-run", help="inspect or apply the one-time current-format run upgrade",
-    )
-    p.add_argument("--slug", required=True)
-    p.add_argument("--workflow", default=".maestro/workflows/sdlc-main.yaml")
-    p.add_argument(
-        "--apply", action="store_true",
-        help="back up and upgrade after the human accepts the inspection preview",
-    )
-    p.set_defaults(fn=cmd_upgrade_run)
 
     p = sub.add_parser(
         "correction-record", help="record one human-approved effective-design correction",
