@@ -90,8 +90,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
 - **Run mode** — who answers the gates. `human` (default): every gate. `design`: the human
   approves the PRD and the HLD; the engine answers the rest when their checks passed (LLD
   approval after a clean readiness check, release after engine verification). `auto`: PRD in,
-  release out; the engine answers every gate whose condition holds and the run stops at any
-  other. Pass `--mode` only when the user asked for it ("run this on autopilot", "only stop for
+  release out; the engine answers every gate whose condition holds, adopts each interview
+  recommendation as a logged assumption in one round, and the run stops at any other gate. Pass `--mode` only when the user asked for it ("run this on autopilot", "only stop for
   design approval"); never pick a faster mode yourself. `auto` refuses to start until
   `maestroctl preflight` passes — relay that. To take over or hand back a running feature,
   re-run `init` with the new `--mode`; it applies from the next gate.
@@ -130,9 +130,11 @@ To re-read the current action without claiming anything, use `next --peek`.
 The engine runs its own helper scripts (`python3 .maestro/engine/*.py`) inside these calls
 and completes them before answering; they are listed under `auto_scripts` in the returned
 action. Never run or complete those steps yourself — at most mention them in narration.
-Likewise, in `design`/`auto` mode the engine records the gates its policy answers and lists them
-under `auto_gates` (step, option, label): tell the user in one line what was approved for them
-("LLDs approved on autopilot — readiness check clean"), then act on the action itself.
+Likewise, in `design`/`auto` mode the engine records the gates and interviews their policy
+answers and lists them under `autopilot` — a gate with its option and label, an interview with
+how many recommendations it assumed and questions it left open. Tell the user in one line what was
+decided for them ("LLDs approved on autopilot — readiness check clean"; "PRD questions: 5
+assumed, 1 left open — listed in the assumption log"), then act on the action itself.
 
 **Keep the loop moving.** After every mutation command, immediately act on the FOLLOWING action
 it printed — do NOT end your turn between a report and the next

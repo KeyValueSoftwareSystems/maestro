@@ -13,6 +13,7 @@ from contextlib import redirect_stderr, redirect_stdout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
+import assumptions  # noqa: E402
 import maestroctl  # noqa: E402
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
@@ -103,7 +104,7 @@ class RunModeCliTest(unittest.TestCase):
         self.assertEqual(action["action"], "ask_gate")
         self.assertEqual(action["step"], "design_ok")
         self.assertNotIn("mode", action)
-        self.assertNotIn("auto_gates", action)
+        self.assertNotIn("autopilot", action)
 
     def test_design_mode_answers_only_gates_whose_policy_lists_it(self):
         self.ctl("init", "--slug", "f", "--workflow", "modes.yaml", "--mode", "design")
@@ -115,8 +116,9 @@ class RunModeCliTest(unittest.TestCase):
         self.assertEqual(action["step"], "build")
         action = self.ctl("complete", "--slug", "f", "--step", "build", "--outputs", "{}")
         self.assertEqual(action["action"], "done")
-        self.assertEqual(action["auto_gates"], [
-            {"step": "release", "option": "approve", "label": "Approve", "mode": "design"}])
+        self.assertEqual(action["autopilot"], [
+            {"kind": "gate", "step": "release", "option": "approve", "label": "Approve",
+             "mode": "design"}])
         self.assertEqual([(g["step"], g.get("auto")) for g in self.gates()],
                          [("design_ok", None), ("release", "design")])
 
@@ -125,7 +127,7 @@ class RunModeCliTest(unittest.TestCase):
         self.ctl("init", "--slug", "f", "--workflow", "modes.yaml", "--mode", "auto")
         action = self.drive_to_gate_or_end(ready=False)
         self.assertEqual(action["step"], "build")
-        self.assertEqual(action["auto_gates"][0]["step"], "design_ok")
+        self.assertEqual(action["autopilot"][0]["step"], "design_ok")
         action = self.ctl("complete", "--slug", "f", "--step", "build", "--outputs", "{}")
         # release's condition is false: autopilot halts at the gate instead of guessing
         self.assertEqual(action["action"], "ask_gate")
@@ -190,6 +192,96 @@ class RunModeCliTest(unittest.TestCase):
         self.assertEqual(self.stop_hook_exit(), 0)
 
 
+INTERVIEW = """\
+version: 1
+name: ask
+nodes:
+  - id: ask
+    type: interview
+    sections:
+      - {id: retention, title: Retention, proposal: Keep 30 days}
+      - {id: owner, title: Data owner}
+    artifact: ctx/demo-context.json
+    auto: {modes: [auto]}
+    routes:
+      - {when: "${run.mode} == auto", to: write}
+      - {to: again}
+  - id: again
+    instruction: Ask again.
+  - id: write
+    instruction: Write.
+"""
+
+
+class InterviewAutopilotTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="maestro-ask-")
+        self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
+        with open(os.path.join(self.tmp, "ask.yaml"), "w") as fh:
+            fh.write(INTERVIEW)
+        with open(os.path.join(self.tmp, "maestro.config.yaml"), "w") as fh:
+            fh.write("version: 1\nrepos: {}\n")
+
+    def ctl(self, *argv):
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            self.assertEqual(maestroctl.main(["--root", self.tmp, *argv]), 0)
+        return json.loads(out.getvalue())
+
+    def test_auto_mode_assumes_recommendations_defers_the_rest_and_routes_on_mode(self):
+        self.ctl("init", "--slug", "f", "--workflow", "ask.yaml", "--mode", "auto")
+        action = self.ctl("next", "--slug", "f")
+        self.assertEqual(action["step"], "write")  # one round: straight to the writer
+        self.assertEqual(action["autopilot"], [
+            {"kind": "interview", "step": "ask", "mode": "auto", "assumed": 1, "deferred": 1}])
+        with open(os.path.join(self.tmp, "ctx", "demo-context.json")) as fh:
+            decisions = {d["id"]: d for d in json.load(fh)["decisions"]}
+        self.assertEqual((decisions["retention"]["source"], decisions["retention"]["answer"]),
+                         ("assumption", "Keep 30 days"))
+        self.assertEqual(decisions["owner"]["source"], "deferred")
+        self.assertEqual({d["by"] for d in decisions.values()}, {"autopilot"})
+        outputs = statemod.load("f", self.tmp)["steps"]["ask"]["outputs"]
+        self.assertEqual((outputs["assumption_count"], outputs["deferred_count"]), (1, 1))
+
+    def test_modes_the_policy_does_not_list_still_ask(self):
+        self.ctl("init", "--slug", "f", "--workflow", "ask.yaml", "--mode", "design")
+        action = self.ctl("next", "--slug", "f")
+        self.assertEqual(action["action"], "ask_interview")
+        self.assertNotIn("autopilot", action)
+
+    def test_assumption_log_lists_guesses_open_items_and_autopilot_gates(self):
+        self.ctl("init", "--slug", "f", "--workflow", "ask.yaml", "--mode", "auto")
+        self.ctl("next", "--slug", "f")
+        state = statemod.load("f", self.tmp)
+        state["gates"].append({"step": "release", "option": "approve", "auto": "auto",
+                               "at": "2026-11-02T10:00:00Z"})
+        state["gates"].append({"step": "prd", "option": "approve", "at": "2026-11-02T09:00:00Z"})
+        statemod.save("f", state, self.tmp)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            assumptions.main(["render", "--root", self.tmp, "--slug", "f",
+                              "--decisions", "ctx/demo-context.json",
+                              "--decisions", "ctx/missing-context.json"])
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["summary"], "1 assumption, 1 left open, 1 autopilot gate decision")
+        with open(os.path.join(self.tmp, result["path"])) as fh:
+            log = fh.read()
+        self.assertIn("- **DEMO · Retention** (autopilot): Keep 30 days", log)
+        self.assertIn("- **DEMO · Data owner** (autopilot): Left open on autopilot", log)
+        self.assertIn("- release → approve (auto mode", log)
+        self.assertNotIn("- prd →", log)  # a person's gate choice is not an assumption
+
+    def test_empty_log_says_everything_was_confirmed(self):
+        self.ctl("init", "--slug", "f", "--workflow", "ask.yaml")
+        out = io.StringIO()
+        with redirect_stdout(out):
+            assumptions.main(["render", "--root", self.tmp, "--slug", "f"])
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["assumption_count"], 0)
+        with open(os.path.join(self.tmp, result["path"])) as fh:
+            self.assertIn("confirmed by a person", fh.read())
+
+
 class RunModeResolverTest(unittest.TestCase):
     def test_unknown_mode_is_refused(self):
         with self.assertRaises(resolver.RunError):
@@ -197,6 +289,15 @@ class RunModeResolverTest(unittest.TestCase):
 
 
 class AutoPolicyValidationTest(unittest.TestCase):
+    def test_interview_policy_takes_modes_and_when_only(self):
+        node = {"id": "i", "type": "interview", "artifact": "x.json",
+                "sections": [{"id": "a", "title": "A"}],
+                "auto": {"modes": ["auto"], "option": "x"},
+                "routes": [{"when": "${run.mode} == auto", "to": "end"}, {"to": "end"}]}
+        errors = [i.msg for i in validate._validate_node(node, {"i": node}, set(), "w")
+                  if i.level == "error"]
+        self.assertEqual(errors, ["interview auto has unknown key 'option'"])
+
     def issues(self, auto):
         node = {"id": "g", "type": "gate", "prompt": "?", "auto": auto, "options": [
             {"id": "ok", "label": "OK", "to": "end"},

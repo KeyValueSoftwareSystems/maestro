@@ -59,7 +59,7 @@ placeholders over other inputs).
 
 ## Placeholders
 
-Pure string substitution — no templating engine, no filters, no expressions. Five namespaces:
+Pure string substitution — no templating engine, no filters, no expressions. Six namespaces:
 
 | Placeholder | Meaning |
 |---|---|
@@ -67,6 +67,7 @@ Pure string substitution — no templating engine, no filters, no expressions. F
 | `${steps.<id>.outputs.<field>}` | recorded output of a completed step |
 | `${steps.<id>.branches.<key>.outputs.<field>}` | a parallel-branch result |
 | `${config.<dot.path>}` | value from an optional `maestro.config.yaml` at the repo root (advanced; nothing ships or requires one) |
+| `${run.mode}` | the run mode: `human`, `design` or `auto` (see the gate's autopilot policy) |
 | `${memory.knowledge.<domain>}` | a lesson file from the memory store, frozen at init (see [memory.md](memory.md)) — resolves leniently to empty when absent |
 
 Placeholders may **nest**: `${memory.knowledge.${inputs.stack}-review}` resolves inner-first
@@ -266,6 +267,23 @@ A proposal may be empty. In that case the human must provide an answer; the engi
 blank answer, acceptance without a proposal, and answers for any question other than the one
 currently served.
 
+**Autopilot.** `auto: {modes, when}` (same `modes`/`when` rules as a gate's policy, no `option`)
+lets the engine answer the whole queue when nobody is there: each proposal is recorded as an
+`assumption`, and a question without one is `deferred` with a note — never invented. Both carry
+`by: autopilot` in the decision artifact and count in `assumption_count`/`deferred_count`. To cap
+the loop at one round, route on the mode:
+
+```yaml
+  auto: {modes: [auto]}
+  routes:
+    - {when: "${run.mode} == auto", to: author_prd}
+    - {to: prepare_prd_questions}
+```
+
+`engine/assumptions.py render` collects every assumption, deferred item and autopilot gate
+decision of a run into `assumptions.md`; the shipped delivery stage writes it before the review
+pack.
+
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
 accepts common equivalent headings for its fast path. Maestro-authored PRDs use the exact
 11-heading contract and are validated in strict mode before approval. Traceability IDs appear
@@ -308,7 +326,7 @@ be answered by the engine itself:
 `option` must name an option with no `input` and no `to: abort`. `modes` defaults to
 `[design, auto]`. `when` is one route condition; a ref to a step that never ran renders empty,
 so the gate asks. When the policy applies, the serving call records the option (gate history
-`auto: <mode>`) and lists it under `auto_gates`; otherwise the gate asks a person, and in
+`auto: <mode>`) and lists it under `autopilot`; otherwise the gate asks a person, and in
 `auto` mode that is where the run stops. An autopilot choice is visit-capped like any route
 (only a person's choice lifts the cap), and recovery gates (failure, repeat limit) always ask.
 
@@ -478,7 +496,8 @@ loop:
     run_script → execute argv → complete --exit-code N --stdout '...'
                  (engine helpers never reach the lead: every serving call runs
                  `python3 .maestro/engine/*.py` steps itself and lists them in `auto_scripts`;
-                 in design/auto mode it also records policy-answered gates in `auto_gates`)
+                 in design/auto mode it also records the gates and interviews their `auto:`
+                 policy answers, listed in `autopilot`)
     ask_interview → ask one decision → interview-record --section X
                  (--accept | --option N | --answer TEXT | --assume | --defer TEXT) [--raise TEXT]
     ask_interview_batch → collect, discuss, then record once → interview-record-batch --responses JSON

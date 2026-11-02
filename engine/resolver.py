@@ -222,6 +222,8 @@ class Run:
                 for p in parts[1:]:
                     value = value[p]
                 return value
+            if parts == ["run", "mode"]:
+                return run_mode(self.state)
             if parts[0] == "memory" and len(parts) == 3 and parts[1] == "knowledge":
                 return self._memory_knowledge()[parts[2]]
             if parts[0] == "steps" and len(parts) >= 3:
@@ -1372,6 +1374,8 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns, 
         }
         if turn.get("discussion"):
             decision["discussion"] = turn["discussion"]
+        if turn.get("by"):
+            decision["by"] = turn["by"]
         by_id[section["id"]] = decision
     # Points the human raised unprompted are their own statements: kept verbatim under fresh
     # ids so the next queue audit must account for them like any other confirmed input.
@@ -1801,43 +1805,84 @@ def _finish_real_gate(run, frame, node, path, entry, option, input_text=None, au
     return entry
 
 
-def auto_gate_option(run, frame, node):
-    """The option this gate's `auto:` policy picks in the run's mode, or None (ask a person).
+def _policy_applies(run, frame, node):
+    """True when this node's `auto:` policy covers the run's mode and its `when` holds.
 
-    `auto: {option, modes, when}`: modes defaults to every autopilot mode; `when` is one route
-    condition, evaluated with missing refs empty, so a step that never ran means "ask"."""
+    modes defaults to every autopilot mode; `when` is one route condition, evaluated with
+    missing refs empty, so a step that never ran means "ask a person"."""
     mode = run_mode(run.state)
     policy = node.get("auto")
-    if mode == "human" or ntype(node) != "gate" or not isinstance(policy, dict):
-        return None
+    if mode == "human" or not isinstance(policy, dict):
+        return False
     if mode not in (policy.get("modes") or AUTO_MODES):
-        return None
+        return False
     cond = policy.get("when")
-    if cond and not condctl.evaluate(
-            cond, lambda text: run.resolve_text(text, frame, missing_ok=True)):
+    return not cond or condctl.evaluate(
+        cond, lambda text: run.resolve_text(text, frame, missing_ok=True))
+
+
+def auto_gate_option(run, frame, node):
+    """The option this gate's `auto: {option, modes, when}` policy picks now, or None."""
+    if ntype(node) != "gate" or not _policy_applies(run, frame, node):
         return None
     return next((o for o in node["options"]
-                 if o["id"] == policy.get("option") and not o.get("input")), None)
+                 if o["id"] == node["auto"].get("option") and not o.get("input")), None)
 
 
-def apply_auto_gates(run, limit=100):
-    """Answer every waiting gate that the run's mode lets its policy answer. -> [record]
+AUTOPILOT_DEFERRAL = ("Left open on autopilot: no grounded recommendation to adopt. "
+                      "Needs a person's answer.")
+
+
+def _autopilot_interview(run, frame, node, path, entry):
+    """Answer every unresolved question nobody is there to answer: the recommendation becomes a
+    working assumption (as a person's `assume` would), and a question with none is deferred,
+    never invented. Both are marked `by: autopilot` in the turns and the decision artifact."""
+    sections = _interview_sections(run, frame, node)
+    interview = entry.setdefault("interview", {"answers": {}, "turns": []})
+    answers = interview.setdefault("answers", {})
+    normalized = []
+    for section in sections:
+        if section["id"] in answers:
+            continue
+        if section["proposal"].strip():
+            normalized.append((section["id"], section["proposal"].strip(), "assumption", None))
+        else:
+            normalized.append((section["id"], AUTOPILOT_DEFERRAL, "deferred", None))
+    first = len(interview["turns"])
+    _record_interview_turns(interview, normalized, [])
+    for turn in interview["turns"][first:]:
+        turn["by"] = "autopilot"
+    record = {
+        "kind": "interview", "step": path, "mode": run_mode(run.state),
+        "assumed": sum(1 for item in normalized if item[2] == "assumption"),
+        "deferred": sum(1 for item in normalized if item[2] == "deferred"),
+    }
+    _finish_interview_if_complete(run, frame, node, path, entry, sections, interview)
+    return record
+
+
+def apply_autopilot(run, limit=100):
+    """Answer every waiting gate and interview the run's mode lets its `auto:` policy answer.
+    -> [record]
 
     Recording one can reach another (a stage ending into the next stage's gate), so this
-    repeats until no waiting gate is answerable. The caller saves the state."""
+    repeats until nothing waiting is answerable. The caller saves the state."""
     answered = []
     for _ in range(limit):
         for path in list(_cursors(run)):
             frame, node = run.node_at(path)
             entry = statemod.step_entry(run.state, path)
-            if ntype(node) != "gate" or entry.get("pending_ask") or entry.get("pending_gate_input"):
+            if entry.get("pending_ask") or entry.get("pending_gate_input"):
                 continue
+            if ntype(node) == "interview" and _policy_applies(run, frame, node):
+                answered.append(_autopilot_interview(run, frame, node, path, entry))
+                break
             option = auto_gate_option(run, frame, node)
             if option is None:
                 continue
             _finish_real_gate(run, frame, node, path, entry, option, auto=run_mode(run.state))
-            answered.append({"step": path, "option": option["id"], "label": option["label"],
-                             "mode": run_mode(run.state)})
+            answered.append({"kind": "gate", "step": path, "option": option["id"],
+                             "label": option["label"], "mode": run_mode(run.state)})
             break
         else:
             return answered

@@ -1,5 +1,5 @@
 # Child of sdlc-main: design staleness check -> implement every designed repository -> verified
-# test context -> QA -> review pack -> release approval. It decides; the parent acts. Leaving for a
+# test context -> QA -> assumption log -> review pack -> release approval. It decides; the parent acts. Leaving for a
 # design revision (the approved design changed, the workspace moved since the design was
 # grounded, or the human sent the release back) ends the child and is reported in its outputs:
 # `design_stale` or `design_changed` true, or `release` revise -> the
@@ -170,6 +170,28 @@ nodes:
       implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"
       implementation_manifest_sha256: "${steps.finalize_implementation.outputs.manifest_sha256}"
     max_visits: 3
+    next: assumptions
+
+  # Every decision nobody confirmed — interview assumptions, items left open, gates answered on
+  # autopilot — in one file the review pack shows first.
+  - id: assumptions
+    type: script
+    label: Collect assumptions and autopilot decisions
+    run:
+      - python3
+      - .maestro/engine/assumptions.py
+      - render
+      - --root
+      - .
+      - --slug
+      - "${inputs.slug}"
+      - --decisions
+      - ".maestro/runs/${inputs.slug}/prd-context.json"
+      - --decisions
+      - ".maestro/runs/${inputs.slug}/hld-context.json"
+      - --decisions
+      - ".maestro/runs/${inputs.slug}/lld-context.json"
+    on_fail: abort
     next: review_pack
 
   - id: review_pack
@@ -177,8 +199,10 @@ nodes:
     label: Human review pack
     instruction: |
       Assemble the release review pack for this feature: what was built (per stack),
-      review outcomes, QA results, open risks, and how to verify locally. Read only these
-      inputs: implementation-manifest.json, each repo's <repo>/reviews/summary.md,
+      review outcomes, QA results, open risks, and how to verify locally. Open the pack with the
+      assumption log (${steps.assumptions.outputs.path}: ${steps.assumptions.outputs.summary}),
+      listing every assumption and open item as written. Read only these
+      inputs: assumptions.md, implementation-manifest.json, each repo's <repo>/reviews/summary.md,
       reviews/architecture.md (the HLD review), reviews/lld-readiness.md, and qa/report.md under
       .maestro/runs/${inputs.slug}/ — summarize them; do not re-read the design documents or
       source. The pack is what the human reads at the release gate. Treat implementation-manifest.json as the source of truth for every
@@ -195,6 +219,7 @@ nodes:
       feature: "${inputs.feature}"
       manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"
       verification_summary: "${steps.finalize_implementation.outputs.verification_summary}"
+      assumptions_path: "${steps.assumptions.outputs.path}"
     outputs: [pack_path, recommendation, summary]
     artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
     fresh: true
@@ -206,6 +231,7 @@ nodes:
     prompt: |
       Ready to release?
       Engine verification (build/lint/test receipts): ${steps.finalize_implementation.outputs.verification_summary}
+      Unconfirmed decisions: ${steps.assumptions.outputs.summary} (${steps.assumptions.outputs.path})
       Recommendation: ${steps.review_pack.outputs.recommendation}
       ${steps.review_pack.outputs.summary}
       Review pack: ${steps.review_pack.outputs.pack_path}

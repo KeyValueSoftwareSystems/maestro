@@ -23,6 +23,10 @@ readiness.
 5. **Write** the pack and state the exact decision required.
 
 ## The pack must include (with evidence/links)
+0. **Unconfirmed decisions — first** — when your instructions supply an assumption log, open
+   the pack with it: every assumption and every item left open, as written, and every gate
+   answered without a person. These are guesses nobody confirmed; never fold them into
+   "what changed" or soften them.
 1. **What changed** — feature summary + per-stack change list.
 2. **Why** — link the requirement/HLD; the problem solved.
 3. **Files changed** — grouped by area; call out anything security/auth/data-sensitive.
@@ -41,6 +45,8 @@ readiness.
 ## Edge cases to represent honestly
 - **Partial green** — some checks pass, one is flaky/red → say it plainly; don't average it away.
 - **Deferred blockers** — a major finding accepted for later needs explicit sign-off and a ticket.
+- **Autopilot run** — assumptions or open items exist → name the ones that change behaviour a
+  user will see; an open item that blocks an acceptance criterion makes the pack "not-ready".
 - **Missing proof** — no verification receipt, a failed check, or a receipt for a different
   commit than the one released → the pack recommends "not-ready".
 - **Changed tests** — an existing test modified or deleted without a stated justification →

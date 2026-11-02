@@ -145,6 +145,7 @@ for design approval"). The mode decides who answers each gate:
 | LLD approval | you | approved if the readiness check passes | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
 | Release | you | approved if the engine verified every repository | same |
+| PRD, HLD and LLD questions | you | you | recommendation adopted as an assumption; one round |
 | Missing requirement, question limit, stuck fix loop, failing QA | you | you | you |
 
 Each gate's policy lives in the workflow (`auto:` on the gate), and the engine applies it — the
@@ -152,7 +153,12 @@ lead agent never answers a gate. A gate whose check fails stops the run for you,
 the ledger and `maestroctl status` mark every autopilot decision. `auto` will not start until
 `maestroctl preflight` passes, since the engine's own build and test runs are what stand in for
 your review. Change the mode of a running feature by asking Maestro to switch; it applies from
-the next gate. Interview questions are still asked in every mode.
+the next gate.
+
+In `auto` mode nobody answers the interviews: each recommendation is recorded as an assumption,
+a question with no grounded recommendation is left open rather than guessed, and each stage asks
+once. Before the review pack, `assumptions.md` lists every assumption, open item and autopilot gate
+decision (including assumptions a person chose in any mode); the pack opens with it.
 
 ## Interviews are conversations
 

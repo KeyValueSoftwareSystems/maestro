@@ -95,6 +95,9 @@ nodes:
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
       again — do not rebuild the queue or re-read sources.
+      Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
+      logged assumption and this is the only round, so give every question a grounded
+      recommendation from the evidence and put every material gap in this one queue.
     skill: lld-interview
     inputs:
       slug: "${inputs.slug}"
@@ -139,7 +142,11 @@ nodes:
         codebase_maps: "each in-scope repository's docs/codebase-map.md"
         source: "only the source and tests around the seam this question concerns"
     artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
-    next: prepare_lld_questions
+    # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
+    auto: {modes: [auto]}
+    routes:
+      - {when: "${run.mode} == auto", to: author_llds}
+      - {to: prepare_lld_questions}
 
   - id: lld_clarity_limit
     type: gate
@@ -223,6 +230,7 @@ nodes:
         lld_drafts: "${steps.lld_scope_init.outputs.lld_paths_csv}"
         source: "only the source and tests around the seam this question concerns"
     artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    auto: {modes: [auto]}
     next: author_llds
 
   # A repository needs something the contract does not cover: change the contract first, so every

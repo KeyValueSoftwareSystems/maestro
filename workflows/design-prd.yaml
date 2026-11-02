@@ -84,6 +84,9 @@ nodes:
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
       again — do not rebuild the queue or re-read sources.
+      Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
+      logged assumption and this is the only round, so give every question a grounded
+      recommendation from the evidence and put every material gap in this one queue.
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
@@ -126,7 +129,11 @@ nodes:
         references: "${inputs.references}"
         project_summaries: "AGENTS.md, CLAUDE.md, docs/architecture.md, docs/functional/, docs/technical/"
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
-    next: prepare_prd_questions
+    # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
+    auto: {modes: [auto]}
+    routes:
+      - {when: "${run.mode} == auto", to: author_prd}
+      - {to: prepare_prd_questions}
 
   - id: clarity_limit
     type: gate

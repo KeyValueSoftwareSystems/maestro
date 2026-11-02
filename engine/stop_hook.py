@@ -57,7 +57,7 @@ def main():
             if (run.state.get("run") or {}).get("status") != "running":
                 continue
             # In memory only: a gate the run mode answers is work the next `next` call does.
-            autopiloted = resolver.apply_auto_gates(run)
+            autopiloted = resolver.apply_autopilot(run)
             action = resolver.next_action(run, exclude_claimed=True)
         except Exception:
             continue  # unreadable / changed-workflow halt / mid-step — skip, don't trap

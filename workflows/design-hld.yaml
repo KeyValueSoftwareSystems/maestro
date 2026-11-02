@@ -50,6 +50,9 @@ nodes:
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
       again — do not rebuild the queue or re-read sources.
+      Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
+      logged assumption and this is the only round, so give every question a grounded
+      recommendation from the evidence and put every material gap in this one queue.
     skill: hld-interview
     inputs:
       feature: "${inputs.feature}"
@@ -91,7 +94,11 @@ nodes:
         codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
         source: "only the files that settle this question"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
-    next: prepare_hld_questions
+    # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
+    auto: {modes: [auto]}
+    routes:
+      - {when: "${run.mode} == auto", to: author_hld}
+      - {to: prepare_hld_questions}
 
   - id: hld_clarity_limit
     type: gate
@@ -176,6 +183,7 @@ nodes:
         hld_draft: ".maestro/runs/${inputs.slug}/hld.md"
         codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    auto: {modes: [auto]}
     next: author_hld
 
   - id: validate_hld

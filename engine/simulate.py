@@ -309,11 +309,15 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False, mode=None):
 
     for step_count in range(max_steps):
         run_obj = resolver.Run(slug, root)
-        answered = resolver.apply_auto_gates(run_obj)
+        answered = resolver.apply_autopilot(run_obj)
         if answered:
             statemod.save(slug, run_obj.state, root)
-            for gate in answered:
-                _log(f"[gate] {gate['step']} -> {gate['option']} (autopilot, {gate['mode']} mode)")
+            for item in answered:
+                if item["kind"] == "gate":
+                    _log(f"[gate] {item['step']} -> {item['option']} (autopilot, {item['mode']} mode)")
+                else:
+                    _log(f"[interview] {item['step']}: {item['assumed']} assumed, "
+                         f"{item['deferred']} left open (autopilot)")
         action = resolver.next_action(run_obj)
         kind = action["action"]
         if kind == "done":

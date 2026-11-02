@@ -28,8 +28,8 @@ Every serving command (next, complete, gate-record, ...) first runs pending ENGI
 steps itself — argv `python3 .maestro/engine/<script>.py ...` — and completes them, so the lead
 never round-trips them; the action lists them under `auto_scripts`. Other scripts are still
 served as `run_script`. Disable with MAESTRO_AUTO_SCRIPTS=0. In `design` and `auto` run modes the
-same calls record each gate whose `auto:` policy answers it (listed under `auto_gates`); any
-other gate is served to a person. Worker steps are claimed when
+same calls record each gate and interview whose `auto:` policy answers it (listed under
+`autopilot`); anything else is served to a person. Worker steps are claimed when
 served: later calls return only newly ready work (or `wait`), and `init` releases the claims
 of a resumed run so lost workers are re-served.
 
@@ -167,13 +167,13 @@ def _serve_action(args, peek=False):
     serial = getattr(args, "serial", False)
     if peek:
         return resolver.next_action(resolver.Run(args.slug, args.root), serial=serial)
-    ran, gates = [], []
+    ran, autopiloted = [], []
     auto = _auto_scripts_enabled()
     for _ in range(MAX_AUTO_SCRIPTS):
         with statemod.locked(args.slug, args.root):
             run = resolver.Run(args.slug, args.root)
-            answered = resolver.apply_auto_gates(run)
-            gates.extend(answered)
+            answered = resolver.apply_autopilot(run)
+            autopiloted.extend(answered)
             action = resolver.next_action(run, serial=serial, claim=True)
             if answered or action["action"] in ("run_agent", "run_agents"):
                 statemod.save(args.slug, run.state, args.root)
@@ -196,8 +196,8 @@ def _serve_action(args, peek=False):
                     "seconds": round(time.monotonic() - started, 1)})
     if ran:
         action = {**action, "auto_scripts": ran}
-    if gates:
-        action = {**action, "auto_gates": gates}
+    if autopiloted:
+        action = {**action, "autopilot": autopiloted}
     return _with_todo(args, action)
 
 

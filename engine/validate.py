@@ -45,7 +45,7 @@ _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
               "inputs", "outputs", "artifact", "fresh", "retries", "isolate", "ui"} | _ROUTING_KEYS,
     "interview": {"id", "type", "label", "skill", "context", "sections",
-                  "questions_artifact", "batch_size", "presentation", "discuss", "artifact",
+                  "questions_artifact", "batch_size", "presentation", "discuss", "artifact", "auto",
                   "ui", "next",
                   "routes", "max_visits", "on_exhausted"},
     "gate": {"id", "type", "label", "prompt", "options", "auto", "max_visits", "on_exhausted", "ui"},
@@ -176,6 +176,31 @@ def validate_doc(doc, where=""):
     return issues
 
 
+def _validate_auto(node, err, keys):
+    """Check a gate's or interview's `auto:` autopilot policy. -> the policy map, or None."""
+    auto = node.get("auto")
+    if auto is None:
+        return None
+    kind = node.get("type")
+    if not isinstance(auto, dict):
+        err("bad-type", f"{kind} auto must be a map: {{{', '.join(keys)}}}")
+        return None
+    for k in auto:
+        if k not in keys:
+            err("unknown-key", f"{kind} auto has unknown key {k!r}")
+    modes = auto.get("modes")
+    if modes is not None and not (
+            isinstance(modes, list) and modes and all(m in ("design", "auto") for m in modes)):
+        err("bad-type", f"{kind} auto.modes must be a non-empty list of design/auto")
+    cond = auto.get("when")
+    if cond is not None:
+        try:
+            condctl.parse(cond)
+        except condctl.CondError as exc:
+            err("bad-condition", f"{kind} auto.when: {exc}")
+    return auto
+
+
 def _validate_node(node, ids, declared_inputs, where):
     issues = []
     nid = node["id"]
@@ -253,6 +278,7 @@ def _validate_node(node, ids, declared_inputs, where):
                         err("bad-type", f"interview discuss.{key} must be a string")
         if node.get("presentation", "chat") not in ("chat", "popup"):
             err("bad-type", "interview presentation must be 'chat' or 'popup'")
+        _validate_auto(node, err, keys=("modes", "when"))
     elif ntype == "gate":
         options = node.get("options")
         if not isinstance(options, list) or not options:
@@ -271,33 +297,16 @@ def _validate_node(node, ids, declared_inputs, where):
             for k in opt:
                 if k not in ("id", "label", "to", "input"):
                     err("unknown-key", f"gate option has unknown key {k!r}")
-        auto = node.get("auto")
+        auto = _validate_auto(node, err, keys=("option", "modes", "when"))
         if auto is not None:
-            if not isinstance(auto, dict):
-                err("bad-type", "gate auto must be a map: {option, modes, when}")
-            else:
-                for k in auto:
-                    if k not in ("option", "modes", "when"):
-                        err("unknown-key", f"gate auto has unknown key {k!r}")
-                picked = next((o for o in options if isinstance(o, dict)
-                               and o.get("id") == auto.get("option")), None)
-                if picked is None:
-                    err("missing-key", f"gate auto.option {auto.get('option')!r} is not an option")
-                elif picked.get("input") or picked.get("to") == "abort":
-                    # autopilot has no text to give and never ends a run on its own
-                    err("bad-type", f"gate auto.option {picked['id']!r} must not need input "
-                                    "or abort")
-                modes = auto.get("modes")
-                if modes is not None and not (
-                        isinstance(modes, list) and modes
-                        and all(m in ("design", "auto") for m in modes)):
-                    err("bad-type", "gate auto.modes must be a non-empty list of design/auto")
-                cond = auto.get("when")
-                if cond is not None:
-                    try:
-                        condctl.parse(cond)
-                    except condctl.CondError as exc:
-                        err("bad-condition", f"gate auto.when: {exc}")
+            picked = next((o for o in options if isinstance(o, dict)
+                           and o.get("id") == auto.get("option")), None)
+            if picked is None:
+                err("missing-key", f"gate auto.option {auto.get('option')!r} is not an option")
+            elif picked.get("input") or picked.get("to") == "abort":
+                # autopilot has no text to give and never ends a run on its own
+                err("bad-type", f"gate auto.option {picked['id']!r} must not need input "
+                                "or abort")
     elif ntype == "script":
         run = node.get("run")
         if not isinstance(run, list) or not run or not all(isinstance(a, str) for a in run):
@@ -406,7 +415,7 @@ def _validate_node(node, ids, declared_inputs, where):
                     # may be an outer-frame id when inside a branch — only warn
                     issues.append(Issue("warning", "bad-placeholder",
                                         f"${{{ref}}}: no node {parts[1]!r} in this scope", w))
-            elif parts[0] == "config":
+            elif parts[0] == "config" or parts == ["run", "mode"]:
                 pass
             elif parts[0] == "memory":
                 if not (len(parts) == 3 and parts[1] == "knowledge"):

@@ -315,9 +315,9 @@ class SdlcE2E(unittest.TestCase):
                               self.tmp, mode=mode)
         for _ in range(max_steps):
             run = resolver.Run("demo", self.tmp)
-            answered = resolver.apply_auto_gates(run)
+            answered = resolver.apply_autopilot(run)
             if answered:
-                trace.extend(("auto_gate", g["step"]) for g in answered)
+                trace.extend((f"auto_{item['kind']}", item["step"]) for item in answered)
                 statemod.save("demo", run.state, self.tmp)
             action = resolver.next_action(run)
             kind = action["action"]
@@ -353,7 +353,7 @@ class SdlcE2E(unittest.TestCase):
                                    for a in act.get("argv", []))
                             or any("mem_consolidate" in a or "lld_set" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
-                                   or "repo_checks" in a
+                                   or "repo_checks" in a or "assumptions.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -679,8 +679,22 @@ class SdlcE2E(unittest.TestCase):
         self.prep_tasks_json()
         action, trace = self.drive({}, mode="auto")
         self.assertEqual(action["action"], "done", action)
-        self.assertEqual([s for a, s in trace if a == "ask_gate"], [])
+        asked = [a for a, _ in trace if a in ("ask_gate", "ask_interview", "ask_interview_batch")]
+        self.assertEqual(asked, [])
         self.assertIn(("auto_gate", "delivery/release_approval"), trace)
+        # one autopilot round per stage, straight to the writer
+        steps = [s for _, s in trace]
+        for stage in ("prd", "hld", "lld"):
+            self.assertIn(("auto_interview", f"design/{stage}/{stage}_interview"), trace)
+            self.assertEqual(steps.count(f"design/{stage}/prepare_{stage}_questions"), 1)
+        prd_context = json.loads(Path(self.tmp, ".maestro/runs/demo/prd-context.json").read_text())
+        decision = prd_context["decisions"][0]
+        self.assertEqual((decision["source"], decision["by"]), ("assumption", "autopilot"))
+        log = Path(self.tmp, ".maestro/runs/demo/assumptions.md").read_text()
+        self.assertIn("Run mode: auto. 3 assumptions, 0 left open", log)
+        self.assertIn("**PRD · ", log)
+        self.assertIn("design/lld/lld_approval → approve (auto mode", log)
+        self.assertLess(steps.index("delivery/assumptions"), steps.index("delivery/review_pack"))
 
     def test_auto_mode_stops_at_hld_approval_while_the_review_still_blocks(self):
         self.prep_tasks_json()

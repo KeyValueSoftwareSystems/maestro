@@ -144,6 +144,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
+- **`assumptions.py`** — the assumption log: every interview assumption, deferred item and gate
+  answered on autopilot, from the decision files and the ledger, rendered to `assumptions.md`
+  before the review pack (which shows it first).
 - **`entry_serve.py`** — a route-only `script` node: its `routes:` branch on values already known
   (inputs or earlier outputs), e.g. workspace sync's "keep current commits; refresh stale docs".
   Does no work, never fails.
@@ -169,7 +172,9 @@ JSON — `run_agent`, `run_agents` (a parallel wave), `run_lead`, `run_script`,
 serving call first runs engine-owned script steps (`python3 .maestro/engine/*.py`) itself, outside
 the ledger lock, and lists them in `auto_scripts`; only other scripts reach the lead. In the
 `design` / `auto` run modes (`init --mode`) the same calls record each gate whose `auto:` policy
-answers it (`auto_gates`); every other gate still goes to the human, which is where autopilot stops. Served worker
+answers it, and in `auto` each interview whose policy covers it (recommendations become logged
+assumptions; listed in `autopilot`); every other gate still goes to the human, which is where
+autopilot stops. Served worker
 steps are claimed (`dispatched_at`), so later calls return only newly ready work (ready workers
 before gates) or `wait`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an

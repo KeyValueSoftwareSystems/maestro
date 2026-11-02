@@ -874,6 +874,26 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
         "artifact": {
           "type": "string"
         },
+        "auto": {
+          "type": "object",
+          "description": "Autopilot policy: in the listed run modes (default design and auto), when `when` holds, the engine answers every question itself: the recommendation as an assumption, or deferred when there is none.",
+          "additionalProperties": false,
+          "properties": {
+            "modes": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "enum": [
+                  "design",
+                  "auto"
+                ]
+              }
+            },
+            "when": {
+              "type": "string"
+            }
+          }
+        },
         "next": {
           "$ref": "#/definitions/routeTarget"
         },
