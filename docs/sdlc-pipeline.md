@@ -19,7 +19,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
    → acceptance-criteria trace → assumption log → review pack
-   → [approve → archive: harvest lessons + publish docs]
+   → [approve] → branches or pull requests (per config) → harvest lessons
 ```
 
 **You define the workflow; you bring the skills.** The engine is the product. A workflow is a YAML file describing what runs in what order; each agent step names a *skill* (a reusable prompt) — yours, ours, or a third party's (Obra, Superpowers, …). The workflow owns *where* artifacts land and *when* each step runs; the skill owns only *how* to do its one job, so any skill can be swapped without touching the graph.
@@ -52,7 +52,7 @@ my-feature · sdlc-main · running
     [ ] API contract and test cases
 [ ] Design review
 [ ] Implementation, QA and release
-[ ] Archival (harvest + publish)
+[ ] Pull requests and archival
 ```
 
 On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes, reference links — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:

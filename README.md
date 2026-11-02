@@ -232,7 +232,7 @@ The full format is in [docs/workflow-spec.md](docs/workflow-spec.md).
 | **How often a loop may repeat** | Set `max_visits` on the step (the default is 10). |
 | **Which tech stacks are installed** | `./maestro install claude-code --stack go,react` |
 
-More options (third-party skills, memory, script stubs):
+More options (third-party skills, memory, delivery):
 [docs/reference.md](docs/reference.md#customizing).
 
 ## Working as a team

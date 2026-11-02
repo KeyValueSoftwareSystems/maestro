@@ -79,7 +79,7 @@ class SdlcTodoTest(unittest.TestCase):
             "          ↳ waiting on you: HLD approval",
             "    [ ] Repository LLDs and test cases",
             "[ ] Implementation, QA and release",
-            "[ ] Archival (harvest + publish)",
+            "[ ] Pull requests and archival",
         ])
         tasks = todo.flat(built)
         self.assertIn({"content": "Design phase › HLD and architecture review — waiting on you: "

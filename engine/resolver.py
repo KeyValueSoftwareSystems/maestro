@@ -1792,7 +1792,7 @@ def _append_gate_history(run, path, option_id, input_text=None, synthesized=None
 
 
 def _finish_real_gate(run, frame, node, path, entry, option, input_text=None, auto=None):
-    outputs = {"choice": option["id"]}
+    outputs = {"choice": option["id"], "by": "autopilot" if auto else "person"}
     if option.get("input"):
         outputs[option["input"]] = input_text
     entry.pop("pending_gate_input", None)

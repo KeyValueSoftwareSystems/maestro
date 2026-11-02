@@ -47,7 +47,7 @@ DEFAULT_TEST_PATTERNS = (
     "*Test.java", "*Tests.java", "*Test.kt", "*Tests.kt", "*_spec.rb",
 )
 ENVIRONMENT_KEYS = {"start", "ready", "stop"}
-DELIVERY_KEYS = {"mode", "base"}
+DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
 DEFAULT_TIMEOUT_S = 900
 

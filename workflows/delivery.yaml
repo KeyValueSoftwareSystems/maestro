@@ -324,6 +324,7 @@ outputs:
   stale_reasons: "${steps.design_check.outputs.reasons}"
   release: "${steps.release_approval.outputs.choice}"
   release_feedback: "${steps.release_approval.outputs.feedback}"
+  release_by: "${steps.release_approval.outputs.by}"
   pack_path: "${steps.review_pack.outputs.pack_path}"
   manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"
   ac_trace: "${steps.ac_trace.outputs.summary}"

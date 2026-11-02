@@ -29,9 +29,10 @@ environment:                    # optional: bring the stack up for QA
   start: docker compose up -d --build
   ready: ./scripts/wait-for-health   # optional; QA starts only after it passes
   stop: docker compose down
-delivery:                       # optional
-  mode: branch                  # branch | pull-request
-  base: main
+delivery:                       # optional; what happens after release approval
+  mode: branch                  # branch (report the verified branches) | pull-request
+  base: main                    # pull-request base (default: the remote's default branch)
+  remote: origin                # where branches are pushed (default origin)
 ```
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
@@ -45,6 +46,13 @@ code under test in environment variables: `MAESTRO_SLUG`, `MAESTRO_MANIFEST`, an
 the engine runs each repository's `e2e` command in its worktree (same variables) and writes
 `qa/e2e-receipt.json`; a failure goes back to the QA fixer. Without `e2e`, QA results are only
 what the QA agent reports.
+
+After release approval, `delivery.mode: pull-request` pushes each repository's verified branch
+(never forced; refused if the branch moved off its verified commit) and opens a pull request with
+the GitHub CLI (`gh`, installed and logged in), or reuses the open one. The body carries that
+repository's verification result, the acceptance-criteria trace, the assumptions summary, links
+to the sibling pull requests and the review pack. A release approved on autopilot opens drafts.
+Results land in `.maestro/runs/<slug>/delivery.json`. `branch` (the default) pushes nothing.
 
 The verify step runs these commands in each implementation worktree and writes a receipt. It
 also lists existing test files the branch modified, renamed or deleted (matched by

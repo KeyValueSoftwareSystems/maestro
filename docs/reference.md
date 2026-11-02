@@ -185,7 +185,7 @@ The engine is generic; the SDLC pack is just one workflow. To make it yours:
   in Claude Code; use valid Codex model IDs in a Codex-specific workflow rather than relying
   on guessed alias translation.
 - **Loop bounds** — per node `max_visits` (+ `on_exhausted`), backstopped by `defaults.max_visits` (default 10).
-- The publish script in the example pack is a **POC stub** — wire it to your documentation/repository publishing convention. Implementation and QA do not fake-merge independent repos: the engine verifies and passes each repo's exact worktree, branch, and commit to QA.
+- **Delivery** — after release approval, `delivery.mode` in `maestro.config.yaml` decides: `branch` (default) reports each verified branch and commit; `pull-request` pushes them and opens a pull request per repository with `gh` (a draft when autopilot approved the release). Maestro never merges. Implementation and QA do not fake-merge independent repos: the engine verifies and passes each repo's exact worktree, branch, and commit to QA.
 - **Memory (improves over time).** Run `/build-knowledge` or `$build-knowledge` once per workspace to seed `.maestro/memory/knowledge/` from your codebase; the design and review steps read it, frozen at init. After a feature, the pre-merge archival phase distills lessons and consolidates them — a lesson becomes trusted (and injected into future runs) only once ≥3 runs corroborate it. See [docs/memory.md](memory.md).
 
 ## File layout

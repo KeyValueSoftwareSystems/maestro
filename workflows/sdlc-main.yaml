@@ -2,7 +2,7 @@
 #
 #   workspace sync -> design (PRD, reviewed HLD, contract, repository LLDs) -> delivery
 #   (staleness check -> implementation pool -> verified test-context manifest -> QA -> review
-#   pack -> release gate) -> archive
+#   pack -> release gate) -> archive (branches or pull requests, then lessons)
 #
 # Each stage is a child workflow; this file owns only the ordering and the loops between stages.
 # A stage's human gates decide (approve / revise / send back) and the stage reports the choice in
@@ -58,11 +58,17 @@ nodes:
 
   - id: archive
     type: subworkflow
-    label: Archival (harvest + publish)
-    # Runs AFTER release approval and BEFORE the human merges the feature branch to master:
-    # folds this run's lessons into domain memory, then publishes curated docs.
+    label: Pull requests and archival
+    # Runs AFTER release approval: delivers the verified branches (or opens pull requests, per
+    # maestro.config.yaml delivery.mode), then folds this run's lessons into memory. A person
+    # merges.
     workflow: .maestro/workflows/archive.yaml
-    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      manifest: "${steps.delivery.outputs.manifest_path}"
+      pack: "${steps.delivery.outputs.pack_path}"
+      release_by: "${steps.delivery.outputs.release_by}"
     next: end
 
 outputs:
@@ -70,3 +76,5 @@ outputs:
   contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
   review_pack: "${steps.delivery.outputs.pack_path}"
   implementation_manifest: "${steps.delivery.outputs.manifest_path}"
+  delivery: "${steps.archive.outputs.delivery}"
+  pull_requests: "${steps.archive.outputs.pull_requests}"

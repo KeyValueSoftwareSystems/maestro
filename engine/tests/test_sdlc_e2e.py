@@ -370,7 +370,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    or "repo_checks" in a or "assumptions.py" in a
                                    or "prd_source.py" in a or "ac_trace.py" in a
-                                   or "qa_env.py" in a
+                                   or "qa_env.py" in a or "deliver.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -487,6 +487,16 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([steps.index(step) for step in order],
                          sorted(steps.index(step) for step in order))
         self.assertLess(steps.index("delivery/finalize_implementation"), steps.index("delivery/qa/qa_run"))
+        # after release approval: the verified branches are reported (default branch mode:
+        # nothing pushed), then lessons are harvested
+        self.assertLess(steps.index("archive/deliver"), steps.index("archive/harvest/retrospect"))
+        record = json.loads(Path(self.tmp, ".maestro/runs/demo/delivery.json").read_text())
+        self.assertEqual(record["mode"], "branch")
+        self.assertEqual(sorted(r["repo"] for r in record["repositories"]), ["backend", "frontend"])
+        self.assertFalse(any(r["pushed"] for r in record["repositories"]))
+        self.assertIn("Verified branches ready to merge", action["outputs"]["delivery"])
+        gates = statemod.load("demo", self.tmp)["steps"]
+        self.assertEqual(gates["delivery/release_approval"]["outputs"]["by"], "person")
 
     def test_valid_existing_prd_uses_fast_path(self):
         self.prep_tasks_json()
@@ -789,6 +799,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("**PRD · ", log)
         self.assertIn("design/lld/lld_approval → approve (auto mode", log)
         self.assertLess(steps.index("delivery/assumptions"), steps.index("delivery/review_pack"))
+        # a release nobody approved is recorded as such; pull-request delivery opens drafts from it
+        self.assertEqual(statemod.load("demo", self.tmp)["steps"][
+            "delivery/release_approval"]["outputs"]["by"], "autopilot")
 
     def test_auto_mode_stops_at_hld_approval_while_the_review_still_blocks(self):
         self.prep_tasks_json()

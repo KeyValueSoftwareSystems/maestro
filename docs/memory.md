@@ -179,13 +179,13 @@ feature run inits ──► freezes lessons snapshot ──► HLD/design/review
         │
         ▼
 release approved ──► ARCHIVAL PHASE (before merge to master):
-        retrospect skill (refresh docs/ for touched domains + architecture.md;
+        deliver.py (report verified branches, or push + open pull requests)
+          → retrospect skill (refresh docs/ for touched domains + architecture.md;
                           this run → incoming/<slug>.json)
           → mem_consolidate.py (incoming/* → candidates/*, promote ≥3 → knowledge/*.md)
-          → publish curated docs (.maestro/runs/<slug>/ → committed docs/)
         │
         ▼
-human merges the feature branch to master
+human merges the pull requests (and commits the refreshed docs/ and codebase maps)
 ```
 
 - **Bootstrap** — `/build-knowledge` (workflow `workflows/build-knowledge.yaml`, skill
@@ -195,9 +195,10 @@ human merges the feature branch to master
   then distills lessons → `incoming/`, and the engine's `mem_consolidate.py` script folds
   them; run by `workflows/retrospect.yaml` (standalone/off-cycle) and inside the archival
   phase.
-- **Archival** — `workflows/archive.yaml` (harvest + publish), wired as the pre-merge
-  `archive` phase of `sdlc-main.yaml`. Maestro does not perform the merge to master itself;
-  archival is the gate that guarantees the harvest and doc-publish happen first.
+- **Archival** — `workflows/archive.yaml` (deliver + harvest), wired as the post-release
+  `archive` phase of `sdlc-main.yaml`. Maestro never merges: it reports the branches or opens
+  pull requests, then harvests. The docs/ and codebase-map refreshes the harvest writes are left
+  as local changes for a person to commit.
 
 ## Token posture
 

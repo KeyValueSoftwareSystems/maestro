@@ -153,6 +153,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `up` (environment.start + ready), `e2e` (each repo's `e2e` command in its verified worktree,
   receipt), `down`; every command gets the code under test as `MAESTRO_WORKTREE_<REPO>` /
   `MAESTRO_COMMIT_<REPO>`.
+- **`deliver.py`** — the archive stage's delivery: `delivery.mode` `branch` reports the verified
+  branches; `pull-request` re-checks each branch is at its verified commit, pushes it (never
+  forced) and opens or reuses a pull request with `gh` — a draft when the release gate's `by` is
+  `autopilot`. Writes `delivery.json`.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.
@@ -293,8 +297,10 @@ whole suite — the parser underpins everything.
   skill name (`skill: "${inputs.stack}-implement"` replaces the old dispatch glue).
   Model choice: per-node `model:` → workflow `defaults.model` → `haiku`; values pass to
   the harness as-is (haiku/sonnet/opus).
-- The archive `publish` script step is a **POC stub** (`echo` + exit 0). Build, lint and test
-  are NOT stubs: `impl.yaml`'s `verify` step runs `engine/repo_checks.py`, which executes the
+- Nothing in the golden workflow is a stub. The archive stage's `deliver` step
+  (`engine/deliver.py`) reports the verified branches or, with `delivery.mode: pull-request`,
+  pushes them and opens pull requests (draft when autopilot approved the release). Build, lint
+  and test are engine-run too: `impl.yaml`'s `verify` step runs `engine/repo_checks.py`, which executes the
   project's commands from `maestro.config.yaml` and fails closed when they are missing.
 - `.maestro/runs/<slug>/` holds a feature's requirement input **and** all generated
   artifacts + the state ledger. Git-tracked on purpose.
