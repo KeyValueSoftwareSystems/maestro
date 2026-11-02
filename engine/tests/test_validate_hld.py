@@ -25,13 +25,14 @@ class HldValidationTest(unittest.TestCase):
             "questions": questions or [],
         }), suffix=".json")
 
-    def valid_text(self, open_body="None"):
+    def valid_text(self, open_body="None", interfaces="- Client calls the backend to save a draft (sync)."):
         sections = {
             "Decision summary": "\n".join(
                 f"- Confirmed architectural decision {index}." for index in range(1, 6)
             ),
             "Context and scope": "The approved feature spans one backend and one client.",
             "Proposed design": "The backend owns decisions. The client renders server state.",
+            "Interfaces": interfaces,
             "Key decisions and trade-offs": "Use one source of truth to avoid divergent rules.",
             "Delivery and risks": "Ship the backend contract before connecting the client.",
             "Open questions": open_body,
@@ -108,6 +109,29 @@ class HldValidationTest(unittest.TestCase):
             open_questions_path=self.ledger([question]),
         )
         self.assertTrue(any("only deferred" in error for error in errors))
+
+    def report(self, text):
+        import io
+        from contextlib import redirect_stdout
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            validate_hld.main([self.write(text), "--open-questions", self.ledger(), "--report"])
+        return json.loads(buf.getvalue())
+
+    def test_interfaces_decide_whether_a_contract_is_needed(self):
+        listed = self.report(self.valid_text())
+        self.assertTrue(listed["valid"], listed)
+        self.assertTrue(listed["interfaces_changed"])
+        none = self.report(self.valid_text(interfaces="None."))
+        self.assertTrue(none["valid"], none)
+        self.assertFalse(none["interfaces_changed"])
+
+    def test_interfaces_must_be_listed_not_described(self):
+        errors, _ = validate_hld.validate(
+            self.write(self.valid_text(interfaces="The client talks to the backend somehow.")),
+            open_questions_path=self.ledger(),
+        )
+        self.assertTrue(any("interfaces must list" in error for error in errors))
 
 
 if __name__ == "__main__":

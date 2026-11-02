@@ -114,7 +114,7 @@ nodes:
 
       Write concise, skimmable technical English. Do not reopen settled decisions, invent missing
       facts, repeat the PRD, or drift into endpoint fields, schema columns, file lists, or task-level
-      implementation. Create the exact six-section HLD skeleton before filling it. Use the shortest
+      implementation. Create the exact seven-section HLD skeleton before filling it. Use the shortest
       clear wording that preserves every material decision and all context needed to understand the
       architecture; never remove necessary content to reduce length.
 

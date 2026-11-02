@@ -206,6 +206,7 @@ class SdlcE2E(unittest.TestCase):
                 ),
                 "Context and scope": "The approved demo spans the backend and frontend.",
                 "Proposed design": "The backend owns decisions. The frontend renders server state.",
+                "Interfaces": "- The frontend calls the backend to load and save state (synchronous).",
                 "Key decisions and trade-offs": "Use one authority to prevent divergent behavior.",
                 "Delivery and risks": "Land the backend contract before client integration.",
                 "Open questions": "None",

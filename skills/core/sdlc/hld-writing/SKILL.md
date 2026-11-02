@@ -36,12 +36,17 @@ Start with one concise level-1 title containing `HLD`, the workflow-supplied fea
 1. `Decision summary`
 2. `Context and scope`
 3. `Proposed design`
-4. `Key decisions and trade-offs`
-5. `Delivery and risks`
-6. `Open questions`
+4. `Interfaces`
+5. `Key decisions and trade-offs`
+6. `Delivery and risks`
+7. `Open questions`
 
 Decision summary contains five to eight short bullets. Context states only what the reader needs to
-understand the direction; do not repeat the PRD feature inventory. Proposed design names ownership,
+understand the direction; do not repeat the PRD feature inventory. Interfaces lists each call or
+event that crosses a repository boundary, one bullet or table row each: the operation or event
+name, its owner and caller, whether it is a synchronous call or an asynchronous event, and the data
+it carries in words — no field lists. Say `None` when the feature changes no interface between
+repositories; a separate contract step defines the listed interfaces in detail. Proposed design names ownership,
 boundaries, the main data/control flow, and relevant execution modes. Key decisions put the chosen
 direction first, followed by its reason and consequence. Delivery and risks contains only concrete
 dependencies, migration, rollout/backout, security, privacy, reliability, performance, or

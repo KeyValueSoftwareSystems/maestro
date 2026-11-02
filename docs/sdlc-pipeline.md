@@ -72,7 +72,7 @@ The HLD stage follows the same clarify-first shape. It batches only unresolved a
 decisions into native question popups, each with real alternatives and their trade-offs, then asks
 you to confirm the assembled design direction before anything is written (see
 [Interviews are conversations](#interviews-are-conversations)). It keeps decisions in
-`hld-context.json` and writes one short, plain-English HLD. A deterministic validator checks its six-section structure,
+`hld-context.json` and writes one short, plain-English HLD. A deterministic validator checks its seven-section structure (including an Interfaces list that decides whether a contract step runs),
 readability, repetition, and deferred-question ledger without limiting document length. A second popup appears only when synthesis
 uncovers a genuinely new architecture gap; there is no mandatory model-powered folding pass.
 `open-questions.json` contains only explicitly deferred decisions so another reviewer can see

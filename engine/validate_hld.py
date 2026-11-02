@@ -19,6 +19,7 @@ REQUIRED_SECTIONS = (
     "decision summary",
     "context and scope",
     "proposed design",
+    "interfaces",
     "key decisions and trade offs",
     "delivery and risks",
     "open questions",
@@ -77,6 +78,16 @@ def _validate_deferred_ledger(path, open_body):
     return errors
 
 
+def interfaces_changed(sections):
+    """True when the HLD names cross-repository interfaces; the contract step runs only then.
+
+    The `Interfaces` section lists each call or event between repositories (one bullet or table
+    row each), or says `None` when the feature changes no interface between repositories.
+    """
+    body = sections.get("interfaces", "").strip()
+    return bool(body) and body.lower().rstrip(".") != "none"
+
+
 def validate(path, open_questions_path=None):
     errors, warnings = [], []
     try:
@@ -121,6 +132,11 @@ def validate(path, open_questions_path=None):
     if summary and not 5 <= len(summary_bullets) <= 8:
         errors.append("decision summary must contain 5-8 bullets")
 
+    interfaces = sections.get("interfaces", "")
+    if interfaces_changed(sections) and not re.search(r"^\s*(?:[-*]\s+\S|\|)", interfaces, re.M):
+        errors.append("interfaces must list each cross-repository call or event as a bullet or "
+                      "table row, or say None")
+
     if open_questions_path:
         errors.extend(_validate_deferred_ledger(
             open_questions_path, sections.get("open questions", ""),
@@ -151,8 +167,13 @@ def main(argv=None):
     args = parser.parse_args(argv)
     errors, warnings = validate(args.path, open_questions_path=args.open_questions)
     issues = errors + warnings
+    try:
+        sections, _order = _sections(Path(args.path).read_text(encoding="utf-8"))
+    except OSError:
+        sections = {}
     print(json.dumps({
         "valid": not errors,
+        "interfaces_changed": interfaces_changed(sections),
         "error_count": len(errors),
         "warning_count": len(warnings),
         "issues_summary": " | ".join(issues[:8]) if issues else "HLD structure and readability checks passed",

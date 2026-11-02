@@ -69,6 +69,7 @@ def _simulated_hld():
         ),
         "Context and scope": "The simulated feature spans one backend and one client.",
         "Proposed design": "The backend owns decisions. The client renders server state.",
+        "Interfaces": "- The client calls the backend to load and save state (synchronous).",
         "Key decisions and trade-offs": "Use one authority to avoid divergent behavior.",
         "Delivery and risks": "Land the backend contract before client integration.",
         "Open questions": "None",
