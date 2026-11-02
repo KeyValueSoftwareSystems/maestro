@@ -1,10 +1,11 @@
-# Design child: requirement folder -> optional references -> confirmed project context.
-# Entered by design.yaml first, and again for a product or cross-cutting architecture-review
-# revision. The lead reads maintained summaries and requirement inputs only; it never scans
-# application source. Its outputs ground the PRD phase.
+# Design child: requirement folder -> project context summary. No confirmation stops: the
+# summary is shown at PRD approval, where the human corrects it. Reference links and files go
+# in the requirement folder. Entered by design.yaml first, and again for a product or
+# cross-cutting architecture-review revision. The lead reads maintained summaries and
+# requirement inputs only; it never scans application source. Its outputs ground the PRD phase.
 version: 1
 name: design-intake
-description: Check the requirement, collect references, and confirm the project context.
+description: Check the requirement and summarize the project context.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
@@ -19,7 +20,7 @@ nodes:
     label: Requirement present?
     run: [python3, .maestro/engine/requirement_serve.py, ".maestro/runs/${inputs.slug}/requirement"]
     routes:
-      - {when: "${steps.assert_requirement.outputs.state} == have", to: collect_references}
+      - {when: "${steps.assert_requirement.outputs.state} == have", to: project_context}
       - {to: requirement_intake}
 
   - id: requirement_intake
@@ -28,22 +29,12 @@ nodes:
     prompt: |
       No requirement files in .maestro/runs/${inputs.slug}/requirement/.
 
-      How do you want to supply the requirement for "${inputs.feature}"?
+      How do you want to supply the requirement for "${inputs.feature}"? Put any reference
+      links (Figma, tickets, docs) in a file in that folder too.
     options:
       - {id: add-files, label: I'll add files now — re-check, to: assert_requirement}
-      - {id: clarify, label: Clarify it with me, to: collect_references}
+      - {id: clarify, label: Clarify it with me, to: project_context}
       - {id: reject, label: Abort the run, to: abort}
-
-  - id: collect_references
-    type: gate
-    label: Starting references
-    prompt: |
-      Optional: paste any references to ground the PRD for "${inputs.feature}" — Figma links,
-      doc or file paths, tickets, URLs. Local paths are read; links that can't be opened are
-      recorded in the PRD and turned into a question if their content matters. Or pick "none".
-    options:
-      - {id: provide, label: I have references to add, to: project_context, input: refs}
-      - {id: none, label: No references — continue, to: project_context}
 
   - id: project_context
     type: agent
@@ -52,31 +43,18 @@ nodes:
     instruction: |
       State this project's product context in at most three short sentences. Read only root
       AGENTS.md / CLAUDE.md, maintained summaries under docs/ (architecture.md, technical/,
-      functional/), every file under .maestro/runs/${inputs.slug}/requirement/, and explicit
-      references: ${steps.collect_references.outputs.refs}. Do not read application source or
-      search outside this repository. If context is missing, say so plainly. Apply the user's
-      correction when present: ${steps.project_context_confirm.outputs.feedback}
+      functional/), and every file under .maestro/runs/${inputs.slug}/requirement/, including
+      any reference links listed there. Local paths are read; links that cannot be opened are
+      recorded for the PRD and become a question only if their content matters. Do not read
+      application source or search outside this repository. If context is missing, say so
+      plainly.
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      references: "${steps.collect_references.outputs.refs}"
-      feedback: "${steps.project_context_confirm.outputs.feedback}"
     outputs: [project_context]
-    next: project_context_confirm
-
-  - id: project_context_confirm
-    type: gate
-    label: Confirm project context
-    prompt: |
-      Project context: ${steps.project_context.outputs.project_context}
-
-      Is this correct?
-    options:
-      - {id: confirm, label: Yes — use this context, to: end}
-      - {id: revise, label: No — correct the context, to: project_context, input: feedback}
-      - {id: reject, label: Abort the run, to: abort}
+    next: end
 
 outputs:
   project_context: "${steps.project_context.outputs.project_context}"
-  references: "${steps.collect_references.outputs.refs}"
+  references: "reference links and files in .maestro/runs/${inputs.slug}/requirement/"

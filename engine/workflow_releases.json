@@ -43,6 +43,7 @@
       "sha256:3bd779f45a3c32d5b53141954d02a5923a228e45ac9ca2d26f559f3b543685b4"
     ],
     "design-intake.yaml": [
+      "sha256:3c467736f327d38b9938c81bc40cc33da922ef844dc05ff492e7889b9a5476bb",
       "sha256:63bb6f048ec5423dc4f556cc58515e8330a083b17eae9fc695b74c5228a20c21"
     ],
     "design-lld.yaml": [
@@ -53,6 +54,7 @@
       "sha256:85aaa3ec6be0c3e9f53c5401d8aa2854e33d6edbf124e58dbc587beb52778fc7"
     ],
     "design-prd.yaml": [
+      "sha256:23678e97608bea62737f834519b65f3c6754911d7f6329e7ca0eb71dc3fa8815",
       "sha256:4c74e83fdf5372e6f50a4cf28d47781a58e13b995ed6a87fb7dbf77777c634db",
       "sha256:72cb1c85ccecffcc45aa331842292a926b1830b8bd57cb4595abbb10cd3212ce"
     ],

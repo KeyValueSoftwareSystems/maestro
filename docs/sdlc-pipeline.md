@@ -9,7 +9,7 @@ Shipped as a worked example (`.maestro/workflows/sdlc-main.yaml` + the installed
 pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
-workspace sync → requirement → PRD (confirm context → Grill unclear decisions → write once → validate)
+workspace sync → requirement → PRD (summarize context → Grill unclear decisions → write once → validate)
    → HLD (Grill architecture with options → confirm direction → write once → conditional new-gap popup → validate → approve)
    → per-repo LLDs (bounded code seam → grouped Grill with options → confirm direction → write once → validate → approve)
    → API contract
@@ -53,11 +53,14 @@ my-feature · sdlc-main · running
 [ ] Archival (harvest + publish)
 ```
 
-On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:
+On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes, reference links — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the HLD:
 
-- **valid existing `prd.md`** → after two short context confirmations, it goes directly to
-  PRD approval; common equivalent headings are accepted because PRDs have no universal format;
-- **partial or nothing** → it asks for optional references, confirms a three-sentence project context and two-sentence feature goal, then collects every feature-specific decision and relevant edge case for the current round through native question popups;
+- **valid existing `prd.md`** → it goes directly to PRD approval; common equivalent headings
+  are accepted because PRDs have no universal format;
+- **partial or nothing** → it summarizes the project context and feature goal without stopping,
+  then collects every feature-specific decision and relevant edge case for the current round
+  through native question popups. The context and goal summaries are shown at PRD approval, where
+  you correct them if needed;
 - **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, repetition, sentence length, and sequential `AC-xx` acceptance criteria. It does not impose a word-count ceiling. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
 The PRD stage does not spawn subagents or scan application source. It reads only repository

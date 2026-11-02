@@ -67,8 +67,7 @@ class SdlcTodoTest(unittest.TestCase):
         driver.setUp()
         self.addCleanup(driver.doCleanups)
         with self.assertRaises(AssertionError):  # stops at the first unscripted gate
-            driver.drive({"design/intake/collect_references": [("none", None)],
-                          "design/prd/prd_approval": [("approve", None)]})
+            driver.drive({"design/prd/prd_approval": [("approve", None)]})
         built = todo.build(resolver.Run("demo", driver.tmp))
         self.assertEqual(todo.render(built).splitlines(), [
             "demo · sdlc-main · running",

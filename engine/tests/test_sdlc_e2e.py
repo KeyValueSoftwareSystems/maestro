@@ -418,9 +418,6 @@ class SdlcE2E(unittest.TestCase):
                         statemod.save("demo", run.state, self.tmp)
                         continue
                     decisions = gate_script.get(step)
-                    if decisions is None and step.rsplit("/", 1)[-1] in (
-                            "project_context_confirm", "feature_goal_confirm"):
-                        decisions = [("confirm", None)] * 20
                     if decisions is None and step == "delivery/impl_scope":
                         decisions = [("all", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
@@ -476,7 +473,6 @@ class SdlcE2E(unittest.TestCase):
     def test_happy_path(self):
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -530,7 +526,6 @@ class SdlcE2E(unittest.TestCase):
             ".maestro/runs/demo/requirement/prd.md", "existing-prd-fixture"
         )
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -548,7 +543,6 @@ class SdlcE2E(unittest.TestCase):
     def test_revise_cascade_from_contract_gate(self):
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None), ("none", None)],
             "design/prd/prd_approval": [("approve", None), ("approve", None)],
             "design/hld/hld_approval": [("approve", None), ("approve", None)],
             "design/lld/lld_scope": [("all", None), ("all", None)],
@@ -567,7 +561,6 @@ class SdlcE2E(unittest.TestCase):
     def test_deferred_repo_resumes_without_repeating_design(self):
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -606,7 +599,6 @@ class SdlcE2E(unittest.TestCase):
         """PRD rescope re-confirms the feature, interview, and single-write stage."""
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("rescope", "sharpen the scope"), ("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -624,7 +616,6 @@ class SdlcE2E(unittest.TestCase):
 
     def _design_gates(self, prd, hld):
         return {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": prd,
             "design/hld/hld_approval": hld,
             "design/lld/lld_scope": [("all", None)],
@@ -682,7 +673,6 @@ class SdlcE2E(unittest.TestCase):
     def test_repo_lld_revise_is_isolated_and_requires_feedback(self):
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -709,7 +699,6 @@ class SdlcE2E(unittest.TestCase):
 
     def _qa_gates(self, qa_gate):
         return {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -746,7 +735,6 @@ class SdlcE2E(unittest.TestCase):
     def test_blocking_arch_review_gate_waive(self):
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -792,7 +780,6 @@ class SdlcE2E(unittest.TestCase):
             }
 
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -862,8 +849,7 @@ class SdlcE2E(unittest.TestCase):
         globals()["canned_agent_outputs"] = patched
         try:
             gates = {
-                "design/intake/collect_references": [("none", None)],
-                "design/prd/prd_approval": [("approve", None)],
+                    "design/prd/prd_approval": [("approve", None)],
                 "design/hld/hld_approval": [("approve", None)],
                 "design/lld/lld_scope": [("all", None)],
                 "review/contract_approval": [("approve", None)],
@@ -887,7 +873,6 @@ class SdlcE2E(unittest.TestCase):
         return {
             "workspace_sync_initial/sync_gate": [(choice, None)],
             "delivery/workspace_sync_pre_impl/sync_gate": [(choice, None)] * 3,
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -945,7 +930,6 @@ class SdlcE2E(unittest.TestCase):
 
         self.implementation_outputs = implementation_outputs
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -974,7 +958,6 @@ class SdlcE2E(unittest.TestCase):
         """The HLD resolves one grouped architecture round before writing once."""
         self.prep_tasks_json()
         gates = {
-            "design/intake/collect_references": [("none", None)],
             "design/prd/prd_approval": [("approve", None)],
             "design/hld/hld_approval": [("approve", None)],
             "design/lld/lld_scope": [("all", None)],
@@ -1027,11 +1010,6 @@ class SdlcE2E(unittest.TestCase):
                 gate = step.rsplit("/", 1)[-1]  # phase children nest paths: prd/<gate>
                 if gate == "requirement_intake":
                     resolver.record_gate(run, step, "clarify")
-                elif gate == "collect_references":
-                    resolver.record_gate(run, step, "provide")
-                    resolver.record_gate_input(run, step, "https://figma.com/file/demo")
-                elif gate in ("project_context_confirm", "feature_goal_confirm"):
-                    resolver.record_gate(run, step, "confirm")
                 elif gate == "prd_approval":
                     resolver.record_gate(run, step, "approve")
                 else:

@@ -1,15 +1,16 @@
-# Design child: confirmed feature goal -> Grill interview -> one PRD write -> deterministic lint
-# -> human approval. Entered by design.yaml after intake, which supplies the confirmed project
-# context and references. Every back-edge (revise, rescope, clarify) stays inside this child; a
-# complete existing prd.md takes the fast path after the goal confirmation.
+# Design child: feature goal summary -> Grill interview -> one PRD write -> deterministic lint
+# -> human approval. Entered by design.yaml after intake, which supplies the project context.
+# The context and goal summaries are shown at PRD approval, where the human corrects them; there
+# is no separate confirmation stop. Every back-edge (revise, rescope, clarify) stays inside this
+# child; a complete existing prd.md takes the fast path straight to approval.
 version: 1
 name: design-prd
 description: Clarify and write the feature PRD, then get it approved.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
-  project_context: {type: string, default: "", description: project context confirmed at intake}
-  references: {type: string, default: "", description: starting references collected at intake}
+  project_context: {type: string, default: "", description: project context summarized at intake}
+  references: {type: string, default: "", description: where the starting references live}
 defaults:
   model: opus
   agent: planner
@@ -25,30 +26,17 @@ nodes:
     label: Restate feature goal
     instruction: |
       Restate the requested feature outcome in at most two short sentences. Preserve the user's
-      scope and wording. Use the confirmed project context, feature seed, requirement files and
-      explicit references only. Do not add capabilities or technical design. Apply correction or
-      PRD revision feedback when present: ${steps.feature_goal_confirm.outputs.feedback}
-      ${steps.prd_approval.outputs.feedback}
+      scope and wording. Use the project context, feature seed, requirement files and
+      references only. Do not add capabilities or technical design. Apply PRD revision feedback
+      when present: ${steps.prd_approval.outputs.feedback}
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       project_context: "${inputs.project_context}"
-      feedback: "${steps.feature_goal_confirm.outputs.feedback} ${steps.prd_approval.outputs.feedback}"
+      feedback: "${steps.prd_approval.outputs.feedback}"
     outputs: [feature_goal]
-    next: feature_goal_confirm
-
-  - id: feature_goal_confirm
-    type: gate
-    label: Confirm feature goal
-    prompt: |
-      Feature goal: ${steps.feature_goal.outputs.feature_goal}
-
-      Is this the outcome you want?
-    options:
-      - {id: confirm, label: Yes — clarify the product decisions, to: check_existing_prd}
-      - {id: revise, label: No — correct the feature goal, to: feature_goal, input: feedback}
-      - {id: reject, label: Abort the run, to: abort}
+    next: check_existing_prd
 
   - id: check_existing_prd
     type: script
@@ -65,7 +53,7 @@ nodes:
     label: Find the next material product gaps
     instruction: |
       Build the next feature-specific Grill question queue at
-      .maestro/runs/${inputs.slug}/prd-questions.json. Use the confirmed context and goal,
+      .maestro/runs/${inputs.slug}/prd-questions.json. Use the project context and feature goal,
       requirement files, explicit references, revision feedback, and earlier decisions when the
       decisions file exists. Ask only unanswered product decisions that materially change scope,
       user-visible behaviour, acceptance, or risk. Each item must resolve one decision, explain
@@ -127,8 +115,8 @@ nodes:
     label: Clarify material product decisions
     skill: prd-interview
     context: |
-      Confirmed project: ${inputs.project_context}
-      Confirmed feature: ${steps.feature_goal.outputs.feature_goal}
+      Project: ${inputs.project_context}
+      Feature: ${steps.feature_goal.outputs.feature_goal}
     questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
     batch_size: 12
     presentation: popup
@@ -226,8 +214,12 @@ nodes:
     prompt: |
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
 
+      Project context (agent summary): ${inputs.project_context}
+      Feature goal (agent summary): ${steps.feature_goal.outputs.feature_goal}
+
       Material product decisions and relevant edge cases were clarified before writing. Confirm the concise PRD is
-      accurate; design/technical concerns are handled later at the HLD/LLD.
+      accurate, and correct the context or goal here if either is wrong; design/technical concerns
+      are handled later at the HLD/LLD.
     options:
       - {id: approve, label: Approve — author the HLD, to: end}
       - {id: revise, label: Request changes — targeted edit of this PRD, to: revise_prd, input: feedback}
