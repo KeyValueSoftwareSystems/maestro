@@ -34,7 +34,10 @@ HLD the user names and write the report to a path you choose (and tell the user 
 - **Failure and recovery** — timeouts, retries, idempotency, partial failure, backpressure,
   degradation, data consistency where only eventual consistency is available.
 - **Scale and performance** — expected load against the design's mechanisms (caching,
-  partitioning, async work, rate limits); unbounded work on hot paths.
+  partitioning, async work, rate limits); unbounded work on hot paths. When the requirement
+  states non-functional targets (volume, response time, availability, retention), each one needs
+  a mechanism in the design that meets it; a target the design cannot meet or ignores is
+  blocking.
 - **Operations** — deployment and rollout, backout, migration safety, observability, cost.
 - **Alternatives** — material choices name the alternative they rejected and why.
 

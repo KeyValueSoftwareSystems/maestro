@@ -196,6 +196,7 @@ class SdlcE2E(unittest.TestCase):
                 "Goals and success signals": "The behavior works and its acceptance checks pass.",
                 "Non-goals": "Unrelated product and platform changes are excluded.",
                 "Functional scope": "Implement the confirmed demo behavior across the required surfaces.",
+                "Non-functional requirements": "- Saving responds within 300 ms at p95 for 50 requests per second.",
                 "Constraints and assumptions": "Use the existing backend and frontend repositories.",
                 "Acceptance criteria": "- AC-01: The documented behavior is available and automated tests pass.",
                 "Dependencies and risks": "Delivery depends on both repositories remaining compatible.",

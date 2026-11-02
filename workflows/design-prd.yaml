@@ -73,7 +73,8 @@ nodes:
 
       Then write .maestro/runs/${inputs.slug}/prd-questions.json (schema_version 2) with only the
       material product facts the sources leave unsettled — a missing user, limit, failure
-      behaviour, success signal, non-goal or acceptance criterion that changes scope — each with a
+      behaviour, success signal, non-goal, acceptance criterion, or a non-functional target
+      (volume, response time, availability, retention) that changes scope or design — each with a
       grounded recommendation and 1-4 must_resolve facts. Do not ask about anything the sources
       answer, PRD headings, or technical design. Where a section depends on an open question, write
       its recommendation and mark it "(to confirm)". An empty questions array means the sources
@@ -136,7 +137,9 @@ nodes:
       limits; conflicts or concurrent actions from the user's perspective; cancel, retry, and
       recovery behaviour; invalid or stale input; notifications and external effects; privacy and
       data visibility; admin overrides; migration or backward compatibility; measurable success;
-      and explicit non-goals. Do not mechanically cover every lens. Do not ask about PRD headings,
+      explicit non-goals; and non-functional targets that would change the design (expected
+      volume and growth, response time, availability and recovery, data retention and
+      compliance, accessibility). Do not mechanically cover every lens. Do not ask about PRD headings,
       repeat a decided question, ask technical-design questions, inspect application source, or
       draft the PRD. Write schema_version 2 with 4-8 questions when several material gaps remain,
       fewer when nearly clear, and an empty questions array only after all must_resolve facts are
@@ -219,7 +222,7 @@ nodes:
       references, and any cumulative decisions at .maestro/runs/${inputs.slug}/prd-context.json to
       .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
       repository. Use only stored answers, never unaccepted proposal text, for user-answer
-      decisions. Create the exact eleven-section skeleton before filling it, use the shortest clear
+      decisions. Create the exact twelve-section skeleton before filling it, use the shortest clear
       wording that preserves every confirmed fact, and give every in-scope confirmed behavior an
       observable AC. Never omit necessary context merely to shorten the PRD. Before completing, run
       `python3 .maestro/engine/validate_prd.py

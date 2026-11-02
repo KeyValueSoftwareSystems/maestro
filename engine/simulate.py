@@ -52,6 +52,7 @@ def _simulated_prd():
         "Goals and success signals": "The PRD validator passes and the simulation reaches the next design step.",
         "Non-goals": "This placeholder does not make product decisions or represent production requirements.",
         "Functional scope": "Exercise PRD creation, validation, approval, and downstream routing.",
+        "Non-functional requirements": "None beyond the existing service standards (simulated).",
         "Constraints and assumptions": "No model is called. All content is explicitly marked as simulated.",
         "Acceptance criteria": "- AC-01: The document contains every required heading and stays within each word budget.",
         "Dependencies and risks": "The simulator depends on the same validator and workflow engine used by real runs.",

@@ -18,6 +18,7 @@ REQUIRED_SECTIONS = (
     "goals and success signals",
     "non goals",
     "functional scope",
+    "non functional requirements",
     "constraints and assumptions",
     "acceptance criteria",
     "dependencies and risks",
@@ -49,6 +50,11 @@ HEADING_ALIASES = {
     "functional requirements": "functional scope",
     "requirements": "functional scope",
     "scope": "functional scope",
+    "nfrs": "non functional requirements",
+    "nfr": "non functional requirements",
+    "non functional": "non functional requirements",
+    "quality attributes": "non functional requirements",
+    "performance and scale": "non functional requirements",
     "constraints": "constraints and assumptions",
     "assumptions": "constraints and assumptions",
     "assumptions and constraints": "constraints and assumptions",
@@ -203,6 +209,16 @@ def validate(path, compatible=False):
             errors.append(f"empty section: {name}")
 
     if not compatible:
+        nfr = sections.get("non functional requirements")
+        if nfr is not None and _words(nfr):
+            bullets = [line.strip() for line in nfr.splitlines() if re.match(r"^\s*[-*]\s+", line)]
+            if not bullets and not re.search(r"\bnone\b", nfr, re.IGNORECASE):
+                errors.append("non functional requirements: list each as a bullet with a measurable "
+                              "target, or state None beyond the existing service standards")
+            for bullet in bullets:
+                if not re.search(r"\d", bullet) and not re.search(r"\bnone\b", bullet, re.I):
+                    warnings.append(f"non functional requirements: no measurable target in "
+                                    f"{bullet[:80]!r}")
         acceptance = sections.get("acceptance criteria", "")
         ac_ids = []
         for line in acceptance.splitlines():

@@ -69,7 +69,7 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
   then collects every feature-specific decision and relevant edge case for the current round
   through native question popups. The context and goal summaries are shown at PRD approval, where
   you correct them if needed;
-- **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, repetition, sentence length, and sequential `AC-xx` acceptance criteria. It does not impose a word-count ceiling. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
+- **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, repetition, sentence length, sequential `AC-xx` acceptance criteria, and that Non-functional requirements lists measurable targets (volume, response time, availability, retention…) or says None explicitly. The architecture review later checks the HLD meets each target. It does not impose a word-count ceiling. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
 
 The PRD stage never scans application source, and spawns a subagent only to normalize a client
 PRD, so a long document stays out of the lead's context. It reads only repository

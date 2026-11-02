@@ -50,7 +50,8 @@ repositories; a separate contract step defines the listed interfaces in detail. 
 boundaries, the main data/control flow, and relevant execution modes. Key decisions put the chosen
 direction first, followed by its reason and consequence. Delivery and risks contains only concrete
 dependencies, migration, rollout/backout, security, privacy, reliability, performance, or
-operational concerns that apply.
+operational concerns that apply. When the requirement states non-functional targets, the design
+must show how it meets each one (the mechanism, not a restatement of the number).
 
 Open questions says `None` when nothing is explicitly deferred. If the user deliberately deferred
 a non-blocking choice to LLD, list it briefly and mirror it in the workflow-supplied deferred-question

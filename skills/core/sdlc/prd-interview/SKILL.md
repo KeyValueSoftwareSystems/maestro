@@ -53,7 +53,9 @@ requirements, references, revision feedback, and earlier answers.
 - Challenge the happy path only through relevant lenses: permissions; lifecycle transitions;
   timing and limits; visible conflict/concurrency; cancellation, retry, and recovery; invalid or
   stale input; notifications and external effects; privacy and visibility; admin overrides;
-  migration or compatibility; measurable success; and non-goals.
+  migration or compatibility; measurable success; non-goals; and non-functional targets that
+  would change the design (volume and growth, response time, availability and recovery,
+  retention and compliance, accessibility) — asked as concrete numbers the human can confirm.
 - Skip irrelevant lenses. Ask fewer questions as clarity increases. Never ask every category just
   to fill a checklist.
 - Never repeat a confirmed decision. Never ask “what should this PRD section say?”

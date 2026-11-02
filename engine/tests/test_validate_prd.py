@@ -23,6 +23,8 @@ class PrdValidationTest(unittest.TestCase):
             f"## {heading.title().replace('Non Goals', 'Non-goals')}\n\n"
             + ("- AC-01: The confirmed behavior is observable."
                if heading == "acceptance criteria"
+               else "- Responds within 300 ms at p95 for 50 requests per second."
+               if heading == "non functional requirements"
                else f"A concise confirmed product decision for {heading}.")
             for heading in validate_prd.REQUIRED_SECTIONS
         ) + "\n"
@@ -95,6 +97,28 @@ class PrdValidationTest(unittest.TestCase):
         )
         errors, _ = validate_prd.validate(self.write(text))
         self.assertTrue(any("allowed only in acceptance criteria" in error for error in errors))
+
+    def test_non_functional_requirements_need_targets_or_an_explicit_none(self):
+        target = "- Responds within 300 ms at p95 for 50 requests per second."
+        text = self.valid_text()
+        errors, warnings = validate_prd.validate(self.write(text.replace(
+            target, "None beyond the existing service standards.")))
+        self.assertEqual((errors, warnings), ([], []))
+        errors, _ = validate_prd.validate(self.write(text.replace(
+            target, "It should be fast and reliable.")))
+        self.assertTrue(any(e.startswith("non functional requirements: list each") for e in errors))
+        errors, warnings = validate_prd.validate(self.write(text.replace(
+            target, "- Exports stay fast.")))
+        self.assertEqual(errors, [])
+        self.assertTrue(any("no measurable target" in w for w in warnings))
+        missing = text.replace("## Non Functional Requirements\n\n" + target + "\n\n", "")
+        errors, _ = validate_prd.validate(self.write(missing))
+        self.assertIn("missing section: non functional requirements", errors)
+        # common headings in an existing PRD count on the fast path
+        errors, _ = validate_prd.validate(self.write(
+            missing.replace("## Constraints", "## NFRs\n\n- 99.9% monthly uptime.\n\n## Constraints")),
+            compatible=True)
+        self.assertEqual(errors, [])
 
     def test_unresolved_to_confirm_marks_fail_strict_mode_only(self):
         text = self.valid_text().replace(

@@ -231,7 +231,9 @@ nodes:
       and the maintained architecture summaries and codebase maps; read source only to check a
       specific claim. Judge the architecture against the requirement: style, boundaries and data
       ownership, the listed interfaces, security and privacy, failure and recovery, scale,
-      operations, and over- or under-engineering. Findings need evidence; set blocking=true only
+      operations, and over- or under-engineering. Check every target in the PRD's Non-functional
+      requirements against a mechanism in the design that meets it; a target the design cannot
+      meet, or one it ignores, is blocking. Findings need evidence; set blocking=true only
       for must-fix issues.
       If .maestro/runs/${inputs.slug}/reviews/architecture.md exists from an earlier round, this is a
       re-review after a revision: read it first, confirm each earlier blocking finding is resolved,

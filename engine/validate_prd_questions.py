@@ -21,7 +21,8 @@ CONFIRMING_SOURCES = {
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 PRD_SECTION_TITLES = {
     "summary", "problem and context", "users and jobs", "goals and success signals",
-    "non-goals", "functional scope", "constraints and assumptions", "acceptance criteria",
+    "non-goals", "functional scope", "non-functional requirements",
+    "constraints and assumptions", "acceptance criteria",
     "dependencies and risks", "priorities and phasing", "references",
     "decision summary", "context and scope", "proposed design",
     "key decisions and trade-offs", "delivery and risks", "open questions",

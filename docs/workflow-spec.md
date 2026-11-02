@@ -290,7 +290,8 @@ between normalizing the client's own PRD (a 250+ word document or an office/PDF 
 client-authored `prd.md` is copied to `prd.original.md` first) and the Grill interview. The
 normalizer writes the PRD plus a queue of only the gaps; strict validation rejects any remaining
 "(to confirm)" mark. Maestro-authored PRDs use the exact
-11-heading contract and are validated in strict mode before approval. Traceability IDs appear
+12-heading contract (including Non-functional requirements: measurable bullets, or an explicit
+None) and are validated in strict mode before approval. Traceability IDs appear
 only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria. Generated PRDs begin
 with one concise level-1 feature title plus `Feature slug` and `Status: Ready for review` metadata.
 The author validates inside its existing call; the workflow then runs `--fix-mechanical` to join

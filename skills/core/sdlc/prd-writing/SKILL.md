@@ -50,17 +50,24 @@ Use these exact level-2 headings in this order:
 4. `Goals and success signals`
 5. `Non-goals`
 6. `Functional scope`
-7. `Constraints and assumptions`
-8. `Acceptance criteria`
-9. `Dependencies and risks`
-10. `Priorities and phasing`
-11. `References`
+7. `Non-functional requirements`
+8. `Constraints and assumptions`
+9. `Acceptance criteria`
+10. `Dependencies and risks`
+11. `Priorities and phasing`
+12. `References`
 
 Use identifiers only in `Acceptance criteria`. Write every criterion as a sequential observable
 bullet beginning `AC-01:`, `AC-02:`, and so on. Do not put `B1`, `B2`, `FR-*`, `REQ-*`, question
 IDs, or other traceability codes in any other section.
 
-Before adding prose, create all eleven headings in the required order. Before completing, check
+Non-functional requirements lists one bullet per confirmed target, each measurable and named by
+what it constrains: volume and growth, response time, availability and recovery, data retention,
+security or compliance obligations, accessibility. Write the number the decision or source gives
+("p95 under 300 ms at 50 requests/second"); never invent one. When nothing applies beyond the
+service's existing standards, write `None beyond the existing service standards.`
+
+Before adding prose, create all twelve headings in the required order. Before completing, check
 that every in-scope actor permission, state transition, limit, conflict, override, and recovery rule
 from the confirmed decisions has an observable acceptance criterion. Non-goals do not need one.
 
