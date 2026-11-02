@@ -735,6 +735,71 @@ class ArtifactTest(Sim):
             resolver.complete_step(run, "review", outputs={"blocking": False})
 
 
+FRESH_WF = """\
+version: 1
+name: fresh
+inputs:
+  slug: {type: string, required: true}
+start: work
+nodes:
+  - id: work
+    type: agent
+    instruction: Do work.
+    outputs: [note]
+    next: review
+  - id: review
+    type: agent
+    instruction: Review it.
+    outputs: [blocking]
+    artifact: ".maestro/${inputs.slug}/review.md"
+    fresh: true
+    routes:
+      - {when: "${steps.review.outputs.blocking} == true", to: work}
+      - {to: end}
+"""
+
+
+class FreshArtifactTest(Sim):
+    def _write(self, text):
+        full = os.path.join(self.tmp, ".maestro/feat/review.md")
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w") as fh:
+            fh.write(text)
+
+    def test_rereview_cannot_complete_on_last_rounds_report(self):
+        self.start(self.write_wf("w.yaml", FRESH_WF))
+        self.complete("work", {"note": "x"})
+        self._write("round 1: blocking\n")
+        self.complete("review", {"blocking": True})
+        self.complete("work", {"note": "fixed"})
+        run = self.run_obj()
+        with self.assertRaises(resolver.RunError) as ctx:
+            resolver.complete_step(run, "review", outputs={"blocking": False})
+        self.assertEqual(ctx.exception.code, 4)
+        self.assertIn("unchanged", str(ctx.exception))
+        self._write("round 2: clean\n")
+        self.complete("review", {"blocking": False})
+        self.assertEqual(self.nxt()["action"], "done")
+
+    def test_report_left_by_an_earlier_run_does_not_count(self):
+        self._write("stale report\n")
+        self.start(self.write_wf("w.yaml", FRESH_WF))
+        self.complete("work", {"note": "x"})
+        run = self.run_obj()
+        with self.assertRaises(resolver.RunError):
+            resolver.complete_step(run, "review", outputs={"blocking": False})
+
+    def test_unflagged_artifact_may_stay_unchanged(self):
+        rel = self.write_wf("w.yaml", FRESH_WF.replace("    fresh: true\n", ""))
+        self.start(rel)
+        self.complete("work", {"note": "x"})
+        self._write("same\n")
+        self.complete("review", {"blocking": True})
+        self.complete("work", {"note": "x"})
+        self.complete("review", {"blocking": False})
+        self.assertEqual(self.nxt()["action"], "done")
+
+
 class FailureTest(Sim):
     def test_retry_then_ask_then_skip(self):
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))

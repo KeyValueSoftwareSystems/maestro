@@ -160,6 +160,9 @@ served prompt in the current session without spawning one.
     - ".maestro/${inputs.slug}/hld-post-questions.json"
                             # artifact exists non-empty ("proof, not promises"). The engine
                             # injects owned paths into the prompt.
+  fresh: true               # optional: at least one artifact must be new or changed since
+                            # this visit started — a re-review cannot complete on last
+                            # round's report. Omit where an unchanged file is a valid result.
   retries: 1                # re-dispatches on failure before on_fail applies (default 1)
   next: validate_hld_post_questions
 ```

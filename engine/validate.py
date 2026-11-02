@@ -43,7 +43,7 @@ _TOP_KEYS = {"version", "name", "description", "inputs", "defaults", "start", "n
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
-              "inputs", "outputs", "artifact", "retries", "isolate", "ui"} | _ROUTING_KEYS,
+              "inputs", "outputs", "artifact", "fresh", "retries", "isolate", "ui"} | _ROUTING_KEYS,
     "interview": {"id", "type", "label", "skill", "context", "sections",
                   "questions_artifact", "batch_size", "presentation", "discuss", "artifact",
                   "ui", "next",

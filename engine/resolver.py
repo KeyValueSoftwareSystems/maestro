@@ -500,6 +500,11 @@ def _enter_inner(run, frame, node):
             "skill": run.resolve_text(raw_skill, frame) if raw_skill else None,
         })
     statemod.mark_step_started(entry, **metadata)
+    if kind == "agent" and node.get("fresh"):
+        try:
+            entry["artifact_baseline"] = _artifact_hashes(run, frame, node)
+        except RunError:
+            entry.pop("artifact_baseline", None)  # unresolved path: completion checks presence only
     if kind == "parallel":
         entry["status"] = "running"
         entry["branches"] = {b["id"]: {"status": "running"} for b in node["branches"]}
@@ -1111,6 +1116,15 @@ def _artifact_list(run, frame, node):
     return [run.resolve_text(a, frame) for a in items]
 
 
+def _artifact_hashes(run, frame, node):
+    """{artifact: sha256 or None} — the snapshot a `fresh: true` step must move away from."""
+    hashes = {}
+    for rel in _artifact_list(run, frame, node):
+        full = rel if os.path.isabs(rel) else os.path.join(run.root, rel)
+        hashes[rel] = statemod.sha256_file(full) if os.path.isfile(full) else None
+    return hashes
+
+
 def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None):
     instruction = run.resolve_text(node["instruction"], frame, missing_ok=True)
     lines = [instruction.strip(), ""]
@@ -1228,6 +1242,15 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
             f"step {path!r}: artifact missing or empty: {', '.join(bad_artifacts)} — "
             f"proof, not promises: re-run the step or call fail.", code=4,
         )
+    baseline = entry.get("artifact_baseline")
+    if node.get("fresh") and baseline:
+        # Proof must be fresh: a re-review or QA re-run cannot complete on last round's report.
+        if _artifact_hashes(run, frame, node) == baseline:
+            raise RunError(
+                f"step {path!r}: artifact unchanged since this step started: "
+                f"{', '.join(baseline)} — this step must write fresh output on every visit: "
+                f"re-run the step or call fail.", code=4,
+            )
     entry["outputs"] = {k: v for k, v in outputs.items() if isinstance(v, (str, int, float, bool))}
     arts = _artifact_list(run, frame, node)
     if arts:

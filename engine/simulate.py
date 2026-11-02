@@ -29,6 +29,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolver  # noqa: E402
@@ -224,7 +225,9 @@ def _stub_agent(root, act):
             else:
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "
-                             f"— this step's real agent was never dispatched.\n")
+                             f"— this step's real agent was never dispatched.\n"
+                             # unique per write, so `fresh: true` steps see new proof each visit
+                             f"\n<!-- simulated write {time.time_ns()} -->\n")
     if (step.endswith("resync_map") or step.endswith("/build")
             or step.endswith("refresh_knowledge")
             or step.endswith("/retrospect")):

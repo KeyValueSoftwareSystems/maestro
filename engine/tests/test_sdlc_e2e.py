@@ -2,6 +2,7 @@
 design/impl/qa subworkflows) through the engine with zero LLM — canned agent outputs,
 scripted gate decisions, artifacts touched on disk. This is the proof that the example
 pack and the engine agree."""
+import itertools
 import json
 import os
 import re
@@ -19,6 +20,7 @@ import codebase_scan  # noqa: E402
 import workspace_sync  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+_ARTIFACT_WRITES = itertools.count(1)
 
 
 def canned_agent_outputs(step, action):
@@ -165,7 +167,12 @@ class SdlcE2E(unittest.TestCase):
                 }, fh)
             return
         if os.path.exists(full):
-            return
+            with open(full) as fh:
+                previous = fh.read()
+            # Keep fixtures and structured docs; rewrite this harness's own generic
+            # placeholder so `fresh: true` steps see new proof on every visit.
+            if not previous.startswith("artifact "):
+                return
         if rel.endswith("/requirement/prd.md"):
             sections = {
                 "Summary": "Deliver the confirmed demo feature.",
@@ -258,8 +265,9 @@ class SdlcE2E(unittest.TestCase):
             with open(full, "w") as fh:
                 json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
         else:
+            # Unique per write: `fresh: true` steps must produce new proof on every visit.
             with open(full, "w") as fh:
-                fh.write("artifact\n")
+                fh.write(f"artifact {next(_ARTIFACT_WRITES)}\n")
 
     def implementation_outputs(self, act):
         def prompt_value(name):

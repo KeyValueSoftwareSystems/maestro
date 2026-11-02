@@ -41,6 +41,7 @@ nodes:
       implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
     outputs: [passed, failed_count, summary]
     artifact: ".maestro/runs/${inputs.slug}/qa/report.md"
+    fresh: true
     max_visits: 5
     on_exhausted: qa_gate
     routes:

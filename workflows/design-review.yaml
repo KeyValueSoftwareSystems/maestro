@@ -47,6 +47,7 @@ nodes:
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}", lessons: "${memory.knowledge.architecture-review}"}
     outputs: [review_path, blocking, summary, revision_scope, affected_repos_csv, correction_text]
     artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+    fresh: true
     max_visits: 4
     next: arch_review_validate
 

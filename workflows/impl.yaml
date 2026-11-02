@@ -119,6 +119,7 @@ nodes:
       lessons: "${memory.knowledge.${inputs.stack}-review}"
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+    fresh: true
     max_visits: 5
     on_exhausted: impl_gate
     # The loop-exit guards must read values that UPDATE inside the fix->review loop.
