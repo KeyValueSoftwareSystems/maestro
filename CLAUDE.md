@@ -41,7 +41,7 @@ runtime. It ships:
   are NOT pinned in any workflow node, so they are exempt from the SDLC-step contract (no
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
-  agent shells out to: `validate · init · next · complete · complete-batch · gate-record · fail · reset
+  agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
   · rebase · status · todo · graph · note · upgrade-run · correction-record`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
@@ -140,6 +140,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   Format 3 re-nests a ledger's inline steps under the stage child that now declares them
   (`design/author_hld` → `design/hld/author_hld`, `qa/qa_run` → `delivery/qa/qa_run`, ids
   unchanged) so the exact cursor survives.
+- **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
+  build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
+  repos, missing `build`/`test` commands (errors) and missing `lint`/`e2e` (warnings). Engine
+  steps read commands from here, never from skill prose. Spec: `docs/project-config.md`.
 - **`entry_serve.py`** — the route-only `script` node a multi-entry child workflow starts with;
   its `routes:` branch on the child's inputs (e.g. design-import enters at the baseline approval
   or the repair gate). Does no work, never fails.
@@ -216,7 +220,7 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
   `on_exhausted` (default: a synthesized ask-gate). A route taken through a REAL gate
   option bypasses the cap — the human is the loop bound.
 - **Placeholders** are pure text substitution (`${inputs.x}`, `${steps.id.outputs.f}`,
-  `${steps.id.branches.k.outputs.f}`; `${config.path}` reads an optional user-created
+  `${steps.id.branches.k.outputs.f}`; `${config.path}` reads the project's
   maestro.config.yaml — the pack ships none) — no templating engine. `when:` conditions
   support only `==`, `!=`, truthy, `in [a, b]` (`engine/condctl.py`).
 - **Artifacts gate completion**: `complete` refuses to mark an agent step done unless

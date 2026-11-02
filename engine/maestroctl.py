@@ -4,6 +4,7 @@
 The lead agent's whole protocol:
 
     maestroctl validate <workflow>
+    maestroctl preflight                             # maestro.config.yaml vs the repos on disk
     maestroctl init --slug S --workflow <workflow> [--input k=v ...]
     loop:
         maestroctl next --slug S [--serial]          # ONE action as JSON (claims workers)
@@ -64,6 +65,16 @@ def cmd_validate(args):
         "warnings": len(issues) - len(errors),
     })
     return 1 if errors else 0
+
+
+def cmd_preflight(args):
+    import project_config
+    issues = project_config.preflight(args.root)
+    for issue in issues:
+        print(str(issue), file=sys.stderr)
+    result = project_config.summary(issues)
+    _print(result)
+    return 0 if result["ok"] else 1
 
 
 def cmd_init(args):
@@ -443,6 +454,9 @@ def build_parser():
     p = sub.add_parser("validate", help="lint a workflow file (recursing into subworkflows)")
     p.add_argument("workflow")
     p.set_defaults(fn=cmd_validate)
+
+    p = sub.add_parser("preflight", help="check maestro.config.yaml against the repos on disk")
+    p.set_defaults(fn=cmd_preflight)
 
     p = sub.add_parser("init", help="create or resume the run ledger for a slug")
     p.add_argument("--slug", required=True)

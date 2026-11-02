@@ -96,6 +96,7 @@ Anything without a `stack:` tag is core and always installs; `--stack all` (or n
 ```bash
 python3 .maestro/engine/maestroctl.py status --slug my-feature              # step table, gates, active steps
 python3 .maestro/engine/maestroctl.py validate .maestro/workflows/my.yaml   # lint a workflow before running it
+python3 .maestro/engine/maestroctl.py preflight                             # check maestro.config.yaml (docs/project-config.md)
 ```
 
 If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --slug <slug>` are your recovery levers — see [Working as a team](#working-as-a-team).
@@ -137,7 +138,8 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
 - **Commit the child run with its LLD.** A repo approval updates only
   `.maestro/runs/<feature>--lld--<repo>/` plus that repo's published LLD and receipt under the
   parent. Pull all approved child changes, then refresh the parent LLD status gate.
-- **Resolving a state conflict:** never hand-merge `state.yaml`. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
+- **Resolving a state conflict:** never hand-merge `state.yaml`. The engine refuses to run on a
+  ledger with conflict markers and never overwrites it. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
 - **Old-format runs:** selecting one through `/maestro` offers a one-time upgrade. The engine backs
   up its state and artifacts, converts old PRD/HLD structure without reopening clear decisions,
   asks one baseline approval, and imports each old LLD as an independently validated, unapproved
