@@ -131,9 +131,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   LLDs back to the parent, bind approvals to the current HLD hash, selectively reopen only the
   repositories named by an approved architecture correction, and let the parent join only after
   all repo-owned ledgers are complete.
-- **`implementation_pool.py`** — separate approved design scope from the current implementation
-  batch, preserve verified repository handoffs across batches, keep unselected repositories as
-  durable deferred work, and build the QA manifest only from exact verified worktree commits.
+- **`implementation_pool.py`** — the implementation queue: the golden workflow implements every
+  designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
+  supports batches with deferred repos for team workflows. Builds the QA/release manifest only
+  from exact verified worktree commits, with each repo's verify receipt and status attached.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
   repos, missing `build`/`test` commands (errors) and missing `lint`/`e2e` (warnings). Engine

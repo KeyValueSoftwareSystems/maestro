@@ -418,8 +418,6 @@ class SdlcE2E(unittest.TestCase):
                         statemod.save("demo", run.state, self.tmp)
                         continue
                     decisions = gate_script.get(step)
-                    if decisions is None and step == "delivery/impl_scope":
-                        decisions = [("all", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -558,40 +556,27 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("design/contract/contract"), 2)
         self.assertEqual(len([s for s in steps if s.endswith("/lld_approval")]), 2)
 
-    def test_deferred_repo_resumes_without_repeating_design(self):
+    def test_release_sent_back_to_design_reimplements_every_repo(self):
+        """No batches: each delivery pass builds every designed repo against the current design."""
         self.prep_tasks_json()
         gates = {
-            "design/prd/prd_approval": [("approve", None)],
-            "design/hld/hld_approval": [("approve", None)],
-            "design/lld/lld_scope": [("all", None)],
-            "review/contract_approval": [("approve", None)],
-            "delivery/impl_scope": [
-                ("pick", "backend"),
-                ("pick", "frontend"),
-            ],
-            "delivery/release_approval": [("approve", None), ("approve", None)],
-            "delivery/impl_deferred_gate": [("implement_more", None)],
+            "design/prd/prd_approval": [("approve", None), ("approve", None)],
+            "design/hld/hld_approval": [("approve", None), ("approve", None)],
+            "design/lld/lld_scope": [("all", None), ("all", None)],
+            "review/contract_approval": [("approve", None), ("approve", None)],
+            "delivery/release_approval": [("revise", "handle the empty state"), ("approve", None)],
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
-        self.assertEqual(steps.count("design/hld/author_hld"), 1)
-        self.assertEqual(steps.count("review/arch_review"), 1)
-        self.assertEqual(steps.count("review/contract_approval"), 1)
-        self.assertEqual(
-            len([1 for action_name, step in trace
-                 if action_name == "ask_gate" and step == "delivery/impl_scope"]),
-            2,
-        )
-        self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 2)
-        self.assertEqual(steps.count("delivery/release_approval"), 2)
-
+        self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 4)
+        self.assertEqual(trace.count(("ask_gate", "delivery/release_approval")), 2)
+        self.assertFalse([step for step in steps if "impl_scope" in step and "init" not in step])
         queue_path = os.path.join(
             self.tmp, ".maestro", "runs", "demo", "implementation-repos.json",
         )
         with open(queue_path, encoding="utf-8") as fh:
             queue = json.load(fh)
-        self.assertEqual(queue["schema_version"], 2)
         self.assertEqual(queue["deferred"], [])
         self.assertEqual(set(queue["implementations"]), {"backend", "frontend"})
 

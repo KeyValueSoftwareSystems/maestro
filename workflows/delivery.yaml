@@ -1,12 +1,12 @@
-# Child of sdlc-main: one implementation batch -> verified test context -> QA -> review pack ->
-# release approval, repeated per deferred batch. It decides; the parent acts. Leaving for a design
-# revision (the workspace moved since the design was grounded, or the human sent the release back)
-# ends the child and is reported in its outputs: `design_changed` true or `release` revise -> the
-# parent re-runs design; otherwise the parent archives. The deferred-work gate may stay parked
-# between batches; resuming it never repeats design.
+# Child of sdlc-main: implement every designed repository -> verified test context -> QA ->
+# review pack -> release approval. It decides; the parent acts. Leaving for a design revision
+# (the workspace moved since the design was grounded, or the human sent the release back) ends
+# the child and is reported in its outputs: `design_changed` true or `release` revise -> the
+# parent re-runs design and this child then implements every repository afresh; otherwise the
+# parent archives.
 version: 1
 name: delivery
-description: Implement the approved design batch by batch, verify it with QA, and approve the release.
+description: Implement every repository of the approved design, verify it with QA, and approve the release.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
@@ -33,36 +33,14 @@ nodes:
       # If HEAD moved since the design was grounded, end so the parent regenerates/reapproves
       # the design before implementation. Continuing at the already-pinned commits falls through immediately.
       - {when: "${steps.workspace_sync_pre_impl.outputs.changed} == true", to: end}
-      - {to: impl_scope_serve}
+      - {to: impl_scope_init}
 
-  - id: impl_scope_serve
-    type: script
-    label: List repositories available for implementation
-    run: [python3, .maestro/engine/implementation_pool.py, list, --root, ., --slug, "${inputs.slug}"]
-    on_fail: abort
-    next: impl_scope
-
-  - id: impl_scope
-    type: gate
-    label: Implementation scope
-    prompt: |
-      Approved repositories available to implement now:
-      ${steps.impl_scope_serve.outputs.available_csv}
-
-      Already implemented in an earlier batch:
-      ${steps.impl_scope_serve.outputs.implemented_csv}
-
-      Choose this delivery batch. Unselected repositories remain deferred and can be resumed from
-      this parent run without repeating PRD, HLD, LLD, contract, or architecture review.
-    options:
-      - {id: all, label: Implement all available repositories, to: impl_scope_init}
-      - {id: pick, label: Pick repositories for this batch, to: impl_scope_init, input: repos_text}
-      - {id: reject, label: Abort implementation, to: abort}
-
+  # Every repository in the approved design, afresh on each pass (a redesign invalidates earlier
+  # handoffs). Batching repos is a team-workflow choice: the engine still supports `--choice pick`.
   - id: impl_scope_init
     type: script
     label: Initialize implementation repo pool
-    run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}", --choice, "${steps.impl_scope.outputs.choice}", --repos-text, "${steps.impl_scope.outputs.repos_text}"]
+    run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}", --choice, all, --fresh]
     on_fail: abort
     next: implement
 
@@ -229,31 +207,9 @@ nodes:
       Review pack: ${steps.review_pack.outputs.pack_path}
       QA: ${steps.qa.outputs.qa_summary}
     options:
-      - {id: approve, label: Approve this implementation batch, to: impl_deferred_check}
+      - {id: approve, label: Approve the release, to: end}
       - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
-
-  - id: impl_deferred_check
-    type: script
-    label: Check deferred implementation repositories
-    run: [python3, .maestro/engine/implementation_pool.py, check, --root, ., --slug, "${inputs.slug}"]
-    on_fail: abort
-    routes:
-      - {when: "${steps.impl_deferred_check.outputs.has_deferred} == true", to: impl_deferred_gate}
-      - {to: end}
-
-  - id: impl_deferred_gate
-    type: gate
-    label: Deferred implementation repositories
-    prompt: |
-      This batch is approved. These approved repositories remain deferred:
-      ${steps.impl_deferred_check.outputs.deferred_csv}
-
-      You can leave this run at this gate and resume it later without repeating design.
-    options:
-      - {id: implement_more, label: Implement another deferred batch now, to: effective_design_pre_impl}
-      - {id: finish, label: Finish this feature with those repositories deferred, to: end}
-      - {id: reject, label: Abort the remaining feature work, to: abort}
 
 outputs:
   design_changed: "${steps.workspace_sync_pre_impl.outputs.changed}"

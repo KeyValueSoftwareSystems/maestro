@@ -85,6 +85,20 @@ class ImplementationPoolTest(unittest.TestCase):
         self.assertFalse(final["verified_ok"])
         self.assertEqual(manifest["repositories"][0]["verification"]["status"], "missing")
 
+    def test_fresh_pass_reimplements_after_every_repo_was_done(self):
+        run("init", "--root", self.root, "--slug", "feature-x")
+        run("claim", "--root", self.root, "--slug", "feature-x")
+        worktree, branch, commit = self.create_feature_worktree()
+        run("record", "--root", self.root, "--slug", "feature-x", "--repo", "mobile-app",
+            "--branch", branch, "--worktree", worktree, "--commit", commit)
+        code, _ = run("init", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 1)  # without --fresh: nothing left to implement
+        code, out = run("init", "--root", self.root, "--slug", "feature-x", "--fresh")
+        self.assertEqual(code, 0)
+        self.assertEqual(out["selected_csv"], "mobile-app")
+        queue = pool._read(pool._queue_path("feature-x", self.root))
+        self.assertEqual(queue["implementations"], {})
+
     def _finalize_with_receipt(self, receipt):
         run("init", "--root", self.root, "--slug", "feature-x")
         run("claim", "--root", self.root, "--slug", "feature-x")

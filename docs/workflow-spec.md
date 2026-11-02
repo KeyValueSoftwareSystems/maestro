@@ -355,12 +355,10 @@ then replaces only those completed child workstreams with fresh revision ledgers
 approvals remain valid; the parent cannot continue until every replacement is approved and
 published, after which contract/test generation and architecture review run again.
 
-After contract approval, implementation scope is a separate human gate. `implementation_pool.py`
-stores the complete designed repository set, one active batch, verified implementations from prior
-batches, and the remaining deferred set. Fixed parallel slots claim only the active batch. A later
-batch resumes through the pre-implementation workspace check and scope gate, not through design;
-PRD/HLD/LLD/contract/architecture review remain approved unless repository drift invalidates them.
-The parent may stay parked at its deferred-work gate between delivery batches.
+After contract approval, delivery implements every repository in the approved design.
+`implementation_pool.py init --choice all --fresh` starts each pass afresh, so a release sent back
+to design rebuilds every repository against the new design. A team workflow that wants batches
+can use `--choice pick`, which keeps unselected repositories as deferred work.
 
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
 `parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per

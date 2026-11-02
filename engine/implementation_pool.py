@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """Deterministic repo implementation queue and QA handoff manifest.
 
-Design chooses repos in lld-repos.json. A post-contract human gate selects which approved repos
-to implement in the current delivery batch. Fixed workflow slots claim only that batch, run the
-generic implementation subworkflow, then record the exact checked-out branch, worktree and commit.
-Unselected repos remain durable deferred work and can be selected in a later batch without
-repeating PRD/HLD/LLD/contract review. `finalize` fails unless every repo in the active batch has a
-verified entry.
+Design chooses repos in lld-repos.json. `init` selects the repos to implement: the golden workflow
+takes every designed repo afresh (`--choice all --fresh`); `--choice pick` keeps the batching a
+team workflow may want, leaving unselected repos as deferred work. Fixed workflow slots claim the
+selected repos, run the generic implementation subworkflow, then record the exact checked-out
+branch, worktree and commit. `finalize` fails unless every selected repo has a verified entry,
+and attaches each repo's engine verification receipt to the QA/release manifest.
 """
 import argparse
 import hashlib
@@ -177,7 +177,9 @@ def cmd_init(args):
         existing = _pool_state(args.slug, args.root) or {}
         implementations = existing.get("implementations") or {}
         # Ignore stale entries for repositories no longer present in the approved design scope.
-        implementations = {
+        # --fresh starts a new pass over the whole design (e.g. after a redesign): earlier
+        # handoffs were built against an older design, so none of them carry over.
+        implementations = {} if args.fresh else {
             repo: entry for repo, entry in implementations.items() if repo in designed
         }
         available = [repo for repo in designed if repo not in implementations]
@@ -396,6 +398,8 @@ def main(argv=None):
     p.add_argument("--slug", required=True)
     p.add_argument("--choice", choices=("all", "pick"), default="all")
     p.add_argument("--repos-text", default="")
+    p.add_argument("--fresh", action="store_true",
+                   help="new pass over every designed repo; drop earlier implementation handoffs")
     p.set_defaults(fn=cmd_init)
     p = sub.add_parser("record")
     p.add_argument("--root", default=".")

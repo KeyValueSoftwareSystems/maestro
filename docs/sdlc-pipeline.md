@@ -15,7 +15,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
    → API contract
    → functional test cases → effective design (base approvals + approved corrections)
    → architecture review → [approve]
-   → choose implementation batch → implement selected repos (parallel, sliced,
+   → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
    → QA → review pack → [approve → archive: fold corrections + harvest lessons + publish docs]
 ```
@@ -116,12 +116,9 @@ Resuming the parent while those workstreams are pending always opens an LLD sele
 repo's status plus a parent-coordinator option. A developer can therefore return with
 `/maestro my-feature` and choose backend, frontend, or Flutter without remembering the child slug.
 
-After contract approval, a separate implementation-scope gate chooses all available repositories
-or a smaller delivery batch such as backend only. The implementation queue records the complete
-designed scope, completed repositories, and deferred repositories independently. After a batch is
-reviewed and approved, the parent either archives when nothing remains or parks at a deferred-work
-gate. Resuming that gate can implement another batch without rerunning PRD, HLD, LLD, contract, or
-architecture review; the normal pre-implementation workspace drift check still protects stale
+After contract approval, Maestro implements every repository in the approved design, in
+parallel. If the release is sent back to design, the next delivery pass rebuilds every repository
+against the revised design; the pre-implementation workspace drift check still protects stale
 designs.
 
 If implementation discovery changes an already-approved product or architecture decision, Maestro
