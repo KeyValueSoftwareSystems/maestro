@@ -39,8 +39,9 @@ Installs: our skills/commands/agents into `.claude/` or `.cursor/`, or repo-scop
 skills into `.agents/skills/`; the engine + `workflows/` + `ui/` + `docs/` all live under a
 single **`.maestro/`** parent. The engine is stdlib-only python3 — no execution CLI, config
 file, or additional package to install. When it finishes it prints host-specific next steps
-and points at **`./maestro help`**. **Upgrade** by re-running the same command (it re-fetches,
-overwrites `.maestro/engine/`/`.maestro/ui/`, and never overwrites a workflow you edited — see
+and points at **`./maestro help`**. **Upgrade** by re-running the same command with `--ref <tag|sha|branch>` (without it, the
+version recorded in `.maestro/install.json` is reinstalled, so installs are reproducible); it
+overwrites `.maestro/engine/`/`.maestro/ui/` and never overwrites a workflow or skill you edited — see
 [Upgrading in detail](#upgrading-in-detail)). *(Private-repo fork? The piped `curl`
 can't authenticate — clone it and run `./install.sh` from the checkout.)*
 

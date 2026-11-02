@@ -25,20 +25,25 @@
 #                      always installed. /maestro-init passes this automatically after
 #                      detecting your repo's stack.
 #
-# Upgrades (re-run) never overwrite a workflow you edited: stock copies are replaced,
+# Upgrades (re-run) never overwrite a workflow or skill you edited: stock copies are replaced,
 # edited ones are kept and the new upstream version lands beside them as
-# .maestro/workflows/<name>.upstream (engine/install_workflows.py).
+# .maestro/workflows/<name>.upstream (engine/install_workflows.py) or <skill>/<file>.upstream
+# (engine/install_skills.py).
 #   --dry-run          print the workflow upgrade plan and exit without writing anything
+#
+# Version pinning: the installed version is recorded in .maestro/install.json. A re-run
+# without --ref installs that same version again (reproducible); pass --ref to move.
+#   --ref <tag|sha|branch>   install exactly this version (e.g. --ref v1.4.0, --ref main)
 #
 # Env overrides:
 #   KV_SKILLS_REPO   pack's GitHub slug      (default KeyValueSoftwareSystems/kv-skills)
-#   KV_SKILLS_REF    git ref for the tarball (default main)
+#   KV_SKILLS_REF    git ref for the tarball (default: --ref, else the recorded one, else main)
 #   DEST             where to copy runtime   (default: current directory)
 # =============================================================================
 set -uo pipefail   # not -e: one failed skill install must not abort the rest
 
 REPO="${KV_SKILLS_REPO:-KeyValueSoftwareSystems/kv-skills}"
-REF="${KV_SKILLS_REF:-main}"
+REF="${KV_SKILLS_REF:-}"
 DEST="${DEST:-$PWD}"
 
 AGENTS=""
@@ -49,6 +54,8 @@ while [ $# -gt 0 ]; do
     --stack)   shift; STACKS="$STACKS ${1:-}" ;;
     --stack=*) STACKS="$STACKS ${1#*=}" ;;
     --dry-run) DRY_RUN=1 ;;
+    --ref)     shift; REF="${1:-}" ;;
+    --ref=*)   REF="${1#*=}" ;;
     -*) echo "unknown flag: $1" >&2; exit 2 ;;
     *)  AGENTS="$AGENTS $1" ;;
   esac
@@ -85,18 +92,27 @@ want_item() {
   done
   return 1
 }
-copy_skills() { # $1 = dst dir — filtered by --stack
+copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
   # SOURCE is organized into category folders (skills/core/…, skills/stacks/<x>/…,
   # skills/maestro); the INSTALLED tree is intentionally FLAT — one dir per skill keyed
   # by its frontmatter name, which is the only identity workflows/harness discovery use.
-  # So we find every SKILL.md at any depth and flatten each skill dir into $1/.
+  # So we find every SKILL.md at any depth and flatten each skill dir into $1/. An edited
+  # installed skill is kept (engine/install_skills.py); its new version lands as *.upstream.
   mkdir -p "$1"; kept=0; skipped=0
+  list="$(mktemp)"
   while IFS= read -r skillmd; do
     d="$(dirname "$skillmd")"
-    if want_item "$skillmd"; then cp -R "$d" "$1/" && kept=$((kept+1))
+    if want_item "$skillmd"; then printf '%s\n' "$d" >> "$list"; kept=$((kept+1))
     else skipped=$((skipped+1)); fi
   done < <(find "$SRC/skills" -name SKILL.md -type f | sort)
-  note "skills -> $1 ($kept installed, $skipped skipped by --stack)"
+  if command -v python3 >/dev/null 2>&1; then
+    python3 "$SRC/engine/install_skills.py" --dst "$1" --host "$2" \
+      --manifest "$DEST/.maestro/skill-manifest.json" --skills-from "$list"
+  else
+    while IFS= read -r d; do cp -R "$d" "$1/"; done < "$list"
+  fi
+  rm -f "$list"
+  note "skills -> $1 ($kept selected, $skipped skipped by --stack)"
 }
 copy_agents() { # $1 = dst dir — filtered by --stack
   mkdir -p "$1"; kept=0; skipped=0
@@ -138,11 +154,18 @@ if [ -n "${BASH_SOURCE[0]:-}" ]; then
     SRC="$script_dir"
   fi
 fi
+if [ -z "$REF" ] && [ -f "$DEST/.maestro/install.json" ] && command -v python3 >/dev/null 2>&1; then
+  # reproducible re-runs: reinstall the recorded version unless --ref asks for another
+  REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("ref") or "")' \
+    "$DEST/.maestro/install.json" 2>/dev/null || true)"
+fi
+[ -n "$REF" ] || REF="main"
 if [ -z "$SRC" ]; then
   say "Fetching $REPO@$REF …"
   tmp="$(mktemp -d)"
   CLEANUP="$tmp"
-  if curl -fsSL "https://codeload.github.com/$REPO/tar.gz/refs/heads/$REF" | tar -xz -C "$tmp" 2>/dev/null; then
+  # codeload resolves a branch, a tag or a commit sha for the same URL
+  if curl -fsSL "https://codeload.github.com/$REPO/tar.gz/$REF" | tar -xz -C "$tmp" 2>/dev/null; then
     SRC="$(find "$tmp" -maxdepth 1 -mindepth 1 -type d | head -1)"
   fi
   [ -n "$SRC" ] && [ -f "$SRC/engine/maestroctl.py" ] || {
@@ -168,14 +191,14 @@ for agent in $AGENTS; do
   case "$agent" in
     claude-code)
       say "Installing skills + commands + agents for Claude Code${STACKS:+ (stacks: $STACKS)}"
-      copy_skills        "$DEST/.claude/skills"
+      copy_skills        "$DEST/.claude/skills" claude-code
       remove_retired_skills "$DEST/.claude/skills"
       copy_tree commands "$DEST/.claude/commands"
       copy_agents        "$DEST/.claude/agents"
       ;;
     cursor)
       say "Installing skills + commands for Cursor${STACKS:+ (stacks: $STACKS)}"
-      copy_skills        "$DEST/.cursor/skills"
+      copy_skills        "$DEST/.cursor/skills" cursor
       remove_retired_skills "$DEST/.cursor/skills"
       copy_tree commands "$DEST/.cursor/commands"
       # Cursor has no subagent registry; the Maestro skill degrades to inline mode.
@@ -184,7 +207,7 @@ for agent in $AGENTS; do
       say "Installing skills for Codex${STACKS:+ (stacks: $STACKS)}"
       # Codex discovers repository skills from .agents/skills and invokes them with
       # `$skill-name`; its native subagents need no copied Claude agent definitions.
-      copy_skills        "$DEST/.agents/skills"
+      copy_skills        "$DEST/.agents/skills" codex
       remove_retired_skills "$DEST/.agents/skills"
       ;;
     *) echo "  unknown IDE target: $agent (skipping)" >&2 ;;
@@ -214,6 +237,21 @@ cp "$SRC/docs/workflow-spec.md" "$DEST/.maestro/docs/workflow-spec.md" 2>/dev/nu
 # `./maestro install` work without re-fetching. The wrapper never writes run state.
 cp "$SRC/bin/maestro" "$DEST/maestro" && chmod +x "$DEST/maestro" && note "maestro (dev wrapper: ui + install)"
 cp "$SRC/install.sh" "$DEST/install.sh" 2>/dev/null && note "install.sh (re-run to upgrade)"
+
+# Record what was installed, so a re-run reproduces it and support can tell versions apart.
+SRC_COMMIT=""
+if git -C "$SRC" rev-parse HEAD >/dev/null 2>&1; then SRC_COMMIT="$(git -C "$SRC" rev-parse HEAD)"; fi
+if command -v python3 >/dev/null 2>&1; then
+  python3 - "$DEST/.maestro/install.json" "$REF" "$SRC_COMMIT" "$REPO" "$AGENTS" "$STACKS" <<'PY'
+import datetime, json, sys
+path, ref, commit, repo, hosts, stacks = sys.argv[1:7]
+json.dump({"schema_version": 1, "repo": repo, "ref": ref, "commit": commit or None,
+           "hosts": hosts.split(), "stacks": stacks.split(),
+           "installed_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")},
+          open(path, "w"), indent=2)
+PY
+  note ".maestro/install.json (installed version: $REF${SRC_COMMIT:+ @ ${SRC_COMMIT:0:12}})"
+fi
 
 say "Done."
 case " $AGENTS " in

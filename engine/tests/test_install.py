@@ -24,6 +24,42 @@ class InstallTest(unittest.TestCase):
             stderr=subprocess.PIPE,
         )
 
+    def test_reinstall_keeps_an_edited_skill_and_records_the_version(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.install(tmp, "claude-code", "--stack", "react")
+            skills = os.path.join(tmp, ".claude", "skills")
+            edited = os.path.join(skills, "prd-writing", "SKILL.md")
+            stock = os.path.join(skills, "fix-loop", "SKILL.md")
+            with open(edited, "a", encoding="utf-8") as fh:
+                fh.write("\nOur house rule: every PRD names its product owner.\n")
+            # simulate an older stock copy the user never touched
+            manifest_path = os.path.join(tmp, ".maestro", "skill-manifest.json")
+            import json
+            import sys
+            sys.path.insert(0, os.path.join(ROOT, "engine"))
+            import install_skills
+            with open(stock, "a", encoding="utf-8") as fh:
+                fh.write("\nold upstream line\n")
+            with open(manifest_path, encoding="utf-8") as fh:
+                manifest = json.load(fh)
+            manifest["hosts"]["claude-code"]["fix-loop"] = install_skills.tree_hash(
+                os.path.dirname(stock))
+            with open(manifest_path, "w", encoding="utf-8") as fh:
+                json.dump(manifest, fh)
+
+            result = self.install(tmp, "claude-code", "--stack", "react")
+            with open(edited, encoding="utf-8") as fh:
+                self.assertIn("Our house rule", fh.read())          # the edit survives
+            self.assertTrue(os.path.isfile(edited + ".upstream"))   # the new version beside it
+            with open(stock, encoding="utf-8") as fh:
+                self.assertNotIn("old upstream line", fh.read())    # a stock copy is replaced
+            self.assertIn("kept your edited skill prd-writing", result.stdout)
+            with open(os.path.join(tmp, ".maestro", "install.json"), encoding="utf-8") as fh:
+                record = json.load(fh)
+            self.assertEqual(record["ref"], "main")
+            self.assertEqual(record["hosts"], ["claude-code"])
+            self.assertEqual(record["stacks"], ["react"])
+
     def test_codex_installs_repo_scoped_skills_and_runtime(self):
         with tempfile.TemporaryDirectory() as tmp:
             result = self.install(tmp, "codex", "--stack", "react")

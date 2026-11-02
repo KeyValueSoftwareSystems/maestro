@@ -227,7 +227,8 @@ The full format is in [docs/workflow-spec.md](docs/workflow-spec.md).
 | To change… | Do this |
 |---|---|
 | **The included pipeline** | Copy the workflow file under a new name (for example `my-sdlc.yaml`) and edit the copy. Upgrades never touch your own file names. |
-| **How a step does its job** | Write your own skill in `.claude/skills/<your-skill>/SKILL.md` (`.agents/skills/` for Codex) and set `skill: <your-skill>` on that step. Don't edit Maestro's installed skills; upgrades replace them. |
+| **How a step does its job** | Write your own skill in `.claude/skills/<your-skill>/SKILL.md` (`.agents/skills/` for Codex) and set `skill: <your-skill>` on that step. Prefer your own skill to editing Maestro's: an edited installed skill is kept on upgrade, but you
+then merge each new version by hand from its `.upstream` file. |
 | **Which AI model a step uses** | Set `model:` on the step, or `defaults.model` for the whole workflow (for example `haiku`, `sonnet` or `opus` in Claude Code). |
 | **How often a loop may repeat** | Set `max_visits` on the step (the default is 10). |
 | **Which tech stacks are installed** | `./maestro install claude-code --stack go,react` |
@@ -249,9 +250,12 @@ More detail: [docs/reference.md](docs/reference.md#working-as-a-team).
 
 ## Upgrade or uninstall
 
-**Upgrade:** run the install command again (add `--dry-run` to preview it). Maestro's program and
-skills are replaced. Your workflows are safe: an unchanged workflow is updated, but one you edited
-is kept, and the new version is saved next to it as `<name>.yaml.upstream` for you to compare.
+**Upgrade:** run the install command again with `--ref <version>` (for example `--ref v1.4.0`, or
+`--ref main` for the latest); without `--ref` it reinstalls the version recorded in
+`.maestro/install.json`, so a teammate's re-run gets exactly what you have. Add `--dry-run` to
+preview the workflow changes. Maestro's program is replaced. Your workflows and skills are safe: an
+unchanged one is updated, but one you edited is kept, and the new version is saved next to it
+(`<name>.yaml.upstream`, or `<skill>/SKILL.md.upstream`) for you to compare.
 
 **Uninstall:** delete `.claude/skills`, `.claude/commands` and `.claude/agents` (or the `.cursor/`
 or `.agents/skills/` equivalents), plus `.maestro/engine/` and `.maestro/ui/`. Keep
