@@ -170,6 +170,15 @@ class LldSetTest(unittest.TestCase):
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertIn("the PRD changed after LLD approval", out["reasons"])
 
+    def test_infrastructure_owners_cannot_be_dropped_from_scope(self):
+        code, _, err = run("init", "--root", self.root, "--slug", "demo", "--choice", "pick",
+                           "--repos-text", "web", "--require", "api")
+        self.assertEqual(code, 1)
+        self.assertIn("api must be in scope", err)
+        code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "pick",
+                           "--repos-text", "web, api", "--require", "api")
+        self.assertEqual((code, out["selected_csv"]), (0, "web,api"))
+
     def test_approve_refuses_a_missing_lld(self):
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds(("api",))

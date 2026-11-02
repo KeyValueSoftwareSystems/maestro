@@ -101,6 +101,19 @@ class HldValidationTest(unittest.TestCase):
         errors, _ = validate_hld.validate(self.write(infra_only), self.ledger(), infra_level="iac")
         self.assertTrue(any("mermaid architecture diagram" in e for e in errors))
 
+    def test_each_infrastructure_change_names_its_owning_repository(self):
+        text = self.infra_text("- Add an autoscaled export worker (2-10 replicas).\n"
+                               "- `infra`: new SQS queue with a dead-letter queue.")
+        errors, _ = validate_hld.validate(self.write(text), self.ledger(), infra_level="iac",
+                                          repos=["api", "infra"])
+        self.assertTrue(any("name the repository that owns each change" in e for e in errors))
+        text = text.replace("- Add an", "- `api`: add an")
+        errors, _ = validate_hld.validate(self.write(text), self.ledger(), infra_level="iac",
+                                          repos=["api", "infra"])
+        self.assertEqual(errors, [])
+        sections, _ = validate_hld._sections(text)
+        self.assertEqual(validate_hld.infra_owners(sections, ["api", "infra"]), ["api", "infra"])
+
     def test_report_names_infrastructure_changes(self):
         import io
         from contextlib import redirect_stdout

@@ -940,8 +940,9 @@ class SdlcE2E(unittest.TestCase):
             text = hld.read_text()
             if "## Infrastructure and operations" not in text:
                 hld.write_text(text.replace("## Key decisions", "## Infrastructure and operations"
-                                            "\n\n- New SQS queue `exports` with a dead-letter "
-                                            "queue (14-day retention).\n\n## Key decisions"))
+                                            "\n\n- `backend`: new SQS queue `exports` with a "
+                                            "dead-letter queue (14-day retention).\n\n"
+                                            "## Key decisions"))
             return {"hld_summary": "export worker on a queue"}
         action, _trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"author_hld": author_hld})
         self.assertEqual(action["action"], "done", action)
@@ -953,6 +954,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("Infrastructure level iac", self.prompts["design/hld/arch_review"][0])
         outputs = statemod.load("demo", self.tmp)["steps"]["design/hld/validate_hld"]["outputs"]
         self.assertEqual((outputs["valid"], outputs["infra_changed"]), (True, True))
+        self.assertEqual(outputs["infra_repos_csv"], "backend")
+        # the repository that owns the infrastructure change cannot be dropped from LLD scope
+        self.assertIn("must stay in scope: backend", self.prompts["design/lld/lld_scope"][0])
 
     def test_escalated_architecture_finding_goes_to_the_person_at_hld_approval(self):
         self.prep_tasks_json()

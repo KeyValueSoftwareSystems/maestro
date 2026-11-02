@@ -155,7 +155,10 @@ nodes:
       Infrastructure and operations right after Interfaces when the infrastructure level is
       containers or iac (${steps.infra_profile.outputs.level}). That section lists each
       infrastructure change the feature makes — deployment and runtime, scaling, data stores,
-      messaging, networking, config and secrets, observability, rollout — or says None. Put a
+      messaging, networking, config and secrets, observability, rollout — each naming the
+      repository that owns it in backticks (one of ${steps.infra_profile.outputs.repos_csv}), or says
+      None. A new deployable service ships complete: list its container image, CI pipeline and
+      deployment definitions (Terraform, Helm or manifests) in the repositories that hold them. Put a
       Mermaid architecture diagram (components, owners, main flows) in Proposed design whenever the
       feature crosses repositories or changes infrastructure. Use the architecture-patterns skill
       for the patterns you choose and, for the detected platforms
@@ -163,7 +166,7 @@ nodes:
       installed. Validate with `python3 .maestro/engine/validate_hld.py
       .maestro/runs/${inputs.slug}/hld.md --open-questions
       .maestro/runs/${inputs.slug}/open-questions.json --infra-level
-      ${steps.infra_profile.outputs.level}`. Use the shortest clear wording that preserves every
+      ${steps.infra_profile.outputs.level} --repos ${steps.infra_profile.outputs.repos_csv}`. Use the shortest clear wording that preserves every
       material decision and all context needed to understand the architecture; never remove
       necessary content to reduce length.
 
@@ -231,7 +234,7 @@ nodes:
   - id: validate_hld
     type: script
     label: Validate HLD structure and readability
-    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --report]
+    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --report]
     max_visits: 12
     on_exhausted: abort
     routes:
@@ -452,6 +455,7 @@ outputs:
   hld_summary: "${steps.author_hld.outputs.hld_summary}"
   interfaces_changed: "${steps.validate_hld.outputs.interfaces_changed}"
   infra_changed: "${steps.validate_hld.outputs.infra_changed}"
+  infra_repos_csv: "${steps.validate_hld.outputs.infra_repos_csv}"
   infra_level: "${steps.infra_profile.outputs.level}"
   review_summary: "${steps.arch_review.outputs.summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"

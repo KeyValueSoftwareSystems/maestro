@@ -68,6 +68,18 @@ writes and timeouts; first, last and empty pages; time zones and numeric precisi
   internals; structured logs, metrics and traces on new paths.
 - **Performance** — no N+1 or unbounded queries; cache or pool only where the LLD says.
 
+**Infrastructure and delivery changes** (an infrastructure repository, or the deploy files in
+an application repository)
+- **Ship what the LLD lists** — a new service gets its container image, CI pipeline and
+  deployment definitions in the same change; never leave them for later.
+- **Follow the platform pack** — use the installed `terraform-patterns`, `kubernetes-patterns` or
+  `container-patterns` skill for the repository's platform.
+- **Safe by default** — per-environment values from variables, secrets by reference to the
+  existing store, least-privilege access, private networking; no destroy or replacement of a
+  stateful resource the LLD did not plan.
+- **Prove it** — the repository's own checks (format, validate, plan or template render, policy)
+  pass in the worktree; the verify step runs them from the project configuration.
+
 **UI changes (web and mobile)**
 - **Every state, built and tested** — loading, empty, success, validation error, API error,
   permission denied, retry.

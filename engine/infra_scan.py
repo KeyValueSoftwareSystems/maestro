@@ -20,8 +20,8 @@ maestro.config.yaml may override: `infrastructure: {level: none|containers|iac}`
 another team owns the infrastructure), and a repository's `role: infra` marks it an infrastructure
 repository whatever its files say.
 
-Prints one JSON line {level, platforms_csv, iac_repos_csv, container_repos_csv, summary,
-profile_path} and writes the per-repository evidence to --out. Always exits 0.
+Prints one JSON line {level, platforms_csv, iac_repos_csv, container_repos_csv, repos_csv,
+summary, profile_path} and writes the per-repository evidence to --out. Always exits 0.
 """
 import argparse
 import fnmatch
@@ -193,6 +193,7 @@ def main(argv=None):
         "platforms_csv": ",".join(doc["platforms"]),
         "iac_repos_csv": ",".join(doc["iac_repos"]),
         "container_repos_csv": ",".join(doc["container_repos"]),
+        "repos_csv": ",".join(r["repo"] for r in doc["repos"] if r["repo"] != WORKSPACE),
         "summary": doc["summary"],
         "profile_path": path,
     }))

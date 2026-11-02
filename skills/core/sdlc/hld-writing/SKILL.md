@@ -46,7 +46,10 @@ When the workspace defines infrastructure (your instructions supply its level: `
 `iac`), add `Infrastructure and operations` right after `Interfaces`. It lists each infrastructure
 change the feature makes — deployment and runtime, scaling (with the numbers that meet the
 requirement's targets), data stores, messaging, networking, config and secrets, observability,
-rollout — one bullet or table row each, or says `None` when the feature changes no infrastructure.
+rollout — one bullet or table row each, naming the repository that owns it in backticks, or says
+`None` when the feature changes no infrastructure. A new deployable service ships complete: list its
+container image, CI pipeline and deployment definitions (Terraform, Helm or manifests) in the
+repositories that hold them, so each gets an LLD and is built with the feature.
 Omit the section when the workspace defines no infrastructure.
 
 Put a Mermaid diagram (` ```mermaid `) in `Proposed design` whenever the feature crosses

@@ -99,6 +99,16 @@ def infra_changed(sections):
     return bool(body) and not re.match(r"^none\b", body, re.I)
 
 
+def infra_owners(sections, repos):
+    """Repositories the Infrastructure and operations bullets name as owners (`repo` in backticks)."""
+    owners = []
+    for line in sections.get(INFRA_SECTION, "").splitlines():
+        for name in re.findall(r"`([^`]+)`", line):
+            if name in repos and name not in owners:
+                owners.append(name)
+    return owners
+
+
 def _expected_order(order, infra_level):
     expected = list(SECTION_ORDER)
     if infra_level in ("containers", "iac") or INFRA_SECTION in order:
@@ -106,7 +116,7 @@ def _expected_order(order, infra_level):
     return expected
 
 
-def validate(path, open_questions_path=None, infra_level="none"):
+def validate(path, open_questions_path=None, infra_level="none", repos=()):
     errors, warnings = [], []
     try:
         text = Path(path).read_text(encoding="utf-8")
@@ -163,6 +173,14 @@ def validate(path, open_questions_path=None, infra_level="none"):
     if infra_changed(sections) and not re.search(r"^\s*(?:[-*]\s+\S|\|)", infra, re.M):
         errors.append("infrastructure and operations must list each change as a bullet or table "
                       "row, or say None")
+    if infra_changed(sections) and repos:
+        unowned = [line.strip() for line in infra.splitlines()
+                   if re.match(r"^\s*(?:[-*]\s+\S|\|)", line) and not re.match(r"^\s*\|\s*-", line)
+                   and not any(f"`{repo}`" in line for repo in repos)
+                   and not re.match(r"^\s*\|\s*(?:repository|repo|owner)\b", line, re.I)]
+        if unowned:
+            errors.append("infrastructure and operations: name the repository that owns each "
+                          f"change in backticks (one of: {', '.join(repos)}): {unowned[0][:80]}")
     if (interfaces_changed(sections) or infra_changed(sections)) and not MERMAID_RE.search(
             sections.get("proposed design", "")):
         errors.append("proposed design needs a ```mermaid architecture diagram when the feature "
@@ -194,13 +212,17 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path")
     parser.add_argument("--open-questions")
+    parser.add_argument("--repos", default="",
+                        help="workspace repositories, comma-separated: each infrastructure change "
+                             "must name its owner")
     parser.add_argument("--infra-level", choices=INFRA_LEVELS, default="none",
                         help="engine/infra_scan.py level: containers or iac require the "
                              "Infrastructure and operations section")
     parser.add_argument("--report", action="store_true", help="always exit 0 for workflow routing")
     args = parser.parse_args(argv)
+    repos = [r.strip() for r in args.repos.split(",") if r.strip()]
     errors, warnings = validate(args.path, open_questions_path=args.open_questions,
-                                infra_level=args.infra_level)
+                                infra_level=args.infra_level, repos=repos)
     issues = errors + warnings
     try:
         sections, _order = _sections(Path(args.path).read_text(encoding="utf-8"))
@@ -210,6 +232,7 @@ def main(argv=None):
         "valid": not errors,
         "interfaces_changed": interfaces_changed(sections),
         "infra_changed": infra_changed(sections),
+        "infra_repos_csv": ",".join(infra_owners(sections, repos)),
         "error_count": len(errors),
         "warning_count": len(warnings),
         "issues_summary": " | ".join(issues[:8]) if issues else "HLD structure and readability checks passed",

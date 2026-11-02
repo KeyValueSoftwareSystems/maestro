@@ -182,7 +182,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless, Ansible, Docker, Compose
   files; overridable in maestro.config.yaml). The HLD stage starts with it: the level decides
   which infrastructure questions are asked at all, and `validate_hld.py --infra-level` requires
-  the Infrastructure and operations section for `containers`/`iac`.
+  the Infrastructure and operations section for `containers`/`iac`; with `--repos` each change
+  must name its owning repository, and those owners (`infra_repos_csv`) are passed to
+  `lld_set.py init --require`, which refuses a scope without them.
 - **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
   (PRD → LLD → test cases → readiness → approval; no HLD or contract) only for ≤5 acceptance
   criteria, Non-functional requirements None, one repository and no "(to confirm)"; the run input

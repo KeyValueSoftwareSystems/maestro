@@ -11,7 +11,7 @@ out of date. Implementation refuses to start on a stale design.
 Commands
 --------
   list     [--root .]                                  discovered repo names
-  init     [--root .] --slug S --choice all|pick [--repos-text "a, b"]
+  init     [--root .] --slug S --choice all|pick [--repos-text "a, b"] [--require "a,b"]
            write the selection to lld-repos.json; `pick` fails on an unknown name
   validate [--root .] --slug S                         every selected LLD exists and validates
   approve  [--root .] --slug S [--light true]  record lld/approval.json (PRD, HLD, contract, LLD hashes;
@@ -103,6 +103,12 @@ def cmd_init(args):
         repos = list(dict.fromkeys(by_lower[name.lower()] for name in wanted))
         if not repos:
             return _fail("--choice pick needs at least one repo name")
+    required = [r.strip() for r in (args.require or "").split(",") if r.strip()]
+    dropped = [repo for repo in required if repo in discovered and repo not in repos]
+    if dropped:
+        # the approved HLD changes infrastructure these repositories own: they ship with the feature
+        return _fail(f"{', '.join(dropped)} must be in scope: the HLD lists infrastructure changes "
+                     "they own")
     _write_json(selection_path(args.slug, args.root), {"schema_version": 3, "selected": repos})
     paths = [os.path.relpath(lld_path(args.slug, repo, args.root), args.root) for repo in repos]
     print(json.dumps({"selected_csv": ",".join(repos), "count": len(repos),
@@ -208,6 +214,8 @@ def main(argv=None):
     p.add_argument("--slug", required=True)
     p.add_argument("--choice", choices=("all", "pick"), default="all")
     p.add_argument("--repos-text", default="")
+    p.add_argument("--require", default="",
+                   help="repositories that must be in scope (the HLD's infrastructure owners)")
     p.set_defaults(fn=cmd_init)
     for name, fn in (("validate", cmd_validate), ("approve", cmd_approve), ("verify", cmd_verify)):
         p = sub.add_parser(name)

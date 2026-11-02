@@ -87,7 +87,11 @@ definitions and sets a level:
 | `containers` | Dockerfiles or Compose files only | only the runtime and config decisions this feature changes (a new service, ports, secrets, resources) |
 | `iac` | Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless or Ansible | every infrastructure decision this feature changes or depends on — scaling, data stores, queues, caching, networking, secrets, rollout, observability, cost — grounded in those repositories and the PRD's targets |
 
-A feature that touches no infrastructure asks none at any level. `maestro.config.yaml` can
+A feature that touches no infrastructure asks none at any level. Infrastructure ships with the
+feature: each change in the HLD names the repository that owns it, those repositories cannot be
+dropped from the LLD scope, and a new service lists its container image, CI pipeline and deployment
+definitions, which are designed, built, verified (with the repository's own `terraform
+validate`, `helm lint`… from `maestro.config.yaml`) and reviewed like application code. `maestro.config.yaml` can
 override the level (`infrastructure.level`, for example when another team owns it) or mark a
 repository `role: infra`. The architecture reviewer reviews infrastructure only at the levels
 that have it, and the readiness check makes each listed infrastructure change an LLD in the

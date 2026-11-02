@@ -86,6 +86,7 @@ nodes:
       feature: "${inputs.feature}"
       feedback: "${inputs.feedback}"
       light: "${steps.sizing.outputs.path}"
+      required_repos: "${steps.hld.outputs.infra_repos_csv}"
     on_fail: abort
     next: end
 

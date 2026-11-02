@@ -17,6 +17,7 @@ inputs:
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
   light: {type: string, default: full, description: "light when the feature took the light path (no HLD)"}
+  required_repos: {type: string, default: "", description: repositories the HLD's infrastructure changes need in scope}
 defaults:
   model: opus
   agent: planner
@@ -36,6 +37,7 @@ nodes:
       Detected repos: ${steps.lld_scope_serve.outputs.names_csv}
 
       Write the detailed design for all of them, or only the repositories this feature changes?
+      Repositories that own infrastructure changes in the HLD must stay in scope: ${inputs.required_repos}
     options:
       - {id: all, label: All of them, to: lld_scope_init}
       - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
@@ -56,6 +58,8 @@ nodes:
       - "${steps.lld_scope.outputs.choice}"
       - --repos-text
       - "${steps.lld_scope.outputs.repos_text}"
+      - --require
+      - "${inputs.required_repos}"
     on_fail: lld_scope
     next: prepare_lld_questions
 

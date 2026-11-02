@@ -21,6 +21,13 @@ repos:                          # one entry per repository Maestro finds
       e2e: make e2e             # recommended; used by QA
     timeout_s: 900              # optional, per command (default 900)
     test_patterns: ["tests/*"]  # optional; which files are tests (default: common conventions)
+  infra:                        # an infrastructure repository is verified like any other
+    stack: terraform
+    role: infra
+    commands:
+      build: terraform fmt -check -recursive && terraform init -backend=false
+      test: terraform validate
+      security: tfsec .
   web:
     stack: react
     commands:
