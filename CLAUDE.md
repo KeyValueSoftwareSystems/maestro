@@ -43,7 +43,7 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · rebase · status · todo · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · rebase · status · todo · brief · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
@@ -147,6 +147,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
+- **`brief.py`** — the run brief inlined into every agent prompt by `render_agent_prompt`, at the
+  node's `brief:` level (`defaults.brief`, else `minimal`): `minimal` = feature, run mode, this
+  step, documents earlier steps produced; `full` adds stages, gate decisions with feedback and
+  mid-run notes; `none` = nothing. Serving calls keep `run-brief.md` current; `maestroctl brief`
+  prints it.
 - **`decision_log.py`** — the feature's one decision log: `sync` rebuilds
   `decision-log.json`/`.md` from every stage's interview decisions plus the latest queues'
   `settled` (evidence-cited) points; each design stage runs it before its review/approval.

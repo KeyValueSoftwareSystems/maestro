@@ -262,6 +262,7 @@ nodes:
   - id: review_pack
     type: agent
     label: Human review pack
+    brief: full
     instruction: |
       Assemble the release review pack for this feature: what was built (per stack),
       review outcomes, QA results, open risks, and how to verify locally. Open the pack with the

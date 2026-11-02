@@ -55,6 +55,14 @@
         "max_visits": {
           "type": "integer",
           "minimum": 1
+        },
+        "brief": {
+          "enum": [
+            "none",
+            "minimal",
+            "full"
+          ],
+          "description": "run brief inlined into the prompt: none, minimal (default) or full"
         }
       }
     },
@@ -234,6 +242,14 @@
         "fresh": {
           "type": "boolean",
           "description": "Require at least one artifact to be new or changed on every visit."
+        },
+        "brief": {
+          "enum": [
+            "none",
+            "minimal",
+            "full"
+          ],
+          "description": "run brief inlined into the prompt: none, minimal (default) or full"
         },
         "retries": {
           "type": "integer",

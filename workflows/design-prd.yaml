@@ -263,6 +263,7 @@ nodes:
   - id: repair_prd
     type: agent
     label: Repair PRD validation defects
+    brief: none
     model: haiku
     instruction: |
       Repair only these deterministic PRD defects: ${steps.validate_prd.outputs.issues_summary}

@@ -241,6 +241,7 @@ nodes:
   - id: repair_hld
     type: agent
     label: Repair HLD validation defects
+    brief: none
     model: haiku
     instruction: |
       Repair only these deterministic HLD defects: ${steps.validate_hld.outputs.issues_summary}
@@ -288,6 +289,7 @@ nodes:
   - id: arch_review
     type: agent
     label: Architecture review (fresh reviewer)
+    brief: full
     instruction: |
       Review the HLD at .maestro/runs/${inputs.slug}/hld.md before it is approved, as a reviewer
       who did not write it. Read the approved requirement in .maestro/runs/${inputs.slug}/requirement/

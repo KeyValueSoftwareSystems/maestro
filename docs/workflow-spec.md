@@ -179,6 +179,12 @@ a PRD. The action prompt remains the authority: it should name a narrow read/wri
 Pinned skills are resolved only from the active repository's `.agents/skills/`,
 `.claude/skills/`, or `.cursor/skills/` trees; a lead must never search the wider filesystem.
 
+**Run brief.** `brief: none | minimal | full` (or `defaults.brief`; default `minimal`) adds an
+engine-built "Run brief" to the prompt: the feature, run mode, this step and the documents earlier
+steps produced; `full` adds the stage checklist, gate decisions with their feedback, and notes
+recorded mid-run. Use `full` for steps that need the whole picture (reviews, QA, the review pack)
+and `none` for narrow repairs.
+
 ### `interview`
 
 An ordered, durable clarification step. `next` serves one unresolved question as

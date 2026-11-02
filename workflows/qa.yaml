@@ -28,6 +28,7 @@ nodes:
   - id: qa_run
     type: agent
     label: Author & run E2E suite
+    brief: full
     instruction: |
       Automate the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
       into an executable E2E suite (use the project's

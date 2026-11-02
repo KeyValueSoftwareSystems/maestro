@@ -274,6 +274,7 @@ nodes:
   - id: repair_llds
     type: agent
     label: Repair LLD validation defects
+    brief: none
     model: haiku
     instruction: |
       Repair only these deterministic LLD defects: ${steps.validate_llds.outputs.issues_summary}
@@ -351,6 +352,7 @@ nodes:
   - id: readiness_review
     type: agent
     label: Implementation readiness check (fresh reviewer)
+    brief: full
     instruction: |
       Check that the repository LLDs (${steps.lld_scope_init.outputs.lld_paths_csv}) and the test
       cases at .maestro/runs/${inputs.slug}/test-cases.md are ready to implement: no design decision

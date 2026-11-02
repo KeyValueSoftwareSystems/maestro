@@ -21,7 +21,7 @@ The lead agent's whole protocol:
         maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, todo, reset (--step/--all, --cascade), rebase, graph, runs, and note.
+Also: status, todo, brief, reset (--step/--all, --cascade), rebase, graph, runs, and note.
 `next --peek` re-reads without claiming or running.
 
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
@@ -46,6 +46,7 @@ import subprocess
 import sys
 import time
 
+import brief as briefmod
 import resolver
 import state as statemod
 import todo as todomod
@@ -177,6 +178,8 @@ def _serve_action(args, peek=False):
             action = resolver.next_action(run, serial=serial, claim=True)
             if answered or action["action"] in ("run_agent", "run_agents"):
                 statemod.save(args.slug, run.state, args.root)
+            if action["action"] in ("run_agent", "run_agents", "run_lead"):
+                briefmod.write_file(run)  # the run as every dispatched agent sees it
             visits = (run.state["steps"].get(action.get("step") or "") or {}).get("visits")
         if not (auto and action["action"] == "run_script"
                 and _engine_owned(action["argv"], args.root)):
@@ -354,6 +357,18 @@ def cmd_note(args):
         resolver.record_note(run, args.text, step=args.step)
         statemod.save(args.slug, run.state, args.root)
     _print({"ok": True, "notes": len(run.state.get("notes") or [])})
+    return 0
+
+
+def cmd_brief(args):
+    run = resolver.Run(args.slug, args.root)
+    step = args.step or ", ".join(run.state["run"].get("cursors") or []) or "-"
+    if args.step:
+        frame, node = run.node_at(args.step)
+        level = args.level or briefmod.level_for(run, frame, node)
+    else:
+        level = args.level or "full"
+    print(briefmod.build(run, step, level) or "(this step runs without a brief)")
     return 0
 
 
@@ -567,6 +582,12 @@ def build_parser():
     p.add_argument("--text", required=True, help="the user's instruction, verbatim")
     p.add_argument("--step", help="step it relates to (default: the active step[s])")
     p.set_defaults(fn=cmd_note)
+
+    p = sub.add_parser("brief", help="the run brief an agent step receives")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", help="the step whose brief level to use (default: the whole run, full)")
+    p.add_argument("--level", choices=("none", "minimal", "full"))
+    p.set_defaults(fn=cmd_brief)
 
     p = sub.add_parser("status", help="human-readable run status")
     p.add_argument("--slug", required=True)

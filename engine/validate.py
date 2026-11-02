@@ -43,7 +43,8 @@ _TOP_KEYS = {"version", "name", "description", "inputs", "defaults", "start", "n
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
-              "inputs", "outputs", "artifact", "fresh", "retries", "isolate", "ui"} | _ROUTING_KEYS,
+              "inputs", "outputs", "artifact", "fresh", "brief", "retries", "isolate",
+              "ui"} | _ROUTING_KEYS,
     "interview": {"id", "type", "label", "skill", "context", "sections",
                   "questions_artifact", "batch_size", "presentation", "discuss", "artifact", "auto",
                   "ui", "next",
@@ -124,6 +125,8 @@ def validate_doc(doc, where=""):
         err("bad-version", f"unsupported version {doc['version']!r} (expected 1)")
     if "name" in doc and (not isinstance(doc["name"], str) or not _NAME_RE.match(doc["name"])):
         err("bad-name", f"name must be kebab-case: {doc.get('name')!r}")
+    if (doc.get("defaults") or {}).get("brief", "minimal") not in ("none", "minimal", "full"):
+        err("bad-type", "defaults.brief must be 'none', 'minimal' or 'full'")
     if "max_visits" in (doc.get("defaults") or {}):
         mv = doc["defaults"]["max_visits"]
         if not isinstance(mv, int) or mv < 1:
@@ -234,6 +237,8 @@ def _validate_node(node, ids, declared_inputs, where):
             err("artifact-not-string", "artifact must be a string or list of strings")
         if node.get("execution", "worker") not in ("worker", "lead"):
             err("bad-type", "agent execution must be 'worker' or 'lead'")
+        if node.get("brief", "minimal") not in ("none", "minimal", "full"):
+            err("bad-type", "agent brief must be 'none', 'minimal' or 'full'")
     elif ntype == "interview":
         sections = node.get("sections")
         questions_artifact = node.get("questions_artifact")

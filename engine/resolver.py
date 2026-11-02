@@ -1176,6 +1176,10 @@ def _artifact_hashes(run, frame, node):
 
 
 def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None):
+    try:
+        import brief as briefmod  # lazy: brief -> todo -> resolver
+    except ImportError:
+        from . import brief as briefmod
     instruction = run.resolve_text(node["instruction"], frame, missing_ok=True)
     lines = [instruction.strip(), ""]
     if inputs:
@@ -1185,6 +1189,7 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
                 value = json.dumps(value)
             lines.append(f"- {key}: {value}")
         lines.append("")
+    lines.extend(briefmod.prompt_section(run, frame, node, frame.path(node["id"])))
     if skill:
         # Reference the skill by NAME (the harness resolves installed skills from their
         # frontmatter name). The explicit candidates are the three supported repo-scoped
