@@ -1,0 +1,15 @@
+skill: prd-interview
+name: no-reask-of-decided-topic
+prompt: |
+  Write the next PRD question queue (schema_version 2) as JSON in your reply.
+  Feature: admins export the filtered orders report as CSV.
+  Decision log (earlier stages): topic "export-row-limit" decided — exports above 50,000 rows
+  are refused with a message naming the limit (source: user-answer). Topic "export-format"
+  settled by evidence — CSV only (source: requirement/brief.md).
+  Open gaps: who may export (admins only, or also managers?) and whether exports are emailed or
+  downloaded.
+must_include:
+  - '"topic"'
+must_not_include:
+  - '"topic"\s*:\s*"export-row-limit"(?![^}]*follow_up_of)'
+  - '"topic"\s*:\s*"export-format"'

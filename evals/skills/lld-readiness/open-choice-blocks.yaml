@@ -1,0 +1,11 @@
+skill: lld-readiness
+name: open-choice-blocks
+prompt: |
+  Check this repository LLD for readiness and reply with the findings file JSON only.
+  LLD (backend) Proposed changes: "Add a CSV export service. Choose a suitable CSV library and an
+  appropriate batching strategy during implementation. Error handling to be decided by the
+  implementer." The contract defines GET /exports returning 200 text/csv or 422 when over the
+  row limit. Test cases cover AC-01 and AC-02.
+must_include:
+  - '"severity"\s*:\s*"blocking"'
+  - 'library|batching|error'

@@ -257,6 +257,11 @@ python3 engine/validate_tasks.py testdata/tasks.valid.json
 python3 engine/validate_open_questions.py testdata/open-questions.valid.json
 ```
 
+Skill behaviour tests (`evals/skills/<skill>/*.yaml`: a prompt plus expected and forbidden
+output) need a model to run but not to check: `python3 engine/skill_tests.py list` prints the
+cases; run each in a fresh subagent with its skill, save the reply as `<dir>/<id>.txt`, then
+`python3 engine/skill_tests.py check --outputs <dir>`. Run them after editing a skill.
+
 Run one test: `python3 engine/tests/test_resolver.py BackEdgeTest.test_happy_path_no_loop`.
 The `invalid-*` fixtures in `testdata/` and `testdata/workflows/` exist to prove the
 validators *reject* the hard cases — a validator that accepts one is a regression.

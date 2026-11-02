@@ -1,0 +1,13 @@
+skill: design-drift
+name: contract-status-mismatch
+prompt: |
+  Check this diff against the approved design and reply with the findings file JSON only.
+  Contract: POST /exports creates an export job and returns 201 with {"job_id"}.
+  Diff (backend, api/views.py):
+    +    job = ExportJob.objects.create(owner=request.user)
+    +    return JsonResponse({"job_id": job.id}, status=200)
+  LLD: "POST /exports returns 201 Created with the job id."
+must_include:
+  - '"severity"\s*:\s*"blocking"'
+  - '"area"\s*:\s*"contract"'
+  - '201'

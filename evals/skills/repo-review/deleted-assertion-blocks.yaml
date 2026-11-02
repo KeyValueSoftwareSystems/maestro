@@ -1,0 +1,13 @@
+skill: repo-review
+name: deleted-assertion-blocks
+prompt: |
+  Review this change and reply with your review summary and last-line JSON.
+  Engine checks passed. Existing test files this branch changed (engine-detected):
+  tests/test_totals.py (modified).
+  Diff tests/test_totals.py:
+    -    assert order.total == Decimal("108.00")
+    +    assert order.total is not None
+  The approved LLD did not change how totals are calculated.
+must_include:
+  - '"blocking"\s*:\s*true'
+  - 'test_totals'

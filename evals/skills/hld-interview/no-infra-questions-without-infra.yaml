@@ -1,0 +1,16 @@
+skill: hld-interview
+name: no-infra-questions-without-infra
+prompt: |
+  Write the next architecture question queue (schema_version 2) as JSON in your reply.
+  Infrastructure profile: level none — no infrastructure definitions in this workspace; ask no
+  infrastructure questions.
+  Approved PRD (summary): admins can export the filtered orders report as CSV from the existing
+  reports page; exports over 50,000 rows are refused with a reason. Non-functional requirements:
+  None beyond the existing service standards.
+  Codebase map: one Django service (orders, reports apps) and a React admin app that calls it.
+  Confirmed HLD decisions so far: none. Decision log: empty.
+must_include:
+  - '"schema_version"\s*:\s*2'
+  - '"topic"'
+must_not_include:
+  - 'kubernetes|helm|terraform|autoscal|replica|ingress|load balancer'

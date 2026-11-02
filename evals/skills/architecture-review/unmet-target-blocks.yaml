@@ -1,0 +1,12 @@
+skill: architecture-review
+name: unmet-target-blocks
+prompt: |
+  Review this HLD and reply with the findings file JSON only.
+  Requirement Non-functional requirements: exports of up to 50,000 rows return within 2 seconds
+  at p95.
+  HLD Proposed design: the export endpoint loads every matching order row into memory, renders
+  the CSV synchronously in the request thread and returns it. No pagination, streaming, async job
+  or cache is mentioned anywhere. Interfaces: the admin app calls GET /exports (synchronous).
+must_include:
+  - '"severity"\s*:\s*"blocking"'
+  - '"area"\s*:\s*"scale'

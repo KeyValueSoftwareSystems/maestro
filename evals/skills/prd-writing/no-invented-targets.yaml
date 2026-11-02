@@ -1,0 +1,15 @@
+skill: prd-writing
+name: no-invented-targets
+prompt: |
+  Write the final PRD in your reply. Feature slug: order-export.
+  Confirmed decisions: admins export the filtered orders report as CSV from the reports page;
+  exports above 50,000 rows are refused with a message naming the limit; non-admins never see
+  the export button. Nobody stated a response time, availability or retention target, and the
+  feature adds no data that must be retained.
+must_include:
+  - '^## Non-functional requirements'
+  - 'None beyond the existing service standards'
+  - 'AC-01:'
+must_not_include:
+  - '\d+\s?(ms|milliseconds|seconds)\b'
+  - '99\.\d+\s?%'
