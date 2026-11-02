@@ -147,6 +147,7 @@ def _stub_agent(root, act, slug=None):
             context = os.path.join(os.path.dirname(full), context_name)
             questions = [] if os.path.exists(context) else [{
                 "id": "simulated-failure",
+                "topic": context_name.split("-")[0] + "-simulated-failure",
                 "title": "Failure behavior",
                 "question": "What should the user see when the simulated action fails?",
                 "why": "This confirms a material user-visible edge case.",

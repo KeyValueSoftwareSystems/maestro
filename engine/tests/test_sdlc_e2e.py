@@ -161,6 +161,7 @@ class SdlcE2E(unittest.TestCase):
             decisions = os.path.join(os.path.dirname(full), context_name)
             questions = [] if os.path.exists(decisions) else [{
                 "id": "conflict-behavior",
+                "topic": context_name.split("-")[0] + "-stale-request-outcome",
                 "title": "Conflicting action",
                 "question": "What should the user see if another action makes this request stale?",
                 "why": "This defines a material failure and recovery path.",
@@ -380,7 +381,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "repo_checks" in a or "assumptions.py" in a
                                    or "prd_source.py" in a or "ac_trace.py" in a
                                    or "qa_env.py" in a or "deliver.py" in a
-                                   or "infra_scan.py" in a
+                                   or "infra_scan.py" in a or "decision_log.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -497,6 +498,11 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([steps.index(step) for step in order],
                          sorted(steps.index(step) for step in order))
         self.assertLess(steps.index("delivery/finalize_implementation"), steps.index("delivery/qa/qa_run"))
+        # one decision log across the design stages, shown at each approval
+        log = json.loads(Path(self.tmp, ".maestro/runs/demo/decision-log.json").read_text())
+        self.assertEqual(sorted({e["stage"] for e in log["entries"]}), ["HLD", "LLD", "PRD"])
+        self.assertIn("Decisions: 1 decision(s)", self.prompts["design/prd/prd_approval"][0])
+        self.assertIn("decision-log.md", self.prompts["design/hld/hld_approval"][0])
         # after release approval: the verified branches are reported (default branch mode:
         # nothing pushed), then lessons are harvested
         self.assertLess(steps.index("archive/deliver"), steps.index("archive/harvest/retrospect"))
@@ -765,8 +771,9 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         hld = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/hld/")]
         start = hld.index("arch_review")
-        self.assertEqual(hld[start:start + 5], ["arch_review", "revise_from_review",
-                                                "validate_hld", "arch_review", "hld_approval"])
+        self.assertEqual(hld[start:start + 6], ["arch_review", "revise_from_review",
+                                                "validate_hld", "sync_decisions", "arch_review",
+                                                "hld_approval"])
         self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
 
     def test_design_mode_asks_only_for_prd_and_hld_approval(self):
@@ -856,8 +863,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("test_cases")
-        self.assertEqual(lld[start:start + 5], ["test_cases", "trace_test_cases", "test_cases",
-                                                "trace_test_cases", "readiness_review"])
+        self.assertEqual(lld[start:start + 6], ["test_cases", "trace_test_cases", "test_cases",
+                                                "trace_test_cases", "sync_decisions",
+                                                "readiness_review"])
         self.assertEqual(len(calls), 2)
 
     def test_auto_mode_stops_at_release_when_a_criterion_fails_qa(self):
@@ -929,8 +937,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
-        self.assertEqual(lld[start:start + 7], ["readiness_review", "revise_llds", "validate_llds",
-                                                "test_cases", "trace_test_cases",
+        self.assertEqual(lld[start:start + 8], ["readiness_review", "revise_llds", "validate_llds",
+                                                "test_cases", "trace_test_cases", "sync_decisions",
                                                 "readiness_review", "lld_approval"])
 
     def test_lld_change_request_needs_feedback_and_is_a_targeted_revision(self):

@@ -20,7 +20,8 @@ The approved PRD owns product behavior. The decision artifact owns clarified arc
 For `source: user-answer`, use only the stored `answer`; never complete it from proposal text. Stop
 instead of writing if a blocking `must_resolve` fact is absent or confirmed decisions conflict.
 
-Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, and
+Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, `evidence` (settled by the cited
+source), and
 `user-raised` are confirmed. State an `assumption` as the chosen direction marked unverified, and
 list the risk of it being wrong under Delivery and risks. A `deferred` decision is not settled: a
 non-blocking one goes to Open questions and the deferred-question ledger; a blocking one belongs in

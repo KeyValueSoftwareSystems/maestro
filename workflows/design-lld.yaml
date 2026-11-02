@@ -91,6 +91,12 @@ nodes:
 
       Write schema version 2 with 3-7 grouped questions when several gaps remain, fewer when nearly
       clear, and an empty queue only when every blocking decision is concrete and consistent and
+      Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
+      Never ask a topic already decided there or in this stage's decisions: give every question a
+      short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
+      `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
+      document, the code or the docs already settle a point, record it under `settled`
+      ({topic, title, decision, source: "<path>[#section|:line]"}) instead of asking.
       the latest direction is confirmed. Validate it before completing.
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
@@ -118,7 +124,7 @@ nodes:
   - id: validate_lld_questions
     type: script
     label: Validate repository question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
       - {when: "${steps.validate_lld_questions.outputs.valid} == false", to: prepare_lld_questions}
       - {when: "${steps.validate_lld_questions.outputs.state} == clear", to: author_llds}
@@ -208,7 +214,7 @@ nodes:
   - id: validate_lld_post_questions
     type: script
     label: Validate repository LLD post-check
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
       - {when: "${steps.validate_lld_post_questions.outputs.valid} == false", to: author_llds}
       - {when: "${steps.validate_lld_post_questions.outputs.state} == ask", to: lld_post_interview}
@@ -318,8 +324,29 @@ nodes:
     label: Every acceptance criterion has a test case?
     run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]
     routes:
-      - {when: "${steps.trace_test_cases.outputs.valid} == true", to: readiness_review}
+      - {when: "${steps.trace_test_cases.outputs.valid} == true", to: sync_decisions}
       - {to: test_cases}
+
+  # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
+  # stages never re-ask a decided topic and the approval shows every decision.
+  - id: sync_decisions
+    type: script
+    label: Update the decision log
+    run:
+      - python3
+      - .maestro/engine/decision_log.py
+      - sync
+      - --root
+      - .
+      - --log
+      - ".maestro/runs/${inputs.slug}/decision-log.json"
+      - --stage
+      - "PRD=.maestro/runs/${inputs.slug}/prd-context.json,.maestro/runs/${inputs.slug}/prd-questions.json"
+      - --stage
+      - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
+      - --stage
+      - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+    next: readiness_review
 
   - id: readiness_review
     type: agent
@@ -362,6 +389,7 @@ nodes:
       Repository LLDs ready: ${steps.lld_scope_init.outputs.lld_paths_csv}
       Test cases: .maestro/runs/${inputs.slug}/test-cases.md
       Readiness check: ${steps.readiness_review.outputs.summary}
+      Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
       Report: .maestro/runs/${inputs.slug}/reviews/lld-readiness.md
 
       Approving starts implementation of every repository in scope.

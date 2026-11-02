@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
-"""Validate a feature-specific PRD clarification queue without using a model."""
+"""Validate a feature-specific clarification queue (PRD, HLD or LLD) without using a model.
+
+Besides structure, a schema-version-2 queue is checked against the feature's decision log
+(`--log`, written by decision_log.py) and the stage's own decisions:
+  - every question names a `topic` (with --require-topics); a topic already decided in any stage
+    is not asked again unless the question is the single follow-up (`follow_up_of: <id>`) of that
+    decision — at most one follow-up per question;
+  - `settled` lists points the requirement, design, code or docs already answer, each with the
+    `source` that settles it (a path that must exist, optionally `#section` or `:line`), so they
+    are recorded instead of asked.
+"""
 
 from __future__ import annotations
 
@@ -17,6 +27,7 @@ QUESTION_KINDS = {"decision", "direction"}
 # Sources that confirm a decision. A parked (`deferred`) answer never confirms a direction.
 CONFIRMING_SOURCES = {
     "accepted-proposal", "chosen-alternative", "user-answer", "assumption", "legacy-confirmed",
+    "evidence",
 }
 ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 PRD_SECTION_TITLES = {
@@ -50,6 +61,95 @@ def _decisions_doc(path):
     if error or not isinstance(doc, dict):
         return {}
     return doc
+
+
+def _decided_entries(decisions_doc, log_doc):
+    """Every decision already on record: this stage's decisions plus the feature's decision log."""
+    entries = []
+    for item in decisions_doc.get("decisions") or []:
+        if isinstance(item, dict):
+            entries.append({**item, "stage": item.get("stage") or "this stage"})
+    for item in log_doc.get("entries") or []:
+        if isinstance(item, dict):
+            entries.append(item)
+    return entries
+
+
+def _source_exists(source, root):
+    path = re.split(r"[#:]", source.strip(), maxsplit=1)[0].strip()
+    return bool(path) and (Path(root) / path).exists()
+
+
+def _validate_topics(questions, settled, entries, root, require_topics, errors):
+    decided = {}
+    followed = set()
+    for entry in entries:
+        topic = entry.get("topic")
+        if isinstance(topic, str) and topic:
+            decided.setdefault(topic, entry)
+        if isinstance(entry.get("follow_up_of"), str):
+            followed.add(entry["follow_up_of"])
+    by_id = {e.get("id"): e for e in entries if isinstance(e.get("id"), str)}
+    asked = {}
+    for index, question in enumerate(questions, 1):
+        if not isinstance(question, dict):
+            continue
+        where = f"questions[{index}]"
+        topic = question.get("topic")
+        if topic is None:
+            if require_topics:
+                errors.append(f"{where}.topic is required: a short kebab-case key for what it decides")
+            continue
+        if not isinstance(topic, str) or not ID_RE.match(topic):
+            errors.append(f"{where}.topic must be a kebab-case key")
+            continue
+        if topic in asked:
+            errors.append(f"{where}.topic {topic!r} is already asked by {asked[topic]} in this queue")
+        asked[topic] = question.get("id", where)
+        original = question.get("follow_up_of")
+        if original is not None:
+            target = by_id.get(original)
+            if target is None:
+                errors.append(f"{where}.follow_up_of {original!r} is not a recorded decision")
+            elif target.get("topic") not in (None, topic):
+                errors.append(f"{where}.follow_up_of {original!r} decided topic "
+                              f"{target.get('topic')!r}, not {topic!r}")
+            elif original in followed:
+                errors.append(f"{where}: {original!r} already had its one follow-up; use the "
+                              "recorded answers")
+            followed.add(original)
+        elif topic in decided:
+            entry = decided[topic]
+            errors.append(f"{where}.topic {topic!r} is already decided ({entry.get('stage')}: "
+                          f"{entry.get('id')}); use that decision, or ask one follow-up with "
+                          "follow_up_of")
+    if settled is None:
+        return 0
+    if not isinstance(settled, list):
+        errors.append("settled must be an array")
+        return 0
+    for index, item in enumerate(settled, 1):
+        where = f"settled[{index}]"
+        if not isinstance(item, dict):
+            errors.append(f"{where} must be an object")
+            continue
+        unknown = set(item) - {"topic", "title", "decision", "source"}
+        if unknown:
+            errors.append(f"{where} has unknown field(s): {', '.join(sorted(unknown))}")
+        for field in ("topic", "title", "decision", "source"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                errors.append(f"{where}.{field} must be a non-empty string")
+        topic = item.get("topic")
+        if isinstance(topic, str) and topic:
+            if not ID_RE.match(topic):
+                errors.append(f"{where}.topic must be a kebab-case key")
+            elif topic in asked:
+                errors.append(f"{where}.topic {topic!r} is both settled and asked")
+        source = item.get("source")
+        if root is not None and isinstance(source, str) and source.strip() \
+                and not _source_exists(source, root):
+            errors.append(f"{where}.source {source!r} does not exist: cite the file that settles it")
+    return len(settled)
 
 
 def _decided_ids(doc):
@@ -124,7 +224,8 @@ def _validate_alternatives(where, alternatives, proposal, errors):
             errors.append(f"{at}.tradeoff exceeds 30 words")
 
 
-def validate(path, decisions_path=None, require_version=None, require_direction=False):
+def validate(path, decisions_path=None, require_version=None, require_direction=False,
+             log_path=None, require_topics=False, root=None):
     errors, warnings = [], []
     doc, error = _read(path)
     if error:
@@ -153,7 +254,7 @@ def validate(path, decisions_path=None, require_version=None, require_direction=
             continue
         allowed = {"id", "title", "question", "why", "proposal"}
         if schema_version == 2:
-            allowed.update({"must_resolve", "alternatives", "kind"})
+            allowed.update({"must_resolve", "alternatives", "kind", "topic", "follow_up_of"})
         unknown = set(question) - allowed
         if unknown:
             errors.append(f"{where} has unknown field(s): {', '.join(sorted(unknown))}")
@@ -244,6 +345,10 @@ def validate(path, decisions_path=None, require_version=None, require_direction=
                     errors.append("empty queue cannot declare unresolved decision facts")
                 if contradictions:
                     errors.append("empty queue cannot declare decision contradictions")
+    if schema_version == 2:
+        entries = _decided_entries(decisions_doc, _decisions_doc(log_path))
+        doc["_settled_count"] = _validate_topics(
+            questions, doc.get("settled"), entries, root, require_topics, errors)
     if require_direction and not questions:
         direction_error = _direction_error(decisions_doc)
         if direction_error:
@@ -260,11 +365,16 @@ def main(argv=None):
         "--require-direction", action="store_true",
         help="an empty queue also needs a confirmed kind=direction decision newer than the rest",
     )
+    parser.add_argument("--log", help="the feature's decision log (decision_log.py)")
+    parser.add_argument("--require-topics", action="store_true",
+                        help="every question must name the topic it decides")
+    parser.add_argument("--root", help="workspace root that settled sources are relative to")
     parser.add_argument("--report", action="store_true", help="always exit 0 for workflow routing")
     args = parser.parse_args(argv)
     errors, warnings, doc = validate(
         args.path, decisions_path=args.decisions, require_version=args.require_version,
-        require_direction=args.require_direction,
+        require_direction=args.require_direction, log_path=args.log,
+        require_topics=args.require_topics, root=args.root,
     )
     questions = doc.get("questions") if isinstance(doc, dict) else []
     count = len(questions) if isinstance(questions, list) else 0
@@ -273,6 +383,7 @@ def main(argv=None):
         "valid": not errors,
         "state": "clear" if not errors and count == 0 else "ask",
         "question_count": count,
+        "settled_count": (doc or {}).get("_settled_count", 0) if isinstance(doc, dict) else 0,
         "error_count": len(errors),
         "warning_count": len(warnings),
         "issues_summary": " | ".join(issues[:8]) if issues else "Question queue is valid",

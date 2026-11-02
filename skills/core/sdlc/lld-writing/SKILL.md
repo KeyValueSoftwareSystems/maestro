@@ -25,7 +25,8 @@ application repositories consume; use the matching infrastructure pack when it i
 Preserve PRD/HLD decisions. For `source: user-answer`, use only the stored answer. Stop rather than
 guess if a blocking `must_resolve` fact remains absent or decisions conflict.
 
-Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, and
+Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, `evidence` (settled by the cited
+source), and
 `user-raised` are confirmed. Mark an `assumption` as unverified where it shapes the design and in
 Verification. A `deferred` decision is unresolved: never write it as decided; if it blocks the LLD,
 put it back in the post-check with sharper options. A confirmed `kind: direction` decision is the

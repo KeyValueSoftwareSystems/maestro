@@ -89,6 +89,17 @@ make explicit. Optional `alternatives` holds at most two `{label, tradeoff}` obj
 queue. Both arrays must be empty when `questions` is empty. Keep IDs stable and feature-specific;
 they are internal and must not appear in the PRD.
 
+**One decision log, no repeats.** Your instructions may supply the feature's decision log (every
+earlier stage's decisions) and this stage's decisions. Give every question a short kebab-case
+`topic` naming what it decides. Never ask a topic already decided in either; to refine a recorded
+answer, ask at most one follow-up with `follow_up_of: <that decision's id>`. Rephrasing a decided
+question under a new id is still a repeat.
+
+**Decide from evidence first.** Before asking, check the requirement, approved documents, code and
+docs. A point they already settle is not a question: record it under the queue's `settled` array
+as `{topic, title, decision, source}`, where `source` is the file that settles it
+(`path`, `path#section` or `path:line`). The engine records it as an evidence-settled decision.
+
 ## Conversation
 
 The user may not know an answer. That is a normal outcome, not a failure — help them get there.

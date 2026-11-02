@@ -1047,6 +1047,8 @@ def _interview_sections(run, frame, node):
             "why": question["why"].strip(),
             "must_resolve": list(question.get("must_resolve") or []),
             "kind": question.get("kind", "decision"),
+            "topic": question.get("topic"),
+            "follow_up_of": question.get("follow_up_of"),
             "alternatives": [
                 {"label": alt["label"].strip(), "tradeoff": alt["tradeoff"].strip()}
                 for alt in question.get("alternatives") or []
@@ -1066,6 +1068,24 @@ def _interview_sections(run, frame, node):
             "alternatives": [],
         })
     return sections
+
+
+def _queue_settled(run, frame, node):
+    """The served queue's `settled` entries (validated with the queue), or []."""
+    questions_artifact = node.get("questions_artifact")
+    if not questions_artifact:
+        return []
+    rel = run.resolve_text(questions_artifact, frame)
+    full = rel if os.path.isabs(rel) else os.path.join(run.root, rel)
+    try:
+        with open(full, encoding="utf-8") as fh:
+            document = json.load(fh)
+    except (OSError, ValueError):
+        return []
+    settled = document.get("settled") if isinstance(document, dict) else None
+    return [item for item in settled or [] if isinstance(item, dict)
+            and all(isinstance(item.get(k), str) and item[k].strip()
+                    for k in ("topic", "title", "decision", "source"))]
 
 
 def _interview_action(run, frame, node, path, entry):
@@ -1372,6 +1392,9 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns, 
             "source": turn.get("source", "user-answer"),
             "confirmed_at": turn.get("confirmed_at", now),
         }
+        for key in ("topic", "follow_up_of"):
+            if section.get(key):
+                decision[key] = section[key]
         if turn.get("discussion"):
             decision["discussion"] = turn["discussion"]
         if turn.get("by"):
@@ -1400,6 +1423,18 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns, 
             "confirmed_at": item.get("raised_at", now),
         }
         raised_ids.append(raised_id)
+    # Points the queue recorded as already settled by the requirement, design, code or docs: kept
+    # as confirmed decisions with their source, so no later round or stage asks them.
+    for item in _queue_settled(run, frame, node):
+        settled_id = f"settled-{item['topic']}"
+        if settled_id in by_id:
+            continue
+        by_id[settled_id] = {
+            "id": settled_id, "topic": item["topic"], "title": item["title"].strip(),
+            "kind": "decision", "question": "", "why": "", "proposal": "",
+            "alternatives": [], "must_resolve": [], "answer": item["decision"].strip(),
+            "source": "evidence", "evidence": item["source"].strip(), "confirmed_at": now,
+        }
     rounds = document.get("rounds") if isinstance(document.get("rounds"), list) else []
     rounds.append({
         "confirmed_at": now,

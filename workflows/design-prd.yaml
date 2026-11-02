@@ -104,7 +104,7 @@ nodes:
   - id: validate_normalized
     type: script
     label: Validate the remaining questions
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
       - {when: "${steps.validate_normalized.outputs.valid} == false", to: normalize_prd}
       - {when: "${steps.validate_normalized.outputs.state} == clear", to: validate_prd}
@@ -145,6 +145,12 @@ nodes:
       fewer when nearly clear, and an empty questions array only after all must_resolve facts are
       explicit and no decisions conflict. Every question declares 1-4 short must_resolve facts.
       Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
+      Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
+      Never ask a topic already decided there or in this stage's decisions: give every question a
+      short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
+      `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
+      document, the code or the docs already settle a point, record it under `settled`
+      ({topic, title, decision, source: "<path>[#section|:line]"}) instead of asking.
       Validate the file with the supplied deterministic validator before completing.
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
@@ -172,7 +178,7 @@ nodes:
   - id: validate_prd_questions
     type: script
     label: Validate Grill question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/prd-questions.json", --decisions, ".maestro/runs/${inputs.slug}/prd-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
       - {when: "${steps.validate_prd_questions.outputs.valid} == false", to: prepare_prd_questions}
       - {when: "${steps.validate_prd_questions.outputs.state} == clear", to: author_prd}
@@ -251,7 +257,7 @@ nodes:
     max_visits: 12
     on_exhausted: abort
     routes:
-      - {when: "${steps.validate_prd.outputs.valid} == true", to: prd_approval}
+      - {when: "${steps.validate_prd.outputs.valid} == true", to: sync_decisions}
       - {to: repair_prd}
 
   - id: repair_prd
@@ -281,6 +287,27 @@ nodes:
     max_visits: 6
     next: validate_prd
 
+  # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
+  # stages never re-ask a decided topic and the approval shows every decision.
+  - id: sync_decisions
+    type: script
+    label: Update the decision log
+    run:
+      - python3
+      - .maestro/engine/decision_log.py
+      - sync
+      - --root
+      - .
+      - --log
+      - ".maestro/runs/${inputs.slug}/decision-log.json"
+      - --stage
+      - "PRD=.maestro/runs/${inputs.slug}/prd-context.json,.maestro/runs/${inputs.slug}/prd-questions.json"
+      - --stage
+      - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
+      - --stage
+      - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+    next: prd_approval
+
   - id: prd_approval
     type: gate
     label: PRD approval
@@ -288,6 +315,7 @@ nodes:
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
 
       ${steps.prd_source.outputs.summary}
+      Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
       Project context (agent summary): ${inputs.project_context}
       Feature goal (agent summary): ${steps.feature_goal.outputs.feature_goal}
 

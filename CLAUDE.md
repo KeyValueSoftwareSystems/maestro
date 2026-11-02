@@ -147,6 +147,12 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
+- **`decision_log.py`** — the feature's one decision log: `sync` rebuilds
+  `decision-log.json`/`.md` from every stage's interview decisions plus the latest queues'
+  `settled` (evidence-cited) points; each design stage runs it before its review/approval.
+  `validate_prd_questions.py --log --require-topics --root` refuses a question on an already
+  decided topic (any stage) unless it is that decision's single `follow_up_of`, and checks every
+  `settled` source exists.
 - **`ac_trace.py`** — the acceptance-criteria trace: `design` checks every PRD `AC-xx` is traced
   by a test case (`### TC-…` blocks) and none is unknown; `qa` joins criteria → cases → QA's
   `qa/results.json` into `ac-trace.md` with `all_passed`, which the release autopilot requires.

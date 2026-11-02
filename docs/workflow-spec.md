@@ -242,7 +242,12 @@ For feature-specific follow-ups, a preceding agent writes a JSON queue containin
 `why`, `proposal`, and one to four short `must_resolve` facts. A question may add up to two
 `alternatives` (`{label, tradeoff}`) and a `kind`: `decision` (default) or `direction`, whose
 proposal (up to 150 words) summarises the whole intended design for the human to confirm or
-challenge. `audit.unresolved` and `audit.contradictions` explain why another round exists. Both
+challenge. `audit.unresolved` and `audit.contradictions` explain why another round exists. A question may
+name the `topic` it decides and, to refine a recorded answer, `follow_up_of` that decision's id;
+a queue may list `settled` points (`{topic, title, decision, source}`) the evidence already answers
+— the engine records those as `evidence` decisions. With `--log` (the feature's decision log),
+`--require-topics` and `--root`, the validator refuses a decided topic unless it is that
+decision's one follow-up, and a `settled` source that does not exist. Both
 arrays must be empty before an empty queue may declare the interview clear. With
 `validate_prd_questions.py --require-direction` (the shipped HLD and LLD queues), an empty queue
 also needs a confirmed `direction` decision no older than any other decision, so a design document

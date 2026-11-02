@@ -204,6 +204,12 @@ decision (including assumptions a person chose in any mode); the pack opens with
 
 ## Interviews are conversations
 
+Every PRD, HLD and LLD decision lands in one decision log per feature
+(`.maestro/runs/<slug>/decision-log.md`), shown at each design approval. A later stage never
+re-asks a topic an earlier one decided — the engine checks each question's topic against the log —
+and a decision gets at most one follow-up. Before asking, Maestro records what the requirement,
+approved documents, code or docs already settle, citing the source, instead of asking you.
+
 PRD, HLD and LLD questions are not a form to fill in. Each popup question offers:
 
 - **the recommendation**, with why it matters;

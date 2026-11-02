@@ -68,6 +68,12 @@ nodes:
       and an empty queue only when all material architecture facts are concrete and consistent and
       the latest direction is confirmed. Every question declares 1-4 short must_resolve facts.
       Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
+      Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
+      Never ask a topic already decided there or in this stage's decisions: give every question a
+      short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
+      `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
+      document, the code or the docs already settle a point, record it under `settled`
+      ({topic, title, decision, source: "<path>[#section|:line]"}) instead of asking.
       Validate before completing.
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
@@ -94,7 +100,7 @@ nodes:
   - id: validate_hld_questions
     type: script
     label: Validate architecture question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --require-direction, --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
       - {when: "${steps.validate_hld_questions.outputs.valid} == false", to: prepare_hld_questions}
       - {when: "${steps.validate_hld_questions.outputs.state} == clear", to: author_hld}
@@ -198,7 +204,7 @@ nodes:
   - id: validate_hld_post_questions
     type: script
     label: Validate HLD post-check
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --report]
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
       - {when: "${steps.validate_hld_post_questions.outputs.valid} == false", to: author_hld}
       - {when: "${steps.validate_hld_post_questions.outputs.state} == ask", to: hld_post_interview}
@@ -229,7 +235,7 @@ nodes:
     max_visits: 12
     on_exhausted: abort
     routes:
-      - {when: "${steps.validate_hld.outputs.valid} == true", to: arch_review}
+      - {when: "${steps.validate_hld.outputs.valid} == true", to: sync_decisions}
       - {to: repair_hld}
 
   - id: repair_hld
@@ -257,6 +263,27 @@ nodes:
       - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
     max_visits: 6
     next: validate_hld
+
+  # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
+  # stages never re-ask a decided topic and the approval shows every decision.
+  - id: sync_decisions
+    type: script
+    label: Update the decision log
+    run:
+      - python3
+      - .maestro/engine/decision_log.py
+      - sync
+      - --root
+      - .
+      - --log
+      - ".maestro/runs/${inputs.slug}/decision-log.json"
+      - --stage
+      - "PRD=.maestro/runs/${inputs.slug}/prd-context.json,.maestro/runs/${inputs.slug}/prd-questions.json"
+      - --stage
+      - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
+      - --stage
+      - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+    next: arch_review
 
   - id: arch_review
     type: agent
@@ -334,6 +361,7 @@ nodes:
     prompt: |
       HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
       Architecture review: ${steps.arch_review.outputs.summary}
+      Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
       Report: .maestro/runs/${inputs.slug}/reviews/architecture.md
 
       Review the document and the review, then choose.
