@@ -310,6 +310,8 @@ class AutoPolicyValidationTest(unittest.TestCase):
     def test_valid_policy(self):
         self.assertEqual(self.issues({"option": "ok", "modes": ["design"],
                                       "when": "${steps.g.outputs.choice} == ok"}), [])
+        self.assertEqual(self.issues({"option": "ok", "when": [
+            "${steps.g.outputs.choice} == ok", "${steps.g.outputs.done} == true"]}), [])
 
     def test_bad_policies(self):
         for auto, fragment in (
@@ -319,6 +321,9 @@ class AutoPolicyValidationTest(unittest.TestCase):
                 ({"option": "ok", "modes": ["human"]}, "design/auto"),
                 ({"option": "ok", "modes": []}, "design/auto"),
                 ({"option": "ok", "when": "a === b"}, "auto.when"),
+                ({"option": "ok", "when": ["${steps.g.outputs.choice} == ok", "a === b"]},
+                 "auto.when"),
+                ({"option": "ok", "when": []}, "list of conditions"),
                 ({"option": "ok", "after": 1}, "unknown key"),
                 ("ok", "must be a map")):
             with self.subTest(auto=auto):

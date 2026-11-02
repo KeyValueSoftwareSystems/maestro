@@ -90,7 +90,10 @@ scenario's spec file (batch-load the fixture manifest once) and return `spec_pat
 ## Output
 Write these to the artifact path(s) your instructions specify (the orchestrator passes them;
 standalone, use a sensible dir you choose): a coverage note (journeys covered,
-negatives covered, out-of-scope, data strategy), the run report, and the `tasks.json`.
+negatives covered, out-of-scope, data strategy), the run report, the `tasks.json`, and — when your
+instructions ask for it — a per-case results file: every catalog case ID with `passed`, `failed`
+or `skipped` and a short note for each failure or skip. Every catalog case appears; a case you did
+not automate is `skipped` with the reason, never left out or reported as passed.
 
 ## Definition of done
 Critical journeys + key negatives automated and green in a clean env; tests isolated and

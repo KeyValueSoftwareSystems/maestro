@@ -32,6 +32,8 @@ path you choose (and tell the user where).
    and any assumption a case depends on.
 
 ## Test-case template (every case)
+Start each case with a heading whose first word is its ID (`### TC-<slug>-001 — <title>`), so a
+checker can find every case and what it traces; journey headings sit one level above the cases.
 - **ID** — stable, e.g. `TC-<slug>-001`.
 - **Title** — the behavior in one line.
 - **Type** — positive | negative | edge.
@@ -41,7 +43,8 @@ path you choose (and tell the user where).
 - **Expected result** — observable outcome + the contract outcome it must match (status,
   error envelope, side effect).
 - **Test data** — the inputs the case seeds (self-contained; no shared mutable state).
-- **Traces** — acceptance-criterion id(s) and/or contract operation(s) covered.
+- **Traces** — acceptance-criterion id(s) written exactly as the requirement writes them (`AC-01`)
+  and/or contract operation(s) covered. Never invent or renumber a criterion id.
 
 ## Coverage standards (the catalog must satisfy)
 - **Every acceptance criterion** has ≥1 case; **every contract operation** has a happy case
@@ -63,6 +66,9 @@ Write the catalog to the path your instructions specify, containing:
 - A **coverage matrix** mapping each acceptance criterion / contract operation → the case IDs
   that cover it (prove nothing is uncovered).
 - The **cases**, grouped by journey, each following the template above.
+
+When your instructions supply trace feedback (an uncovered criterion, or an id the requirement
+does not have), fix exactly that: add or correct the cases named, keep every other case as is.
 
 ## Definition of done
 Every acceptance criterion and contract operation is covered by ≥1 traceable case; negatives,

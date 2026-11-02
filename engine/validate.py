@@ -192,12 +192,18 @@ def _validate_auto(node, err, keys):
     if modes is not None and not (
             isinstance(modes, list) and modes and all(m in ("design", "auto") for m in modes)):
         err("bad-type", f"{kind} auto.modes must be a non-empty list of design/auto")
-    cond = auto.get("when")
-    if cond is not None:
-        try:
-            condctl.parse(cond)
-        except condctl.CondError as exc:
-            err("bad-condition", f"{kind} auto.when: {exc}")
+    conds = auto.get("when")
+    if conds is not None:
+        if isinstance(conds, str):
+            conds = [conds]
+        if not isinstance(conds, list) or not conds or not all(isinstance(c, str) for c in conds):
+            err("bad-type", f"{kind} auto.when must be a condition or a list of conditions")
+            conds = []
+        for cond in conds:
+            try:
+                condctl.parse(cond)
+            except condctl.CondError as exc:
+                err("bad-condition", f"{kind} auto.when: {exc}")
     return auto
 
 

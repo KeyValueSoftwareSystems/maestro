@@ -27,19 +27,22 @@ readiness.
    the pack with it: every assumption and every item left open, as written, and every gate
    answered without a person. These are guesses nobody confirmed; never fold them into
    "what changed" or soften them.
-1. **What changed** — feature summary + per-stack change list.
-2. **Why** — link the requirement/HLD; the problem solved.
-3. **Files changed** — grouped by area; call out anything security/auth/data-sensitive.
-4. **API / DB / UI impact** — contract changes (breaking?), migrations (+ rollback), new UI states.
-5. **Tests & proof** — per repository, the commands run and their pass/fail from the
+1. **Acceptance-criteria trace** — when your instructions supply one, show it as written: each
+   criterion, the cases that cover it, and its result. A criterion that is failing or not run
+   makes the recommendation "not-ready" unless the human already accepted it.
+2. **What changed** — feature summary + per-stack change list.
+3. **Why** — link the requirement/HLD; the problem solved.
+4. **Files changed** — grouped by area; call out anything security/auth/data-sensitive.
+5. **API / DB / UI impact** — contract changes (breaking?), migrations (+ rollback), new UI states.
+6. **Tests & proof** — per repository, the commands run and their pass/fail from the
    verification receipt, checks that were skipped, and each existing test the branch changed
    with the reviewer's justification; coverage only where a receipt records it; QA journeys
    covered; screenshots / Playwright traces for frontend.
-6. **Review findings fixed** — with the reviewer + severity.
-7. **Findings intentionally NOT fixed** — each with a reason and risk acceptance.
-8. **Risks & limitations** — known issues, perf/scale caveats, follow-ups.
-9. **Rollout & backout** — flag state, phased plan, metrics to watch, how to revert.
-10. **Decision needed** — approve / changes requested / reject, and exactly what to approve
+7. **Review findings fixed** — with the reviewer + severity.
+8. **Findings intentionally NOT fixed** — each with a reason and risk acceptance.
+9. **Risks & limitations** — known issues, perf/scale caveats, follow-ups.
+10. **Rollout & backout** — flag state, phased plan, metrics to watch, how to revert.
+11. **Decision needed** — approve / changes requested / reject, and exactly what to approve
     (e.g. merge order backend → frontend).
 
 ## Edge cases to represent honestly

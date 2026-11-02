@@ -33,6 +33,10 @@ nodes:
       On a re-run after a fix round, reuse the existing suite under .maestro/runs/${inputs.slug}/qa/:
       re-run the specs that failed in the previous report first, author only specs that are still
       missing, and run the full suite once at the end — do not re-author passing specs.
+      Record each catalog case's result in .maestro/runs/${inputs.slug}/qa/results.json:
+      {"schema_version": 1, "cases": [{"id": "<TC id from the catalog>", "status": "passed" |
+      "failed" | "skipped", "note": "<why, for failed or skipped>"}]}. A case you did not automate
+      or run is "skipped" with the reason; the engine traces every acceptance criterion through it.
     skill: qa-automation
     inputs:
       slug: "${inputs.slug}"
@@ -40,7 +44,9 @@ nodes:
       implementation_manifest: "${inputs.implementation_manifest}"
       implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
     outputs: [passed, failed_count, summary]
-    artifact: ".maestro/runs/${inputs.slug}/qa/report.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/qa/report.md"
+      - ".maestro/runs/${inputs.slug}/qa/results.json"
     fresh: true
     max_visits: 5
     on_exhausted: qa_gate
@@ -92,4 +98,5 @@ nodes:
 
 outputs:
   qa_summary: "${steps.qa_run.outputs.summary}"
+  qa_results: ".maestro/runs/${inputs.slug}/qa/results.json"
   qa_report: ".maestro/runs/${inputs.slug}/qa/report.md"

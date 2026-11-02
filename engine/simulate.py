@@ -33,6 +33,7 @@ import time
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import resolver  # noqa: E402
+import ac_trace  # noqa: E402
 import state as statemod  # noqa: E402
 import validate as validatemod  # noqa: E402
 import codebase_scan  # noqa: E402
@@ -205,6 +206,20 @@ def _stub_agent(root, act, slug=None):
             elif rel.endswith("/hld.md"):
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(_simulated_hld())
+            elif rel.endswith("/test-cases.md"):
+                # one case per PRD criterion, so the engine's acceptance-criteria trace holds
+                prd = os.path.join(os.path.dirname(full), "requirement", "prd.md")
+                with open(full, "w", encoding="utf-8") as fh:
+                    fh.write("# [simulated] test cases\n\n" + "".join(
+                        f"### TC-sim-{index:03d} — simulated case\n\n- **Traces:** {ac}\n\n"
+                        for index, ac in enumerate(ac_trace.prd_criteria(prd), 1)))
+            elif rel.endswith("/qa/results.json"):
+                cases = os.path.join(os.path.dirname(os.path.dirname(full)), "test-cases.md")
+                with open(full, "w", encoding="utf-8") as fh:
+                    json.dump({"schema_version": 1, "cases": [
+                        {"id": case, "status": "passed", "note": "simulated"}
+                        for case in ac_trace.test_cases(cases)]}, fh, indent=2)
+                    fh.write("\n")
             else:
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "

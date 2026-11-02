@@ -86,6 +86,8 @@ def canned_script(step):
 class SdlcE2E(unittest.TestCase):
     maxDiff = None
 
+    qa_case_status = "passed"
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="maestro-e2e-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -225,6 +227,17 @@ class SdlcE2E(unittest.TestCase):
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")
+        elif rel.endswith("/test-cases.md"):
+            with open(full, "w") as fh:
+                fh.write("# Demo test cases\n\n| Criterion | Cases |\n|---|---|\n"
+                         "| AC-01 | TC-demo-001 |\n\n## Journey: demo\n\n"
+                         "### TC-demo-001 — The documented behavior works\n\n"
+                         "- **Traces:** AC-01\n- **Expected result:** the behavior is visible.\n")
+        elif rel.endswith("/qa/results.json"):
+            with open(full, "w") as fh:
+                json.dump({"schema_version": 1, "cases": [
+                    {"id": "TC-demo-001", "status": self.qa_case_status,
+                     "note": "" if self.qa_case_status == "passed" else "assertion failed"}]}, fh)
         elif rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
             with open(full, "w") as fh:
                 json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
@@ -355,7 +368,7 @@ class SdlcE2E(unittest.TestCase):
                             or any("mem_consolidate" in a or "lld_set" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    or "repo_checks" in a or "assumptions.py" in a
-                                   or "prd_source.py" in a
+                                   or "prd_source.py" in a or "ac_trace.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -741,6 +754,52 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["design/hld/hld_approval"])
         self.assertEqual([s for a, s in trace if a == "auto_gate"], ["design/prd/prd_approval"])
 
+    def test_acceptance_criteria_are_traced_through_qa_to_the_release_gate(self):
+        self.prep_tasks_json()
+        action, trace = self.drive(dict(self.DESIGN_GATES))
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertLess(steps.index("design/lld/trace_test_cases"),
+                        steps.index("design/lld/readiness_review"))
+        self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/review_pack"))
+        trace_md = Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text()
+        self.assertIn("1/1 acceptance criteria passing", trace_md)
+        self.assertIn("| AC-01 | TC-demo-001 (passed) | passing |", trace_md)
+
+    def test_untraced_criterion_sends_the_test_cases_back(self):
+        self.prep_tasks_json()
+        catalog = Path(self.tmp, ".maestro/runs/demo/test-cases.md")
+        calls = []
+
+        def test_cases():
+            # the first catalog traces a criterion the PRD lacks; the rewrite fixes it
+            calls.append(1)
+            if len(calls) == 2:  # sent back with the engine's exact finding
+                feedback = statemod.load("demo", self.tmp)["steps"][
+                    "design/lld/trace_test_cases"]["outputs"]["issues_summary"]
+                self.assertIn("criteria the PRD does not have: AC-07", feedback)
+                self.assertIn("no test case traces AC-01", feedback)
+            catalog.write_text("### TC-demo-001 — wrong\n\n- **Traces:** AC-07\n"
+                               if len(calls) == 1 else
+                               "### TC-demo-001 — right\n\n- **Traces:** AC-01\n")
+            return {"test_cases_path": str(catalog), "case_count": 1}
+        action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"test_cases": test_cases})
+        self.assertEqual(action["action"], "done", action)
+        lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
+        start = lld.index("test_cases")
+        self.assertEqual(lld[start:start + 5], ["test_cases", "trace_test_cases", "test_cases",
+                                                "trace_test_cases", "readiness_review"])
+        self.assertEqual(len(calls), 2)
+
+    def test_auto_mode_stops_at_release_when_a_criterion_fails_qa(self):
+        self.prep_tasks_json()
+        self.qa_case_status = "failed"
+        action, trace = self.drive({"delivery/release_approval": [("reject", None)]}, mode="auto")
+        self.assertEqual(action["action"], "failed", action)
+        self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
+        self.assertIn("0/1 acceptance criteria passing — AC-01 failing",
+                      Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text())
+
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()
         readiness = self.blocking_once({"review_path": "reviews/lld-readiness.md",
@@ -750,8 +809,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
-        self.assertEqual(lld[start:start + 6], ["readiness_review", "revise_llds", "validate_llds",
-                                                "test_cases", "readiness_review", "lld_approval"])
+        self.assertEqual(lld[start:start + 7], ["readiness_review", "revise_llds", "validate_llds",
+                                                "test_cases", "trace_test_cases",
+                                                "readiness_review", "lld_approval"])
 
     def test_lld_change_request_needs_feedback_and_is_a_targeted_revision(self):
         self.prep_tasks_json()

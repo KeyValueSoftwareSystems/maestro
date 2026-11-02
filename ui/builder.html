@@ -890,7 +890,19 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
               }
             },
             "when": {
-              "type": "string"
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "one route condition, or a list that must all hold"
             }
           }
         },
@@ -988,7 +1000,19 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
               }
             },
             "when": {
-              "type": "string"
+              "oneOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "description": "one route condition, or a list that must all hold"
             }
           }
         },

@@ -1808,17 +1808,17 @@ def _finish_real_gate(run, frame, node, path, entry, option, input_text=None, au
 def _policy_applies(run, frame, node):
     """True when this node's `auto:` policy covers the run's mode and its `when` holds.
 
-    modes defaults to every autopilot mode; `when` is one route condition, evaluated with
-    missing refs empty, so a step that never ran means "ask a person"."""
+    modes defaults to every autopilot mode; `when` is one route condition or a list that must all
+    hold, evaluated with missing refs empty, so a step that never ran means "ask a person"."""
     mode = run_mode(run.state)
     policy = node.get("auto")
     if mode == "human" or not isinstance(policy, dict):
         return False
     if mode not in (policy.get("modes") or AUTO_MODES):
         return False
-    cond = policy.get("when")
-    return not cond or condctl.evaluate(
-        cond, lambda text: run.resolve_text(text, frame, missing_ok=True))
+    conds = policy.get("when") or []
+    return all(condctl.evaluate(cond, lambda text: run.resolve_text(text, frame, missing_ok=True))
+               for cond in ([conds] if isinstance(conds, str) else conds))
 
 
 def auto_gate_option(run, frame, node):

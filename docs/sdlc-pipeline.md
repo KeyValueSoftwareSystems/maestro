@@ -14,10 +14,11 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
           → architecture review by a fresh reviewer → [approve])
    → API contract (only when the HLD lists cross-repo interfaces)
    → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
-          → functional test cases → readiness check → [approve])
+          → functional test cases (every AC traced) → readiness check → [approve])
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
-   → QA → review pack → [approve → archive: harvest lessons + publish docs]
+   → QA → acceptance-criteria trace → assumption log → review pack
+   → [approve → archive: harvest lessons + publish docs]
 ```
 
 **You define the workflow; you bring the skills.** The engine is the product. A workflow is a YAML file describing what runs in what order; each agent step names a *skill* (a reusable prompt) — yours, ours, or a third party's (Obra, Superpowers, …). The workflow owns *where* artifacts land and *when* each step runs; the skill owns only *how* to do its one job, so any skill can be swapped without touching the graph.
@@ -118,9 +119,15 @@ the repositories in scope, then one LLD file per repository (`lld/<repo>.md`), s
 implementation agent later reads only its own repository's design. Each LLD implements or calls
 the contract exactly. If a repository needs something the contract lacks — for example a field
 the frontend needs — the LLD writer reports it, the contract is updated first, and every
-affected LLD is revised. Functional test cases follow, then a readiness check by a fresh
-reviewer: no design decision left to the implementer, every LLD consistent with the contract and
-with each other, every acceptance criterion covered. One approval covers all of them.
+affected LLD is revised. Functional test cases follow; the engine checks that every PRD
+acceptance criterion (`AC-xx`) is traced by at least one case and that no case traces a criterion
+the PRD lacks, and sends the catalog back with the exact gaps otherwise. Then a readiness check by
+a fresh reviewer: no design decision left to the implementer, every LLD consistent with the
+contract and with each other, every acceptance criterion covered. One approval covers all of them.
+
+After QA, the engine joins each criterion to its test cases and their QA results (QA records a
+result per case) in `ac-trace.md`: passing only when a case for it ran and every case that ran
+passed; otherwise failing or not run. The release gate and the review pack show it.
 
 Approval records the exact HLD, contract and LLD hashes. Delivery starts by checking them: a
 design that changed after approval goes back through design instead of being built stale.
@@ -151,7 +158,7 @@ for design approval"). The mode decides who answers each gate:
 | LLD scope | you | all repositories | all repositories |
 | LLD approval | you | approved if the readiness check passes | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
-| Release | you | approved if the engine verified every repository | same |
+| Release | you | approved if the engine verified every repository and every acceptance criterion passes QA | same |
 | PRD, HLD and LLD questions | you | you | recommendation adopted as an assumption; one round |
 | Missing requirement, question limit, stuck fix loop, failing QA | you | you | you |
 

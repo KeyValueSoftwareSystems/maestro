@@ -1,5 +1,6 @@
 # Child of sdlc-main: design staleness check -> implement every designed repository -> verified
-# test context -> QA -> assumption log -> review pack -> release approval. It decides; the parent acts. Leaving for a
+# test context -> QA -> acceptance-criteria trace -> assumption log -> review pack -> release
+# approval. It decides; the parent acts. Leaving for a
 # design revision (the approved design changed, the workspace moved since the design was
 # grounded, or the human sent the release back) ends the child and is reported in its outputs:
 # `design_stale` or `design_changed` true, or `release` revise -> the
@@ -170,6 +171,26 @@ nodes:
       implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"
       implementation_manifest_sha256: "${steps.finalize_implementation.outputs.manifest_sha256}"
     max_visits: 3
+    next: ac_trace
+
+  # Each PRD acceptance criterion -> its test cases -> their QA results. A criterion passes only
+  # when a case for it ran and every case that ran passed.
+  - id: ac_trace
+    type: script
+    label: Trace acceptance criteria to QA results
+    run:
+      - python3
+      - .maestro/engine/ac_trace.py
+      - qa
+      - --prd
+      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      - --test-cases
+      - ".maestro/runs/${inputs.slug}/test-cases.md"
+      - --results
+      - "${steps.qa.outputs.qa_results}"
+      - --out
+      - ".maestro/runs/${inputs.slug}/ac-trace.md"
+    on_fail: abort
     next: assumptions
 
   # Every decision nobody confirmed — interview assumptions, items left open, gates answered on
@@ -201,8 +222,10 @@ nodes:
       Assemble the release review pack for this feature: what was built (per stack),
       review outcomes, QA results, open risks, and how to verify locally. Open the pack with the
       assumption log (${steps.assumptions.outputs.path}: ${steps.assumptions.outputs.summary}),
-      listing every assumption and open item as written. Read only these
-      inputs: assumptions.md, implementation-manifest.json, each repo's <repo>/reviews/summary.md,
+      listing every assumption and open item as written. Then show the acceptance-criteria trace
+      (${steps.ac_trace.outputs.path}: ${steps.ac_trace.outputs.summary}) as written: each
+      criterion with its test cases and result. Read only these
+      inputs: assumptions.md, ac-trace.md, implementation-manifest.json, each repo's <repo>/reviews/summary.md,
       reviews/architecture.md (the HLD review), reviews/lld-readiness.md, and qa/report.md under
       .maestro/runs/${inputs.slug}/ — summarize them; do not re-read the design documents or
       source. The pack is what the human reads at the release gate. Treat implementation-manifest.json as the source of truth for every
@@ -220,6 +243,7 @@ nodes:
       manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"
       verification_summary: "${steps.finalize_implementation.outputs.verification_summary}"
       assumptions_path: "${steps.assumptions.outputs.path}"
+      ac_trace_path: "${steps.ac_trace.outputs.path}"
     outputs: [pack_path, recommendation, summary]
     artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
     fresh: true
@@ -231,6 +255,7 @@ nodes:
     prompt: |
       Ready to release?
       Engine verification (build/lint/test receipts): ${steps.finalize_implementation.outputs.verification_summary}
+      Acceptance criteria: ${steps.ac_trace.outputs.summary} (${steps.ac_trace.outputs.path})
       Unconfirmed decisions: ${steps.assumptions.outputs.summary} (${steps.assumptions.outputs.path})
       Recommendation: ${steps.review_pack.outputs.recommendation}
       ${steps.review_pack.outputs.summary}
@@ -241,8 +266,13 @@ nodes:
       - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
     # Design and auto modes release only what the engine itself verified (build/lint/test receipts
-    # at the exact commits); anything else stops the run for a person.
-    auto: {option: approve, when: "${steps.finalize_implementation.outputs.verified_ok} == true"}
+    # at the exact commits) with every acceptance criterion passing QA; anything else stops the run
+    # for a person.
+    auto:
+      option: approve
+      when:
+        - "${steps.finalize_implementation.outputs.verified_ok} == true"
+        - "${steps.ac_trace.outputs.all_passed} == true"
 
 outputs:
   design_changed: "${steps.workspace_sync_pre_impl.outputs.changed}"
@@ -252,3 +282,4 @@ outputs:
   release_feedback: "${steps.release_approval.outputs.feedback}"
   pack_path: "${steps.review_pack.outputs.pack_path}"
   manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"
+  ac_trace: "${steps.ac_trace.outputs.summary}"

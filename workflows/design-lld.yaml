@@ -1,7 +1,7 @@
 # Design child: every repository's LLD in one run — one interview, one write, a readiness check,
 # one approval — plus the functional test cases.
 #
-#   scope -> interview -> write LLDs -> validate -> test cases -> readiness check -> approval
+#   scope -> interview -> write LLDs -> validate -> test cases (AC trace) -> readiness check -> approval
 #
 # One file per repository (lld/<repo>.md) keeps each implementation agent's context to its own
 # repository. LLDs implement or call the contract exactly; a repository that needs a contract
@@ -294,6 +294,11 @@ nodes:
       .maestro/runs/${inputs.slug}/test-cases.md from the requirement's acceptance criteria, the
       HLD, the contract when it exists, and the repository LLDs — the QA source of truth. If the
       catalog exists from an earlier pass, update it for what changed.
+      Start each case with a heading whose first word is its ID (`### TC-${inputs.slug}-001 — title`)
+      and name in its body every PRD criterion it verifies exactly as the PRD writes it (AC-01).
+      Every AC in .maestro/runs/${inputs.slug}/requirement/prd.md needs at least one case; trace no
+      criterion the PRD does not have. The engine checks this after you. Trace check:
+      ${steps.trace_test_cases.outputs.issues_summary}
     skill: functional-testcases
     inputs:
       slug: "${inputs.slug}"
@@ -302,9 +307,19 @@ nodes:
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+      trace_feedback: "${steps.trace_test_cases.outputs.issues_summary}"
     outputs: [test_cases_path, case_count]
     artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
-    next: readiness_review
+    next: trace_test_cases
+
+  # Every PRD acceptance criterion is traced by a test case, and no case traces one the PRD lacks.
+  - id: trace_test_cases
+    type: script
+    label: Every acceptance criterion has a test case?
+    run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]
+    routes:
+      - {when: "${steps.trace_test_cases.outputs.valid} == true", to: readiness_review}
+      - {to: test_cases}
 
   - id: readiness_review
     type: agent

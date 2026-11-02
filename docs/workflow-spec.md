@@ -328,8 +328,8 @@ be answered by the engine itself:
 ```
 
 `option` must name an option with no `input` and no `to: abort`. `modes` defaults to
-`[design, auto]`. `when` is one route condition; a ref to a step that never ran renders empty,
-so the gate asks. When the policy applies, the serving call records the option (gate history
+`[design, auto]`. `when` is one route condition, or a list that must all hold; a ref to a step
+that never ran renders empty, so the gate asks. When the policy applies, the serving call records the option (gate history
 `auto: <mode>`) and lists it under `autopilot`; otherwise the gate asks a person, and in
 `auto` mode that is where the run stops. An autopilot choice is visit-capped like any route
 (only a person's choice lifts the cap), and recovery gates (failure, repeat limit) always ask.
