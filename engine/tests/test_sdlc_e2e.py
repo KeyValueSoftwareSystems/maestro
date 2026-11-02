@@ -62,6 +62,8 @@ def canned_agent_outputs(step, action):
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
         "qa_fix": {"fix_summary": "harness wait fixed", "checks_passed": True, "escalate": False,
                    "product_bug": False, "bug_repos": ""},
+        "drift_check": {"review_path": "reviews/drift.md", "blocking": False,
+                        "summary": "no drift"},
         "review_pack": {"pack_path": "review-pack.md", "recommendation": "ready",
                         "summary": "ready"},
         "retrospect": {"incoming_path": ".maestro/memory/incoming/demo.json",
@@ -977,6 +979,20 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertEqual(steps.count("design/hld/revise_from_review"), 1)
         self.assertIn("choose the cost ceiling", self.prompts["design/hld/hld_approval"][0])
+
+    def test_blocking_design_drift_stops_an_autopilot_release(self):
+        self.prep_tasks_json()
+        drift = {"review_path": "reviews/drift.md", "blocking": True,
+                 "summary": "backend returns 200 where the contract says 201"}
+        action, trace = self.drive({"delivery/release_approval": [("reject", None)]},
+                                   agent_overrides={"drift_check": drift}, mode="auto")
+        self.assertEqual(action["action"], "failed", action)
+        steps = [s for _, s in trace]
+        self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/drift_check"))
+        self.assertLess(steps.index("delivery/drift_verdict"), steps.index("delivery/review_pack"))
+        self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
+        self.assertIn("Design drift (engine): 1 blocking finding",
+                      self.prompts["delivery/release_approval"][0])
 
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()

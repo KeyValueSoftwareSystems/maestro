@@ -152,6 +152,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `fixed`/`contested`/`escalated` answers → `proceed` (re-review), `incomplete` (back to the author)
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
   The HLD architecture review and the LLD readiness check route on it.
+- **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
+  commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
+  blocking, which the release autopilot requires to be false.
 - **`brief.py`** — the run brief inlined into every agent prompt by `render_agent_prompt`, at the
   node's `brief:` level (`defaults.brief`, else `minimal`): `minimal` = feature, run mode, this
   step, documents earlier steps produced; `full` adds stages, gate decisions with feedback and

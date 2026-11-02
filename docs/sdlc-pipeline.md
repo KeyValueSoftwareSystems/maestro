@@ -18,7 +18,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
-   → acceptance-criteria trace → assumption log → review pack
+   → acceptance-criteria trace → design-vs-code drift check → assumption log → review pack
    → [approve] → branches or pull requests (per config) → harvest lessons
 ```
 
@@ -169,6 +169,11 @@ diff), and QA runs again on the new commits — up to three QA rounds, then you 
 After QA, the engine joins each criterion to its test cases and their QA results (QA records a
 result per case) in `ac-trace.md`: passing only when a case for it ran and every case that ran
 passed; otherwise failing or not run. The release gate and the review pack show it.
+
+Then a fresh reviewer compares every verified commit with the approved HLD, contract and LLDs —
+contract, design decisions, data and migrations, infrastructure, scope — and records each place the
+code departs from the design. The engine decides what blocks; blocking drift is shown at the
+release gate and stops an autopilot release.
 
 If a change to an already-approved PRD, HLD, contract or LLD comes up mid-run, Maestro records it
 as a note and offers two paths: revise the design (at the current design gate, or by sending the
