@@ -110,8 +110,12 @@ copy_agents() { # $1 = dst dir — filtered by --stack
 remove_retired_skills() { # $1 = installed skills dir
   # Named migrations only: never prune the directory wholesale because it may contain
   # user-authored or third-party skills. `brainstorm` was replaced by the bounded
-  # `prd-interview` + `prd-writing` pair.
-  for retired in brainstorm; do
+  # `prd-interview` + `prd-writing` pair; the per-stack design/tasks/implement/review skills,
+  # `plan`, `repo-design` and `verify` were folded into the repo-* and *-writing skills and
+  # the engine's verify step.
+  for retired in brainstorm plan repo-design verify \
+      backend-design frontend-design backend-tasks frontend-tasks \
+      backend-implement frontend-implement backend-review frontend-review; do
     target="$1/$retired"
     if [ -d "$target" ]; then
       rm -rf -- "$target"

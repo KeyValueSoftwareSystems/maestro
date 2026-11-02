@@ -18,7 +18,7 @@ runtime. It ships:
 - **AI skills** (`skills/**/SKILL.md`) — the example pack, one per SDLC step (plan, design,
   implement, review, QA…) plus **`skills/maestro`**, the lead agent. Markdown prompts with
   YAML frontmatter (`name`, `description`, `tags`, `allowed-tools`). Devs invoke them as
-  slash commands (`/plan`, `/backend-impl`, …) or Maestro invokes them via subagents.
+  slash commands (`/prd-writing`, `/repo-implement`, …) or Maestro invokes them via subagents.
   Skills are portable: they must NOT hardcode artifact paths or their position in a
   pipeline — that lives in the workflow node. Two kinds live here beyond the SDLC steps:
   **bootstrap skills** (`detect-stack`, `maestro-init`, `build-knowledge`, `retrospect`) and
@@ -278,7 +278,7 @@ whole suite — the parser underpins everything.
 - **`skills/maestro/SKILL.md` is the orchestrator's contract.** Its hard rules (never
   edit state, never read artifacts into context, never skip gates, dispatch verbatim)
   are what keep long runs reliable — change them only deliberately.
-- **Workflows name skills directly** (`skill: plan`); placeholders are allowed in the
+- **Workflows name skills directly** (`skill: hld-writing`); placeholders are allowed in the
   skill name (`skill: "${inputs.stack}-implement"` replaces the old dispatch glue).
   Model choice: per-node `model:` → workflow `defaults.model` → `haiku`; values pass to
   the harness as-is (haiku/sonnet/opus).

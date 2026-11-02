@@ -130,8 +130,8 @@ override conflicting base text for every downstream phase. Archive folds them on
 `final-design/` copies while preserving the original hash-bound approvals.
 
 Prefer manual control? Every step is also a skill you can invoke on its own — use its slash
-command in Claude Code/Cursor or mention it with `$` in Codex (`/plan` or `$plan`, for
-example). Same skills, no orchestration.
+command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
+`$hld-writing`, for example). Same skills, no orchestration.
 
 ## Interviews are conversations
 

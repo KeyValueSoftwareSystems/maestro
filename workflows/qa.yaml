@@ -59,7 +59,7 @@ nodes:
       reviewed commit identity. If the failure is a product bug (or any other hard stop), return
       checks_passed=false and escalate=true with the diagnosis — the workflow goes straight to the
       human escalation gate instead of re-running the suite. Re-run the failing specs before
-      returning; skip full /verify, since the workflow re-runs QA after you. Honour any human
+      returning; skip the full suite, since the workflow re-runs QA after you. Honour any human
       guidance: ${steps.qa_gate.outputs.guidance}
       Do NOT loop — the workflow re-invokes you if needed.
     skill: fix-loop

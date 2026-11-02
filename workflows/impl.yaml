@@ -30,7 +30,11 @@ nodes:
       reported.
     skill: repo-tasks
     agent: planner
-    inputs: {slug: "${inputs.slug}", stack: "${inputs.stack}"}
+    inputs:
+      slug: "${inputs.slug}"
+      stack: "${inputs.stack}"
+      schema: .maestro/engine/schemas/tasks.schema.json
+      validator: .maestro/engine/validate_tasks.py
     outputs: [task_count, slice_count]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
     max_visits: 3

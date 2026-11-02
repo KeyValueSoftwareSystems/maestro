@@ -1174,9 +1174,9 @@ const LINT_RULES = JSON.parse($("#lint-rules").textContent);
 const RESERVED = ["end", "abort"];
 const NODE_TYPES = ["agent", "gate", "interview", "script", "parallel", "subworkflow"];
 const ICONS = { agent: "✦", gate: "◈", interview: "?", script: "$", parallel: "⋔", subworkflow: "⧉" };
-const SKILL_CATALOG = ["prd-interview","prd-writing","plan","backend-design","frontend-design","api-contract","functional-testcases",
-  "backend-tasks","backend-implement","frontend-implement","qa-automation","architecture-review",
-  "backend-review","frontend-review","verify","fix-loop","human-review-pack"];
+const SKILL_CATALOG = ["prd-interview","prd-writing","hld-interview","hld-writing","lld-interview","lld-writing",
+  "api-contract","functional-testcases","architecture-review","repo-tasks","repo-implement","repo-review",
+  "fix-loop","qa-automation","human-review-pack","design-correction-fold","build-knowledge","retrospect"];
 const AGENT_CATALOG = ["planner","implementer","reviewer","qa","analyst","general"];
 const MODEL_CATALOG = ["haiku","sonnet","opus"];
 const YAML_DUMP_OPTS = { lineWidth: -1, noRefs: true, noCompatMode: true };
