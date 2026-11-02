@@ -349,7 +349,7 @@ class SdlcE2E(unittest.TestCase):
 
     # -- driver ----------------------------------------------------------
 
-    def drive(self, gate_script, max_steps=200, agent_overrides=None, mode=None):
+    def drive(self, gate_script, max_steps=200, agent_overrides=None, mode=None, inputs=None):
         """Run the pipeline: gate_script maps step path -> list of (option, input) taken
         in order. Gates the run mode lets the engine answer appear in the trace as
         ("auto_gate", step). Returns (final_action, trace)."""
@@ -357,8 +357,8 @@ class SdlcE2E(unittest.TestCase):
         gate_ptr = {}
         overrides = agent_overrides or {}
         with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml", {"feature": "Demo"},
-                              self.tmp, mode=mode)
+            resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml",
+                              {"feature": "Demo", **(inputs or {})}, self.tmp, mode=mode)
         for _ in range(max_steps):
             run = resolver.Run("demo", self.tmp)
             answered = resolver.apply_autopilot(run)
@@ -406,7 +406,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "prd_source.py" in a or "ac_trace.py" in a
                                    or "qa_env.py" in a or "deliver.py" in a
                                    or "infra_scan.py" in a or "decision_log.py" in a
-                                   or "findings.py" in a
+                                   or "findings.py" in a or "sizing.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -993,6 +993,25 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
         self.assertIn("Design drift (engine): 1 blocking finding",
                       self.prompts["delivery/release_approval"][0])
+
+    def test_light_path_designs_from_the_prd_without_an_hld(self):
+        self.prep_tasks_json()
+        action, trace = self.drive({"design/prd/prd_approval": [("approve", None)],
+                                    "design/lld/lld_scope": [("all", None)],
+                                    "delivery/release_approval": [("approve", None)]},
+                                   inputs={"path": "light"})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertFalse([s for s in steps if s.startswith("design/hld/")])
+        self.assertFalse([s for s in steps if s.startswith("design/contract/")])
+        self.assertIn("design/lld/readiness_review", steps)
+        self.assertIn("Design path: light", self.prompts["design/lld/author_llds"][0])
+        approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
+        self.assertTrue(approval["light"])
+        self.assertIsNone(approval["hld_sha256"])
+        self.assertIsNotNone(approval["prd_sha256"])
+        # the approved design is still checked for staleness before delivery
+        self.assertIn("delivery/design_check", steps)
 
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()

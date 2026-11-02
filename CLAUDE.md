@@ -183,6 +183,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   files; overridable in maestro.config.yaml). The HLD stage starts with it: the level decides
   which infrastructure questions are asked at all, and `validate_hld.py --infra-level` requires
   the Infrastructure and operations section for `containers`/`iac`.
+- **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
+  (PRD → LLD → test cases → readiness → approval; no HLD or contract) only for ≤5 acceptance
+  criteria, Non-functional requirements None, one repository and no "(to confirm)"; the run input
+  `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.

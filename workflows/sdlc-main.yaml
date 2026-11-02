@@ -15,6 +15,7 @@ description: Full feature pipeline — requirement to release-ready review pack.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  path: {type: string, default: auto, description: "design path: auto (light for a small single-repo change), full or light"}
 defaults:
   model: haiku
   agent: general
@@ -38,6 +39,7 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       feedback: "${steps.delivery.outputs.release_feedback} ${steps.delivery.outputs.stale_reasons}"
+      path: "${inputs.path}"
     max_visits: 4
     on_fail: abort
     next: delivery

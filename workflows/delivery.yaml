@@ -249,7 +249,7 @@ nodes:
       Compare the implemented code with the approved design before release. For every repository
       in ${steps.finalize_implementation.outputs.manifest_path}, read the diff from where its
       branch left the main line to its listed commit, in its listed worktree, and check it against
-      .maestro/runs/${inputs.slug}/hld.md, the contract at
+      .maestro/runs/${inputs.slug}/hld.md (absent on the light path), the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and its LLD at
       .maestro/runs/${inputs.slug}/lld/<repo>.md: contract, design decisions, data and migrations,
       infrastructure changes, and scope. Write the report and every finding to

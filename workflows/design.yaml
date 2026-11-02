@@ -16,6 +16,7 @@ inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
+  path: {type: string, default: auto, description: "design path: auto (sized after the PRD), full or light"}
 defaults:
   model: opus
   agent: planner
@@ -40,7 +41,17 @@ nodes:
       project_context: "${steps.intake.outputs.project_context}"
       references: "${steps.intake.outputs.references}"
     on_fail: abort
-    next: hld
+    next: sizing
+
+  # Engine-owned: a small single-repository change with no non-functional targets skips the HLD
+  # and contract (PRD -> LLD -> test cases -> readiness -> approval); everything else, the full path.
+  - id: sizing
+    type: script
+    label: Full or light design?
+    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --path, "${inputs.path}"]
+    routes:
+      - {when: "${steps.sizing.outputs.path} == light", to: lld}
+      - {to: hld}
 
   - id: hld
     type: subworkflow
@@ -74,10 +85,12 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       feedback: "${inputs.feedback}"
+      light: "${steps.sizing.outputs.path}"
     on_fail: abort
     next: end
 
 outputs:
+  design_path: "${steps.sizing.outputs.path}"
   hld_summary: "${steps.hld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"

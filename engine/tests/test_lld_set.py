@@ -154,6 +154,22 @@ class LldSetTest(unittest.TestCase):
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertIn("selected repositories changed", out["reasons"])
 
+    def test_light_path_approves_without_an_hld_and_tracks_the_prd(self):
+        os.remove(os.path.join(self.run_dir, "hld.md"))
+        self.write("requirement/prd.md", "# Demo — PRD\n")
+        run("init", "--root", self.root, "--slug", "demo")
+        self.write_llds()
+        code, _, err = run("approve", "--root", self.root, "--slug", "demo")
+        self.assertEqual(code, 1)
+        self.assertIn("only the light path", err)
+        code, _, _ = run("approve", "--root", self.root, "--slug", "demo", "--light", "light")
+        self.assertEqual(code, 0)
+        _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
+        self.assertFalse(out["stale"], out)
+        self.write("requirement/prd.md", "# Demo — PRD\n\nChanged scope.\n")
+        _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
+        self.assertIn("the PRD changed after LLD approval", out["reasons"])
+
     def test_approve_refuses_a_missing_lld(self):
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds(("api",))

@@ -16,6 +16,7 @@ inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
+  light: {type: string, default: full, description: "light when the feature took the light path (no HLD)"}
 defaults:
   model: opus
   agent: planner
@@ -91,6 +92,9 @@ nodes:
 
       Write schema version 2 with 3-7 grouped questions when several gaps remain, fewer when nearly
       clear, and an empty queue only when every blocking decision is concrete and consistent and
+      Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
+      decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
+      change (ownership, failure handling, rollout).
       Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
       Never ask a topic already decided there or in this stage's decisions: give every question a
       short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
@@ -169,6 +173,9 @@ nodes:
     execution: lead
     label: Write the repository LLDs once
     instruction: |
+      Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
+      decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
+      change (ownership, failure handling, rollout).
       Write one concise, buildable LLD per repository in scope, at these paths:
       ${steps.lld_scope_init.outputs.lld_paths_csv}
       Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/openapi.yaml when it exists,
@@ -479,7 +486,7 @@ nodes:
   - id: record_approval
     type: script
     label: Record the approved design hashes
-    run: [python3, .maestro/engine/lld_set.py, approve, --root, ., --slug, "${inputs.slug}"]
+    run: [python3, .maestro/engine/lld_set.py, approve, --root, ., --slug, "${inputs.slug}", --light, "${inputs.light}"]
     on_fail: abort
     next: end
 

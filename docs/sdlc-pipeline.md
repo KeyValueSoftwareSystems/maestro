@@ -184,6 +184,16 @@ Prefer manual control? Every step is also a skill you can invoke on its own — 
 command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
 `$hld-writing`, for example). Same skills, no orchestration.
 
+## Light path for small changes
+
+After PRD approval the engine sizes the feature. A small change — at most five acceptance
+criteria, no non-functional targets, one repository in the workspace, nothing left "(to confirm)"
+— skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
+and rollout notes an HLD would) → test cases → readiness check → approval → delivery. Everything
+else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
+(`init --input path=light`). The approval binds the PRD's hash, so a PRD edited after approval is
+still caught before delivery.
+
 ## Run modes
 
 Say how much you want to be asked when you start a feature ("run it on autopilot", "only stop

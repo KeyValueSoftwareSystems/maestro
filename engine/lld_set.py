@@ -14,7 +14,8 @@ Commands
   init     [--root .] --slug S --choice all|pick [--repos-text "a, b"]
            write the selection to lld-repos.json; `pick` fails on an unknown name
   validate [--root .] --slug S                         every selected LLD exists and validates
-  approve  [--root .] --slug S                         record lld/approval.json with hashes
+  approve  [--root .] --slug S [--light true]  record lld/approval.json (PRD, HLD, contract, LLD hashes;
+           --light: the light path designs without an HLD)
   verify   [--root .] --slug S                         are the approved LLDs still current?
 
 Every command prints one JSON line. `validate` and `verify` exit 0 so workflows route on fields.
@@ -129,8 +130,13 @@ def cmd_validate(args):
     return 0
 
 
+def _prd_path(slug, root):
+    return os.path.join(_run_dir(slug, root), "requirement", "prd.md")
+
+
 def _current_hashes(slug, root, repos):
     return {
+        "prd_sha256": _hash(_prd_path(slug, root)),
         "hld_sha256": _hash(_hld_path(slug, root)),
         "contract_sha256": _hash(_contract_path(slug, root)),
         "llds": {repo: _hash(lld_path(slug, repo, root)) for repo in repos},
@@ -145,11 +151,12 @@ def cmd_approve(args):
     missing = [repo for repo, digest in hashes["llds"].items() if digest is None]
     if missing:
         return _fail(f"cannot approve: LLD missing for {', '.join(missing)}")
-    if hashes["hld_sha256"] is None:
-        return _fail("cannot approve LLDs without an HLD")
+    light = str(args.light).lower() in ("true", "light")
+    if hashes["hld_sha256"] is None and not light:
+        return _fail("cannot approve LLDs without an HLD (only the light path designs without one)")
     path = approval_path(args.slug, args.root)
     _write_json(path, {"schema_version": 1, "approved_at": statemod.now_iso(),
-                       "repos": repos, **hashes})
+                       "repos": repos, "light": light, **hashes})
     print(json.dumps({"approval_path": os.path.relpath(path, args.root),
                       "approval_sha256": statemod.sha256_file(path)}))
     return 0
@@ -167,6 +174,8 @@ def stale_reasons(slug, root):
         return ["the selected repositories changed after LLD approval"]
     now = _current_hashes(slug, root, repos)
     reasons = []
+    if "prd_sha256" in approval and now["prd_sha256"] != approval["prd_sha256"]:
+        reasons.append("the PRD changed after LLD approval")
     if now["hld_sha256"] != approval.get("hld_sha256"):
         reasons.append("the HLD changed after LLD approval")
     if now["contract_sha256"] != approval.get("contract_sha256"):
@@ -204,6 +213,8 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("--root", default=".")
         p.add_argument("--slug", required=True)
+        if name == "approve":
+            p.add_argument("--light", default="false")
         p.set_defaults(fn=fn)
     args = parser.parse_args(argv)
     return args.fn(args)
