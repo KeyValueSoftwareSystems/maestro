@@ -75,6 +75,7 @@ nodes:
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
               feature: "${inputs.feature}"
+              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
           - id: record
             type: script
@@ -99,6 +100,7 @@ nodes:
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
               feature: "${inputs.feature}"
+              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
           - id: record
             type: script
@@ -123,6 +125,7 @@ nodes:
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
               feature: "${inputs.feature}"
+              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
           - id: record
             type: script
@@ -147,6 +150,7 @@ nodes:
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
               feature: "${inputs.feature}"
+              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
           - id: record
             type: script
@@ -207,6 +211,7 @@ nodes:
       worktree: "${steps.bugfix_claim.outputs.worktree}"
       commit: "${steps.bugfix_claim.outputs.commit}"
       bug_report: "${steps.qa.outputs.bug_report}"
+      stack_skills: "${steps.bugfix_claim.outputs.stack_skills_csv}"
     max_visits: 20
     next: bugfix_record
 

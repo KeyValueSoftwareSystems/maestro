@@ -11,6 +11,7 @@ inputs:
   stack: {type: string, required: true, description: selected repository name}
   repo_path: {type: string, required: true, description: path to the selected git repository}
   feature: {type: string, default: "${inputs.slug}"}
+  stack_skills: {type: string, default: "", description: installed stack skills for this repository (stack_skills.py)}
 defaults:
   model: sonnet
   agent: implementer
@@ -61,6 +62,8 @@ nodes:
       at ${inputs.repo_path}/docs/codebase-map.md. Explore
       the live source further only where the map or LLD doesn't cover what a slice
       touches. Report tests honestly.
+      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
+      follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-implement
     isolate: worktree
     inputs:
@@ -69,6 +72,7 @@ nodes:
       tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
       repo_path: "${inputs.repo_path}"
       branch: "feature/${inputs.slug}-${inputs.stack}"
+      stack_skills: "${inputs.stack_skills}"
     outputs: [branch, worktree, commit, summary, tests_passed]
     retries: 1
     max_visits: 3
@@ -139,6 +143,8 @@ nodes:
       fix (${steps.fix.outputs.fix_summary}): read it first, review only the diff from the commit
       it records to this commit, confirm each earlier blocking finding is resolved, and do not
       re-audit unchanged code. Then overwrite the report.
+      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
+      follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-review
     agent: reviewer
     model: opus
@@ -153,6 +159,7 @@ nodes:
       previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
       fix_summary: "${steps.fix.outputs.fix_summary}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
+      stack_skills: "${inputs.stack_skills}"
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
     fresh: true
@@ -178,6 +185,8 @@ nodes:
       commands before returning; the engine re-verifies after you. Commit your fix on the branch.
       Honour any human guidance: ${steps.impl_gate.outputs.guidance}
       Do NOT loop — the workflow re-invokes you if needed.
+      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
+      follow its conventions; when none is listed, follow the repository's own conventions.
     skill: fix-loop
     inputs:
       slug: "${inputs.slug}"
@@ -189,6 +198,7 @@ nodes:
       review_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
       implement_summary: "${steps.implement.outputs.summary}"
       guidance: "${steps.impl_gate.outputs.guidance}"
+      stack_skills: "${inputs.stack_skills}"
     outputs: [fix_summary, checks_passed]
     max_visits: 3
     on_exhausted: impl_gate

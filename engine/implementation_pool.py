@@ -21,6 +21,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
+import stack_skills  # noqa: E402
 import state as statemod  # noqa: E402
 
 
@@ -234,8 +235,10 @@ def cmd_claim(args):
     path = discovered.get(repo)
     if not path:
         return _fail(f"claimed repo {repo!r} is no longer discoverable")
+    stacks, skills = stack_skills.for_repo(args.root, repo)
     print(json.dumps({"repo": repo, "repo_path": os.path.relpath(path, args.root),
-                      "done": False}))
+                      "done": False, "stacks_csv": ",".join(stacks),
+                      "stack_skills_csv": ",".join(skills)}))
     return 0
 
 
@@ -413,15 +416,16 @@ def cmd_bugfix_claim(args):
         remaining = doc.get("bugfix_remaining") or []
         if not remaining:
             print(json.dumps({"done": True, "repo": "", "repo_path": "", "branch": "",
-                              "worktree": "", "commit": ""}))
+                              "worktree": "", "commit": "", "stack_skills_csv": ""}))
             return 0
         repo = remaining.pop(0)
         doc["bugfix_remaining"] = remaining
         _write(_queue_path(args.slug, args.root), doc)
         entry = (doc.get("implementations") or {})[repo]
+    _stacks, skills = stack_skills.for_repo(args.root, repo)
     print(json.dumps({"done": False, "repo": repo, "repo_path": entry["source_path"],
                       "branch": entry["branch"], "worktree": entry["worktree"],
-                      "commit": entry["commit"]}))
+                      "commit": entry["commit"], "stack_skills_csv": ",".join(skills)}))
     return 0
 
 

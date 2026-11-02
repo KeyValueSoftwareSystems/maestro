@@ -9,7 +9,8 @@ workflow never changes per project — it reads these values.
 version: 1
 repos:                          # one entry per repository Maestro finds
   backend:
-    stack: go                   # optional; selects the matching stack skills
+    stack: go                   # optional; the installed stack:go skills are applied when this repo
+                                # is implemented, reviewed and fixed ("go, db" for several)
     role: app                   # optional; app | infra (an infrastructure repository)
     commands:                   # shell commands, run inside the repo (or its worktree)
       setup: make deps          # optional

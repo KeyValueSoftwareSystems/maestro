@@ -1017,6 +1017,26 @@ class SdlcE2E(unittest.TestCase):
         # the approved design is still checked for staleness before delivery
         self.assertIn("delivery/design_check", steps)
 
+    def test_each_repository_gets_its_stack_skills(self):
+        self.prep_tasks_json()
+        config = Path(self.tmp, "maestro.config.yaml")
+        config.write_text(config.read_text().replace("  backend:\n", "  backend:\n    stack: go\n"))
+        skill = Path(self.tmp, ".claude/skills/golang-patterns/SKILL.md")
+        skill.parent.mkdir(parents=True)
+        skill.write_text("---\nname: golang-patterns\ndescription: Go.\ntags: [stack:go]\n---\n")
+        action, _trace = self.drive(dict(self.DESIGN_GATES))
+        self.assertEqual(action["action"], "done", action)
+        by_repo = {}
+        for step, prompts in self.prompts.items():
+            if step.endswith("/impl/implement"):
+                repo = "backend" if "- stack: backend\n" in prompts[0] else "frontend"
+                by_repo[repo] = prompts[0]
+        self.assertIn("stack skills (golang-patterns)", by_repo["backend"])
+        self.assertIn("stack skills ()", by_repo["frontend"])
+        review = next(p[0] for s, p in self.prompts.items()
+                      if s.endswith("/impl/review") and "repo_path: codebase/backend" in p[0])
+        self.assertIn("golang-patterns", review)
+
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()
         readiness = self.blocking_once({"review_path": "reviews/lld-readiness.md",

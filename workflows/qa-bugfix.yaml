@@ -14,6 +14,7 @@ inputs:
   worktree: {type: string, required: true, description: the verified worktree QA tested}
   commit: {type: string, required: true, description: the commit QA tested}
   bug_report: {type: string, required: true, description: QA's product-bug diagnosis}
+  stack_skills: {type: string, default: "", description: installed stack skills for this repository}
 defaults:
   model: sonnet
   agent: implementer
@@ -37,6 +38,8 @@ nodes:
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md. Honour any human guidance:
       ${steps.fix_gate.outputs.guidance}
       Commit the fix on the branch. Do NOT loop — the workflow re-invokes you if needed.
+      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
+      follow its conventions; when none is listed, follow the repository's own conventions.
     skill: fix-loop
     inputs:
       slug: "${inputs.slug}"
@@ -48,6 +51,7 @@ nodes:
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       review_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
       guidance: "${steps.fix_gate.outputs.guidance}"
+      stack_skills: "${inputs.stack_skills}"
     outputs: [fix_summary, checks_passed, escalate]
     max_visits: 3
     on_exhausted: fix_gate
