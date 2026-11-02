@@ -914,6 +914,10 @@ class SdlcE2E(unittest.TestCase):
                                   "verify.json").read_text())
         self.assertTrue(receipt["passed"])
         self.assertEqual([c["name"] for c in receipt["checks"]], ["build", "lint", "test"])
+        manifest = json.loads(Path(self.tmp, ".maestro", "runs", "demo",
+                                   "implementation-manifest.json").read_text())
+        statuses = {r["repo"]: r["verification"]["status"] for r in manifest["repositories"]}
+        self.assertEqual(statuses, {"backend": "verified", "frontend": "verified"})
 
     def test_hld_clarifies_before_single_write(self):
         """The HLD resolves one grouped architecture round before writing once."""

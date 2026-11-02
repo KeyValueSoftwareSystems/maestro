@@ -28,7 +28,8 @@
     ],
     "delivery.yaml": [
       "sha256:3baaec29bee579cae206805adae31dbf0b10be14455ee2e98d3132500021d2ab",
-      "sha256:54412047e5788fce15d7e2b43ca56e658b10a316d55e6bb5c910ada420ad1636"
+      "sha256:54412047e5788fce15d7e2b43ca56e658b10a316d55e6bb5c910ada420ad1636",
+      "sha256:6bd91c1c22297a0d4cc1f93e7ab4eac917bd982b34e1ba3813c43497f2074f53"
     ],
     "design-contract.yaml": [
       "sha256:d195b4a02713c00f03ac2a838a0bb591fc5fc5d674b5afb3597fdd05c6b218e0"

@@ -32,6 +32,52 @@ def _manifest_path(slug, root):
     return os.path.join(_run_dir(slug, root), "implementation-manifest.json")
 
 
+def _receipt_path(slug, repo, root):
+    """The engine verify step's receipt for one repository (repo_checks.py --out)."""
+    return os.path.join(_run_dir(slug, root), repo, "verify.json")
+
+
+def _verification(slug, entry, root):
+    """What the engine actually verified for this repository's shipped commit.
+
+    `verified` only when the receipt passed AND names the exact commit being released; a
+    receipt for an earlier commit is `stale`. Never blocks: a human may have accepted an
+    unverified batch at the implementation gate, and the release gate shows this verdict.
+    """
+    if os.environ.get("MAESTRO_SIMULATION") == "1":
+        return {"status": "simulated", "receipt": None, "test_changes": []}
+    path = _receipt_path(slug, entry["repo"], root)
+    try:
+        receipt = _read(path)
+    except (OSError, ValueError):
+        return {"status": "missing", "receipt": None, "test_changes": []}
+    passed = receipt.get("passed") is True
+    matches = receipt.get("commit") == entry.get("commit")
+    status = "verified" if passed and matches else ("stale" if passed else "failed")
+    return {
+        "status": status,
+        "receipt": os.path.relpath(path, root),
+        "receipt_sha256": _sha256(path),
+        "verified_commit": receipt.get("commit"),
+        "failed_checks": [c["name"] for c in receipt.get("checks") or []
+                          if c.get("status") != "passed"],
+        "test_changes": receipt.get("test_changes") or [],
+    }
+
+
+def _verification_summary(entries):
+    parts = []
+    for entry in entries:
+        check = entry["verification"]
+        text = f"{entry['repo']} {check['status']}"
+        if check.get("failed_checks"):
+            text += f" ({', '.join(check['failed_checks'])})"
+        if check.get("test_changes"):
+            text += f", {len(check['test_changes'])} existing test file(s) changed"
+        parts.append(text)
+    return "; ".join(parts) or "no repositories"
+
+
 def _read(path):
     with open(path, encoding="utf-8") as fh:
         return json.load(fh)
@@ -305,7 +351,9 @@ def cmd_finalize(args):
             if failures:
                 return _fail("cannot finalize QA context: " + "; ".join(failures))
         designed = doc.get("designed") or selected
-        entries = [implementations[name] for name in designed if name in implementations]
+        entries = [dict(implementations[name]) for name in designed if name in implementations]
+        for entry in entries:
+            entry["verification"] = _verification(args.slug, entry, args.root)
         manifest = {"schema_version": 1, "feature_slug": args.slug,
                     "repositories": entries, "deferred_repositories": doc.get("deferred") or []}
         path = _manifest_path(args.slug, args.root)
@@ -313,7 +361,10 @@ def cmd_finalize(args):
     print(json.dumps({"manifest_path": os.path.relpath(path, args.root),
                       "manifest_sha256": _sha256(path),
                       "repo_count": len(entries),
-                      "branches_csv": ",".join(e["branch"] for e in entries)}))
+                      "branches_csv": ",".join(e["branch"] for e in entries),
+                      "verified_ok": all(e["verification"]["status"] in ("verified", "simulated")
+                                         for e in entries),
+                      "verification_summary": _verification_summary(entries)}))
     return 0
 
 

@@ -81,6 +81,48 @@ class ImplementationPoolTest(unittest.TestCase):
             manifest = json.load(fh)
         self.assertEqual(manifest["repositories"][0]["commit"], commit)
         self.assertEqual(manifest["repositories"][0]["worktree"], os.path.realpath(worktree))
+        # no engine verify receipt was written in this test
+        self.assertFalse(final["verified_ok"])
+        self.assertEqual(manifest["repositories"][0]["verification"]["status"], "missing")
+
+    def _finalize_with_receipt(self, receipt):
+        run("init", "--root", self.root, "--slug", "feature-x")
+        run("claim", "--root", self.root, "--slug", "feature-x")
+        worktree, branch, commit = self.create_feature_worktree()
+        run("record", "--root", self.root, "--slug", "feature-x", "--repo", "mobile-app",
+            "--branch", branch, "--worktree", worktree, "--commit", commit)
+        path = os.path.join(self.root, ".maestro", "runs", "feature-x", "mobile-app", "verify.json")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            json.dump(receipt(commit), fh)
+        code, final = run("finalize", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0)
+        with open(os.path.join(self.root, final["manifest_path"])) as fh:
+            return final, json.load(fh)["repositories"][0]["verification"]
+
+    def test_passing_receipt_for_the_shipped_commit_is_verified(self):
+        changes = [{"status": "modified", "path": "tests/test_x.py"}]
+        final, check = self._finalize_with_receipt(lambda commit: {
+            "passed": True, "commit": commit, "test_changes": changes,
+            "checks": [{"name": "test", "status": "passed"}]})
+        self.assertTrue(final["verified_ok"])
+        self.assertEqual(check["status"], "verified")
+        self.assertEqual(check["test_changes"], changes)
+        self.assertIn("mobile-app verified, 1 existing test file(s) changed",
+                      final["verification_summary"])
+
+    def test_receipt_for_another_commit_is_stale(self):
+        final, check = self._finalize_with_receipt(lambda commit: {
+            "passed": True, "commit": "0" * 40, "checks": []})
+        self.assertFalse(final["verified_ok"])
+        self.assertEqual(check["status"], "stale")
+
+    def test_failed_receipt_names_the_failed_checks(self):
+        final, check = self._finalize_with_receipt(lambda commit: {
+            "passed": False, "commit": commit,
+            "checks": [{"name": "build", "status": "passed"}, {"name": "test", "status": "failed"}]})
+        self.assertEqual(check["status"], "failed")
+        self.assertEqual(final["verification_summary"], "mobile-app failed (test)")
 
     def test_finalize_rechecks_branch_did_not_move_after_record(self):
         run("init", "--root", self.root, "--slug", "feature-x")

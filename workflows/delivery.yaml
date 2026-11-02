@@ -200,11 +200,19 @@ nodes:
       .maestro/runs/${inputs.slug}/ — summarize them; do not re-read the design documents or
       source. The pack is what the human reads at the release gate. Treat implementation-manifest.json as the source of truth for every
       repository's exact branch, worktree, and commit; include all of them in the pack.
+      Each repository's `verification` in the manifest is the engine's own evidence: its status
+      (verified, failed, stale, missing), the receipt it ran, and the existing test files the
+      branch changed. Engine verification: ${steps.finalize_implementation.outputs.verification_summary}.
+      Report it as written; any status other than verified means the recommendation is not-ready.
       Treat approved-corrections.md as authoritative over conflicting base design text.
     skill: human-review-pack
     agent: analyst
     model: sonnet
-    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"
+      verification_summary: "${steps.finalize_implementation.outputs.verification_summary}"
     outputs: [pack_path, recommendation, summary]
     artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
     fresh: true
@@ -215,6 +223,7 @@ nodes:
     label: Release approval
     prompt: |
       Ready to release?
+      Engine verification (build/lint/test receipts): ${steps.finalize_implementation.outputs.verification_summary}
       Recommendation: ${steps.review_pack.outputs.recommendation}
       ${steps.review_pack.outputs.summary}
       Review pack: ${steps.review_pack.outputs.pack_path}
