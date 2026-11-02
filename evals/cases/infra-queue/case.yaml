@@ -1,0 +1,44 @@
+name: infra-queue
+description: Large exports move to a background worker on a queue; the workspace holds Terraform, so the infrastructure questions and the infra LLD must appear.
+slug: async-exports
+feature: Background order exports
+mode: auto
+path: auto
+requirement: |
+  # Background order exports
+
+  Large order exports time out because the CSV is built inside the request. Exports must be
+  built in the background: the request returns immediately with an export id, a worker builds
+  the CSV, stores it in the existing exports bucket, and the user can download it when it is
+  ready. A failed export can be retried.
+
+  Non-functional requirements:
+  - An export of 100,000 rows is ready within 5 minutes at p95.
+  - Up to 50 exports may be requested per minute at peak.
+  - Finished exports are deleted after 7 days.
+repos:
+  exports-api:
+    stack: python
+    commands:
+      build: "python3 -m compileall -q exports"
+      test: "python3 -m unittest discover -s tests -q"
+  platform:
+    stack: terraform
+    role: infra
+    commands:
+      build: "test -f main.tf"
+      test: "grep -q aws_sqs_queue main.tf"
+expect:
+  status: done
+  design_path: full
+  infra_level: iac
+  prd_valid: true
+  hld_valid: true
+  min_acceptance_criteria: 4
+  max_questions: 14
+  max_rounds_per_stage: 1
+  verification: verified
+  ac_all_passed: true
+  drift_blocking: false
+  max_fix_rounds: 4
+  judge_min: 3.5

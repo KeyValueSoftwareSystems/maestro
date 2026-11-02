@@ -257,6 +257,13 @@ python3 engine/validate_tasks.py testdata/tasks.valid.json
 python3 engine/validate_open_questions.py testdata/open-questions.valid.json
 ```
 
+The evaluation set (`evals/cases/<case>/`: requirement, fixture repositories, expectations,
+judge rubric) measures output quality before a release: `engine/eval_setup.py` builds a case's
+workspace, a real auto-mode run follows, `engine/eval_score.py score` checks the run's metrics
+(design path, questions, validators, verification, AC trace, drift, fix rounds, person gates)
+plus a judge's rubric scores, and `summary --baseline evals/baseline.json` flags regressions.
+See `docs/evals.md`.
+
 Skill behaviour tests (`evals/skills/<skill>/*.yaml`: a prompt plus expected and forbidden
 output) need a model to run but not to check: `python3 engine/skill_tests.py list` prints the
 cases; run each in a fresh subagent with its skill, save the reply as `<dir>/<id>.txt`, then

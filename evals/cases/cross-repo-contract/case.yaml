@@ -1,0 +1,42 @@
+name: cross-repo-contract
+description: A field added by the API and shown by its client; should define the contract first and keep both repositories consistent.
+slug: order-status
+feature: Show order status to support staff
+mode: auto
+path: auto
+requirement: |
+  # Show order status to support staff
+
+  Support staff can't tell where an order is. The order lookup should return a single status —
+  "awaiting payment", "paid" or "shipped" — derived from the order's paid and shipped flags, and
+  the support command-line view should print it after the total, for example
+  "A-1: 40.00 (paid)". Existing callers that ignore the new field must keep working.
+
+  Non-functional requirements: none beyond the existing service standards.
+repos:
+  orders-api:
+    stack: python
+    commands:
+      build: "python3 -m compileall -q orders"
+      test: "python3 -m unittest discover -s tests -q"
+  orders-cli:
+    stack: python
+    commands:
+      build: "python3 -m compileall -q cli"
+      test: "python3 -m unittest discover -s tests -q"
+expect:
+  status: done
+  design_path: full
+  infra_level: none
+  interfaces_changed: true
+  prd_valid: true
+  hld_valid: true
+  min_acceptance_criteria: 3
+  max_questions: 10
+  max_rounds_per_stage: 1
+  verification: verified
+  ac_all_passed: true
+  drift_blocking: false
+  max_fix_rounds: 3
+  max_person_gates: 0
+  judge_min: 3.5

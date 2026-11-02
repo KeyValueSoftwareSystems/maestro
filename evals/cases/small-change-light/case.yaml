@@ -1,0 +1,33 @@
+name: small-change-light
+description: A one-function change in a single repository; should take the light path and ask almost nothing.
+slug: tidy-note-titles
+feature: Tidy note titles
+mode: auto
+path: auto
+requirement: |
+  # Tidy note titles
+
+  Note titles in the list look messy because people type extra spaces. Trim leading and
+  trailing whitespace from every title and collapse runs of inner spaces to one. An empty or
+  all-space title shows as "Untitled". Nothing else about notes changes.
+repos:
+  notes:
+    stack: python
+    commands:
+      build: "python3 -m compileall -q notes"
+      test: "python3 -m unittest discover -s tests -q"
+expect:
+  status: done
+  design_path: light
+  infra_level: none
+  prd_valid: true
+  min_acceptance_criteria: 2
+  max_acceptance_criteria: 5
+  max_questions: 4
+  max_rounds_per_stage: 1
+  verification: verified
+  ac_all_passed: true
+  drift_blocking: false
+  max_fix_rounds: 2
+  max_person_gates: 0
+  judge_min: 3.5
