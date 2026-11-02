@@ -36,9 +36,9 @@ from validate import Issue  # noqa: E402
 
 CONFIG_FILE = "maestro.config.yaml"
 CONFIG_VERSION = 1
-COMMANDS = ("setup", "build", "lint", "typecheck", "test", "e2e")
+COMMANDS = ("setup", "build", "lint", "typecheck", "test", "security", "e2e")
 REQUIRED_COMMANDS = ("build", "test")
-RECOMMENDED_COMMANDS = ("lint", "e2e")
+RECOMMENDED_COMMANDS = ("lint", "security", "e2e")
 REPO_KEYS = {"stack", "role", "commands", "timeout_s", "test_patterns"}
 REPO_ROLES = ("app", "infra")
 INFRASTRUCTURE_LEVELS = ("none", "containers", "iac")

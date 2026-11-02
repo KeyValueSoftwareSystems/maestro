@@ -3,13 +3,19 @@
 
 The engine — not an agent — decides whether an implementation builds and passes its tests.
 Commands come only from maestro.config.yaml (`project_config`), run in this order when
-configured: setup, build, typecheck, lint, test. A setup or build failure stops the run:
+configured: setup, build, typecheck, lint, test, security (the project's own scanner, e.g.
+semgrep, npm audit, gosec). A setup or build failure stops the run:
 later checks would only repeat it. `build` and `test` are required; a missing one fails closed
 with exit 2 ("not configured") instead of passing silently.
 
 The receipt records the reviewed commit and, per check, the exact command, exit code,
 duration and a hash of its log, so "tests passed" is a checkable record, not a claim.
 Commands run with CI=true so watch-mode test runners exit.
+
+Secret scan: with --base-repo the engine also scans the lines the branch ADDED for committed
+credentials (cloud keys, private keys, provider tokens). A hit fails verification as the
+`secrets` check; the receipt records the file, line and rule — never the value. Placeholder values
+containing EXAMPLE are ignored.
 
 Test-edit guard: with --base-repo, the receipt also lists EXISTING test files the branch
 modified, renamed or deleted (repo `test_patterns`, or defaults). They are flagged for the
@@ -28,6 +34,7 @@ import argparse
 import fnmatch
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -36,7 +43,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import project_config  # noqa: E402
 import state as statemod  # noqa: E402
 
-ORDER = ("setup", "build", "typecheck", "lint", "test")
+ORDER = ("setup", "build", "typecheck", "lint", "test", "security")
+SECRET_RULES = (
+    ("aws-access-key", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
+    ("private-key", re.compile(r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----")),
+    ("github-token", re.compile(r"\bgh[pousr]_[A-Za-z0-9]{36,}\b")),
+    ("gitlab-token", re.compile(r"\bglpat-[A-Za-z0-9_-]{20,}\b")),
+    ("slack-token", re.compile(r"\bxox[abprs]-[A-Za-z0-9-]{10,}\b")),
+    ("google-api-key", re.compile(r"\bAIza[0-9A-Za-z_-]{35}\b")),
+    ("stripe-live-key", re.compile(r"\b(?:sk|rk)_live_[0-9A-Za-z]{24,}\b")),
+    ("openai-key", re.compile(r"\bsk-(?:proj-)?[A-Za-z0-9_-]{32,}\b")),
+)
 STOP_ON_FAILURE = ("setup", "build")
 LOG_TAIL_CHARS = 4000
 
@@ -61,10 +78,7 @@ def _test_changes(worktree, base_repo, patterns):
     """
     if not base_repo:
         return [], "no base repository given"
-    base_head = subprocess.run(["git", "-C", base_repo, "rev-parse", "HEAD"],
-                               capture_output=True, text=True).stdout.strip()
-    base = subprocess.run(["git", "-C", worktree, "merge-base", "HEAD", base_head],
-                          capture_output=True, text=True).stdout.strip() if base_head else ""
+    base = _branch_base(worktree, base_repo)
     if not base:
         return [], "cannot find the commit this branch started from"
     proc = subprocess.run(["git", "-C", worktree, "diff", "--name-status", "-M", base],
@@ -79,6 +93,42 @@ def _test_changes(worktree, base_repo, patterns):
         if kind and any(fnmatch.fnmatch(parts[1], p) for p in patterns):
             changes.append({"status": kind, "path": parts[1]})
     return changes, None
+
+
+def _branch_base(worktree, base_repo):
+    base_head = subprocess.run(["git", "-C", base_repo, "rev-parse", "HEAD"],
+                               capture_output=True, text=True).stdout.strip()
+    if not base_head:
+        return ""
+    return subprocess.run(["git", "-C", worktree, "merge-base", "HEAD", base_head],
+                          capture_output=True, text=True).stdout.strip()
+
+
+def _secret_scan(worktree, base_repo):
+    """Credentials in lines the branch added. -> (findings, note); note says why it could not run."""
+    if not base_repo:
+        return [], "no base repository given"
+    base = _branch_base(worktree, base_repo)
+    if not base:
+        return [], "cannot find the commit this branch started from"
+    proc = subprocess.run(["git", "-C", worktree, "diff", "--unified=0", "--no-color", base],
+                          capture_output=True, text=True, errors="replace")
+    if proc.returncode:
+        return [], "git diff failed"
+    findings, path, line_no = [], None, 0
+    for line in proc.stdout.splitlines():
+        if line.startswith("+++ "):
+            path = line[6:] if line.startswith("+++ b/") else None
+        elif line.startswith("@@"):
+            match = re.search(r"\+(\d+)", line)
+            line_no = int(match.group(1)) if match else 0
+        elif line.startswith("+") and path:
+            for rule, pattern in SECRET_RULES:
+                hit = pattern.search(line)
+                if hit and "EXAMPLE" not in hit.group(0).upper():
+                    findings.append({"path": path, "line": line_no, "rule": rule})
+            line_no += 1
+    return findings, None
 
 
 def _run(command, cwd, timeout, log_path, extra_env=None):
@@ -147,10 +197,14 @@ def run_checks(root, repo, worktree, out, base_repo=None):
         if result["status"] != "passed" and name in STOP_ON_FAILURE:
             stopped_by = name
 
-    failed = [c["name"] for c in checks if c["status"] != "passed"]
     full_base = None
     if base_repo:
         full_base = base_repo if os.path.isabs(base_repo) else os.path.join(root, base_repo)
+    secrets, secret_note = _secret_scan(full_worktree, full_base)
+    if secrets:
+        checks.append({"name": "secrets", "command": "engine secret scan of added lines",
+                       "status": "failed", "findings": secrets})
+    failed = [c["name"] for c in checks if c["status"] != "passed"]
     test_changes, guard_note = _test_changes(
         full_worktree, full_base, project_config.repo_test_patterns(config, repo))
     receipt = {
@@ -164,6 +218,7 @@ def run_checks(root, repo, worktree, out, base_repo=None):
         "checks": checks,
         "test_changes": test_changes,
         "test_guard": guard_note or "ran",
+        "secret_scan": secret_note or "ran",
     }
     os.makedirs(os.path.dirname(full_out), exist_ok=True)
     with open(full_out, "w", encoding="utf-8") as fh:
@@ -172,6 +227,9 @@ def run_checks(root, repo, worktree, out, base_repo=None):
     ran = [c["name"] for c in checks if c["status"] != "not-run"]
     summary = (f"{repo}: all checks passed ({', '.join(ran)})" if not failed
                else f"{repo}: failed {', '.join(failed)}")
+    if secrets:
+        summary += "; committed secret(s): " + ", ".join(
+            f"{f['path']}:{f['line']} ({f['rule']})" for f in secrets[:5])
     if test_changes:
         summary += f"; {len(test_changes)} existing test file(s) changed — reviewer must justify"
     changed = [f"{c['path']} ({c['status']})" for c in test_changes]

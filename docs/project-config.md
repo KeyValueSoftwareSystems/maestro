@@ -17,6 +17,7 @@ repos:                          # one entry per repository Maestro finds
       typecheck: ""             # optional; empty means not available
       lint: golangci-lint run   # recommended
       test: go test ./...       # required
+      security: gosec ./...     # recommended; the project's own scanner (semgrep, npm audit…)
       e2e: make e2e             # recommended; used by QA
     timeout_s: 900              # optional, per command (default 900)
     test_patterns: ["tests/*"]  # optional; which files are tests (default: common conventions)
@@ -58,6 +59,9 @@ to the sibling pull requests and the review pack. A release approved on autopilo
 Results land in `.maestro/runs/<slug>/delivery.json`. `branch` (the default) pushes nothing.
 
 The verify step runs these commands in each implementation worktree and writes a receipt. It
+also scans the lines the branch added for committed credentials (cloud keys, private keys,
+provider tokens) and fails as `secrets` when it finds one, recording the file and line but never
+the value. It
 also lists existing test files the branch modified, renamed or deleted (matched by
 `test_patterns`); the code reviewer must justify each one. New test files are not listed.
 
@@ -73,7 +77,7 @@ python3 .maestro/engine/maestroctl.py preflight
 | A repository has no entry under `repos` | error |
 | A repository has no `build` or `test` command | error |
 | Unknown key inside `repos`, `commands`, `environment` or `delivery` (a typo) | error |
-| No `lint` or `e2e` command | warning — that check is skipped |
+| No `lint`, `security` or `e2e` command | warning — that check is skipped |
 | A configured repository is not in the workspace | warning |
 
 Issues print to stderr; a JSON summary prints to stdout. The exit code is 1 when there is any

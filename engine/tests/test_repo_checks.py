@@ -53,7 +53,7 @@ class RepoChecksTest(unittest.TestCase):
         lint_log = os.path.join(self.root, receipt["checks"][1]["log"])
         with open(lint_log) as fh:
             self.assertIn("linted", fh.read())
-        self.assertEqual(receipt["skipped"], ["setup", "typecheck"])
+        self.assertEqual(receipt["skipped"], ["setup", "typecheck", "security"])
 
     def test_failing_test_is_reported_not_raised(self):
         self.config({"build": "true", "test": "echo 2 failed; exit 1"})
@@ -144,6 +144,36 @@ class RepoChecksTest(unittest.TestCase):
                         "commit", "-qam", "edit"], check=True)
         result = self.run_guarded(main)
         self.assertEqual(result["tests_changed"], "app.py (modified)")
+
+    def test_security_command_runs_after_the_tests(self):
+        self.config({"build": "true", "test": "true", "security": "echo 1 high finding; exit 1"})
+        _proc, result = self.run_checks()
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failed_checks"], "security")
+        self.assertEqual([c["name"] for c in self.receipt()["checks"]], ["build", "test", "security"])
+
+    def test_committed_secrets_fail_verification_without_recording_the_value(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"})
+        key = "AKIA" + "Q3EXAMPLEKEY12345"[:0] + "ZX7R4N2KQ8W5PL6M"
+        token = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
+        with open(os.path.join(worktree, "settings.py"), "w") as fh:
+            fh.write(f"AWS_KEY = '{key}'\nSAMPLE = 'AKIAIOSFODNN7EXAMPLE'\n\nGITHUB = '{token}'\n")
+        subprocess.run(["git", "-C", worktree, "add", "settings.py"], check=True)
+        subprocess.run(["git", "-C", worktree, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-qm", "oops"], check=True)
+        result = self.run_guarded(main)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failed_checks"], "secrets")
+        self.assertIn("settings.py:1 (aws-access-key)", result["summary"])
+        secrets = next(c for c in self.receipt()["checks"] if c["name"] == "secrets")
+        self.assertEqual([(f["path"], f["line"], f["rule"]) for f in secrets["findings"]],
+                         [("settings.py", 1, "aws-access-key"), ("settings.py", 4, "github-token")])
+        with open(os.path.join(self.root, self.out)) as fh:
+            receipt_text = fh.read()
+        self.assertNotIn(key, receipt_text)
+        self.assertNotIn(token, receipt_text)
+        self.assertEqual(self.receipt()["secret_scan"], "ran")
 
     def test_guard_without_base_repo_says_why(self):
         self.config({"build": "true", "test": "true"})

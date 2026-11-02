@@ -43,6 +43,10 @@ predict the fix, and confirm. If it is not installed, follow the same discipline
 - **Environment issue** (service down, port, missing dep) — fix the env / report it; not a
   code change to force green.
 - **Real defect** — fix the code with a regression test that fails before and passes after.
+- **Committed secret** (a `secrets` check failure) — remove the credential from the code and from
+  the feature branch's commits (amend or rewrite only that unpublished branch), load it from the
+  project's configuration or secret store instead, and report that the credential must be rotated.
+  Never allowlist or obfuscate it to pass the scan.
 - **Spec/contract ambiguity** — stop and ask; do not invent behavior.
 - **Product bug found by a test suite you may not change product code for** (a QA run against
   frozen, reviewed commits) — do not touch the product. Report it as a product bug with the

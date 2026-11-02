@@ -20,6 +20,7 @@ repos:
       build: make build
       lint: golangci-lint run
       test: go test ./...
+      security: gosec ./...
       e2e: make e2e
     timeout_s: 600
 environment: {start: docker compose up -d, stop: docker compose down}

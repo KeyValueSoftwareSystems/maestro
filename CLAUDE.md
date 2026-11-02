@@ -141,11 +141,12 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   in its worktree) and `record --from-worktree` records the fixed HEAD.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
-  repos, missing `build`/`test` commands (errors) and missing `lint`/`e2e` (warnings). Engine
+  repos, missing `build`/`test` commands (errors) and missing `lint`/`security`/`e2e` (warnings). Engine
   steps read commands from here, never from skill prose. Spec: `docs/project-config.md`.
 - **`repo_checks.py`** — the `verify` script step: runs a repo's configured setup/build/
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
-  writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
+  writes a receipt (commit, command, exit code, duration, log hash per check), plus an engine
+  secret scan of the lines the branch added (fails as `secrets`; values never recorded). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
   findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
