@@ -43,7 +43,7 @@ _TOP_KEYS = {"version", "name", "description", "inputs", "defaults", "start", "n
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
-              "inputs", "outputs", "artifact", "fresh", "brief", "retries", "isolate",
+              "inputs", "outputs", "artifact", "fresh", "brief", "timeout", "retries", "isolate",
               "ui"} | _ROUTING_KEYS,
     "interview": {"id", "type", "label", "skill", "context", "sections",
                   "questions_artifact", "batch_size", "presentation", "discuss", "artifact", "auto",
@@ -237,6 +237,10 @@ def _validate_node(node, ids, declared_inputs, where):
             err("artifact-not-string", "artifact must be a string or list of strings")
         if node.get("execution", "worker") not in ("worker", "lead"):
             err("bad-type", "agent execution must be 'worker' or 'lead'")
+        timeout = node.get("timeout")
+        if timeout is not None and (not isinstance(timeout, int) or isinstance(timeout, bool)
+                                    or timeout <= 0):
+            err("bad-type", "agent timeout must be a positive whole number of seconds")
         if node.get("brief", "minimal") not in ("none", "minimal", "full"):
             err("bad-type", "agent brief must be 'none', 'minimal' or 'full'")
     elif ntype == "interview":

@@ -525,7 +525,10 @@ loop:
   into the harness task list (`maestroctl todo --slug S` prints the same checklist)
 ```
 
-Served worker steps are **claimed** (`dispatched_at`): later calls return only newly ready
+Served worker steps are **claimed** (`dispatched_at` plus a `claim` token the action carries;
+`complete --claim` refuses a result from an older dispatch of a re-served step). A `wait` lists
+under `stale` the workers dispatched longer ago than their node's `timeout` (seconds, default
+3600); `reclaim --step P` re-serves one. Later calls return only newly ready
 work, and ready workers are served before gates, interviews and lead work so one branch
 waiting on a human never stalls another branch. `init` on an existing run releases claims so
 a resumed session re-serves workers it lost. Engine-run scripts execute outside the ledger

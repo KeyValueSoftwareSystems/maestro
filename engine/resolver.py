@@ -800,15 +800,49 @@ def _apply_on_fail(run, frame, node, reason):
 # ---------------------------------------------------------------- actions (read-only)
 
 CLAIM_KEY = "dispatched_at"
+# Each dispatch gets a token: a worker reports back with it, so a result from an older dispatch of
+# a step that was re-served (a resumed or reclaimed run) can never overwrite the newer one's.
+CLAIM_ID_KEY = "claim_id"
+DEFAULT_AGENT_TIMEOUT = 3600  # seconds a dispatched worker may run before `wait` calls it stale
 
 
-def release_claims(state):
-    """Forget which worker steps were handed out (a resumed session re-serves them)."""
+def release_claims(state, paths=None):
+    """Forget which worker steps were handed out (a resumed session re-serves them).
+    paths: only these steps (a reclaim); default every claimed step."""
     released = []
     for path, entry in (state.get("steps") or {}).items():
+        if paths is not None and path not in paths:
+            continue
+        entry.pop(CLAIM_ID_KEY, None)
         if entry.pop(CLAIM_KEY, None) is not None:
             released.append(path)
     return released
+
+
+def agent_timeout(node):
+    value = node.get("timeout")
+    return value if isinstance(value, int) and value > 0 else DEFAULT_AGENT_TIMEOUT
+
+
+def stale_claims(run, in_flight):
+    """In-flight workers dispatched longer ago than their node's timeout."""
+    import datetime
+    now = datetime.datetime.now(datetime.timezone.utc)
+    stale = []
+    for path in in_flight:
+        entry = run.state["steps"].get(path) or {}
+        _frame, node = run.node_at(path)
+        try:
+            started = datetime.datetime.fromisoformat(
+                str(entry.get(CLAIM_KEY)).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        if started.tzinfo is None:
+            started = started.replace(tzinfo=datetime.timezone.utc)
+        age = (now - started).total_seconds()
+        if age > agent_timeout(node):
+            stale.append({"step": path, "minutes": int(age // 60)})
+    return stale
 
 
 def next_action(run, serial=False, claim=False, exclude_claimed=False):
@@ -872,20 +906,30 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
         if worker_agents:
             served = worker_agents if not serial else worker_agents[:1]
             if claim:
+                import secrets
                 now = statemod.now_iso()
                 for action in served:
-                    statemod.step_entry(run.state, action["step"])[CLAIM_KEY] = now
+                    entry = statemod.step_entry(run.state, action["step"])
+                    entry[CLAIM_KEY] = now
+                    entry[CLAIM_ID_KEY] = action["claim"] = secrets.token_hex(4)
             if len(served) > 1:
                 return {"action": "run_agents", "agents": served}
             return served[0]
         if not (gates or interviews or lead_agents) and in_flight:
-            return {
+            action = {
                 "action": "wait",
                 "in_flight": in_flight,
                 "hint": "Nothing new to dispatch. Complete each in-flight step as its worker "
                         "finishes. If these workers are no longer running (e.g. a restarted "
                         "session), run `init` again to re-serve them.",
             }
+            stale = stale_claims(run, in_flight)
+            if stale:
+                action["stale"] = stale
+                action["hint"] += (" Steps in `stale` have run past their timeout: if a worker "
+                                   "is stuck or gone, `maestroctl reclaim --step <step>` re-serves "
+                                   "it; the old worker's result is then refused.")
+            return action
     if gates:
         return gates[0]
     if interviews:
@@ -1266,12 +1310,17 @@ def _require_cursor(run, path):
         )
 
 
-def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetry=None):
+def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetry=None,
+                  claim=None):
     _require_cursor(run, path)
     frame, node = run.node_at(path)
     entry = statemod.step_entry(run.state, path)
     if entry.get("pending_ask"):
         raise RunError(f"step {path!r} is waiting on a gate decision, not completion", code=4)
+    if claim and entry.get(CLAIM_ID_KEY) and claim != entry[CLAIM_ID_KEY]:
+        raise RunError(f"step {path!r} was re-dispatched after this worker started; its result "
+                       f"is refused — complete it with the newer dispatch's claim", code=4)
+    entry.pop(CLAIM_ID_KEY, None)
     kind = ntype(node)
     if kind == "script":
         return _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry)
@@ -1798,6 +1847,7 @@ def _register_failure(run, frame, node, path, entry, reason):
     if entry["attempts"] <= retries:
         entry["status"] = "pending"  # stays in cursors; next re-serves it
         entry.pop(CLAIM_KEY, None)
+        entry.pop(CLAIM_ID_KEY, None)
         return
     entry["status"] = "failed"
     statemod.mark_step_finished(entry)

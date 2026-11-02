@@ -9,7 +9,7 @@ The lead agent's whole protocol:
     loop:
         maestroctl next --slug S [--serial]          # ONE action as JSON (claims workers)
         # dispatch it, then one of:
-        maestroctl complete --slug S --step P --outputs '<json>'
+        maestroctl complete --slug S --step P --outputs '<json>' [--claim C]
         maestroctl complete-batch --slug S --results '[{"step":P,"outputs":{...}}, ...]'
         maestroctl complete --slug S --step P --exit-code N [--stdout '<text>']
         maestroctl gate-record --slug S --step P --option X [--input '<text>']
@@ -21,7 +21,8 @@ The lead agent's whole protocol:
         maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, todo, brief, reset (--step/--all, --cascade), rebase, graph, runs, and note.
+Also: status, todo, brief, reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
+rebase, graph, runs, and note.
 `next --peek` re-reads without claiming or running.
 
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
@@ -255,8 +256,18 @@ def cmd_complete(args):
             raise resolver.RunError("--telemetry must be a JSON object", code=4)
     return _mutate(args, lambda run: resolver.complete_step(
         run, args.step, outputs=outputs, exit_code=args.exit_code, stdout=args.stdout,
-        telemetry=telemetry,
+        telemetry=telemetry, claim=args.claim,
     ))
+
+
+def cmd_reclaim(args):
+    """Re-serve a dispatched worker that is stuck or gone; its old result will be refused."""
+    def fn(run):
+        if args.step not in (run.state["run"].get("cursors") or []):
+            raise resolver.RunError(f"step {args.step!r} is not active", code=4)
+        if not resolver.release_claims(run.state, paths={args.step}):
+            raise resolver.RunError(f"step {args.step!r} is not dispatched", code=4)
+    return _mutate(args, fn)
 
 
 def cmd_complete_batch(args):
@@ -282,7 +293,8 @@ def cmd_complete_batch(args):
                     report.append({"step": item["step"], "status": "failed-recorded"})
                 else:
                     resolver.complete_step(run, item["step"], outputs=item.get("outputs") or {},
-                                           telemetry=item.get("telemetry"))
+                                           telemetry=item.get("telemetry"),
+                                           claim=item.get("claim"))
                     report.append({"step": item["step"], "status": "done"})
             except resolver.RunError as exc:
                 report.append({"step": item["step"], "status": "error", "error": str(exc)})
@@ -502,8 +514,15 @@ def build_parser():
     p.add_argument("--exit-code", type=int, help="script exit code")
     p.add_argument("--stdout", help="script stdout (last line parsed as JSON outputs)")
     p.add_argument("--telemetry", help="optional factual JSON metrics from the host")
+    p.add_argument("--claim", help="the `claim` of the dispatch this result answers")
     p.add_argument("--serial", action="store_true")
     p.set_defaults(fn=cmd_complete)
+
+    p = sub.add_parser("reclaim", help="re-serve a dispatched worker that is stuck or gone")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--serial", action="store_true")
+    p.set_defaults(fn=cmd_reclaim)
 
     p = sub.add_parser("gate-record", help="record a human gate decision and advance")
     p.add_argument("--slug", required=True)

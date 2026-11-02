@@ -749,6 +749,11 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
           ],
           "description": "run brief inlined into the prompt: none, minimal (default) or full"
         },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "seconds a dispatched worker may run before `wait` reports it stale (default 3600)"
+        },
         "retries": {
           "type": "integer",
           "minimum": 0

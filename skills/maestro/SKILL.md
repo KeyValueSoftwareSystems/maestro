@@ -170,7 +170,8 @@ Use ONE worker:
   it and record:
 
 ```bash
-python3 .maestro/engine/maestroctl.py complete --slug <slug> --step <step> --outputs '<that json>'
+python3 .maestro/engine/maestroctl.py complete --slug <slug> --step <step> --outputs '<that json>' \
+    --claim <the action's claim>
 ```
 
 The engine records wall-clock duration automatically. Add `--telemetry '<json>'` only for
@@ -341,6 +342,12 @@ Every unfinished step is a worker already in flight; there is nothing new to dis
 Keep waiting for those workers and record each as it finishes. If they are not actually
 running (the session restarted and lost them), run `init` again — it releases the claims
 and the next call re-serves them.
+
+A step listed under `stale` has run past its timeout. If its worker is still making progress,
+keep waiting; if it is stuck or gone, run `maestroctl reclaim --slug <slug> --step <step>` and
+dispatch the action it returns. Every dispatched action carries a `claim`: pass it back as
+`--claim` (or `"claim"` in a `complete-batch` item), so a late result from the old worker is
+refused instead of overwriting the new one.
 
 ### `run_script`
 

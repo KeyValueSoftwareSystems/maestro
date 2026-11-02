@@ -43,7 +43,7 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · rebase · status · todo · brief · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · reclaim · rebase · status · todo · brief · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
@@ -223,8 +223,9 @@ the ledger lock, and lists them in `auto_scripts`; only other scripts reach the 
 answers it, and in `auto` each interview whose policy covers it (recommendations become logged
 assumptions; listed in `autopilot`); every other gate still goes to the human, which is where
 autopilot stops. Served worker
-steps are claimed (`dispatched_at`), so later calls return only newly ready work (ready workers
-before gates) or `wait`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
+steps are claimed (`dispatched_at` + a `claim` token; `complete --claim` refuses a stale dispatch's
+result), so later calls return only newly ready work (ready workers before gates) or `wait`, which
+lists workers past their node `timeout` as `stale` for `reclaim`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
 atomic batch without dropping unresolved questions. Interview discussions never run in the lead's
 context: `interview-brief` renders a read-only brief for an isolated `discussant` subagent (the lead
