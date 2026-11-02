@@ -76,7 +76,6 @@ class SdlcTodoTest(unittest.TestCase):
             "[>] Design phase",
             "    [x] Requirement and context",
             "    [x] PRD",
-            "    [x] Codebase map check",
             "    [?] HLD",
             "          ↳ waiting on you: HLD approval",
             "    [ ] Repository LLDs",

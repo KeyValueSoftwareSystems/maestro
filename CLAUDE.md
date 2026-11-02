@@ -48,7 +48,7 @@ runtime. It ships:
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
   `design-review` → `delivery` → `archive`; `design` composes `design-intake` /
-  `design-prd` / `design-map` / `design-hld` / `design-lld` / `design-contract`. A gate decision
+  `design-prd` / `design-hld` / `design-lld` / `design-contract`. A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
   `engine/schemas/workflow.schema.json`).

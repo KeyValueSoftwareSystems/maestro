@@ -228,7 +228,7 @@ def _stub_agent(root, act):
                              f"— this step's real agent was never dispatched.\n"
                              # unique per write, so `fresh: true` steps see new proof each visit
                              f"\n<!-- simulated write {time.time_ns()} -->\n")
-    if (step.endswith("resync_map") or step.endswith("/build")
+    if (step.endswith("/build")
             or step.endswith("refresh_knowledge")
             or step.endswith("/retrospect")):
         for _name, repo in codebase_scan.discover_repos(root):

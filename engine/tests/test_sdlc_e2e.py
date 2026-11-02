@@ -876,6 +876,57 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertEqual(len([s for s in steps if s.endswith("/impl/fix")]), 2)
 
+    def _commit_outside_maestro(self):
+        """A manual commit after the maps were recorded: maps and docs are now stale."""
+        repo = os.path.join(self.tmp, "codebase", "backend")
+        Path(repo, "manual.txt").write_text("manual change\n")
+        subprocess.run(["git", "-C", repo, "add", "manual.txt"], check=True)
+        subprocess.run(["git", "-C", repo, "commit", "-q", "-m", "manual"], check=True)
+
+    def _sync_gates(self, choice):
+        return {
+            "workspace_sync_initial/sync_gate": [(choice, None)],
+            "delivery/workspace_sync_pre_impl/sync_gate": [(choice, None)] * 3,
+            "design/intake/collect_references": [("none", None)],
+            "design/prd/prd_approval": [("approve", None)],
+            "design/hld/hld_approval": [("approve", None)],
+            "design/lld/lld_scope": [("all", None)],
+            "review/contract_approval": [("approve", None)],
+            "delivery/release_approval": [("approve", None)],
+        }
+
+    def test_keep_current_commits_still_refreshes_stale_docs(self):
+        """Replaces the old design-map check: no repo update, but stale maps are refreshed."""
+        self.prep_tasks_json()
+        self._commit_outside_maestro()
+
+        def refresh_knowledge():
+            for stack in ("backend", "frontend"):
+                with open(os.path.join(self.tmp, "codebase", stack, "docs", "codebase-map.md"),
+                          "a") as fh:
+                    fh.write("\nRefreshed after the manual commit.\n")
+            return {"domains_written": 1, "architecture_path": "docs/architecture.md",
+                    "summary": "refreshed"}
+
+        action, trace = self.drive(self._sync_gates("current"),
+                                   agent_overrides={"refresh_knowledge": refresh_knowledge})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertIn("workspace_sync_initial/keep_current", steps)
+        self.assertIn("workspace_sync_initial/refresh_knowledge", steps)
+        self.assertIn("workspace_sync_initial/record_knowledge", steps)
+        self.assertNotIn("workspace_sync_initial/apply", steps)
+        self.assertNotIn("design/map", " ".join(steps))
+
+    def test_keep_as_is_skips_the_docs_refresh(self):
+        self.prep_tasks_json()
+        self._commit_outside_maestro()
+        action, trace = self.drive(self._sync_gates("as_is"))
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertNotIn("workspace_sync_initial/refresh_knowledge", steps)
+        self.assertIn("workspace_sync_initial/lock", steps)
+
     def test_failed_engine_checks_route_to_fix_before_review(self):
         """The agent says tests pass; the engine's own run says no — the engine wins."""
         self.prep_tasks_json()
@@ -983,8 +1034,6 @@ class SdlcE2E(unittest.TestCase):
                     resolver.record_gate(run, step, "confirm")
                 elif gate == "prd_approval":
                     resolver.record_gate(run, step, "approve")
-                elif gate == "map_stale_gate":
-                    resolver.record_gate(run, step, "proceed")
                 else:
                     self.fail(f"unexpected gate {step}")
             elif action["action"] == "ask_interview":

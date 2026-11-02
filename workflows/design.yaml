@@ -1,9 +1,9 @@
 # Design phase: requirement -> PRD -> clarify-first HLD -> per-repo LLD workstreams -> API
 # contract -> functional test cases.
 #
-#   entry -> intake -> prd -> map -> hld -> lld -> contract
+#   entry -> intake -> prd -> hld -> lld -> contract
 #
-# Composition: each stage is its own small child workflow (design-intake / -prd / -map /
+# Composition: each stage is its own small child workflow (design-intake / -prd /
 # -hld / -lld / -contract), so this file owns only the ordering and scoped re-entry. Stages
 # connect strictly forwards; every back-edge (revise, rethink, rescope) stays inside its stage.
 # A scoped architecture-review revision enters the earliest affected stage directly, and that
@@ -59,14 +59,6 @@ nodes:
       feature: "${inputs.feature}"
       project_context: "${steps.intake.outputs.project_context}"
       references: "${steps.intake.outputs.references}"
-    on_fail: abort
-    next: map
-
-  - id: map
-    type: subworkflow
-    label: Codebase map check
-    workflow: .maestro/workflows/design-map.yaml
-    inputs: {slug: "${inputs.slug}"}
     on_fail: abort
     next: hld
 

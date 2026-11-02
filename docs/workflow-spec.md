@@ -381,7 +381,7 @@ child at its `start` with fresh child state.
 This is how a large workflow splits into small stages, so no single graph overloads the reader.
 The shipped `sdlc-main.yaml` owns only the stage order and the loops between stages (`design`,
 `design-review`, `delivery`, `archive`); `design.yaml` owns only ordering and scoped re-entry
-(`design-intake`, `design-prd`, `design-map`, `design-hld`, `design-lld`, `design-contract`). Each stage keeps its own back-edges, and each
+(`design-intake`, `design-prd`, `design-hld`, `design-lld`, `design-contract`). Each stage keeps its own back-edges, and each
 stage node sets `on_fail: abort` so a rejection fails the parent exactly as an inline step would.
 
 A human decision that must leave its stage ("send back to design") ends the child through a gate

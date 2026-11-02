@@ -41,13 +41,23 @@ nodes:
 
       Safe updates use fast-forward only. Dirty, detached or diverged repositories are never
       modified automatically. A documentation refresh runs only when commit provenance says
-      the living technical/functional knowledge or codebase maps are stale. Continuing uses
-      committed HEADs; uncommitted application changes are not part of the feature lock or its
-      implementation worktrees.
+      the living technical/functional knowledge or codebase maps are stale — for example after
+      commits made outside Maestro. Continuing uses committed HEADs; uncommitted application
+      changes are not part of the feature lock or its implementation worktrees.
     options:
-      - {id: sync, label: Apply safe updates; leave blocked repos unchanged, to: apply}
-      - {id: current, label: Continue without updating — use committed HEADs, to: lock}
+      - {id: sync, label: Apply safe updates and refresh stale docs; leave blocked repos unchanged, to: apply}
+      - {id: current, label: Keep current commits; refresh stale docs, to: keep_current}
+      - {id: as_is, label: Keep current commits and docs as they are, to: lock}
       - {id: reject, label: Abort the run, to: abort}
+
+  # Route-only: refresh stale docs and maps at the current commits, without updating any repo.
+  - id: keep_current
+    type: script
+    label: Refresh stale docs without updating repos
+    run: [python3, .maestro/engine/entry_serve.py, "${steps.plan.outputs.refresh_needed}"]
+    routes:
+      - {when: "${steps.plan.outputs.refresh_needed} == true", to: map_plan}
+      - {to: lock}
 
   - id: apply
     type: script

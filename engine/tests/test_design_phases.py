@@ -64,7 +64,6 @@ class DesignPhaseEntryTest(unittest.TestCase):
     def test_phase_children_default_to_their_normal_start(self):
         cases = [
             (".maestro/workflows/design-intake.yaml", {}, "assert_requirement"),
-            (".maestro/workflows/design-map.yaml", {}, "check_codebase_map"),
             (".maestro/workflows/design-hld.yaml", {}, "prepare_hld_questions"),
             (".maestro/workflows/design-lld.yaml", {}, "lld_scope_serve"),
             (".maestro/workflows/design-contract.yaml", {}, "corrections_context"),

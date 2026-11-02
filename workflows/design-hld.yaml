@@ -1,5 +1,5 @@
 # Design child: clarify-first architecture interview -> one HLD write -> conditional post-check
-# -> deterministic lint -> human approval. Entered by design.yaml after the codebase-map check,
+# -> deterministic lint -> human approval. Entered by design.yaml after PRD approval,
 # or directly for an HLD-scoped architecture-review revision.
 version: 1
 name: design-hld
