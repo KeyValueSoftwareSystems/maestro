@@ -33,8 +33,10 @@ Standalone? read them and write to a path you choose (and tell the user where).
    and assertions that verify observable behavior + the contract's outcomes.
 5. **Emit the scenario DAG** — write a `tasks.json` (see section below) so the
    suite can be authored in parallel.
-6. **Run in a clean env** — `stack up` → seed → ready_check → run → `stack down` (teardown
-   always runs).
+6. **Run in a clean env** — when your instructions say the environment is already running
+   (the caller started it from the code under test), seed → run against it, and leave starting
+   and stopping to the caller. Otherwise `stack up` → seed → ready_check → run → `stack down`
+   (teardown always runs).
 7. **On failure**, apply the fix-loop rule (selectors/flakes/waits only) — one attempt per
    invocation; the workflow's `max_visits` on the fix node (typically 3) bounds the loop.
 

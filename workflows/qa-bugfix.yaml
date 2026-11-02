@@ -1,0 +1,139 @@
+# Fix a product bug QA found in ONE implemented repository, on its existing feature branch and
+# worktree: fix with a regression test -> engine build/lint/test -> re-review of the new diff.
+# Entered by delivery.yaml for each repository QA's diagnosis names; delivery then records the
+# worktree's new HEAD, rebuilds the manifest (finalize re-checks every receipt against its commit)
+# and re-runs QA.
+version: 1
+name: qa-bugfix
+description: Fix a QA-found product bug in one repository's verified worktree, re-verify and re-review it.
+inputs:
+  slug: {type: string, required: true}
+  repo: {type: string, required: true, description: implemented repository name}
+  repo_path: {type: string, required: true, description: path to the repository's main checkout}
+  branch: {type: string, required: true, description: the feature branch QA tested}
+  worktree: {type: string, required: true, description: the verified worktree QA tested}
+  commit: {type: string, required: true, description: the commit QA tested}
+  bug_report: {type: string, required: true, description: QA's product-bug diagnosis}
+defaults:
+  model: sonnet
+  agent: implementer
+  max_visits: 10
+start: fix
+nodes:
+  - id: fix
+    type: agent
+    label: Fix the product bug
+    instruction: |
+      One fix attempt on branch ${inputs.branch} in exact worktree ${inputs.worktree}, starting
+      from commit ${inputs.commit}. QA found a product bug in the ${inputs.repo} repository:
+      read the diagnosis at ${inputs.bug_report} and the QA report beside it, and fix only what it
+      names for ${inputs.repo}, against the LLD at .maestro/runs/${inputs.slug}/lld/${inputs.repo}.md
+      and the contract at .maestro/runs/${inputs.slug}/openapi.yaml (when it exists). Add a
+      regression test that fails before the fix and passes after it. Never weaken, skip or delete
+      a test. If the fix needs a design or contract change, do not make it: escalate.
+      When the engine checks or the review sent you back, address what they found:
+      failing checks "${steps.verify.outputs.failed_checks}" (receipt
+      ${steps.verify.outputs.receipt_path}) and blocking findings in
+      .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md. Honour any human guidance:
+      ${steps.fix_gate.outputs.guidance}
+      Commit the fix on the branch. Do NOT loop — the workflow re-invokes you if needed.
+    skill: fix-loop
+    inputs:
+      slug: "${inputs.slug}"
+      stack: "${inputs.repo}"
+      branch: "${inputs.branch}"
+      repo_path: "${inputs.repo_path}"
+      worktree: "${inputs.worktree}"
+      bug_report: "${inputs.bug_report}"
+      verify_receipt: "${steps.verify.outputs.receipt_path}"
+      review_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
+      guidance: "${steps.fix_gate.outputs.guidance}"
+    outputs: [fix_summary, checks_passed, escalate]
+    max_visits: 3
+    on_exhausted: fix_gate
+    routes:
+      - {when: "${steps.fix.outputs.escalate} == true", to: fix_gate}
+      - {to: handoff}
+
+  - id: handoff
+    type: script
+    label: Verify the fixed worktree
+    run: [python3, .maestro/engine/implementation_pool.py, inspect, --root, ".", --repo, "${inputs.repo}", --branch, "${inputs.branch}", --worktree, "${inputs.worktree}"]
+    on_fail: abort
+    next: verify
+
+  - id: verify
+    type: script
+    label: Build, lint and test (engine)
+    run:
+      - python3
+      - .maestro/engine/repo_checks.py
+      - --root
+      - "."
+      - --repo
+      - "${inputs.repo}"
+      - --worktree
+      - "${steps.handoff.outputs.worktree}"
+      - --out
+      - ".maestro/runs/${inputs.slug}/${inputs.repo}/verify.json"
+      - --base-repo
+      - "${inputs.repo_path}"
+    timeout: 3600
+    max_visits: 6
+    on_exhausted: fix_gate
+    routes:
+      - {when: "${steps.verify.outputs.passed} == true", to: review}
+      - {to: fix}
+
+  - id: review
+    type: agent
+    label: Re-review the fix
+    instruction: |
+      Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
+      ${inputs.commit} (what QA tested) to ${steps.handoff.outputs.commit}, against the LLD,
+      contract and standards. Build, lint and tests already passed in the engine's run (receipt:
+      ${steps.verify.outputs.receipt_path}). Existing test files this branch changed
+      (engine-detected): ${steps.verify.outputs.tests_changed} — a weakened, skipped or deleted
+      assertion is blocking. Confirm the regression test covers the bug in ${inputs.bug_report}.
+      Read the earlier report at .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md
+      first, then overwrite it with the reviewed commit at the top.
+    skill: repo-review
+    agent: reviewer
+    model: opus
+    inputs:
+      slug: "${inputs.slug}"
+      repo_path: "${inputs.repo_path}"
+      worktree: "${steps.handoff.outputs.worktree}"
+      commit: "${steps.handoff.outputs.commit}"
+      branch: "${inputs.branch}"
+      verify_receipt: "${steps.verify.outputs.receipt_path}"
+      tests_changed: "${steps.verify.outputs.tests_changed}"
+      previous_review: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
+      fix_summary: "${steps.fix.outputs.fix_summary}"
+    outputs: [review_path, blocking, summary]
+    artifact: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
+    fresh: true
+    max_visits: 4
+    on_exhausted: fix_gate
+    routes:
+      - {when: "${steps.review.outputs.blocking} == true", to: fix}
+      - {to: end}
+
+  - id: fix_gate
+    type: gate
+    label: Bug-fix escalation
+    prompt: |
+      The QA bug fix for ${inputs.repo} needs a decision: the fixer escalated, or the engine checks
+      or the review still fail after the automated rounds.
+      Fix attempt: ${steps.fix.outputs.fix_summary}
+      Engine checks: ${steps.verify.outputs.summary}
+      Review: ${steps.review.outputs.summary}
+      Diagnosis: ${inputs.bug_report}
+    options:
+      - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
+      - {id: accept, label: Keep the current commit and re-run QA, to: end}
+      - {id: abandon, label: Abort, to: abort}
+
+outputs:
+  commit: "${steps.handoff.outputs.commit}"
+  summary: "${steps.fix.outputs.fix_summary}"

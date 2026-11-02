@@ -7,6 +7,10 @@ team workflow may want, leaving unselected repos as deferred work. Fixed workflo
 selected repos, run the generic implementation subworkflow, then record the exact checked-out
 branch, worktree and commit. `finalize` fails unless every selected repo has a verified entry,
 and attaches each repo's engine verification receipt to the QA/release manifest.
+
+When QA finds a product bug, `bugfix-init` queues the implemented repos it names and
+`bugfix-claim` hands each one out with its recorded branch, worktree and commit; the fix commits
+on that same branch, `record` stores the new commit, and `finalize` rebuilds the manifest.
 """
 import argparse
 import hashlib
@@ -276,8 +280,18 @@ def cmd_record(args):
         if not repo_path:
             return _fail(f"repo {args.repo!r} is no longer discoverable")
         simulated = os.environ.get("MAESTRO_SIMULATION") == "1"
+        if args.from_worktree and not simulated:
+            # a QA bug fix commits on the branch it was given: record whatever HEAD it left
+            worktree = args.worktree if os.path.isabs(args.worktree) else os.path.join(
+                args.root, args.worktree)
+            rc, args.commit = _git(worktree, "rev-parse", "HEAD")
+            if rc or not args.commit:
+                return _fail(f"cannot resolve HEAD for worktree {worktree}")
+        elif not args.commit:
+            return _fail("record needs --commit or --from-worktree")
         if simulated:
             worktree = "[simulated: no code was checked out]"
+            args.commit = args.commit or "[simulated commit]"
         else:
             try:
                 worktree = _verify_entry(args, repo_path)
@@ -370,6 +384,47 @@ def cmd_finalize(args):
     return 0
 
 
+def cmd_bugfix_init(args):
+    """Queue the implemented repositories a QA product-bug diagnosis names."""
+    with statemod.locked(args.slug, args.root):
+        try:
+            doc = _read(_queue_path(args.slug, args.root))
+        except (OSError, ValueError) as exc:
+            return _fail(f"implementation queue is unavailable: {exc}")
+        implemented = list((doc.get("implementations") or {}).keys())
+        selected, unknown = _parse_repos_text(args.repos_text, implemented)
+        if unknown:
+            return _fail(f"QA named repo(s) that were not implemented: {unknown}; "
+                         f"implemented repos are {implemented}")
+        if not selected:
+            return _fail("QA reported a product bug without naming an implemented repository")
+        doc["bugfix_remaining"] = selected
+        _write(_queue_path(args.slug, args.root), doc)
+    print(json.dumps({"repos_csv": ",".join(selected), "count": len(selected)}))
+    return 0
+
+
+def cmd_bugfix_claim(args):
+    with statemod.locked(args.slug, args.root):
+        try:
+            doc = _read(_queue_path(args.slug, args.root))
+        except (OSError, ValueError) as exc:
+            return _fail(f"implementation queue is unavailable: {exc}")
+        remaining = doc.get("bugfix_remaining") or []
+        if not remaining:
+            print(json.dumps({"done": True, "repo": "", "repo_path": "", "branch": "",
+                              "worktree": "", "commit": ""}))
+            return 0
+        repo = remaining.pop(0)
+        doc["bugfix_remaining"] = remaining
+        _write(_queue_path(args.slug, args.root), doc)
+        entry = (doc.get("implementations") or {})[repo]
+    print(json.dumps({"done": False, "repo": repo, "repo_path": entry["source_path"],
+                      "branch": entry["branch"], "worktree": entry["worktree"],
+                      "commit": entry["commit"]}))
+    return 0
+
+
 def cmd_check(args):
     try:
         doc = _read(_queue_path(args.slug, args.root))
@@ -388,11 +443,16 @@ def cmd_check(args):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for command in ("list", "claim", "finalize", "check"):
+    for command in ("list", "claim", "finalize", "check", "bugfix-claim"):
         p = sub.add_parser(command)
         p.add_argument("--root", default=".")
         p.add_argument("--slug", required=True)
-        p.set_defaults(fn=globals()[f"cmd_{command}"])
+        p.set_defaults(fn=globals()[f"cmd_{command.replace('-', '_')}"])
+    p = sub.add_parser("bugfix-init")
+    p.add_argument("--root", default=".")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--repos-text", default="")
+    p.set_defaults(fn=cmd_bugfix_init)
     p = sub.add_parser("init")
     p.add_argument("--root", default=".")
     p.add_argument("--slug", required=True)
@@ -407,7 +467,9 @@ def main(argv=None):
     p.add_argument("--repo", required=True)
     p.add_argument("--branch", required=True)
     p.add_argument("--worktree", required=True)
-    p.add_argument("--commit", required=True)
+    p.add_argument("--commit", default="")
+    p.add_argument("--from-worktree", action="store_true",
+                   help="record the worktree's current HEAD (after a QA bug fix)")
     p.set_defaults(fn=cmd_record)
     p = sub.add_parser("inspect")
     p.add_argument("--root", default=".")

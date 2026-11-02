@@ -58,9 +58,10 @@ def canned_agent_outputs(step, action):
         "implement": {"branch": "feature/x", "worktree": "/tmp/simulated",
                       "commit": "0" * 40, "summary": "built", "tests_passed": True},
         "review": {"review_path": "reviews/summary.md", "blocking": False, "summary": "clean"},
-        "fix": {"fix_summary": "fixed", "checks_passed": True},
+        "fix": {"fix_summary": "fixed", "checks_passed": True, "escalate": False},
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
-        "qa_fix": {"fix_summary": "harness wait fixed", "checks_passed": True, "escalate": False},
+        "qa_fix": {"fix_summary": "harness wait fixed", "checks_passed": True, "escalate": False,
+                   "product_bug": False, "bug_repos": ""},
         "review_pack": {"pack_path": "review-pack.md", "recommendation": "ready",
                         "summary": "ready"},
         "retrospect": {"incoming_path": ".maestro/memory/incoming/demo.json",
@@ -369,6 +370,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    or "repo_checks" in a or "assumptions.py" in a
                                    or "prd_source.py" in a or "ac_trace.py" in a
+                                   or "qa_env.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -648,18 +650,62 @@ class SdlcE2E(unittest.TestCase):
             "delivery/release_approval": [("approve", None)],
         }
 
-    def test_qa_product_bug_escalates_without_rerunning_the_suite(self):
+    def test_qa_escalation_goes_to_the_gate_without_rerunning_the_suite(self):
         self.prep_tasks_json()
         action, trace = self.drive(self._qa_gates([("accept", None)]), agent_overrides={
             "qa_run": {"passed": False, "failed_count": 2, "summary": "2 failing"},
-            "qa_fix": {"fix_summary": "product bug in booking", "checks_passed": False,
-                       "escalate": True},
+            "qa_fix": {"fix_summary": "staging database unreachable", "checks_passed": False,
+                       "escalate": True, "product_bug": False, "bug_repos": ""},
         })
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
         self.assertEqual(steps.count("delivery/qa/qa_run"), 1)
         self.assertEqual(steps.count("delivery/qa/qa_fix"), 1)
         self.assertIn("delivery/qa/qa_gate", steps)
+        self.assertLess(steps.index("delivery/qa/qa_gate"), steps.index("delivery/qa/env_down"))
+
+    def test_qa_product_bug_is_fixed_in_its_worktree_and_qa_reruns(self):
+        self.prep_tasks_json()
+        runs = iter([{"passed": False, "failed_count": 1, "summary": "booking total wrong"},
+                     {"passed": True, "failed_count": 0, "summary": "all green"}])
+        bugs = Path(self.tmp, ".maestro/runs/demo/qa/bugs.md")
+
+        def qa_fix():
+            bugs.parent.mkdir(parents=True, exist_ok=True)
+            bugs.write_text("## backend\n\nTC-demo-001 fails: total excludes tax.\n")
+            return {"fix_summary": "product bug in backend totals", "checks_passed": False,
+                    "escalate": False, "product_bug": True, "bug_repos": "backend"}
+        fixed = []
+
+        def bugfix_fix():
+            # commit the fix on the feature branch the bug-fix stage was given
+            worktree = statemod.load("demo", self.tmp)["steps"][
+                "delivery/bugfix_claim"]["outputs"]["worktree"]
+            Path(worktree, "fix.txt").write_text("tax included\n")
+            subprocess.run(["git", "add", "fix.txt"], cwd=worktree, check=True)
+            subprocess.run(["git", "commit", "-q", "-m", "fix totals"], cwd=worktree, check=True)
+            fixed.append(subprocess.run(["git", "rev-parse", "HEAD"], cwd=worktree, check=True,
+                                        capture_output=True, text=True).stdout.strip())
+            return {"fix_summary": "tax added to totals", "checks_passed": True, "escalate": False}
+        action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={
+            "qa_run": lambda: next(runs), "qa_fix": qa_fix, "fix": bugfix_fix})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        bugfix = [s for s in steps if s.startswith("delivery/bugfix/")]
+        self.assertEqual([s.rsplit("/", 1)[-1] for s in bugfix],
+                         ["fix", "handoff", "verify", "review"])
+        self.assertEqual(steps.count("delivery/finalize_implementation"), 2)
+        self.assertEqual(steps.count("delivery/qa/qa_run"), 2)
+        self.assertEqual(steps.count("delivery/qa/env_down"), 2)
+        self.assertNotIn("delivery/qa/qa_gate", steps)
+        self.assertLess(steps.index("delivery/bugfix_record"),
+                        len(steps) - 1 - steps[::-1].index("delivery/finalize_implementation"))
+        # QA re-ran against the fixed commit, verified by the engine at that commit
+        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/implementation-manifest.json")
+                              .read_text())
+        backend = next(r for r in manifest["repositories"] if r["repo"] == "backend")
+        self.assertEqual(backend["commit"], fixed[0])
+        self.assertEqual(backend["verification"]["status"], "verified")
 
     def test_qa_harness_fix_reruns_the_suite(self):
         self.prep_tasks_json()

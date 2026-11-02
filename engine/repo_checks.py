@@ -81,9 +81,10 @@ def _test_changes(worktree, base_repo, patterns):
     return changes, None
 
 
-def _run(command, cwd, timeout, log_path):
+def _run(command, cwd, timeout, log_path, extra_env=None):
     env = os.environ.copy()
     env.setdefault("CI", "true")
+    env.update(extra_env or {})
     started = time.monotonic()
     try:
         proc = subprocess.run(command, shell=True, cwd=cwd, env=env, capture_output=True,

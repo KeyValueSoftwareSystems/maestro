@@ -46,7 +46,7 @@ DEFAULT_TEST_PATTERNS = (
     "spec/*", "*/spec/*", "*_test.*", "test_*.py", "*/test_*.py", "*.test.*", "*.spec.*",
     "*Test.java", "*Tests.java", "*Test.kt", "*Tests.kt", "*_spec.rb",
 )
-ENVIRONMENT_KEYS = {"start", "stop"}
+ENVIRONMENT_KEYS = {"start", "ready", "stop"}
 DELIVERY_KEYS = {"mode", "base"}
 DELIVERY_MODES = ("branch", "pull-request")
 DEFAULT_TIMEOUT_S = 900

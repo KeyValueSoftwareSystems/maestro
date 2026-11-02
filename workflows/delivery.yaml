@@ -1,6 +1,6 @@
 # Child of sdlc-main: design staleness check -> implement every designed repository -> verified
-# test context -> QA -> acceptance-criteria trace -> assumption log -> review pack -> release
-# approval. It decides; the parent acts. Leaving for a
+# test context -> QA (product bugs: fix the named repos, rebuild the manifest, QA again) ->
+# acceptance-criteria trace -> assumption log -> review pack -> release approval. It decides; the parent acts. Leaving for a
 # design revision (the approved design changed, the workspace moved since the design was
 # grounded, or the human sent the release back) ends the child and is reported in its outputs:
 # `design_stale` or `design_changed` true, or `release` revise -> the
@@ -171,7 +171,51 @@ nodes:
       implementation_manifest: "${steps.finalize_implementation.outputs.manifest_path}"
       implementation_manifest_sha256: "${steps.finalize_implementation.outputs.manifest_sha256}"
     max_visits: 3
-    next: ac_trace
+    routes:
+      - {when: "${steps.qa.outputs.product_bug} == true", to: bugfix_init}
+      - {to: ac_trace}
+
+  # QA diagnosed a product bug: fix each named repository on its own feature branch and worktree
+  # (fix -> engine checks -> re-review), record the new commits, rebuild the manifest from them
+  # and re-run QA. QA's visit limit bounds the rounds; then a person decides.
+  - id: bugfix_init
+    type: script
+    label: Queue the repositories QA found bugs in
+    run: [python3, .maestro/engine/implementation_pool.py, bugfix-init, --root, ".", --slug, "${inputs.slug}", --repos-text, "${steps.qa.outputs.bug_repos}"]
+    on_fail: ask
+    next: bugfix_claim
+
+  - id: bugfix_claim
+    type: script
+    label: Next repository to fix
+    run: [python3, .maestro/engine/implementation_pool.py, bugfix-claim, --root, ".", --slug, "${inputs.slug}"]
+    max_visits: 40
+    routes:
+      - {when: "${steps.bugfix_claim.outputs.done} == true", to: finalize_implementation}
+      - {to: bugfix}
+
+  - id: bugfix
+    type: subworkflow
+    label: Fix the QA bug
+    workflow: .maestro/workflows/qa-bugfix.yaml
+    inputs:
+      slug: "${inputs.slug}"
+      repo: "${steps.bugfix_claim.outputs.repo}"
+      repo_path: "${steps.bugfix_claim.outputs.repo_path}"
+      branch: "${steps.bugfix_claim.outputs.branch}"
+      worktree: "${steps.bugfix_claim.outputs.worktree}"
+      commit: "${steps.bugfix_claim.outputs.commit}"
+      bug_report: "${steps.qa.outputs.bug_report}"
+    max_visits: 20
+    next: bugfix_record
+
+  - id: bugfix_record
+    type: script
+    label: Record the fixed commit
+    run: [python3, .maestro/engine/implementation_pool.py, record, --root, ".", --slug, "${inputs.slug}", --repo, "${steps.bugfix_claim.outputs.repo}", --branch, "${steps.bugfix_claim.outputs.branch}", --worktree, "${steps.bugfix_claim.outputs.worktree}", --from-worktree]
+    on_fail: abort
+    max_visits: 40
+    next: bugfix_claim
 
   # Each PRD acceptance criterion -> its test cases -> their QA results. A criterion passes only
   # when a case for it ran and every case that ran passed.
@@ -260,7 +304,7 @@ nodes:
       Recommendation: ${steps.review_pack.outputs.recommendation}
       ${steps.review_pack.outputs.summary}
       Review pack: ${steps.review_pack.outputs.pack_path}
-      QA: ${steps.qa.outputs.qa_summary}
+      QA: ${steps.qa.outputs.qa_summary} · ${steps.qa.outputs.e2e_summary}
     options:
       - {id: approve, label: Approve the release, to: end}
       - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}

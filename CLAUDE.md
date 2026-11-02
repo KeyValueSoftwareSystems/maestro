@@ -136,6 +136,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
   supports batches with deferred repos for team workflows. Builds the QA/release manifest only
   from exact verified worktree commits, with each repo's verify receipt and status attached.
+  `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
+  in its worktree) and `record --from-worktree` records the fixed HEAD.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
   repos, missing `build`/`test` commands (errors) and missing `lint`/`e2e` (warnings). Engine
@@ -147,6 +149,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`ac_trace.py`** — the acceptance-criteria trace: `design` checks every PRD `AC-xx` is traced
   by a test case (`### TC-…` blocks) and none is unknown; `qa` joins criteria → cases → QA's
   `qa/results.json` into `ac-trace.md` with `all_passed`, which the release autopilot requires.
+- **`qa_env.py`** — QA's environment and the project's own e2e suites from maestro.config.yaml:
+  `up` (environment.start + ready), `e2e` (each repo's `e2e` command in its verified worktree,
+  receipt), `down`; every command gets the code under test as `MAESTRO_WORKTREE_<REPO>` /
+  `MAESTRO_COMMIT_<REPO>`.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.

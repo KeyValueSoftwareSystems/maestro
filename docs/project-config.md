@@ -26,7 +26,8 @@ repos:                          # one entry per repository Maestro finds
       lint: npm run lint
       test: npm test -- --watchAll=false
 environment:                    # optional: bring the stack up for QA
-  start: docker compose up -d
+  start: docker compose up -d --build
+  ready: ./scripts/wait-for-health   # optional; QA starts only after it passes
   stop: docker compose down
 delivery:                       # optional
   mode: branch                  # branch | pull-request
@@ -35,6 +36,15 @@ delivery:                       # optional
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
 workspace root itself in a single-repo layout.
+
+QA runs against the code the engine verified, not the main checkouts. The engine runs
+`environment.start` (then `ready`) before QA and `stop` after it, at the workspace root, with the
+code under test in environment variables: `MAESTRO_SLUG`, `MAESTRO_MANIFEST`, and per repository
+`MAESTRO_WORKTREE_<REPO>` and `MAESTRO_COMMIT_<REPO>` (name upper-cased, other characters as `_`)
+— point your compose build contexts or start scripts at them. After the QA agent's suite passes,
+the engine runs each repository's `e2e` command in its worktree (same variables) and writes
+`qa/e2e-receipt.json`; a failure goes back to the QA fixer. Without `e2e`, QA results are only
+what the QA agent reports.
 
 The verify step runs these commands in each implementation worktree and writes a receipt. It
 also lists existing test files the branch modified, renamed or deleted (matched by

@@ -17,7 +17,8 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
           → functional test cases (every AC traced) → readiness check → [approve])
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
-   → QA → acceptance-criteria trace → assumption log → review pack
+   → QA (product bug → fix that repo, re-verify, re-review → QA again)
+   → acceptance-criteria trace → assumption log → review pack
    → [approve → archive: harvest lessons + publish docs]
 ```
 
@@ -125,10 +126,6 @@ the PRD lacks, and sends the catalog back with the exact gaps otherwise. Then a 
 a fresh reviewer: no design decision left to the implementer, every LLD consistent with the
 contract and with each other, every acceptance criterion covered. One approval covers all of them.
 
-After QA, the engine joins each criterion to its test cases and their QA results (QA records a
-result per case) in `ac-trace.md`: passing only when a case for it ran and every case that ran
-passed; otherwise failing or not run. The release gate and the review pack show it.
-
 Approval records the exact HLD, contract and LLD hashes. Delivery starts by checking them: a
 design that changed after approval goes back through design instead of being built stale.
 
@@ -136,6 +133,19 @@ After LLD approval, Maestro implements every repository in the approved design, 
 parallel. If the release is sent back to design, the next delivery pass rebuilds every repository
 against the revised design; the pre-implementation workspace drift check still protects stale
 designs.
+
+QA tests exactly those verified commits. When `maestro.config.yaml` defines an `environment`, the
+engine starts it before QA (with each repository's worktree and commit in environment variables,
+so the stack is built from the code under test) and stops it afterwards. The QA agent automates
+and runs the test cases; then the engine runs each repository's own `e2e` command in its
+worktree. A test-harness failure gets a bounded fix. A **product bug** never stops at a gate: the
+QA fixer writes a diagnosis (`qa/bugs.md`) naming the repositories, each is fixed on its own
+feature branch with a regression test, re-verified by the engine and re-reviewed (only the new
+diff), and QA runs again on the new commits — up to three QA rounds, then you decide.
+
+After QA, the engine joins each criterion to its test cases and their QA results (QA records a
+result per case) in `ac-trace.md`: passing only when a case for it ran and every case that ran
+passed; otherwise failing or not run. The release gate and the review pack show it.
 
 If a change to an already-approved PRD, HLD, contract or LLD comes up mid-run, Maestro records it
 as a note and offers two paths: revise the design (at the current design gate, or by sending the

@@ -44,6 +44,11 @@ predict the fix, and confirm. If it is not installed, follow the same discipline
   code change to force green.
 - **Real defect** — fix the code with a regression test that fails before and passes after.
 - **Spec/contract ambiguity** — stop and ask; do not invent behavior.
+- **Product bug found by a test suite you may not change product code for** (a QA run against
+  frozen, reviewed commits) — do not touch the product. Report it as a product bug with the
+  repositories to fix, and write the diagnosis where your instructions say: per repository, the
+  failing case IDs, expected vs actual behaviour, how to reproduce, and the suspected code. The
+  caller fixes it in implementation and re-runs the suite.
 
 ## Stop and ask a human if
 - a DB migration is required but not approved · the API contract would change ·
@@ -59,7 +64,10 @@ decide whether to re-invoke. Escalation is success, not failure.
 
 ## Output contract
 Return `root_cause` (one line, or the hypothesis), `fix_summary` (files changed + what
-changed), `checks_passed`, and `escalate` (true when a hard-stop trigger above was hit).
+changed), `checks_passed`, and `escalate` (true when a hard-stop trigger above was hit). When the
+caller asks for them (a suite run against frozen product code), also return `product_bug` (true
+when the product, not the test, is wrong) and `bug_repos` (the comma-separated repositories to
+fix; empty otherwise).
 `checks_passed` MUST be the literal JSON boolean `true` or `false` (true only if the targeted
 checks actually ran AND passed after your fix) — never a count or status phrase. It is your
 own report; a caller may still re-run the checks independently before trusting it.

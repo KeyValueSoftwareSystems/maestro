@@ -1,5 +1,8 @@
-# QA phase: author + run the automated functional/E2E suite from the test-case catalog,
-# with a bounded fix cycle and a human escalation gate.
+# QA phase: the engine brings the QA environment up from maestro.config.yaml (built from the
+# verified worktrees), the QA agent automates and runs the test-case catalog, then the engine runs
+# each repository's own e2e command. Test-harness failures get a bounded fix cycle; a product bug
+# ends QA with `product_bug` and the repos to fix, and delivery fixes them in their worktrees and
+# re-runs QA. The environment is stopped on every normal exit.
 version: 1
 name: qa
 description: Automate and run the functional test suite; fix loop on failures.
@@ -12,8 +15,16 @@ defaults:
   model: sonnet
   agent: qa
   max_visits: 10
-start: qa_run
+start: env_up
 nodes:
+  - id: env_up
+    type: script
+    label: Start the QA environment
+    run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, "${inputs.implementation_manifest}"]
+    timeout: 1800
+    on_fail: ask
+    next: qa_run
+
   - id: qa_run
     type: agent
     label: Author & run E2E suite
@@ -37,6 +48,8 @@ nodes:
       {"schema_version": 1, "cases": [{"id": "<TC id from the catalog>", "status": "passed" |
       "failed" | "skipped", "note": "<why, for failed or skipped>"}]}. A case you did not automate
       or run is "skipped" with the reason; the engine traces every acceptance criterion through it.
+      QA environment: ${steps.env_up.outputs.summary}. When the engine started it, test against
+      that running stack; do not start or stop it yourself.
     skill: qa-automation
     inputs:
       slug: "${inputs.slug}"
@@ -51,20 +64,39 @@ nodes:
     max_visits: 5
     on_exhausted: qa_gate
     routes:
-      - {when: "${steps.qa_run.outputs.passed} == true", to: end}
+      - {when: "${steps.qa_run.outputs.passed} == true", to: e2e_suite}
+      - {to: qa_fix}
+
+  # The engine runs each repository's own e2e command in its verified worktree; a failure is
+  # diagnosed like any QA failure.
+  - id: e2e_suite
+    type: script
+    label: Project e2e suites (engine)
+    run: [python3, .maestro/engine/qa_env.py, e2e, --root, ".", --manifest, "${inputs.implementation_manifest}", --out, ".maestro/runs/${inputs.slug}/qa/e2e-receipt.json"]
+    timeout: 3600
+    max_visits: 6
+    on_exhausted: qa_gate
+    routes:
+      - {when: "${steps.e2e_suite.outputs.passed} == true", to: env_down}
       - {to: qa_fix}
 
   - id: qa_fix
     type: agent
     label: Fix failures
     instruction: |
-      One fix attempt: diagnose the failures in .maestro/runs/${inputs.slug}/qa/report.md.
+      One fix attempt: diagnose the failures in .maestro/runs/${inputs.slug}/qa/report.md and, when
+      the project's e2e suites failed (${steps.e2e_suite.outputs.summary}), the receipt at
+      .maestro/runs/${inputs.slug}/qa/e2e-receipt.json and the logs it names.
       You may fix only a genuine test-harness bug under .maestro/runs/${inputs.slug}/qa/;
       never weaken or delete a legitimate assertion. Do NOT change product code or any
       worktree listed in ${inputs.implementation_manifest}: that would invalidate its
-      reviewed commit identity. If the failure is a product bug (or any other hard stop), return
-      checks_passed=false and escalate=true with the diagnosis — the workflow goes straight to the
-      human escalation gate instead of re-running the suite. Re-run the failing specs before
+      reviewed commit identity.
+      If the product is wrong, return product_bug=true, the repositories to fix in bug_repos
+      (comma-separated names from the manifest), and write the diagnosis to
+      .maestro/runs/${inputs.slug}/qa/bugs.md: per repository, the failing case IDs, expected vs
+      actual behaviour, how to reproduce, and the suspected code. The workflow then fixes those
+      repositories and re-runs QA. For any other hard stop (an environment you cannot fix, a
+      contract or design question), return escalate=true. Re-run the failing specs before
       returning; skip the full suite, since the workflow re-runs QA after you. Honour any human
       guidance: ${steps.qa_gate.outputs.guidance}
       Do NOT loop — the workflow re-invokes you if needed.
@@ -76,10 +108,11 @@ nodes:
       implementation_manifest: "${inputs.implementation_manifest}"
       implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
       guidance: "${steps.qa_gate.outputs.guidance}"
-    outputs: [fix_summary, checks_passed, escalate]
+    outputs: [fix_summary, checks_passed, escalate, product_bug, bug_repos]
     max_visits: 3
     on_exhausted: qa_gate
     routes:
+      - {when: "${steps.qa_fix.outputs.product_bug} == true", to: env_down}
       - {when: "${steps.qa_fix.outputs.escalate} == true", to: qa_gate}
       - {to: qa_run}
 
@@ -89,14 +122,26 @@ nodes:
     prompt: |
       QA is still failing after the automated fix rounds, or the fix step escalated.
       Last run: ${steps.qa_run.outputs.summary}
+      Project e2e: ${steps.e2e_suite.outputs.summary}
       Last fix attempt: ${steps.qa_fix.outputs.fix_summary}
       Report: .maestro/runs/${inputs.slug}/qa/report.md
     options:
       - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}
-      - {id: accept, label: Accept with known failures, to: end}
+      - {id: accept, label: Accept with known failures, to: env_down}
       - {id: abandon, label: Abort, to: abort}
+
+  - id: env_down
+    type: script
+    label: Stop the QA environment
+    run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, "${inputs.implementation_manifest}"]
+    timeout: 900
+    next: end
 
 outputs:
   qa_summary: "${steps.qa_run.outputs.summary}"
   qa_results: ".maestro/runs/${inputs.slug}/qa/results.json"
+  e2e_summary: "${steps.e2e_suite.outputs.summary}"
+  product_bug: "${steps.qa_fix.outputs.product_bug}"
+  bug_repos: "${steps.qa_fix.outputs.bug_repos}"
+  bug_report: ".maestro/runs/${inputs.slug}/qa/bugs.md"
   qa_report: ".maestro/runs/${inputs.slug}/qa/report.md"

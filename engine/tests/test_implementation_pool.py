@@ -85,6 +85,40 @@ class ImplementationPoolTest(unittest.TestCase):
         self.assertFalse(final["verified_ok"])
         self.assertEqual(manifest["repositories"][0]["verification"]["status"], "missing")
 
+    def test_qa_bugfix_queue_hands_out_the_tested_worktree_and_records_its_new_head(self):
+        run("init", "--root", self.root, "--slug", "feature-x")
+        run("claim", "--root", self.root, "--slug", "feature-x")
+        worktree, branch, commit = self.create_feature_worktree()
+        run("record", "--root", self.root, "--slug", "feature-x", "--repo", "mobile-app",
+            "--branch", branch, "--worktree", worktree, "--commit", commit)
+        code, err = run("bugfix-init", "--root", self.root, "--slug", "feature-x",
+                        "--repos-text", "mobile-app, web")
+        self.assertEqual(code, 1)  # QA may only name implemented repositories
+        code, err = run("bugfix-init", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 1)
+        code, out = run("bugfix-init", "--root", self.root, "--slug", "feature-x",
+                        "--repos-text", "MOBILE-APP")
+        self.assertEqual((code, out["repos_csv"]), (0, "mobile-app"))
+        _, claim = run("bugfix-claim", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual((claim["repo"], claim["branch"], claim["commit"], claim["done"]),
+                         ("mobile-app", branch, commit, False))
+        self.assertEqual(claim["worktree"], os.path.realpath(worktree))
+        _, claim = run("bugfix-claim", "--root", self.root, "--slug", "feature-x")
+        self.assertTrue(claim["done"])
+        # the fix commits on the same branch; record reads the worktree's HEAD itself
+        with open(os.path.join(worktree, "README.md"), "a") as fh:
+            fh.write("bug fixed\n")
+        git(worktree, "commit", "-qam", "fix")
+        fixed = git(worktree, "rev-parse", "HEAD")
+        code, out = run("record", "--root", self.root, "--slug", "feature-x", "--repo",
+                        "mobile-app", "--branch", branch, "--worktree", worktree,
+                        "--from-worktree")
+        self.assertEqual((code, out["commit"]), (0, fixed))
+        code, final = run("finalize", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0)
+        with open(os.path.join(self.root, final["manifest_path"])) as fh:
+            self.assertEqual(json.load(fh)["repositories"][0]["commit"], fixed)
+
     def test_fresh_pass_reimplements_after_every_repo_was_done(self):
         run("init", "--root", self.root, "--slug", "feature-x")
         run("claim", "--root", self.root, "--slug", "feature-x")
