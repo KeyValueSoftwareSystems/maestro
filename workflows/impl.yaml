@@ -107,6 +107,8 @@ nodes:
       - "${steps.handoff.outputs.worktree}"
       - --out
       - ".maestro/runs/${inputs.slug}/${inputs.stack}/verify.json"
+      - --base-repo
+      - "${inputs.repo_path}"
     timeout: 3600
     max_visits: 10
     on_exhausted: impl_gate
@@ -124,8 +126,11 @@ nodes:
       maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
       map to check blast radius, not just the diff in isolation. Build, lint and tests already
       passed in the engine's run (receipt: ${steps.verify.outputs.receipt_path}); review the
-      design and code, not whether it compiles. Findings need file:line evidence; set
-      blocking=true only for must-fix issues. Record the reviewed commit at the top of the report.
+      design and code, not whether it compiles. Existing test files this branch changed
+      (engine-detected): ${steps.verify.outputs.tests_changed}. For each one, state in the report
+      whether the change follows the approved design; a weakened, skipped or deleted assertion
+      without that basis is blocking. Findings need file:line evidence; set blocking=true only
+      for must-fix issues. Record the reviewed commit at the top of the report.
       If the report from an earlier round exists at
       .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md, this is a re-review after a
       fix (${steps.fix.outputs.fix_summary}): read it first, review only the diff from the commit
@@ -141,6 +146,7 @@ nodes:
       commit: "${steps.handoff.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
+      tests_changed: "${steps.verify.outputs.tests_changed}"
       previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
       fix_summary: "${steps.fix.outputs.fix_summary}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"

@@ -39,7 +39,13 @@ CONFIG_VERSION = 1
 COMMANDS = ("setup", "build", "lint", "typecheck", "test", "e2e")
 REQUIRED_COMMANDS = ("build", "test")
 RECOMMENDED_COMMANDS = ("lint", "e2e")
-REPO_KEYS = {"stack", "commands", "timeout_s"}
+REPO_KEYS = {"stack", "commands", "timeout_s", "test_patterns"}
+# Paths that count as test files for the test-edit guard (fnmatch; `*` crosses `/`).
+DEFAULT_TEST_PATTERNS = (
+    "test/*", "tests/*", "*/test/*", "*/tests/*", "__tests__/*", "*/__tests__/*",
+    "spec/*", "*/spec/*", "*_test.*", "test_*.py", "*/test_*.py", "*.test.*", "*.spec.*",
+    "*Test.java", "*Tests.java", "*Test.kt", "*Tests.kt", "*_spec.rb",
+)
 ENVIRONMENT_KEYS = {"start", "stop"}
 DELIVERY_KEYS = {"mode", "base"}
 DELIVERY_MODES = ("branch", "pull-request")
@@ -78,6 +84,11 @@ def repo_commands(config, repo):
 def repo_timeout(config, repo):
     entry = ((config or {}).get("repos") or {}).get(repo) or {}
     return entry.get("timeout_s") or DEFAULT_TIMEOUT_S
+
+
+def repo_test_patterns(config, repo):
+    entry = ((config or {}).get("repos") or {}).get(repo) or {}
+    return tuple(entry.get("test_patterns") or DEFAULT_TEST_PATTERNS)
 
 
 def _check_strings(section, value, keys, where, issues):
@@ -127,6 +138,11 @@ def check(config, discovered):
                                     or timeout <= 0):
             issues.append(Issue("error", "config-shape", "must be a positive whole number of seconds",
                                 f"{where}.timeout_s"))
+        patterns = entry.get("test_patterns")
+        if patterns is not None and (not isinstance(patterns, list) or not patterns
+                                     or not all(isinstance(p, str) and p for p in patterns)):
+            issues.append(Issue("error", "config-shape", "must be a non-empty list of path patterns",
+                                f"{where}.test_patterns"))
         commands = entry.get("commands") or {}
         if not isinstance(commands, dict):
             issues.append(Issue("error", "config-shape", "`commands` must be a mapping",

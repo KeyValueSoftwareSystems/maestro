@@ -92,6 +92,64 @@ class RepoChecksTest(unittest.TestCase):
         self.assertEqual(proc.returncode, 2)
         self.assertIn("no test command", proc.stderr)
 
+    def _repo_with_branch(self):
+        """A main checkout with existing tests, and a feature worktree branched from it."""
+        main = os.path.join(self.root, "codebase", "backend")
+        os.makedirs(os.path.join(main, "tests"))
+        subprocess.run(["git", "init", "-q", main], check=True)
+        for rel in ("tests/test_orders.py", "tests/test_users.py", "src_test.go", "app.py"):
+            with open(os.path.join(main, rel), "w") as fh:
+                fh.write("assert True\n")
+        subprocess.run(["git", "-C", main, "add", "."], check=True)
+        subprocess.run(["git", "-C", main, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-q", "-m", "base"], check=True)
+        worktree = os.path.join(self.root, "feature")
+        subprocess.run(["git", "-C", main, "worktree", "add", "-q", "-b", "feature", worktree],
+                       check=True)
+        self.worktree = worktree
+        return main, worktree
+
+    def run_guarded(self, main):
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--root", self.root, "--repo", "backend",
+             "--worktree", self.worktree, "--out", self.out, "--base-repo", main],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_guard_flags_changed_and_deleted_existing_tests(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"})
+        with open(os.path.join(worktree, "tests", "test_orders.py"), "w") as fh:
+            fh.write("pass  # assertion removed\n")
+        os.remove(os.path.join(worktree, "src_test.go"))
+        with open(os.path.join(worktree, "tests", "test_new.py"), "w") as fh:
+            fh.write("assert True\n")
+        with open(os.path.join(worktree, "app.py"), "w") as fh:
+            fh.write("changed = True\n")
+        result = self.run_guarded(main)
+        self.assertTrue(result["passed"])  # flagged for the reviewer, not failed
+        changes = {c["path"]: c["status"] for c in self.receipt()["test_changes"]}
+        self.assertEqual(changes, {"tests/test_orders.py": "modified", "src_test.go": "deleted"})
+        self.assertIn("tests/test_orders.py (modified)", result["tests_changed"])
+        self.assertEqual(self.receipt()["test_guard"], "ran")
+
+    def test_guard_sees_committed_changes_and_custom_patterns(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"}, extra="    test_patterns: [\"app.py\"]\n")
+        with open(os.path.join(worktree, "app.py"), "w") as fh:
+            fh.write("changed = True\n")
+        subprocess.run(["git", "-C", worktree, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-qam", "edit"], check=True)
+        result = self.run_guarded(main)
+        self.assertEqual(result["tests_changed"], "app.py (modified)")
+
+    def test_guard_without_base_repo_says_why(self):
+        self.config({"build": "true", "test": "true"})
+        self.run_checks()
+        self.assertEqual(self.receipt()["test_guard"], "no base repository given")
+
     def test_simulation_mode_runs_nothing(self):
         proc, result = self.run_checks(env={"MAESTRO_SIMULATION": "1"})
         self.assertEqual(proc.returncode, 0)

@@ -18,6 +18,7 @@ repos:                          # one entry per repository Maestro finds
       test: go test ./...       # required
       e2e: make e2e             # recommended; used by QA
     timeout_s: 900              # optional, per command (default 900)
+    test_patterns: ["tests/*"]  # optional; which files are tests (default: common conventions)
   web:
     stack: react
     commands:
@@ -34,6 +35,10 @@ delivery:                       # optional
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
 workspace root itself in a single-repo layout.
+
+The verify step runs these commands in each implementation worktree and writes a receipt. It
+also lists existing test files the branch modified, renamed or deleted (matched by
+`test_patterns`); the code reviewer must justify each one. New test files are not listed.
 
 ## Check it
 

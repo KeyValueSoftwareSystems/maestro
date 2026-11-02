@@ -16,6 +16,9 @@ and repo instructions. Cover correctness, security/authz, input bounds, error be
 compatibility, data migration safety, concurrency/idempotency, performance, observability,
 and meaningful positive/negative tests as applicable to that repository's technology.
 Findings require `file:line` evidence. A blocker or major finding makes `blocking=true`.
+Inspect every change to an existing test: when your instructions list changed test files, say
+for each whether the approved design justifies it. A weakened, skipped or deleted assertion
+without that basis is a blocker.
 Review read-only; write the requested report artifact outside the product worktree. Record the
 reviewed commit in the report.
 

@@ -90,6 +90,14 @@ class PreflightTest(unittest.TestCase):
         self.assertIn("repos.backend.timeout_s", errors)
         self.assertIn("delivery.mode", errors)
 
+    def test_test_patterns_must_be_a_list_of_patterns(self):
+        self.write(VALID.replace("    timeout_s: 600", "    timeout_s: 600\n    test_patterns: tests"))
+        self.assertIn(("config-shape", "repos.backend.test_patterns"), self.codes("error"))
+        self.write(VALID.replace("    timeout_s: 600", "    timeout_s: 600\n    test_patterns: [\"qa/*\"]"))
+        self.assertEqual(self.codes("error"), [])
+        config = project_config.load(self.root)
+        self.assertEqual(project_config.repo_test_patterns(config, "backend"), ("qa/*",))
+
     def test_configured_repo_missing_on_disk_only_warns(self):
         ghost = "  ghost:\n    commands: {build: x, test: y, lint: z, e2e: w}\n"
         self.write(VALID.replace("environment:", ghost + "environment:"))
