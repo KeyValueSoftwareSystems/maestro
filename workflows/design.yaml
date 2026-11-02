@@ -41,6 +41,14 @@ nodes:
       project_context: "${steps.intake.outputs.project_context}"
       references: "${steps.intake.outputs.references}"
     on_fail: abort
+    next: greenfield_check
+
+  # Engine-owned: no repository in the workspace yet means the HLD decides which to create and a
+  # scaffold stage builds them before the contract and LLDs.
+  - id: greenfield_check
+    type: script
+    label: Existing code or a new product?
+    run: [python3, .maestro/engine/greenfield.py, check, --root, "."]
     next: sizing
 
   # Engine-owned: a small single-repository change with no non-functional targets skips the HLD
@@ -61,6 +69,18 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       feedback: "${inputs.feedback}"
+      greenfield: "${steps.greenfield_check.outputs.greenfield}"
+    on_fail: abort
+    routes:
+      - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: scaffold}
+      - {when: "${steps.hld.outputs.interfaces_changed} == true", to: contract}
+      - {to: lld}
+
+  - id: scaffold
+    type: subworkflow
+    label: Scaffold the new repositories
+    workflow: .maestro/workflows/scaffold.yaml
+    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     on_fail: abort
     routes:
       - {when: "${steps.hld.outputs.interfaces_changed} == true", to: contract}

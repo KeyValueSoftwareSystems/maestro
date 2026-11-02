@@ -52,6 +52,11 @@ container image, CI pipeline and deployment definitions (Terraform, Helm or mani
 repositories that hold them, so each gets an LLD and is built with the feature.
 Omit the section when the workspace defines no infrastructure.
 
+When the workspace has no code yet (your instructions say greenfield), add `Repositories` right
+after `Context and scope`: one bullet per repository to create, written exactly as
+`` `name` (stack): purpose `` — one per deployable service or shared library, no more. The engine
+creates and scaffolds exactly these before the detailed designs.
+
 Put a Mermaid diagram (` ```mermaid `) in `Proposed design` whenever the feature crosses
 repositories or changes infrastructure: components and their owners, the main request and event
 flows, and the data stores. Keep it to what this feature touches.

@@ -50,8 +50,9 @@ runtime. It ships:
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
   `delivery` → `archive`; `design` composes `design-intake` /
-  `design-prd` / `design-hld` (with its architecture review) / `design-contract` (only when the
-  HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run). A gate decision
+  `design-prd` / `design-hld` (with its architecture review) / `scaffold` (greenfield only: create
+  the repositories the HLD lists) / `design-contract` (only when the HLD lists cross-repo
+  interfaces) / `design-lld` (every repo's LLD in one run). A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
   `engine/schemas/workflow.schema.json`).
@@ -186,6 +187,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   the Infrastructure and operations section for `containers`/`iac`; with `--repos` each change
   must name its owning repository, and those owners (`infra_repos_csv`) are passed to
   `lld_set.py init --require`, which refuses a scope without them.
+- **`greenfield.py`** — the new-product path: `check` (no repository discovered), `create` (git
+  init + first commit for each repository the HLD's Repositories section lists), `configure` (adds
+  the scaffold report's commands to maestro.config.yaml without touching existing entries, runs
+  each build and test once, stamps and commits each codebase map). `workflows/scaffold.yaml` runs
+  them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
   (PRD → LLD → test cases → readiness → approval; no HLD or contract) only for ≤5 acceptance
   criteria, Non-functional requirements None, one repository and no "(to confirm)"; the run input

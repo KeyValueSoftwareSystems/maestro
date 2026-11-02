@@ -273,10 +273,7 @@ def _map_stale_repos(root, repos):
     stale = []
     for entry in repos:
         repo = os.path.join(root, entry["path"])
-        marker = codebase_scan.read_marker(
-            os.path.join(repo, codebase_scan.DEFAULT_MAP_REL)
-        )
-        if marker != entry["head_commit"]:
+        if not codebase_scan.map_is_current(repo, head=entry["head_commit"]):
             stale.append(entry["name"])
     return stale
 

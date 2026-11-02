@@ -188,6 +188,17 @@ Prefer manual control? Every step is also a skill you can invoke on its own — 
 command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
 `$hld-writing`, for example). Same skills, no orchestration.
 
+## New products (greenfield)
+
+A workspace with no repositories yet takes the greenfield path. The HLD questions then decide
+which repositories to create — one per deployable service or shared library — and their stacks,
+and the HLD lists them in a Repositories section (`` `name` (stack): purpose ``). After you approve
+the HLD, the engine creates each repository, a scaffolding agent gives it a passing build and test,
+lint, a README, CI, a container image or starting infrastructure when the design deploys one, and
+a codebase map; the engine adds their commands to `maestro.config.yaml`, runs them once to prove the
+skeleton works, and pins the new commits. The contract, LLDs and delivery then run on the new
+repositories exactly as on existing code.
+
 ## Light path for small changes
 
 After PRD approval the engine sizes the feature. A small change — at most five acceptance

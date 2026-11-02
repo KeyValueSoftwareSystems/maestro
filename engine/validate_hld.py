@@ -30,6 +30,10 @@ SECTION_ORDER = list(REQUIRED_SECTIONS)
 INFRA_SECTION = "infrastructure and operations"
 INFRA_LEVELS = ("none", "containers", "iac")
 MERMAID_RE = re.compile(r"^\s*```\s*mermaid\b", re.M)
+# Greenfield (the workspace has no code yet): the HLD decides the repositories to create, right
+# after Context and scope, one bullet each: `name` (stack): purpose.
+REPOS_SECTION = "repositories"
+NEW_REPO_RE = re.compile(r"^\s*[-*]\s+`([a-z0-9][a-z0-9._-]*)`\s*\(([^)]+)\)\s*:\s*\S")
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
 DECORATIVE_WORDS = (
@@ -109,14 +113,26 @@ def infra_owners(sections, repos):
     return owners
 
 
-def _expected_order(order, infra_level):
+def new_repositories(sections):
+    """[(name, stack)] the Repositories section creates, in order."""
+    found = []
+    for line in sections.get(REPOS_SECTION, "").splitlines():
+        match = NEW_REPO_RE.match(line)
+        if match and match.group(1) not in [n for n, _s in found]:
+            found.append((match.group(1), match.group(2).strip()))
+    return found
+
+
+def _expected_order(order, infra_level, greenfield=False):
     expected = list(SECTION_ORDER)
+    if greenfield or REPOS_SECTION in order:
+        expected.insert(expected.index("context and scope") + 1, REPOS_SECTION)
     if infra_level in ("containers", "iac") or INFRA_SECTION in order:
         expected.insert(expected.index("interfaces") + 1, INFRA_SECTION)
     return expected
 
 
-def validate(path, open_questions_path=None, infra_level="none", repos=()):
+def validate(path, open_questions_path=None, infra_level="none", repos=(), greenfield=False):
     errors, warnings = [], []
     try:
         text = Path(path).read_text(encoding="utf-8")
@@ -139,7 +155,16 @@ def validate(path, open_questions_path=None, infra_level="none", repos=()):
     if not any(STATUS_RE.match(line) for line in preamble):
         errors.append("document header: missing Status: Ready for review metadata")
 
-    expected = _expected_order(order, infra_level)
+    expected = _expected_order(order, infra_level, greenfield)
+    if greenfield:
+        new = new_repositories(sections)
+        if REPOS_SECTION not in sections:
+            errors.append("missing section: repositories (the workspace has no code yet: list each "
+                          "repository to create as `name` (stack): purpose)")
+        elif not new:
+            errors.append("repositories must list each repository to create as a bullet: "
+                          "`name` (stack): purpose")
+        repos = tuple(repos) + tuple(n for n, _s in new)
     if infra_level in ("containers", "iac") and INFRA_SECTION not in sections:
         errors.append(f"missing section: {INFRA_SECTION} (the workspace defines infrastructure: "
                       "list what this feature changes, or say None)")
@@ -149,7 +174,7 @@ def validate(path, open_questions_path=None, infra_level="none", repos=()):
     if unknown:
         errors.append("unexpected level-2 section(s): " + ", ".join(unknown))
 
-    for name in [n for n in expected if n != INFRA_SECTION or n in sections]:
+    for name in [n for n in expected if n not in (INFRA_SECTION, REPOS_SECTION) or n in sections]:
         body = sections.get(name)
         if body is None:
             errors.append(f"missing section: {name}")
@@ -215,14 +240,18 @@ def main(argv=None):
     parser.add_argument("--repos", default="",
                         help="workspace repositories, comma-separated: each infrastructure change "
                              "must name its owner")
+    parser.add_argument("--greenfield", default="false",
+                        help="true when the workspace has no code yet: the HLD must list the "
+                             "repositories to create")
     parser.add_argument("--infra-level", choices=INFRA_LEVELS, default="none",
                         help="engine/infra_scan.py level: containers or iac require the "
                              "Infrastructure and operations section")
     parser.add_argument("--report", action="store_true", help="always exit 0 for workflow routing")
     args = parser.parse_args(argv)
     repos = [r.strip() for r in args.repos.split(",") if r.strip()]
+    greenfield = str(args.greenfield).lower() == "true"
     errors, warnings = validate(args.path, open_questions_path=args.open_questions,
-                                infra_level=args.infra_level, repos=repos)
+                                infra_level=args.infra_level, repos=repos, greenfield=greenfield)
     issues = errors + warnings
     try:
         sections, _order = _sections(Path(args.path).read_text(encoding="utf-8"))
@@ -232,7 +261,9 @@ def main(argv=None):
         "valid": not errors,
         "interfaces_changed": interfaces_changed(sections),
         "infra_changed": infra_changed(sections),
-        "infra_repos_csv": ",".join(infra_owners(sections, repos)),
+        "infra_repos_csv": ",".join(infra_owners(sections, repos + [
+            n for n, _s in new_repositories(sections)])),
+        "new_repos_csv": ",".join(n for n, _s in new_repositories(sections)),
         "error_count": len(errors),
         "warning_count": len(warnings),
         "issues_summary": " | ".join(issues[:8]) if issues else "HLD structure and readability checks passed",

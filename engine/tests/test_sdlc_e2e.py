@@ -407,6 +407,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "qa_env.py" in a or "deliver.py" in a
                                    or "infra_scan.py" in a or "decision_log.py" in a
                                    or "findings.py" in a or "sizing.py" in a
+                                   or "greenfield.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -1036,6 +1037,53 @@ class SdlcE2E(unittest.TestCase):
         review = next(p[0] for s, p in self.prompts.items()
                       if s.endswith("/impl/review") and "repo_path: codebase/backend" in p[0])
         self.assertIn("golang-patterns", review)
+
+    def test_greenfield_creates_and_scaffolds_the_repositories_the_hld_lists(self):
+        self.prep_tasks_json()
+        # a new product: no repositories, no recorded knowledge of them
+        shutil.rmtree(os.path.join(self.tmp, "codebase"))
+        shutil.rmtree(os.path.join(self.tmp, ".maestro", "index"), ignore_errors=True)
+        Path(self.tmp, "maestro.config.yaml").write_text("version: 1\nrepos: {}\n")
+        hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
+
+        def author_hld():
+            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/author_hld")
+            text = hld.read_text()
+            if "## Repositories" not in text:
+                hld.write_text(text.replace("## Proposed design", "## Repositories\n\n"
+                                            "- `backend` (python): owns the demo state.\n"
+                                            "- `frontend` (python): shows it.\n\n"
+                                            "## Proposed design"))
+            return {"hld_summary": "two new repositories"}
+
+        def scaffold():
+            report = {"repos": {}}
+            for repo in ("backend", "frontend"):
+                path = Path(self.tmp, "codebase", repo)
+                (path / "docs").mkdir(exist_ok=True)
+                (path / "README.md").write_text(f"# {repo}\n")
+                (path / "docs" / "codebase-map.md").write_text(f"# {repo} map\n")
+                subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
+                subprocess.run(["git", "-C", str(path), "-c", "user.email=t@e", "-c", "user.name=T",
+                                "commit", "-qm", "scaffold"], check=True)
+                report["repos"][repo] = {"stack": "python", "commands": {
+                    "build": "test -f README.md", "test": "test ! -f BROKEN"}}
+            Path(self.tmp, ".maestro/runs/demo/scaffold.json").write_text(json.dumps(report))
+            return {"summary": "backend and frontend scaffolded"}
+        action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={
+            "author_hld": author_hld, "scaffold": scaffold})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertIn("Greenfield: true", self.prompts["design/hld/prepare_hld_questions"][0])
+        order = ["design/hld/hld_approval", "design/scaffold/create", "design/scaffold/scaffold",
+                 "design/scaffold/configure", "design/scaffold/pin", "design/lld/lld_scope_init"]
+        self.assertEqual([steps.index(s) for s in order], sorted(steps.index(s) for s in order))
+        config = Path(self.tmp, "maestro.config.yaml").read_text()
+        self.assertIn("backend", config)
+        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/implementation-manifest.json")
+                              .read_text())
+        self.assertEqual({r["repo"]: r["verification"]["status"] for r in manifest["repositories"]},
+                         {"backend": "verified", "frontend": "verified"})
 
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()

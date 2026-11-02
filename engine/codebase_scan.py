@@ -142,6 +142,21 @@ def _rel(path, root):
         return path
 
 
+def map_is_current(repo, map_rel=None, head=None):
+    """True when the repository's codebase map describes its HEAD: the map's marker is HEAD, or
+    the only file changed since the marked commit is the map itself (its refresh was committed)."""
+    map_rel = map_rel or DEFAULT_MAP_REL
+    map_abs = os.path.join(repo, map_rel)
+    head = head or _head(repo)
+    prev = read_marker(map_abs) if os.path.exists(map_abs) else None
+    if head is None or prev is None:
+        return False
+    if prev == head:
+        return True
+    rc, out = _git(repo, "diff", "--name-only", prev, head)
+    return rc == 0 and {line for line in out.splitlines() if line.strip()} <= {map_rel}
+
+
 def cmd_plan(root, map_rel):
     root = os.path.abspath(root)
     repos_out = []
@@ -162,7 +177,10 @@ def cmd_plan(root, map_rel):
                 mode = "full"
             else:
                 changed = [line for line in out.splitlines() if line.strip()]
-                mode = "incremental"
+                # committing the refreshed map itself is not a code change the map misses
+                mode = "current" if set(changed) <= {map_rel} else "incremental"
+                if mode == "current":
+                    changed = []
         entry = {
             "name": name,
             "path": _rel(repo, root),

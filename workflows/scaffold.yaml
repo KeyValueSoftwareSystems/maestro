@@ -1,0 +1,80 @@
+# Greenfield child of design: the workspace had no code, so after HLD approval the repositories the
+# HLD lists are created, scaffolded to a passing build and test, added to maestro.config.yaml and
+# pinned, before the contract and LLDs are written against them.
+#
+#   create (engine) -> scaffold (agent) -> configure + prove build/test (engine) -> record knowledge
+#   -> pin (engine)
+version: 1
+name: scaffold
+description: Create and scaffold the repositories a greenfield HLD lists, then verify and pin them.
+inputs:
+  slug: {type: string, required: true}
+  feature: {type: string, default: "${inputs.slug}"}
+defaults:
+  model: sonnet
+  agent: implementer
+  max_visits: 6
+start: create
+nodes:
+  - id: create
+    type: script
+    label: Create the repositories the HLD lists
+    run: [python3, .maestro/engine/greenfield.py, create, --root, ".", --hld, ".maestro/runs/${inputs.slug}/hld.md"]
+    on_fail: abort
+    next: scaffold
+
+  - id: scaffold
+    type: agent
+    label: Scaffold the new repositories
+    instruction: |
+      Scaffold each new repository (${steps.create.outputs.repos_csv}) under codebase/ from the
+      approved HLD at .maestro/runs/${inputs.slug}/hld.md: the stack's layout, a passing build and
+      trivial test, lint, a README, CI, a container image when the HLD deploys it, starting
+      infrastructure definitions when it names a platform, and docs/codebase-map.md. Write no
+      feature behaviour. Commit each skeleton on its default branch. Write the report with each
+      repository's stack and commands to .maestro/runs/${inputs.slug}/scaffold.json.
+      If the engine's check failed (${steps.configure.outputs.summary}), fix exactly that.
+    skill: repo-scaffold
+    inputs:
+      slug: "${inputs.slug}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      repos: "${steps.create.outputs.repos_csv}"
+      report_path: ".maestro/runs/${inputs.slug}/scaffold.json"
+      check_feedback: "${steps.configure.outputs.summary}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/scaffold.json"
+    max_visits: 3
+    next: configure
+
+  # Engine-owned: the commands go into maestro.config.yaml and must actually pass once.
+  - id: configure
+    type: script
+    label: Configure and prove build and test
+    run: [python3, .maestro/engine/greenfield.py, configure, --root, ".", --scaffold, ".maestro/runs/${inputs.slug}/scaffold.json"]
+    timeout: 1800
+    max_visits: 4
+    routes:
+      - {when: "${steps.configure.outputs.valid} == true", to: record_knowledge}
+      - {to: scaffold}
+
+  # The scaffold wrote each repository's codebase map: record that knowledge as current at the
+  # scaffold commits, so the next workspace check does not ask to refresh it.
+  - id: record_knowledge
+    type: script
+    label: Record the new repositories' knowledge
+    run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ".", --evidence, ".maestro/runs/${inputs.slug}/scaffold.json"]
+    on_fail: abort
+    next: pin
+
+  # Pin the new repositories' commits, so delivery's workspace check sees the scaffold as the
+  # design's starting point instead of a change since design.
+  - id: pin
+    type: script
+    label: Pin the new repositories
+    run: [python3, .maestro/engine/workspace_sync.py, lock, --root, ".", --out, ".maestro/runs/${inputs.slug}/workspace-lock.json"]
+    on_fail: abort
+    next: end
+
+outputs:
+  repos_csv: "${steps.create.outputs.repos_csv}"
+  summary: "${steps.configure.outputs.summary}"
