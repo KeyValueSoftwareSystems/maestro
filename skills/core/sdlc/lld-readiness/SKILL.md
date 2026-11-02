@@ -31,6 +31,9 @@ documents the user names and write the report to a path you choose (and tell the
   least one test case; name any criterion with no home.
 - **Verifiable increments** — each implementation sequence step leaves the repository buildable
   and testable, and the verification section names real test seams.
+- **Infrastructure ownership** — when the HLD lists infrastructure changes, each one has an LLD in
+  the repository that owns that infrastructure, with its per-environment values, and the
+  application LLDs consume what it provisions under the same names.
 
 ## Findings
 

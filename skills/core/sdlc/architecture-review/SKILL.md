@@ -39,6 +39,16 @@ HLD the user names and write the report to a path you choose (and tell the user 
   a mechanism in the design that meets it; a target the design cannot meet or ignores is
   blocking.
 - **Operations** — deployment and rollout, backout, migration safety, observability, cost.
+- **Infrastructure** — only when the workspace defines it (your instructions supply the level):
+  the Infrastructure and operations section against the infrastructure repositories and the
+  detected platforms — capacity and autoscaling bounds against the targets and downstream limits
+  (database connections at max replicas), failure domains, secrets handling, network exposure,
+  stateful changes that would replace or destroy data, and rollout order across repositories.
+  In a workspace without infrastructure definitions, raise no infrastructure findings beyond
+  what the requirement's targets need.
+
+Use the `architecture-patterns` skill and the matching infrastructure pack as the reference for
+what a sound choice looks like.
 - **Alternatives** — material choices name the alternative they rejected and why.
 
 ## Findings

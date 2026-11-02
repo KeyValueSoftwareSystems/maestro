@@ -41,6 +41,21 @@ Start with one concise level-1 title containing `HLD`, the workflow-supplied fea
 6. `Delivery and risks`
 7. `Open questions`
 
+When the workspace defines infrastructure (your instructions supply its level: `containers` or
+`iac`), add `Infrastructure and operations` right after `Interfaces`. It lists each infrastructure
+change the feature makes — deployment and runtime, scaling (with the numbers that meet the
+requirement's targets), data stores, messaging, networking, config and secrets, observability,
+rollout — one bullet or table row each, or says `None` when the feature changes no infrastructure.
+Omit the section when the workspace defines no infrastructure.
+
+Put a Mermaid diagram (` ```mermaid `) in `Proposed design` whenever the feature crosses
+repositories or changes infrastructure: components and their owners, the main request and event
+flows, and the data stores. Keep it to what this feature touches.
+
+Consult the `architecture-patterns` skill for each pattern you choose, and the infrastructure pack
+for each detected platform (`terraform-patterns`, `kubernetes-patterns`, `container-patterns`) when
+it is installed. Name the need next to every pattern you add.
+
 Decision summary contains five to eight short bullets. Context states only what the reader needs to
 understand the direction; do not repeat the PRD feature inventory. Interfaces lists each call or
 event that crosses a repository boundary, one bullet or table row each: the operation or event

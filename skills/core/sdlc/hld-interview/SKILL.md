@@ -35,6 +35,24 @@ Do not ask about PRD scope already settled. Do not ask for endpoint fields, tabl
 file names, library syntax, task breakdowns, or other LLD choices. Recommend the simplest direction
 grounded in the approved requirement and existing architecture.
 
+**Infrastructure questions follow the workspace, not a checklist.** When your instructions supply
+an infrastructure profile, its level decides:
+
+- **none** — the workspace defines no infrastructure: ask no deployment, scaling-topology or
+  platform questions. Scale is answered inside the application design (caching, async work,
+  pagination) only when a non-functional target needs it.
+- **containers** — ask only the runtime and configuration decisions this feature changes: a new
+  service or process, ports, config and secrets, resource limits.
+- **iac** — the workspace holds infrastructure as code: read those repositories and ask every
+  material infrastructure decision this feature changes or depends on — scaling (instances and
+  autoscaling triggers), data-store capacity and topology, queues and topics, caching, networking
+  and ingress, config and secrets, environments and rollout, observability (SLOs, alerts), and
+  cost. Ground each recommendation in what the infrastructure already provisions and in the
+  requirement's non-functional targets.
+
+At every level, a feature that changes and depends on no infrastructure asks none. Without a
+profile, ask infrastructure questions only when the repositories you read define infrastructure.
+
 ## Design conversation
 
 Architecture is decided with the user, not announced to them.

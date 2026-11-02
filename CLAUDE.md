@@ -25,7 +25,8 @@ runtime. It ships:
   **per-stack reference skills** (`golang-patterns`, `react-testing`, `springboot-security`,
   …) — the "how" style guides. See the stack-tag note below.
   **Source layout** — the `skills/` tree is organized into category folders (`skills/maestro`
-  the lead agent; `skills/maestro-discuss` its side-chat partner for one interview question; `skills/core/sdlc/*` the SDLC steps; `skills/core/bootstrap/*`; and
+  the lead agent; `skills/maestro-discuss` its side-chat partner for one interview question; `skills/core/sdlc/*` the SDLC steps; `skills/core/bootstrap/*`; `skills/core/reference/*`
+  core reference skills such as `architecture-patterns`; and
   `skills/stacks/<stack>/*` grouped by `stack:` tag) so new skills have an obvious home.
   A skill's IDENTITY is its frontmatter `name` (unique across the tree), never its path —
   workflows pin by name, harness discovery and stack filtering key off `name`/`tags:`. The
@@ -157,6 +158,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   branches; `pull-request` re-checks each branch is at its verified commit, pushes it (never
   forced) and opens or reuses a pull request with `gh` — a draft when the release gate's `by` is
   `autopilot`. Writes `delivery.json`.
+- **`infra_scan.py`** — the workspace's infrastructure level (`none` / `containers` / `iac`, from
+  Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless, Ansible, Docker, Compose
+  files; overridable in maestro.config.yaml). The HLD stage starts with it: the level decides
+  which infrastructure questions are asked at all, and `validate_hld.py --infra-level` requires
+  the Infrastructure and operations section for `containers`/`iac`.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.

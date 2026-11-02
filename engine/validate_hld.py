@@ -25,6 +25,11 @@ REQUIRED_SECTIONS = (
     "open questions",
 )
 SECTION_ORDER = list(REQUIRED_SECTIONS)
+# Required when the workspace defines infrastructure (infra_scan level containers or iac), allowed
+# otherwise; always placed right after Interfaces.
+INFRA_SECTION = "infrastructure and operations"
+INFRA_LEVELS = ("none", "containers", "iac")
+MERMAID_RE = re.compile(r"^\s*```\s*mermaid\b", re.M)
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
 DECORATIVE_WORDS = (
@@ -88,7 +93,20 @@ def interfaces_changed(sections):
     return bool(body) and body.lower().rstrip(".") != "none"
 
 
-def validate(path, open_questions_path=None):
+def infra_changed(sections):
+    """True when the HLD's Infrastructure and operations section lists changes (not None)."""
+    body = sections.get(INFRA_SECTION, "").strip()
+    return bool(body) and not re.match(r"^none\b", body, re.I)
+
+
+def _expected_order(order, infra_level):
+    expected = list(SECTION_ORDER)
+    if infra_level in ("containers", "iac") or INFRA_SECTION in order:
+        expected.insert(expected.index("interfaces") + 1, INFRA_SECTION)
+    return expected
+
+
+def validate(path, open_questions_path=None, infra_level="none"):
     errors, warnings = [], []
     try:
         text = Path(path).read_text(encoding="utf-8")
@@ -111,13 +129,17 @@ def validate(path, open_questions_path=None):
     if not any(STATUS_RE.match(line) for line in preamble):
         errors.append("document header: missing Status: Ready for review metadata")
 
-    if order != SECTION_ORDER:
+    expected = _expected_order(order, infra_level)
+    if infra_level in ("containers", "iac") and INFRA_SECTION not in sections:
+        errors.append(f"missing section: {INFRA_SECTION} (the workspace defines infrastructure: "
+                      "list what this feature changes, or say None)")
+    if order != expected:
         errors.append("sections must use the exact required order")
-    unknown = [name for name in order if name not in REQUIRED_SECTIONS]
+    unknown = [name for name in order if name not in expected]
     if unknown:
         errors.append("unexpected level-2 section(s): " + ", ".join(unknown))
 
-    for name in REQUIRED_SECTIONS:
+    for name in [n for n in expected if n != INFRA_SECTION or n in sections]:
         body = sections.get(name)
         if body is None:
             errors.append(f"missing section: {name}")
@@ -136,6 +158,15 @@ def validate(path, open_questions_path=None):
     if interfaces_changed(sections) and not re.search(r"^\s*(?:[-*]\s+\S|\|)", interfaces, re.M):
         errors.append("interfaces must list each cross-repository call or event as a bullet or "
                       "table row, or say None")
+
+    infra = sections.get(INFRA_SECTION, "")
+    if infra_changed(sections) and not re.search(r"^\s*(?:[-*]\s+\S|\|)", infra, re.M):
+        errors.append("infrastructure and operations must list each change as a bullet or table "
+                      "row, or say None")
+    if (interfaces_changed(sections) or infra_changed(sections)) and not MERMAID_RE.search(
+            sections.get("proposed design", "")):
+        errors.append("proposed design needs a ```mermaid architecture diagram when the feature "
+                      "crosses repositories or changes infrastructure")
 
     if open_questions_path:
         errors.extend(_validate_deferred_ledger(
@@ -163,9 +194,13 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("path")
     parser.add_argument("--open-questions")
+    parser.add_argument("--infra-level", choices=INFRA_LEVELS, default="none",
+                        help="engine/infra_scan.py level: containers or iac require the "
+                             "Infrastructure and operations section")
     parser.add_argument("--report", action="store_true", help="always exit 0 for workflow routing")
     args = parser.parse_args(argv)
-    errors, warnings = validate(args.path, open_questions_path=args.open_questions)
+    errors, warnings = validate(args.path, open_questions_path=args.open_questions,
+                                infra_level=args.infra_level)
     issues = errors + warnings
     try:
         sections, _order = _sections(Path(args.path).read_text(encoding="utf-8"))
@@ -174,6 +209,7 @@ def main(argv=None):
     print(json.dumps({
         "valid": not errors,
         "interfaces_changed": interfaces_changed(sections),
+        "infra_changed": infra_changed(sections),
         "error_count": len(errors),
         "warning_count": len(warnings),
         "issues_summary": " | ".join(issues[:8]) if issues else "HLD structure and readability checks passed",

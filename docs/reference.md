@@ -61,7 +61,7 @@ $maestro-init                 # the same operation in Codex
 
 It's idempotent — safe to re-run after a stack change (it refreshes, never duplicates). Newly installed skills/agents become active once your host reloads its config; then start a feature with `/maestro <slug>` or `$maestro <slug>`.
 
-**Prefer to pick stacks by hand?** The pack ships per-stack reference skills + reviewers (Go, Java/Spring, Kotlin, Python/Django, React, Vue, Angular, Node, Rust, Flutter, Android, DB…); install only what your repo uses instead of running `/maestro-init`:
+**Prefer to pick stacks by hand?** The pack ships per-stack reference skills + reviewers (Go, Java/Spring, Kotlin, Python/Django, React, Vue, Angular, Node, Rust, Flutter, Android, DB, Terraform, Kubernetes/Helm, Docker…); install only what your repo uses instead of running `/maestro-init`:
 
 ```bash
 ./maestro install codex --stack go,react,db   # core + those stacks only

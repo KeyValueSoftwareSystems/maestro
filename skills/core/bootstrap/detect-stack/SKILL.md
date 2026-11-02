@@ -20,7 +20,7 @@ targets (`claude-code`, `cursor`, `codex`), use them; otherwise infer them (belo
 Emit only these tokens (they match the `stack:` tags on the skills/agents):
 
 `go` · `java` · `kotlin` · `python` · `react` · `vue` · `angular` · `node` · `rust` ·
-`flutter` · `android` · `db`
+`flutter` · `android` · `db` · `terraform` · `kubernetes` · `docker`
 
 ## Detection method
 1. **Scan for manifests and sources** (breadth-first; ignore `node_modules`, `vendor`,
@@ -40,6 +40,9 @@ Emit only these tokens (they match the `stack:` tags on the skills/agents):
    | `pubspec.yaml` | `flutter` |
    | `AndroidManifest.xml`, `com.android.*` Gradle plugin | `android` |
    | SQL migrations dir, or `postgres`/`mysql`/`redis`/`prisma`/`clickhouse` deps | `db` |
+   | `*.tf` | `terraform` |
+   | `Chart.yaml`, `kustomization.yaml`, Kubernetes manifests (`apiVersion:` + `kind: Deployment`…) | `kubernetes` |
+   | `Dockerfile`, `docker-compose*.yml`, `compose.yaml` | `docker` |
 
 2. **Prefer dependency evidence over file extensions** when they disagree (a `.ts` file in
    a Go repo's tooling dir is not a `node` stack). Only emit a token you can point to a

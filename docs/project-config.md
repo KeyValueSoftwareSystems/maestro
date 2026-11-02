@@ -10,6 +10,7 @@ version: 1
 repos:                          # one entry per repository Maestro finds
   backend:
     stack: go                   # optional; selects the matching stack skills
+    role: app                   # optional; app | infra (an infrastructure repository)
     commands:                   # shell commands, run inside the repo (or its worktree)
       setup: make deps          # optional
       build: make build         # required
@@ -29,6 +30,8 @@ environment:                    # optional: bring the stack up for QA
   start: docker compose up -d --build
   ready: ./scripts/wait-for-health   # optional; QA starts only after it passes
   stop: docker compose down
+infrastructure:                 # optional; overrides the detected level for HLD questions
+  level: iac                    # none | containers | iac
 delivery:                       # optional; what happens after release approval
   mode: branch                  # branch (report the verified branches) | pull-request
   base: main                    # pull-request base (default: the remote's default branch)

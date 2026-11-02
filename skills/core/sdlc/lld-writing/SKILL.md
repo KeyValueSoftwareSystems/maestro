@@ -18,6 +18,10 @@ Read the approved HLD, the contract when one exists, confirmed LLD decisions, re
 relevant manifest, and the source/tests around the affected seam. Reuse files already inspected in
 this lead session. Explore further only when a named design fact cannot be grounded otherwise.
 
+For an infrastructure repository (Terraform, Helm, Kubernetes manifests, Compose), the LLD names
+each resource or object added or changed, its per-environment values, and the outputs the
+application repositories consume; use the matching infrastructure pack when it is installed.
+
 Preserve PRD/HLD decisions. For `source: user-answer`, use only the stored answer. Stop rather than
 guess if a blocking `must_resolve` fact remains absent or decisions conflict.
 

@@ -77,11 +77,29 @@ instructions, maintained project docs, the run's requirement folder, and explici
 Pinned skills are checked only under `.agents/skills`, `.claude/skills`, and `.cursor/skills`.
 Step durations are recorded in the run ledger so slow stages are visible.
 
+Infrastructure questions depend on the workspace, not on a checklist. Before the HLD questions,
+the engine scans every repository (and an umbrella workspace's root) for infrastructure
+definitions and sets a level:
+
+| Level | Found | What the HLD asks |
+|---|---|---|
+| `none` | no infrastructure definitions | no infrastructure questions; scale is handled inside the application design when a target needs it |
+| `containers` | Dockerfiles or Compose files only | only the runtime and config decisions this feature changes (a new service, ports, secrets, resources) |
+| `iac` | Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless or Ansible | every infrastructure decision this feature changes or depends on — scaling, data stores, queues, caching, networking, secrets, rollout, observability, cost — grounded in those repositories and the PRD's targets |
+
+A feature that touches no infrastructure asks none at any level. `maestro.config.yaml` can
+override the level (`infrastructure.level`, for example when another team owns it) or mark a
+repository `role: infra`. The architecture reviewer reviews infrastructure only at the levels
+that have it, and the readiness check makes each listed infrastructure change an LLD in the
+repository that owns it. The HLD writer and reviewer draw on the `architecture-patterns` skill
+and, per detected platform, the `terraform-patterns`, `kubernetes-patterns` and
+`container-patterns` packs (installed by `detect-stack` when the workspace uses them).
+
 The HLD stage follows the same clarify-first shape. It batches only unresolved architecture
 decisions into native question popups, each with real alternatives and their trade-offs, then asks
 you to confirm the assembled design direction before anything is written (see
 [Interviews are conversations](#interviews-are-conversations)). It keeps decisions in
-`hld-context.json` and writes one short, plain-English HLD. A deterministic validator checks its seven-section structure (including an Interfaces list that decides whether a contract step runs),
+`hld-context.json` and writes one short, plain-English HLD. A deterministic validator checks its seven-section structure (including an Interfaces list that decides whether a contract step runs, an Infrastructure and operations section when the workspace defines infrastructure, and a Mermaid diagram whenever the feature crosses repositories or changes infrastructure),
 readability, repetition, and deferred-question ledger without limiting document length. A second popup appears only when synthesis
 uncovers a genuinely new architecture gap; there is no mandatory model-powered folding pass.
 `open-questions.json` contains only explicitly deferred decisions so another reviewer can see

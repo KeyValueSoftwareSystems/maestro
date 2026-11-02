@@ -330,7 +330,9 @@ nodes:
       left to the implementer, every LLD consistent with the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and with each other, and every
       acceptance criterion in .maestro/runs/${inputs.slug}/requirement/ covered by an LLD section
-      and a test case. This is not an architecture review; the HLD was reviewed and approved.
+      and a test case. Every change in the HLD's Infrastructure and operations section (when it
+      lists any) needs an LLD in the repository that owns that infrastructure; a missing one is
+      blocking. This is not an architecture review; the HLD was reviewed and approved.
       If .maestro/runs/${inputs.slug}/reviews/lld-readiness.md exists from an earlier round, read it
       first, confirm each earlier finding is resolved, and check only what changed. Then overwrite
       the report.

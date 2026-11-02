@@ -1,4 +1,5 @@
-# Design child: clarify-first architecture interview -> one HLD write -> conditional post-check
+# Design child: detect workspace infrastructure -> clarify-first architecture interview (infrastructure
+# questions only as relevant to that profile) -> one HLD write -> conditional post-check
 # -> deterministic lint -> architecture review by a fresh reviewer -> human approval. The review
 # runs here, before anything is built on the HLD: a wrong architecture call costs one document
 # edit now instead of a redo of the contract, LLDs and code. Entered by design.yaml after PRD
@@ -14,8 +15,16 @@ defaults:
   model: opus
   agent: planner
   max_visits: 10
-start: prepare_hld_questions
+start: infra_profile
 nodes:
+  # Engine-owned: which infrastructure the workspace defines decides whether the HLD asks
+  # infrastructure questions at all, and whether it needs an Infrastructure and operations section.
+  - id: infra_profile
+    type: script
+    label: Detect workspace infrastructure
+    run: [python3, .maestro/engine/infra_scan.py, --root, ".", --out, ".maestro/runs/${inputs.slug}/infra-profile.json"]
+    next: prepare_hld_questions
+
   - id: prepare_hld_questions
     type: agent
     execution: lead
@@ -35,6 +44,19 @@ nodes:
       stored answer as confirmed for user-answer decisions, never its unaccepted proposal. Treat
       user-raised points as the human's own constraints, honour discussion summaries, re-ask a
       blocking deferred decision with sharper options, and keep a non-blocking one deferred to LLD.
+
+      Infrastructure: ${steps.infra_profile.outputs.summary} (evidence:
+      ${steps.infra_profile.outputs.profile_path}). Follow that rule exactly. Level none: ask no
+      infrastructure, deployment or scaling-topology questions; stay within the application
+      architecture. Level containers: ask only the runtime and configuration questions this
+      feature changes (a new service or process, ports, config and secrets, resource limits).
+      Level iac: read the infrastructure repositories (${steps.infra_profile.outputs.iac_repos_csv})
+      and ask every material infrastructure decision this feature changes or depends on —
+      scaling (instances, autoscaling triggers), data-store capacity and topology, queues and
+      topics, caching, networking and ingress, config and secrets, environments and rollout,
+      observability (SLOs, alerts), and cost — each checked against the PRD's Non-functional
+      requirements. At any level, a feature that changes and depends on no infrastructure asks
+      none; never ask an infrastructure question only to fill a checklist.
 
       Make it a design conversation, not a questionnaire: give every genuine trade-off its
       recommendation plus up to two real alternatives with their concrete consequences. When no
@@ -123,9 +145,21 @@ nodes:
 
       Write concise, skimmable technical English. Do not reopen settled decisions, invent missing
       facts, repeat the PRD, or drift into endpoint fields, schema columns, file lists, or task-level
-      implementation. Create the exact seven-section HLD skeleton before filling it. Use the shortest
-      clear wording that preserves every material decision and all context needed to understand the
-      architecture; never remove necessary content to reduce length.
+      implementation. Create the HLD skeleton before filling it: the seven required sections, plus
+      Infrastructure and operations right after Interfaces when the infrastructure level is
+      containers or iac (${steps.infra_profile.outputs.level}). That section lists each
+      infrastructure change the feature makes — deployment and runtime, scaling, data stores,
+      messaging, networking, config and secrets, observability, rollout — or says None. Put a
+      Mermaid architecture diagram (components, owners, main flows) in Proposed design whenever the
+      feature crosses repositories or changes infrastructure. Use the architecture-patterns skill
+      for the patterns you choose and, for the detected platforms
+      (${steps.infra_profile.outputs.platforms_csv}), the matching infrastructure pack when it is
+      installed. Validate with `python3 .maestro/engine/validate_hld.py
+      .maestro/runs/${inputs.slug}/hld.md --open-questions
+      .maestro/runs/${inputs.slug}/open-questions.json --infra-level
+      ${steps.infra_profile.outputs.level}`. Use the shortest clear wording that preserves every
+      material decision and all context needed to understand the architecture; never remove
+      necessary content to reduce length.
 
       Also write open-questions.json containing only questions explicitly deferred to LLD, and
       hld-post-questions.json as a schema-version-2 post-check. The post-check must be empty when no
@@ -149,6 +183,8 @@ nodes:
       hld_validator: ".maestro/engine/validate_hld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
       post_check_feedback: "${steps.validate_hld_post_questions.outputs.issues_summary}"
+      infra_profile: "${steps.infra_profile.outputs.profile_path}"
+      infra_level: "${steps.infra_profile.outputs.level}"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary]
@@ -189,7 +225,7 @@ nodes:
   - id: validate_hld
     type: script
     label: Validate HLD structure and readability
-    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --report]
+    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --report]
     max_visits: 12
     on_exhausted: abort
     routes:
@@ -233,7 +269,13 @@ nodes:
       ownership, the listed interfaces, security and privacy, failure and recovery, scale,
       operations, and over- or under-engineering. Check every target in the PRD's Non-functional
       requirements against a mechanism in the design that meets it; a target the design cannot
-      meet, or one it ignores, is blocking. Findings need evidence; set blocking=true only
+      meet, or one it ignores, is blocking. Infrastructure: ${steps.infra_profile.outputs.summary}.
+      When the level is iac or containers, review the Infrastructure and operations section
+      against the infrastructure repositories and the detected platforms
+      (${steps.infra_profile.outputs.platforms_csv}): scaling, capacity, failure domains, secrets,
+      rollout and observability. When it is none, raise no infrastructure findings beyond what the
+      requirement's targets need. Use the architecture-patterns skill and the matching
+      infrastructure pack as your reference. Findings need evidence; set blocking=true only
       for must-fix issues.
       If .maestro/runs/${inputs.slug}/reviews/architecture.md exists from an earlier round, this is a
       re-review after a revision: read it first, confirm each earlier blocking finding is resolved,
@@ -247,6 +289,7 @@ nodes:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+      infra_profile: "${steps.infra_profile.outputs.profile_path}"
       lessons: "${memory.knowledge.architecture-review}"
     outputs: [review_path, blocking, summary]
     artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
@@ -337,5 +380,7 @@ nodes:
 outputs:
   hld_summary: "${steps.author_hld.outputs.hld_summary}"
   interfaces_changed: "${steps.validate_hld.outputs.interfaces_changed}"
+  infra_changed: "${steps.validate_hld.outputs.infra_changed}"
+  infra_level: "${steps.infra_profile.outputs.level}"
   review_summary: "${steps.arch_review.outputs.summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"

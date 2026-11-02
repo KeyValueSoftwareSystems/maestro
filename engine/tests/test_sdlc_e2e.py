@@ -89,6 +89,12 @@ class SdlcE2E(unittest.TestCase):
 
     qa_case_status = "passed"
 
+    @property
+    def prompts(self):
+        if not hasattr(self, "_prompts"):
+            self._prompts = {}
+        return self._prompts
+
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="maestro-e2e-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -216,7 +222,7 @@ class SdlcE2E(unittest.TestCase):
                     f"- Confirmed architecture decision {index}." for index in range(1, 6)
                 ),
                 "Context and scope": "The approved demo spans the backend and frontend.",
-                "Proposed design": "The backend owns decisions. The frontend renders server state.",
+                "Proposed design": "The backend owns decisions. The frontend renders server state.\n\n```mermaid\nflowchart LR\n  client --> backend\n```",
                 "Interfaces": "- The frontend calls the backend to load and save state (synchronous).",
                 "Key decisions and trade-offs": "Use one authority to prevent divergent behavior.",
                 "Delivery and risks": "Land the backend contract before client integration.",
@@ -346,6 +352,8 @@ class SdlcE2E(unittest.TestCase):
             for act in batch:
                 step = act["step"]
                 trace.append((act["action"], step))
+                if "prompt" in act:
+                    self.prompts.setdefault(step, []).append(act["prompt"])
                 run = resolver.Run("demo", self.tmp)
                 if act["action"] in ("run_agent", "run_lead"):
                     for rel in act.get("artifacts", []):
@@ -372,6 +380,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "repo_checks" in a or "assumptions.py" in a
                                    or "prd_source.py" in a or "ac_trace.py" in a
                                    or "qa_env.py" in a or "deliver.py" in a
+                                   or "infra_scan.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -859,6 +868,57 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
         self.assertIn("0/1 acceptance criteria passing — AC-01 failing",
                       Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text())
+
+    def test_workspace_without_infrastructure_asks_no_infrastructure_questions(self):
+        self.prep_tasks_json()
+        action, _trace = self.drive(dict(self.DESIGN_GATES))
+        self.assertEqual(action["action"], "done", action)
+        prepare = self.prompts["design/hld/prepare_hld_questions"][0]
+        self.assertIn("Infrastructure level none", prepare)
+        self.assertIn("ask no infrastructure questions", prepare)
+        steps = statemod.load("demo", self.tmp)["steps"]
+        self.assertEqual(steps["design/hld/validate_hld"]["outputs"]["infra_changed"], False)
+
+    def add_terraform_to_backend(self):
+        """Infrastructure as code inside an app repository, committed and indexed like setUp."""
+        repo = os.path.join(self.tmp, "codebase", "backend")
+        tf = os.path.join(repo, "deploy", "main.tf")
+        os.makedirs(os.path.dirname(tf))
+        with open(tf, "w") as fh:
+            fh.write('resource "aws_sqs_queue" "exports" {}\n')
+        subprocess.run(["git", "add", "deploy/main.tf"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-q", "-m", "infra"], cwd=repo, check=True)
+        head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], check=True,
+                              capture_output=True, text=True).stdout.strip()
+        codebase_scan.write_marker(os.path.join(repo, "docs", "codebase-map.md"), head)
+        with __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
+            workspace_sync.cmd_record_knowledge(
+                self.tmp, os.path.join(self.tmp, ".maestro", "bootstrap-evidence.md"))
+
+    def test_infrastructure_as_code_asks_infrastructure_and_the_hld_must_cover_it(self):
+        self.prep_tasks_json()
+        self.add_terraform_to_backend()
+        hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
+
+        def author_hld():
+            # the writer adds the section the engine now requires for an iac workspace
+            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/author_hld")
+            text = hld.read_text()
+            if "## Infrastructure and operations" not in text:
+                hld.write_text(text.replace("## Key decisions", "## Infrastructure and operations"
+                                            "\n\n- New SQS queue `exports` with a dead-letter "
+                                            "queue (14-day retention).\n\n## Key decisions"))
+            return {"hld_summary": "export worker on a queue"}
+        action, _trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"author_hld": author_hld})
+        self.assertEqual(action["action"], "done", action)
+        prepare = self.prompts["design/hld/prepare_hld_questions"][0]
+        self.assertIn("Infrastructure level iac", prepare)
+        self.assertIn("Infrastructure as code in backend (terraform)", prepare)
+        self.assertIn("read the infrastructure repositories (backend)", prepare)
+        self.assertRegex(self.prompts["design/hld/author_hld"][0], r"--infra-level\s+iac")
+        self.assertIn("Infrastructure level iac", self.prompts["design/hld/arch_review"][0])
+        outputs = statemod.load("demo", self.tmp)["steps"]["design/hld/validate_hld"]["outputs"]
+        self.assertEqual((outputs["valid"], outputs["infra_changed"]), (True, True))
 
     def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()

@@ -39,7 +39,9 @@ CONFIG_VERSION = 1
 COMMANDS = ("setup", "build", "lint", "typecheck", "test", "e2e")
 REQUIRED_COMMANDS = ("build", "test")
 RECOMMENDED_COMMANDS = ("lint", "e2e")
-REPO_KEYS = {"stack", "commands", "timeout_s", "test_patterns"}
+REPO_KEYS = {"stack", "role", "commands", "timeout_s", "test_patterns"}
+REPO_ROLES = ("app", "infra")
+INFRASTRUCTURE_LEVELS = ("none", "containers", "iac")
 # Paths that count as test files for the test-edit guard (fnmatch; `*` crosses `/`).
 DEFAULT_TEST_PATTERNS = (
     "test/*", "tests/*", "*/test/*", "*/tests/*", "__tests__/*", "*/__tests__/*",
@@ -138,6 +140,9 @@ def check(config, discovered):
                                     or timeout <= 0):
             issues.append(Issue("error", "config-shape", "must be a positive whole number of seconds",
                                 f"{where}.timeout_s"))
+        if entry.get("role") is not None and entry.get("role") not in REPO_ROLES:
+            issues.append(Issue("error", "config-shape", f"must be one of: {', '.join(REPO_ROLES)}",
+                                f"{where}.role"))
         patterns = entry.get("test_patterns")
         if patterns is not None and (not isinstance(patterns, list) or not patterns
                                      or not all(isinstance(p, str) and p for p in patterns)):
@@ -162,6 +167,14 @@ def check(config, discovered):
                                     f"{where}.commands.{command}"))
     if "environment" in config:
         _check_strings("environment", config["environment"], ENVIRONMENT_KEYS, "environment", issues)
+    if "infrastructure" in config:
+        infrastructure = config["infrastructure"]
+        _check_strings("infrastructure", infrastructure, {"level"}, "infrastructure", issues)
+        if isinstance(infrastructure, dict) and infrastructure.get("level") not in (
+                None, *INFRASTRUCTURE_LEVELS):
+            issues.append(Issue("error", "config-shape",
+                                f"must be one of: {', '.join(INFRASTRUCTURE_LEVELS)}",
+                                "infrastructure.level"))
     if "delivery" in config:
         delivery = config["delivery"]
         _check_strings("delivery", delivery, DELIVERY_KEYS, "delivery", issues)

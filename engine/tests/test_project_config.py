@@ -90,6 +90,17 @@ class PreflightTest(unittest.TestCase):
         self.assertIn("repos.backend.timeout_s", errors)
         self.assertIn("delivery.mode", errors)
 
+    def test_repo_role_and_infrastructure_level(self):
+        self.write(VALID.replace("    stack: go\n", "    stack: go\n    role: infra\n")
+                   + "infrastructure: {level: iac}\n")
+        self.assertEqual(self.codes("error"), [])
+        self.write(VALID.replace("    stack: go\n", "    stack: go\n    role: platform\n")
+                   + "infrastructure: {level: lots, owner: ops}\n")
+        errors = self.codes("error")
+        self.assertIn(("config-shape", "repos.backend.role"), errors)
+        self.assertIn(("config-shape", "infrastructure.level"), errors)
+        self.assertIn(("config-unknown-key", "infrastructure.owner"), errors)
+
     def test_test_patterns_must_be_a_list_of_patterns(self):
         self.write(VALID.replace("    timeout_s: 600", "    timeout_s: 600\n    test_patterns: tests"))
         self.assertIn(("config-shape", "repos.backend.test_patterns"), self.codes("error"))

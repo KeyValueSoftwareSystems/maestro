@@ -31,7 +31,7 @@ class HldValidationTest(unittest.TestCase):
                 f"- Confirmed architectural decision {index}." for index in range(1, 6)
             ),
             "Context and scope": "The approved feature spans one backend and one client.",
-            "Proposed design": "The backend owns decisions. The client renders server state.",
+            "Proposed design": "The backend owns decisions. The client renders server state.\n\n```mermaid\nflowchart LR\n  client --> backend\n```",
             "Interfaces": interfaces,
             "Key decisions and trade-offs": "Use one source of truth to avoid divergent rules.",
             "Delivery and risks": "Ship the backend contract before connecting the client.",
@@ -65,6 +65,52 @@ class HldValidationTest(unittest.TestCase):
         )
         self.assertEqual(errors, [])
         self.assertEqual(warnings, [])
+
+    def infra_text(self, infra_body, interfaces="- Client calls the backend to save a draft (sync)."):
+        return self.valid_text(interfaces=interfaces).replace(
+            "## Key decisions", f"## Infrastructure and operations\n\n{infra_body}\n\n## Key decisions")
+
+    def test_infrastructure_section_follows_the_workspace_level(self):
+        plain = self.write(self.valid_text())
+        # no infrastructure in the workspace: the section is not required
+        self.assertEqual(validate_hld.validate(plain, self.ledger())[0], [])
+        for level in ("containers", "iac"):
+            errors, _ = validate_hld.validate(plain, self.ledger(), infra_level=level)
+            self.assertTrue(any(e.startswith("missing section: infrastructure and operations")
+                                for e in errors), errors)
+        none = self.write(self.infra_text("None — this feature changes no infrastructure."))
+        self.assertEqual(validate_hld.validate(none, self.ledger(), infra_level="iac")[0], [])
+        listed = self.write(self.infra_text(
+            "- Add an autoscaled export worker (2-10 replicas on queue depth).\n"
+            "- New SQS queue `exports` with a dead-letter queue."))
+        self.assertEqual(validate_hld.validate(listed, self.ledger(), infra_level="iac")[0], [])
+        prose = self.write(self.infra_text("Add a worker and a queue."))
+        errors, _ = validate_hld.validate(prose, self.ledger(), infra_level="iac")
+        self.assertTrue(any("must list each change" in e for e in errors))
+
+    def test_diagram_required_when_crossing_repositories_or_changing_infrastructure(self):
+        no_diagram = self.valid_text().replace(
+            "\n\n```mermaid\nflowchart LR\n  client --> backend\n```", "")
+        errors, _ = validate_hld.validate(self.write(no_diagram), self.ledger())
+        self.assertTrue(any("mermaid architecture diagram" in e for e in errors))
+        local = no_diagram.replace("- Client calls the backend to save a draft (sync).", "None")
+        self.assertEqual(validate_hld.validate(self.write(local), self.ledger())[0], [])
+        infra_only = self.infra_text("- New Redis cache for drafts (1 GB, 24 h TTL).",
+                                     interfaces="None").replace(
+            "\n\n```mermaid\nflowchart LR\n  client --> backend\n```", "")
+        errors, _ = validate_hld.validate(self.write(infra_only), self.ledger(), infra_level="iac")
+        self.assertTrue(any("mermaid architecture diagram" in e for e in errors))
+
+    def test_report_names_infrastructure_changes(self):
+        import io
+        from contextlib import redirect_stdout
+        out = io.StringIO()
+        with redirect_stdout(out):
+            validate_hld.main([self.write(self.infra_text("- Add a 3-node Kafka topic.")),
+                               "--infra-level", "iac", "--report"])
+        report = json.loads(out.getvalue())
+        self.assertTrue(report["infra_changed"])
+        self.assertTrue(report["valid"], report)
 
     def test_missing_order_and_summary_shape_fail(self):
         text = self.valid_text().replace(
