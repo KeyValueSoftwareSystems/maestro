@@ -1,19 +1,20 @@
 ---
 name: lld-writing
-description: Write or narrowly repair one buildable repository LLD from an approved HLD, confirmed repo decisions, and bounded code evidence, including an implementation-complete data model and a frontend-ready API/client contract in concise, skimmable technical English.
+description: Write or narrowly repair buildable repository LLDs — one per repository — from an approved HLD and contract, confirmed decisions, and bounded code evidence, including an implementation-complete data model and the repository's exact side of the contract, in concise, skimmable technical English.
 allowed-tools: Read, Grep, Glob, Write, Bash
 tags: [sdlc, design, lld]
 ---
 
 # LLD writing
 
-Write the shortest implementation design that lets a developer build this repository's part without
-rediscovering the seam or making correctness decisions. This is one repo's design, not architecture
-brainstorming, another repo's design, a task dump, or implementation.
+Write the shortest implementation design that lets a developer build each repository's part without
+rediscovering the seam or making correctness decisions. Each LLD is one repository's design, not
+architecture brainstorming, another repository's design, a task dump, or implementation. When your
+instructions name several repositories, write one standalone LLD per repository at the paths given.
 
 ## Grounding
 
-Read the approved parent HLD, confirmed LLD decisions, repository guidance, maintained codebase map,
+Read the approved HLD, the contract when one exists, confirmed LLD decisions, repository guidance, maintained codebase map,
 relevant manifest, and the source/tests around the affected seam. Reuse files already inspected in
 this lead session. Explore further only when a named design fact cannot be grounded otherwise.
 
@@ -23,14 +24,14 @@ guess if a blocking `must_resolve` fact remains absent or decisions conflict.
 Render decisions by `source`. `accepted-proposal`, `chosen-alternative`, `user-answer`, and
 `user-raised` are confirmed. Mark an `assumption` as unverified where it shapes the design and in
 Verification. A `deferred` decision is unresolved: never write it as decided; if it blocks the LLD,
-put it back in the post-check with sharper options. The confirmed `kind: direction` decision is the
-change the repository team agreed to; the LLD must not depart from it.
+put it back in the post-check with sharper options. A confirmed `kind: direction` decision is the
+change agreed for that repository; the LLD must not depart from it.
 
 ## Required document shape
 
 Start with one concise level-1 title containing `LLD`, then these metadata lines:
 
-- `**Parent feature:**` with the parent slug
+- `**Parent feature:**` with the feature slug
 - `**Repository:**` with the exact repository name
 - `**Status:** Ready for review`
 
@@ -56,9 +57,12 @@ delete action; enumerate enum values, unique/check/exclusion constraints, indexe
 index serves. State migration order, required extensions, compatibility/backfill behavior and safe
 backout. If persistence does not change, write exactly `No repository-owned persistence change.`
 
-API and client contract is the handoff between producers and consumers. For a backend or other API
-producer, make it sufficient for frontend implementation without reading backend source or guessing
-a field. Include:
+API and client contract is this repository's exact side of the contract. When a contract exists,
+implement or call it exactly as written and reference its operations; never redefine, extend or
+contradict it in the LLD. If this repository needs an operation, field, error or event the contract
+lacks, report it as a contract change (below) instead of designing around it. Without a contract,
+for a backend or other API producer, make the section sufficient for client implementation without
+reading backend source or guessing a field. Include:
 
 - every added or changed operation with method/path or protocol operation, actor, authorization and
   purpose;
@@ -109,12 +113,13 @@ After writing, audit the connected design once. Write the supplied schema-versio
 queue empty when the LLD is complete. If synthesis exposes a genuinely new blocking repo gap, put
 only that gap in the queue instead of guessing; the workflow asks it and reruns this writer.
 
-## Contract notes
+## Contract changes
 
-Return concise `contract_notes` only for facts another repository or the shared contract must
-reconcile: an exposed/consumed operation, DTO, event, token, stable error, compatibility rule, or
-ordering constraint. For an API producer, include every added or changed client-facing operation;
-use `None` only when this repo truly adds no cross-repo contract fact.
+A cross-repository need that the contract does not cover — for example a field the frontend needs
+that the backend does not expose — is a contract change, not an LLD detail. Report it: set
+`contract_change_needed` true and describe it in `contract_change` (the operation, the change, and
+which repositories it affects). The workflow updates the contract first and then revises every
+affected LLD, so producer and consumer stay on the same version.
 
 ## Validate and repair
 
@@ -132,11 +137,12 @@ document unchanged and report `needs_clarification` as true so the decision is c
 
 ## Safety
 
-Write only the supplied LLD and post-question queue. Never edit source, parent artifacts, codebase
-maps, decision context, or state.
+Write only the supplied LLDs and post-question queue. Never edit source, the HLD, the contract,
+codebase maps, decision context, or state.
 
 ## Output contract
 
-Return `lld_path` and `contract_notes`; never return document text. In revision mode also
-return `needs_clarification`: true only when the feedback needs a repository design decision
-that must be clarified first, else false.
+Return `summary` (one line naming the repositories written), literal boolean
+`contract_change_needed`, and `contract_change` (`None` when false); never return document text.
+In revision mode also return `needs_clarification`: true only when the feedback needs a repository
+design decision that must be clarified first, else false.

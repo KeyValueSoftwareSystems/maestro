@@ -42,13 +42,14 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · rebase · status · todo · graph · note · correction-record`. The resolver serves exactly ONE next action as JSON; the
+  · rebase · status · todo · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
-  `design-review` → `delivery` → `archive`; `design` composes `design-intake` /
-  `design-prd` / `design-hld` / `design-lld` / `design-contract`. A gate decision
+  `delivery` → `archive`; `design` composes `design-intake` /
+  `design-prd` / `design-hld` (with its architecture review) / `design-contract` (only when the
+  HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run). A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
   `engine/schemas/workflow.schema.json`).
@@ -126,11 +127,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`validate_prd.py` / `validate_prd_questions.py` / `validate_hld.py` / `validate_lld.py`** —
   deterministic PRD, HLD, and repository LLD structure, acceptance-ID, readability, question-queue,
   and deferred-ledger checks. They never make product or architecture decisions.
-- **`lld_repo_pool.py` / `workflows/repo-lld.yaml`** — create one child run per selected repo,
-  run a lead-owned bounded clarification and single-write LLD flow, publish only human-approved
-  LLDs back to the parent, bind approvals to the current HLD hash, selectively reopen only the
-  repositories named by an approved architecture correction, and let the parent join only after
-  all repo-owned ledgers are complete.
+- **`lld_set.py`** — the feature's repository LLDs, one file per selected repo
+  (`lld/<repo>.md`), written and approved in one run: scope (`lld-repos.json`), validate the whole
+  set, record a hash-bound approval (HLD, contract and each LLD), and `verify` at the start of
+  delivery so a design that changed after approval goes back through design instead of being
+  built stale.
 - **`implementation_pool.py`** — the implementation queue: the golden workflow implements every
   designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
   supports batches with deferred repos for team workflows. Builds the QA/release manifest only
@@ -143,13 +144,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check). The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
-- **`entry_serve.py`** — the route-only `script` node a multi-entry child workflow starts with;
-  its `routes:` branch on the child's inputs (e.g. design enters at the stage a scoped
-  architecture-review revision names). Does no work, never fails.
-- **`design_corrections.py`** — immutable per-correction approval receipts, deterministic
-  effective-design rendering for downstream consumers, repository-batch receipts for the
-  architecture-review LLD-only path, and validated archive-time folding into final document copies
-  without mutating original hash-bound approvals.
+- **`entry_serve.py`** — a route-only `script` node: its `routes:` branch on values already known
+  (inputs or earlier outputs), e.g. workspace sync's "keep current commits; refresh stale docs".
+  Does no work, never fails.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`.maestro/index/`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.

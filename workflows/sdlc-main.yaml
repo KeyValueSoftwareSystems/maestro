@@ -1,7 +1,8 @@
 # The full KeyValue AI-SDLC pipeline — the default workflow behind the Maestro skill.
 #
-#   workspace sync -> design -> design review -> delivery (implementation pool -> verified
-#   test-context manifest -> QA -> review pack -> release gate) -> archive
+#   workspace sync -> design (PRD, reviewed HLD, contract, repository LLDs) -> delivery
+#   (staleness check -> implementation pool -> verified test-context manifest -> QA -> review
+#   pack -> release gate) -> archive
 #
 # Each stage is a child workflow; this file owns only the ordering and the loops between stages.
 # A stage's human gates decide (approve / revise / send back) and the stage reports the choice in
@@ -36,42 +37,10 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
-      feedback: "${steps.review.outputs.approval_feedback} ${steps.delivery.outputs.release_feedback}"
-    max_visits: 4
-    next: review
-
-  - id: arch_design_revision
-    type: subworkflow
-    label: Scoped architecture-review revision
-    workflow: .maestro/workflows/design.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      feedback: "${steps.review.outputs.arch_feedback}"
-      revision_mode: "${steps.review.outputs.arch_choice}"
-      revision_scope: "${steps.review.outputs.revision_scope}"
-      affected_repos: "${steps.review.outputs.affected_repos_csv}"
-      correction_text: "${steps.review.outputs.correction_text}"
-    max_visits: 4
-    next: review
-
-  - id: review
-    type: subworkflow
-    label: Design review
-    workflow: .maestro/workflows/design-review.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      hld_path: "${steps.design.outputs.hld_path}"
-      contract_path: "${steps.design.outputs.contract_path}"
+      feedback: "${steps.delivery.outputs.release_feedback} ${steps.delivery.outputs.stale_reasons}"
     max_visits: 4
     on_fail: abort
-    routes:
-      - {when: "${steps.review.outputs.approval} == approve", to: delivery}
-      - {when: "${steps.review.outputs.approval} == revise", to: design}
-      - {when: "${steps.review.outputs.arch_choice} in [lld_only, revise]", to: arch_design_revision}
-      # Unreachable: the stage only ends through one of the choices above.
-      - {to: abort}
+    next: delivery
 
   - id: delivery
     type: subworkflow
@@ -81,6 +50,7 @@ nodes:
     on_fail: abort
     routes:
       - {when: "${steps.delivery.outputs.design_changed} == true", to: design}
+      - {when: "${steps.delivery.outputs.design_stale} == true", to: design}
       - {when: "${steps.delivery.outputs.release} == revise", to: design}
       - {when: "${steps.delivery.outputs.release} == approve", to: archive}
       # Unreachable: the stage only ends through one of the choices above.

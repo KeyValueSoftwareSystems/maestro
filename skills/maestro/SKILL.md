@@ -36,9 +36,7 @@ python3 .maestro/engine/maestroctl.py runs        # read-only JSON: [{slug, stat
 When runs exist and the user did not name one explicitly, present the choice with the host's
 native selector: `AskUserQuestion` on Claude Code, or `request_user_input` on Codex when that
 tool is available. Labels are yours, but the slugs come **verbatim** from the engine output —
-never from memory. Label `kind: repo-lld` entries as
-`<repo> LLD for <parent_slug> — <status>`; label feature entries as
-`resume <slug> — <status>`. Show one option per existing run plus
+never from memory. Label each entry `resume <slug> — <status>`. Show one option per existing run plus
 **"Start a new feature"**. The auto-added *Other* lets the human type a slug directly. If the
 host exposes no selector (for example Codex Default mode), print the same choices as a numbered
 list, explicitly ask for the number or slug, and WAIT; plain text is the required fallback,
@@ -106,29 +104,6 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   know the user has a PRD/notes to paste, point them at that folder first; otherwise just
   init and run the loop — the gates will ask. (A workflow with no such handling will simply
   abort on an empty requirement; relay that.)
-
-### Repository LLD resume selector
-
-After a no-op init of an existing run, ask the engine for its repo workstreams:
-
-```bash
-python3 .maestro/engine/maestroctl.py workstreams --slug <slug>
-```
-
-When it returns `available: true` and `<slug>` is the returned `parent_slug`, ALWAYS present a
-native selector before calling `next`, even when the user explicitly supplied the parent slug.
-Offer every returned child as `Work on <repo> LLD — <status> (<active step>)` plus
-`Parent coordinator — check whether all LLDs are ready`. Use only returned slugs and statuses.
-
-- Child selected: switch the active slug to that child, validate its returned `workflow`, no-op
-  init it, and drive that child normally. Do not mutate the parent.
-- Parent coordinator selected: keep the parent slug and continue to its status/refresh gate.
-- If the invocation already named a repo LLD child, honour that direct choice without asking a
-  second time.
-
-This selector is intentionally repeated on every parent resume while LLD workstreams are pending.
-It prevents a returning backend, frontend, or Flutter developer from accidentally driving the
-shared parent or another team's ledger.
 
 ## The loop
 
@@ -260,10 +235,10 @@ If the reply is ambiguous, ask a short follow-up and do not record it. Each succ
 returns the next action, so continue immediately. The engine ledger and generated
 `prd-context.json` are the durable source of truth; do not maintain a competing draft.
 
-Exception: when an LLD interview reply explicitly changes an approved parent decision, record the
-answer normally, but before acting on the returned next action follow **Capturing out-of-band
+Exception: when an LLD interview reply explicitly changes an approved PRD or HLD decision, record
+the answer normally, but before acting on the returned next action follow **Capturing out-of-band
 input** and ask how to handle that design change. This does not reinterpret an ordinary repository
-answer; it applies only when the human or served question identifies a real upstream correction.
+answer; it applies only when the human or served question identifies a real upstream change.
 
 ### `ask_interview_batch`
 
@@ -339,10 +314,10 @@ queue does not re-ask what was explored; never put the human's answer there. The
 whole batch before recording anything, so one malformed response cannot partially update the run.
 Continue immediately with the returned action.
 
-Exception: after the atomic record, if an LLD response explicitly changes an approved parent
+Exception: after the atomic record, if an LLD response explicitly changes an approved PRD or HLD
 decision, pause before acting on the returned action and follow **Capturing out-of-band input** for
-that response. Never analyze or interrupt between popup chunks; correction handling happens only
-after the complete batch is durably recorded.
+that response. Never analyze or interrupt between popup chunks; change handling happens only after
+the complete batch is durably recorded.
 
 ### `wait`
 
@@ -405,9 +380,8 @@ python3 .maestro/engine/maestroctl.py gate-input-record --slug <slug> --step <st
     --input '<human text verbatim>'
 ```
 
-For a design `feedback` action, request the change for that artifact only. Repository LLD feedback
-belongs to its `<feature>--lld--<repo>` child run, never the parent or another repo's child. The run
-remains durably parked on `ask_input` across turns until non-blank text is recorded.
+For a design `feedback` action, request the change for that artifact only. The run remains durably
+parked on `ask_input` across turns until non-blank text is recorded.
 
 ### `done` / `failed`
 
@@ -464,32 +438,20 @@ run. It does NOT replace gates — a genuinely irreversible or out-of-scope ask 
 surfaced as a decision, not silently actioned.
 
 **A change to an already-approved design needs an explicit handling decision.** If the user asks
-in chat—or clearly answers an LLD question—in a way that changes an approved PRD, HLD, LLD,
-contract, or verification rule, do not silently edit or ignore the conflict. Record the request as
-a `note`, then present exactly these choices with the native selector:
+in chat—or clearly answers an LLD question—in a way that changes an approved PRD, HLD, contract,
+or LLD, do not silently edit or ignore the conflict. Record the request as a `note`, then present
+exactly these choices with the native selector:
 
-1. **Update the base design now** — use the relevant gate's existing revise route
-   (`feature_goal`/PRD, `prepare_hld_questions`/HLD, the repository child's `lld_approval`/LLD,
-   `contract_approval`/contract). This deliberately reruns affected design work.
-2. **Approve as a correction and continue** — preserve the base approval evidence and record the
-   user's decision verbatim with the engine command below. This is the fast path.
-3. **Reject or defer this change** — do not put it into the effective design and do not implement it.
+1. **Revise the design** — while the run is still in design, use the current stage's revise route
+   with the change as feedback (`prd_approval` for the PRD, `hld_approval` for the HLD,
+   `lld_approval` for the contract or LLDs). Past design, continue to the release gate and choose
+   **Send back to design** with the change as the feedback; the design reruns and every
+   repository is implemented again against it.
+2. **Reject or defer this change** — do not implement it; it stays recorded as a note.
 
-For the correction fast path, choose the narrowest factual scope: `product`, `architecture`,
-`repository`, `contract`, `verification`, or `cross-cutting`. A repository LLD child automatically
-targets its parent and repository. YOU run, never hand the command to the user:
-
-```bash
-python3 .maestro/engine/maestroctl.py correction-record --slug <current-slug> \
-  --scope <scope> [--repo <repo>] --text '<approved human wording verbatim>'
-```
-
-Report the returned correction ID, then continue from the engine's existing cursor without a reset.
-The per-correction receipt is the approval record; `approved-corrections.md` and
-`effective-design.json` are engine-rendered downstream context. Approved corrections override
-conflicting base text in LLD authoring, contract/test generation, architecture review,
-implementation, QA, review, and retrospect. Archive folds them once into validated copies under
-`final-design/`; it never changes the original hash-bound approvals.
+Never edit a design document yourself to apply such a change. The approved LLDs are bound to the
+exact HLD and contract they were written against: delivery refuses to start on a design that
+changed after approval and sends it back through design instead.
 
 ## Task list
 

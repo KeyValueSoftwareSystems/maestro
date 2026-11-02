@@ -1,47 +1,27 @@
-# Design phase: requirement -> PRD -> clarify-first HLD -> per-repo LLD workstreams -> API
-# contract -> functional test cases.
+# Design phase: requirement -> PRD -> HLD (reviewed by a fresh architect, then approved) ->
+# contract (only when the HLD lists cross-repository interfaces) -> repository LLDs and
+# functional test cases (one run, readiness-checked, approved).
 #
-#   entry -> intake -> prd -> hld -> lld -> contract
+#   intake -> prd -> hld -> [contract] -> lld
 #
-# Composition: each stage is its own small child workflow (design-intake / -prd /
-# -hld / -lld / -contract), so this file owns only the ordering and scoped re-entry. Stages
-# connect strictly forwards; every back-edge (revise, rethink, rescope) stays inside its stage.
-# A scoped architecture-review revision enters the earliest affected stage directly, and that
-# child picks its own entry node from `revision_scope`/`revision_mode`. Each stage node sets
-# `on_fail: abort`, so a rejection inside a stage fails this workflow exactly as it did inline.
+# Composition: each stage is its own small child workflow (design-intake / -prd / -hld /
+# -contract / -lld), so this file owns only the ordering. Every revision loop stays inside its
+# stage. The contract comes before the LLDs so every repository builds against one version of
+# it; the HLD validator's `interfaces_changed` decides whether it runs. Each stage node sets
+# `on_fail: abort`, so a rejection inside a stage fails this workflow.
 version: 1
 name: design
-description: Design a feature end-to-end, from requirement folder to reviewed design artifacts.
+description: Design a feature end-to-end, from requirement folder to approved repository designs.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
-  feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
-  revision_mode: {type: string, default: "", description: architecture gate choice for a scoped revision}
-  revision_scope: {type: string, default: "", description: earliest authoritative design layer affected by architecture review}
-  affected_repos: {type: string, default: "", description: comma-separated repositories whose LLDs need the approved change}
-  correction_text: {type: string, default: "", description: architecture-review correction wording approved at the gate}
+  feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
 defaults:
   model: opus
   agent: planner
   max_visits: 10
-start: entry
+start: intake
 nodes:
-  - id: entry
-    type: script
-    label: Choose design entry point
-    run: [python3, .maestro/engine/entry_serve.py, "${inputs.revision_mode}${inputs.revision_scope}"]
-    routes:
-      # Architecture review is scope-aware: the human can always approve an LLD-only correction,
-      # or reopen the earliest authoritative source layer identified by the reviewer.
-      - {when: "${inputs.revision_mode} == lld_only", to: lld}
-      - {when: "${inputs.revision_scope} == hld", to: hld}
-      - {when: "${inputs.revision_scope} == lld", to: lld}
-      - {when: "${inputs.revision_scope} == contract", to: contract}
-      - {when: "${inputs.revision_scope} == verification", to: contract}
-      - {when: "${inputs.revision_scope} in [product, cross-cutting]", to: intake}
-      - {to: intake}
-
-  # ---- Stages -------------------------------------------------------------------------------
   - id: intake
     type: subworkflow
     label: Requirement and context
@@ -64,8 +44,21 @@ nodes:
 
   - id: hld
     type: subworkflow
-    label: HLD
+    label: HLD and architecture review
     workflow: .maestro/workflows/design-hld.yaml
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      feedback: "${inputs.feedback}"
+    on_fail: abort
+    routes:
+      - {when: "${steps.hld.outputs.interfaces_changed} == true", to: contract}
+      - {to: lld}
+
+  - id: contract
+    type: subworkflow
+    label: API contract
+    workflow: .maestro/workflows/design-contract.yaml
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
@@ -75,32 +68,17 @@ nodes:
 
   - id: lld
     type: subworkflow
-    label: Repository LLDs
+    label: Repository LLDs and test cases
     workflow: .maestro/workflows/design-lld.yaml
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       feedback: "${inputs.feedback}"
-      revision_mode: "${inputs.revision_mode}"
-      revision_scope: "${inputs.revision_scope}"
-      affected_repos: "${inputs.affected_repos}"
-      correction_text: "${inputs.correction_text}"
-    on_fail: abort
-    next: contract
-
-  - id: contract
-    type: subworkflow
-    label: API contract and test cases
-    workflow: .maestro/workflows/design-contract.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      revision_scope: "${inputs.revision_scope}"
     on_fail: abort
     next: end
 
 outputs:
-  hld_summary: "${steps.hld.outputs.hld_summary} ${steps.lld.outputs.hld_summary}"
+  hld_summary: "${steps.hld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"
   contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"

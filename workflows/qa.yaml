@@ -19,7 +19,7 @@ nodes:
     label: Author & run E2E suite
     instruction: |
       Automate the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
-      and its approved-corrections.md overrides into an executable E2E suite (use the project's
+      into an executable E2E suite (use the project's
       existing E2E framework, else
       Playwright; critical journeys first) and RUN it. Write the run report. Report
       results honestly — failures route into the fix loop, they are not yours to hide.

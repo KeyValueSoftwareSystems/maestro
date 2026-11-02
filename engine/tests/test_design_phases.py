@@ -1,5 +1,5 @@
-"""design.yaml composes small stage children (design-intake/-prd/-map/-hld/-lld/-contract).
-Scoped architecture-review revisions must land on exactly the node the former inline routing chose."""
+"""design.yaml composes small stage children (design-intake/-prd/-hld/-contract/-lld); each
+stage starts at its normal first step."""
 
 import os
 import shutil
@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 
-ENTRY_STEPS = {"entry", "lld_entry", "contract_entry"}
+ENTRY_STEPS = set()  # no stage starts with a route-only entry script any more
 
 
 class DesignPhaseEntryTest(unittest.TestCase):
@@ -43,30 +43,16 @@ class DesignPhaseEntryTest(unittest.TestCase):
             statemod.save(slug, run.state, self.tmp)
         self.fail("entry routing did not settle")
 
-    def test_scoped_revisions_enter_the_earliest_affected_phase(self):
-        design = ".maestro/workflows/design.yaml"
-        cases = [
-            ({}, "intake/assert_requirement"),
-            ({"revision_scope": "product"}, "intake/assert_requirement"),
-            ({"revision_scope": "cross-cutting"}, "intake/assert_requirement"),
-            ({"revision_scope": "hld"}, "hld/prepare_hld_questions"),
-            ({"revision_scope": "lld"}, "lld/lld_review_reopen"),
-            ({"revision_mode": "lld_only", "revision_scope": "hld"},
-             "lld/record_arch_lld_correction"),
-            ({"revision_scope": "contract"}, "contract/corrections_context"),
-            ({"revision_scope": "verification"}, "contract/test_cases"),
-        ]
-        for inputs, expected in cases:
-            with self.subTest(inputs=inputs):
-                self.assertEqual(
-                    self.first_work_step(design, {"feature": "Demo", **inputs}), expected)
+    def test_design_starts_at_intake(self):
+        self.assertEqual(self.first_work_step(".maestro/workflows/design.yaml", {"feature": "Demo"}),
+                         "intake/assert_requirement")
 
     def test_phase_children_default_to_their_normal_start(self):
         cases = [
             (".maestro/workflows/design-intake.yaml", {}, "assert_requirement"),
             (".maestro/workflows/design-hld.yaml", {}, "prepare_hld_questions"),
             (".maestro/workflows/design-lld.yaml", {}, "lld_scope_serve"),
-            (".maestro/workflows/design-contract.yaml", {}, "corrections_context"),
+            (".maestro/workflows/design-contract.yaml", {}, "contract"),
         ]
         for workflow, inputs, expected in cases:
             with self.subTest(workflow=workflow, inputs=inputs):

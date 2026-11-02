@@ -75,23 +75,21 @@ class SdlcTodoTest(unittest.TestCase):
             "[>] Design phase",
             "    [x] Requirement and context",
             "    [x] PRD",
-            "    [?] HLD",
+            "    [?] HLD and architecture review",
             "          ↳ waiting on you: HLD approval",
-            "    [ ] Repository LLDs",
-            "    [ ] API contract and test cases",
-            "[ ] Design review",
+            "    [ ] Repository LLDs and test cases",
             "[ ] Implementation, QA and release",
             "[ ] Archival (harvest + publish)",
         ])
         tasks = todo.flat(built)
-        self.assertIn({"content": "Design phase › HLD — waiting on you: HLD approval",
+        self.assertIn({"content": "Design phase › HLD and architecture review — waiting on you: "
+                                  "HLD approval",
                        "status": "in_progress"}, tasks)
         self.assertEqual(tasks[0], {"content": "Workspace sync (feature start)",
                                     "status": "completed"})
-        # The scoped architecture revision never ran: not listed.
+        # The contract stage is optional (only when the HLD lists interfaces): not listed until entered.
         labels = " ".join(task["content"] for task in tasks)
-        self.assertNotIn("Scoped architecture-review revision", labels)
-        self.assertNotIn("Legacy run import", labels)
+        self.assertNotIn("API contract", labels)
 
 
 class CliTodoTest(unittest.TestCase):

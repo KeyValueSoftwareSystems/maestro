@@ -4,7 +4,7 @@
 
 Reuses the exact engine primitives the real CLI and the no-LLM e2e test suite use
 (resolver.init_run/next_action/complete_step/record_gate) against a REAL project root —
-so script nodes run for real (codebase_scan.py, lld_repo_pool.py, ...), against your real
+so script nodes run for real (codebase_scan.py, lld_set.py, ...), against your real
 codebase/ and real state file locking. Only agent steps are stubbed: instantly "completed"
 with placeholder output/artifacts, since those are the slow, token-costing part and this tool
 exists specifically to skip them. Gates are the one place a human still decides — interactively
@@ -36,6 +36,7 @@ import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 import validate as validatemod  # noqa: E402
 import codebase_scan  # noqa: E402
+import lld_set  # noqa: E402
 
 
 def _log(line):
@@ -125,19 +126,7 @@ def _simulated_lld(parent_slug, repo):
     ) + "\n"
 
 
-def _artifact_run_inputs(root, rel):
-    parts = rel.split("/")
-    try:
-        slug = parts[parts.index("runs") + 1]
-    except (ValueError, IndexError):
-        return {}
-    try:
-        return statemod.load(slug, root).get("inputs", {})
-    except (OSError, ValueError):
-        return {}
-
-
-def _stub_agent(root, act):
+def _stub_agent(root, act, slug=None):
     """Instantly complete a worker or lead step: placeholder text for declared fields,
     a placeholder file for every declared artifact (unless one's already there — respects a
     prepped fixture the same courtesy the e2e test harness gives it)."""
@@ -216,19 +205,20 @@ def _stub_agent(root, act):
             elif rel.endswith("/hld.md"):
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(_simulated_hld())
-            elif rel.endswith("/lld.md"):
-                run_inputs = _artifact_run_inputs(root, rel)
-                with open(full, "w", encoding="utf-8") as fh:
-                    fh.write(_simulated_lld(
-                        run_inputs.get("parent_slug", "simulation"),
-                        run_inputs.get("repo", "simulated-repo"),
-                    ))
             else:
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(f"# [simulated] {step}\n\nPlaceholder content from engine/simulate.py "
                              f"— this step's real agent was never dispatched.\n"
                              # unique per write, so `fresh: true` steps see new proof each visit
                              f"\n<!-- simulated write {time.time_ns()} -->\n")
+    if slug and step.rsplit("/", 1)[-1] in ("author_llds", "repair_llds", "revise_llds"):
+        # The LLD writer's real output is one file per selected repository, not a declared
+        # artifact: write each so the engine's LLD validation sees the whole set.
+        for repo in lld_set.selected(slug, root):
+            path = lld_set.lld_path(slug, repo, root)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(_simulated_lld(slug, repo))
     if (step.endswith("/build")
             or step.endswith("refresh_knowledge")
             or step.endswith("/retrospect")):
@@ -247,7 +237,8 @@ def _stub_agent(root, act):
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(f"# Simulated {surface} knowledge\n")
     bool_values = {"blocking": False, "tests_passed": True, "passed": True,
-                   "checks_passed": True, "risky": False}
+                   "checks_passed": True, "risky": False, "contract_change_needed": False,
+                   "needs_clarification": False}
     numeric_fields = {"task_count", "slice_count", "case_count", "failed_count",
                       "lessons_count"}
     outputs = {}
@@ -297,73 +288,6 @@ def _collect_input(act, auto):
 MAX_REPEATED_AUTO_CHOICE = 3
 
 
-def _auto_complete_lld_workstreams(root, parent_slug):
-    """Approve simulator-created repo child runs so the parent join can make progress."""
-    queue_path = os.path.join(statemod.feature_dir(parent_slug, root), "lld-repos.json")
-    with open(queue_path, encoding="utf-8") as fh:
-        workstreams = json.load(fh).get("workstreams") or []
-    for item in workstreams:
-        child_slug = item["slug"]
-        for _ in range(20):
-            child = resolver.Run(child_slug, root)
-            action = resolver.next_action(child)
-            if action["action"] == "done":
-                break
-            step = action["step"]
-            if action["action"] in ("run_agent", "run_lead"):
-                outputs = _stub_agent(root, action)
-                with statemod.locked(child_slug, root):
-                    child = resolver.Run(child_slug, root)
-                    resolver.complete_step(child, step, outputs=outputs)
-                    statemod.save(child_slug, child.state, root)
-            elif action["action"] == "ask_interview":
-                with statemod.locked(child_slug, root):
-                    child = resolver.Run(child_slug, root)
-                    resolver.record_interview(
-                        child, step, action["section"],
-                        answer=None if action.get("proposal") else f"[sim] {action['title']}",
-                        accept=bool(action.get("proposal")),
-                    )
-                    statemod.save(child_slug, child.state, root)
-            elif action["action"] == "ask_interview_batch":
-                responses = {
-                    question["section"]: (
-                        {"accept": True} if question.get("proposal")
-                        else {"answer": f"[sim] {question['title']}"}
-                    )
-                    for question in action["questions"]
-                }
-                with statemod.locked(child_slug, root):
-                    child = resolver.Run(child_slug, root)
-                    resolver.record_interview_batch(child, step, responses)
-                    statemod.save(child_slug, child.state, root)
-            elif action["action"] == "ask_gate":
-                with statemod.locked(child_slug, root):
-                    child = resolver.Run(child_slug, root)
-                    resolver.record_gate(child, step, action["options"][0]["id"])
-                    statemod.save(child_slug, child.state, root)
-            elif action["action"] == "run_script":
-                proc = subprocess.run(
-                    action["argv"], cwd=root, capture_output=True, text=True,
-                    timeout=action.get("timeout", 300),
-                )
-                with statemod.locked(child_slug, root):
-                    child = resolver.Run(child_slug, root)
-                    resolver.complete_step(
-                        child, step, exit_code=proc.returncode, stdout=proc.stdout,
-                    )
-                    statemod.save(child_slug, child.state, root)
-            else:
-                raise resolver.RunError(
-                    f"simulator cannot auto-complete LLD child action {action['action']!r}",
-                    code=1,
-                )
-        else:
-            raise resolver.RunError(
-                f"LLD child run {child_slug!r} did not finish in simulation", code=1,
-            )
-
-
 def run(root, slug, workflow, inputs, auto, max_steps, force=False):
     auto_repeat = {}  # (step, option_id) -> consecutive count, for stuck-loop detection
     issues = validatemod.validate_file(workflow, root=root)
@@ -397,13 +321,13 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
         batch = action["agents"] if kind == "run_agents" else [action]
         for act in batch:
             step = act["step"]
-            # Do the (potentially slow, or lock-taking, e.g. lld_repo_pool.py claim/init)
+            # Do the (potentially slow, or lock-taking, e.g. implementation_pool.py claim/init)
             # work OUTSIDE the run-state lock — exactly like the real dispatch loop, where the
             # lead agent runs a script/subagent itself and only calls back into a locked
             # complete/gate-record afterward. Holding this lock across a script subprocess
             # that ALSO takes it (same slug+root) would self-deadlock.
             if act["action"] in ("run_agent", "run_lead"):
-                outputs = _stub_agent(root, act)
+                outputs = _stub_agent(root, act, slug)
                 role = "lead" if act["action"] == "run_lead" else "agent"
                 _log(f"[{role:<6}] {step} (model={act.get('model')}, skill={act.get('skill')}, "
                      f"stubbed) -> {outputs}")
@@ -416,8 +340,6 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False):
                 if proc.returncode and proc.stderr.strip():
                     _log(f"         stderr: {proc.stderr.strip()[:500]}")
             elif act["action"] == "ask_gate":
-                if auto and step.endswith("lld_workstreams_wait"):
-                    _auto_complete_lld_workstreams(root, slug)
                 option = _choose_gate_option(act, auto)
                 _log(f"[gate  ] {step} -> {option['id']}")
                 if auto:

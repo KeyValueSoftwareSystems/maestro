@@ -1,6 +1,8 @@
 # Design child: clarify-first architecture interview -> one HLD write -> conditional post-check
-# -> deterministic lint -> human approval. Entered by design.yaml after PRD approval,
-# or directly for an HLD-scoped architecture-review revision.
+# -> deterministic lint -> architecture review by a fresh reviewer -> human approval. The review
+# runs here, before anything is built on the HLD: a wrong architecture call costs one document
+# edit now instead of a redo of the contract, LLDs and code. Entered by design.yaml after PRD
+# approval.
 version: 1
 name: design-hld
 description: Clarify and write the feature HLD, then get it approved.
@@ -183,7 +185,7 @@ nodes:
     max_visits: 12
     on_exhausted: abort
     routes:
-      - {when: "${steps.validate_hld.outputs.valid} == true", to: hld_approval}
+      - {when: "${steps.validate_hld.outputs.valid} == true", to: arch_review}
       - {to: repair_hld}
 
   - id: repair_hld
@@ -212,13 +214,76 @@ nodes:
     max_visits: 6
     next: validate_hld
 
+  - id: arch_review
+    type: agent
+    label: Architecture review (fresh reviewer)
+    instruction: |
+      Review the HLD at .maestro/runs/${inputs.slug}/hld.md before it is approved, as a reviewer
+      who did not write it. Read the approved requirement in .maestro/runs/${inputs.slug}/requirement/
+      and the maintained architecture summaries and codebase maps; read source only to check a
+      specific claim. Judge the architecture against the requirement: style, boundaries and data
+      ownership, the listed interfaces, security and privacy, failure and recovery, scale,
+      operations, and over- or under-engineering. Findings need evidence; set blocking=true only
+      for must-fix issues.
+      If .maestro/runs/${inputs.slug}/reviews/architecture.md exists from an earlier round, this is a
+      re-review after a revision: read it first, confirm each earlier blocking finding is resolved,
+      and check only what changed. Then overwrite the report.
+    skill: architecture-review
+    agent: reviewer
+    model: opus
+    inputs:
+      slug: "${inputs.slug}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
+      previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+      lessons: "${memory.knowledge.architecture-review}"
+    outputs: [review_path, blocking, summary]
+    artifact: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+    fresh: true
+    max_visits: 6
+    on_exhausted: hld_approval
+    routes:
+      - {when: "${steps.arch_review.outputs.blocking} == true", to: revise_from_review}
+      - {to: hld_approval}
+
+  # The author resolves the reviewer's blocking findings; the human sees the review at approval.
+  - id: revise_from_review
+    type: agent
+    execution: lead
+    label: Revise the HLD for blocking review findings
+    instruction: |
+      Resolve the blocking findings in .maestro/runs/${inputs.slug}/reviews/architecture.md as
+      targeted edits to .maestro/runs/${inputs.slug}/hld.md. Change only what the findings need and
+      keep every confirmed decision that a finding does not contradict. Keep open-questions.json
+      consistent with the edit. If a finding needs a new architecture decision the confirmed
+      decisions cannot settle, do not guess: leave the HLD unchanged and return
+      needs_clarification true; otherwise return false.
+    skill: hld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      hld_validator: ".maestro/engine/validate_hld.py"
+      revision_feedback: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+    outputs: [hld_summary, needs_clarification]
+    artifact: ".maestro/runs/${inputs.slug}/hld.md"
+    max_visits: 3
+    on_exhausted: hld_approval
+    routes:
+      - {when: "${steps.revise_from_review.outputs.needs_clarification} == true", to: prepare_hld_questions}
+      - {to: validate_hld}
+
   - id: hld_approval
     type: gate
     label: HLD approval
     prompt: |
       HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
+      Architecture review: ${steps.arch_review.outputs.summary}
+      Report: .maestro/runs/${inputs.slug}/reviews/architecture.md
 
-      Review the document, then choose.
+      Review the document and the review, then choose.
     options:
       - {id: approve, label: Approve — write the detailed designs, to: end}
       - {id: revise, label: Request changes — targeted edit of this HLD, to: revise_hld, input: feedback}
@@ -258,4 +323,6 @@ nodes:
 
 outputs:
   hld_summary: "${steps.author_hld.outputs.hld_summary}"
+  interfaces_changed: "${steps.validate_hld.outputs.interfaces_changed}"
+  review_summary: "${steps.arch_review.outputs.summary}"
   hld_path: ".maestro/runs/${inputs.slug}/hld.md"

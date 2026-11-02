@@ -10,14 +10,14 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
 workspace sync → requirement → PRD (summarize context → Grill unclear decisions → write once → validate)
-   → HLD (Grill architecture with options → confirm direction → write once → conditional new-gap popup → validate → approve)
-   → per-repo LLDs (bounded code seam → grouped Grill with options → confirm direction → write once → validate → approve)
-   → API contract
-   → functional test cases → effective design (base approvals + approved corrections)
-   → architecture review → [approve]
-   → implement every repo (parallel, sliced,
+   → HLD (Grill architecture with options → confirm direction → write once → validate
+          → architecture review by a fresh reviewer → [approve])
+   → API contract (only when the HLD lists cross-repo interfaces)
+   → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
+          → functional test cases → readiness check → [approve])
+   → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
-   → QA → review pack → [approve → archive: fold corrections + harvest lessons + publish docs]
+   → QA → review pack → [approve → archive: harvest lessons + publish docs]
 ```
 
 **You define the workflow; you bring the skills.** The engine is the product. A workflow is a YAML file describing what runs in what order; each agent step names a *skill* (a reusable prompt) — yours, ours, or a third party's (Obra, Superpowers, …). The workflow owns *where* artifacts land and *when* each step runs; the skill owns only *how* to do its one job, so any skill can be swapped without touching the graph.
@@ -94,39 +94,39 @@ Gate choices that require text are deliberately two-stage. Clicking **Revise** f
 the choice, then Maestro asks what to change and remains parked until non-blank feedback is
 provided. No artifact is regenerated with empty or inferred suggestions.
 
-After HLD approval, the parent creates one child run per selected repository—for example
-`my-feature--lld--backend`, `my-feature--lld--frontend`, and `my-feature--lld--flutter`—and waits.
-Each child inspects only the relevant implementation seam, asks material repository decisions in
-one grouped popup with code-grounded alternatives, confirms the repo's change direction with the
-team, writes the concise LLD once in the lead session, then runs a deterministic shape
-and readability check. A second popup appears only if writing exposes a genuinely new blocking gap;
-repair is a narrow fallback only when validation fails. Each team reviews and approves only its
-child slug. Approval publishes a hash-bound LLD and receipt into the parent feature; the API
-contract cannot start until every selected child is approved against the current HLD.
+The HLD is reviewed before it is approved. A fresh reviewer agent — one that did not write it —
+checks the architecture against the requirement: style, boundaries and data ownership, the
+listed interfaces, security, failure handling, scale, operations, and over- or
+under-engineering. Blocking findings go back to the HLD author for targeted edits and a
+re-review; you see the review next to the HLD at approval. A wrong architecture call found here
+costs one document edit instead of a redo of the contract, LLDs and code.
 
-Architecture review classifies every blocking verdict by its earliest source-of-truth layer and
-the exact repositories whose LLDs must reflect the change. The gate always offers an LLD-only fast
-path: approving it writes immutable repository correction receipts, preserves the approved PRD and
-HLD, creates fresh child ledgers only for the affected repositories, and waits for those LLDs to be
-approved again. Maestro then regenerates the contract and test cases and reruns architecture review
-before implementation. Choosing source-layer revision instead reopens only the classified layer;
-product/cross-cutting findings retain the full-design fallback.
+The HLD's Interfaces section lists every call or event between repositories, or says None. When
+it lists any, a contract step defines them (OpenAPI, or AsyncAPI for events) following the owning
+repository's existing conventions, before any LLD is written, so every repository builds against
+one version.
 
-Resuming the parent while those workstreams are pending always opens an LLD selector showing each
-repo's status plus a parent-coordinator option. A developer can therefore return with
-`/maestro my-feature` and choose backend, frontend, or Flutter without remembering the child slug.
+All repository LLDs are written in one run: one grouped popup of code-grounded questions across
+the repositories in scope, then one LLD file per repository (`lld/<repo>.md`), so each
+implementation agent later reads only its own repository's design. Each LLD implements or calls
+the contract exactly. If a repository needs something the contract lacks — for example a field
+the frontend needs — the LLD writer reports it, the contract is updated first, and every
+affected LLD is revised. Functional test cases follow, then a readiness check by a fresh
+reviewer: no design decision left to the implementer, every LLD consistent with the contract and
+with each other, every acceptance criterion covered. One approval covers all of them.
 
-After contract approval, Maestro implements every repository in the approved design, in
+Approval records the exact HLD, contract and LLD hashes. Delivery starts by checking them: a
+design that changed after approval goes back through design instead of being built stale.
+
+After LLD approval, Maestro implements every repository in the approved design, in
 parallel. If the release is sent back to design, the next delivery pass rebuilds every repository
 against the revised design; the pre-implementation workspace drift check still protects stale
 designs.
 
-If implementation discovery changes an already-approved product or architecture decision, Maestro
-offers two explicit paths: revise the base documents now, or record the human-approved decision as
-an **approved correction** and continue. Each correction is a separate merge-friendly receipt;
-the engine renders all receipts into `approved-corrections.md` and `effective-design.json`, which
-override conflicting base text for every downstream phase. Archive folds them once into validated
-`final-design/` copies while preserving the original hash-bound approvals.
+If a change to an already-approved PRD, HLD, contract or LLD comes up mid-run, Maestro records it
+as a note and offers two paths: revise the design (at the current design gate, or by sending the
+release back to design once past design), or reject or defer the change. Design documents are
+never edited out of band.
 
 Prefer manual control? Every step is also a skill you can invoke on its own — use its slash
 command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or

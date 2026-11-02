@@ -132,12 +132,9 @@ Maestro is a shared, paved road, not a per-developer toy: keep the flows in a ce
 
 The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is git-tracked on purpose (so a run resumes on any machine). Team ownership follows ledger ownership:
 
-- **One owner per slug at a time.** Keep one coordinator on the parent feature slug. LLD work is
-  automatically split into repository child slugs, so backend, frontend, and Flutter can push
-  independently without inheriting or conflicting with another team's approval.
-- **Commit the child run with its LLD.** A repo approval updates only
-  `.maestro/runs/<feature>--lld--<repo>/` plus that repo's published LLD and receipt under the
-  parent. Pull all approved child changes, then refresh the parent LLD status gate.
+- **One owner per slug at a time.** One developer drives a feature's run; its ledger, documents
+  and every repository's LLD live under `.maestro/runs/<slug>/`. A team that wants people working
+  in parallel can copy the workflow and add parallel branches.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. The engine refuses to run on a
   ledger with conflict markers and never overwrites it. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
 - If you edit a **workflow file** mid-run, the engine halts on the next command with a hash mismatch — nobody silently diverges from the lead's flow. Accept the edit with `maestroctl rebase --slug <slug>` (it re-validates first) or start over with `reset --slug <slug> --all`.
@@ -207,9 +204,8 @@ After install, in your project repo:
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
   workflows/  the example pack: sdlc-main / workspace-sync / design / impl / qa,
-              split into small stages: sdlc-main's design-review / delivery,
-              design's design-intake / -prd / -map / -hld / -lld /
-              -contract (+ repo-lld per repository),
+              split into small stages: sdlc-main's delivery,
+              design's design-intake / -prd / -hld / -contract / -lld,
               plus archive / build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)
   docs/       workflow-spec.md (the workflow spec)

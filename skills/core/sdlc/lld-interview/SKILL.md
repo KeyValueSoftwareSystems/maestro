@@ -1,6 +1,6 @@
 ---
 name: lld-interview
-description: Clarify only material repository implementation decisions before one repo LLD is written. Audit existing answers, inspect the bounded implementation seam, and ask feature-specific questions in grouped native popups.
+description: Clarify only material repository implementation decisions before the repository LLDs are written. Audit existing answers, inspect each bounded implementation seam, and ask feature-specific questions in grouped native popups.
 allowed-tools: Read, Grep, Glob, Write, Bash
 tags: [sdlc, design, lld]
 ---
@@ -15,9 +15,11 @@ rules, so its reading never fills the lead's context.
 
 ## Read boundary
 
-Read the approved parent HLD, its deferred-question ledger, confirmed LLD decisions, repository
-guidance, the maintained codebase map, relevant manifest, and only source/tests around the seam this
-feature changes. Start from paths named by the map. Do not scan the whole repository or another repo.
+Read the approved HLD, its deferred-question ledger, the contract when one exists, confirmed LLD
+decisions, and, for each repository your instructions name, its guidance, maintained codebase map,
+relevant manifest, and only source/tests around the seam this feature changes. Start from paths named
+by the maps. Do not scan whole repositories. When several repositories are in scope, keep one queue:
+prefix each question title with its repository, and ask a decision that spans repositories once.
 
 ## Decide from evidence before asking
 
@@ -36,23 +38,23 @@ unresolved decision that materially changes correctness, compatibility, or the i
 - backward compatibility, rollout, backout, or support for relevant execution modes;
 - a verification seam when materially different choices change testability or delivery risk.
 
-Do not reopen PRD or HLD decisions. Do not ask for filenames, class names, boilerplate, library syntax,
+Do not reopen PRD, HLD or contract decisions. Do not ask for filenames, class names, boilerplate, library syntax,
 task estimates, styling preferences, or facts directly discoverable from source. Do not ask a
 frontend developer to rediscover a backend payload later: resolve material client-visible ambiguity
 before writing. Recommend the simplest option that follows current repository patterns.
 
 ## Design conversation
 
-The repository team decides with you; do not just ask them to confirm.
+The developer decides with you; do not just ask them to confirm.
 
 - For a genuine trade-off, offer the recommendation plus up to two real `alternatives`
   (`{label, tradeoff}`) grounded in the code you inspected — name the seam or pattern each follows.
 - When no other gap remains, ask one `kind: "direction"` question whose `proposal` (up to 150 words)
-  summarises this repo's intended change: the seam, data/state changes, its contract side, and
-  failure handling. The queue cannot close until the latest direction is confirmed after every
+  summarises the intended change in each repository: the seam, data/state changes, its contract
+  side, and failure handling. The queue cannot close until the latest direction is confirmed after every
   other decision; ask a fresh one (new ID) whenever later answers change it.
 - When the user is unsure or asks back, show the evidence: the existing pattern, what each option
-  changes, and the risk. If a fact belongs to another team, say so.
+  changes, and the risk. If a fact belongs to someone else (another team, a vendor), say so.
 - Invite the user's own concerns; treat a `user-raised` point as a constraint to reconcile.
 
 ## Answer audit

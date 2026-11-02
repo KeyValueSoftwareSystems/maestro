@@ -284,7 +284,7 @@ A human decision. Options ARE the outgoing edges. Gates are **never** skipped on
   type: gate
   prompt: "HLD ready: ${steps.author_hld.outputs.hld_summary}. Approve?"
   options:
-    - {id: approve, label: "Approve — create repo LLD workstreams", to: lld_scope_serve}
+    - {id: approve, label: "Approve — write the repository LLDs", to: end}
     - {id: revise,  label: "Targeted edit", to: revise_hld, input: feedback}
     - {id: rethink, label: "Re-clarify and regenerate", to: prepare_hld_questions, input: feedback}
     - {id: reject,  label: "Reject — abort", to: abort}
@@ -339,23 +339,14 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
   next: contract
 ```
 
-The shipped design workflow does not use one shared parallel node for team-authored LLDs. It
-creates a separate `repo-lld.yaml` run per selected repository. Each child has its own
-`state.yaml`, decision context, LLD revision gate, and approval history. Its lead agent inspects a
-bounded repository seam, serves material questions as a grouped native interview, writes once, and
-runs `validate_lld.py`; post-write questions and narrow repair are conditional. Its publish step
-writes a hash-bound receipt to the parent; the parent joins only after every selected child is
-complete and still matches the current HLD. Generic `parallel` remains useful when one owner
-controls every branch in one run.
+The shipped design workflow writes every repository's LLD in one run of `design-lld.yaml`: one
+grouped interview, one lead-written file per repository (`lld/<repo>.md`), `lld_set.py validate`
+over the whole set, functional test cases, a readiness check, and one approval gate. Approval runs
+`lld_set.py approve`, which records the HLD, contract and per-LLD hashes; delivery's first step,
+`lld_set.py verify`, sends a design that changed after approval back through design. Generic
+`parallel` remains useful when independent branches can run at once in one run.
 
-The architecture-review gate has a scoped correction path. A deterministic validator checks the
-reviewer's source-layer enum, affected repository names, and proposed correction wording against
-`lld-repos.json`. Human approval records one immutable correction receipt per affected repository,
-then replaces only those completed child workstreams with fresh revision ledgers. Unaffected LLD
-approvals remain valid; the parent cannot continue until every replacement is approved and
-published, after which contract/test generation and architecture review run again.
-
-After contract approval, delivery implements every repository in the approved design.
+After LLD approval, delivery implements every repository in the approved design.
 `implementation_pool.py init --choice all --fresh` starts each pass afresh, so a release sent back
 to design rebuilds every repository against the new design. A team workflow that wants batches
 can use `--choice pick`, which keeps unselected repositories as deferred work.
@@ -378,8 +369,8 @@ child at its `start` with fresh child state.
 
 This is how a large workflow splits into small stages, so no single graph overloads the reader.
 The shipped `sdlc-main.yaml` owns only the stage order and the loops between stages (`design`,
-`design-review`, `delivery`, `archive`); `design.yaml` owns only ordering and scoped re-entry
-(`design-intake`, `design-prd`, `design-hld`, `design-lld`, `design-contract`). Each stage keeps its own back-edges, and each
+`delivery`, `archive`); `design.yaml` owns only ordering (`design-intake`, `design-prd`,
+`design-hld`, `design-contract` when the HLD lists interfaces, `design-lld`). Each stage keeps its own back-edges, and each
 stage node sets `on_fail: abort` so a rejection fails the parent exactly as an inline step would.
 
 A human decision that must leave its stage ("send back to design") ends the child through a gate
@@ -389,29 +380,27 @@ gate option, that parent route is gate-driven: the visit cap does not block it, 
 the gate was inline.
 
 ```yaml
-- id: review
+- id: delivery
   type: subworkflow
-  workflow: .maestro/workflows/design-review.yaml
+  workflow: .maestro/workflows/delivery.yaml
   on_fail: abort
   routes:
-    - {when: "${steps.review.outputs.approval} == approve", to: delivery}
-    - {when: "${steps.review.outputs.approval} == revise", to: design}
-    - {when: "${steps.review.outputs.arch_choice} in [lld_only, revise]", to: arch_design_revision}
+    - {when: "${steps.delivery.outputs.design_stale} == true", to: design}
+    - {when: "${steps.delivery.outputs.release} == revise", to: design}
+    - {when: "${steps.delivery.outputs.release} == approve", to: archive}
     - {to: abort}
 ```
 
-A child that can be entered at more than one node starts with a route-only script
-(`engine/entry_serve.py`) whose `routes:` branch on the child's inputs:
+A node that only needs to branch on values already known (a child's inputs, an earlier step's
+outputs) can be a route-only script, `engine/entry_serve.py`, which does no work and never fails:
 
 ```yaml
-start: import_entry
-nodes:
-  - id: import_entry
-    type: script
-    run: [python3, .maestro/engine/entry_serve.py, "${inputs.state}"]
-    routes:
-      - {when: "${inputs.state} == ready", to: upgrade_baseline_approval}
-      - {to: upgrade_baseline_invalid}
+- id: keep_current
+  type: script
+  run: [python3, .maestro/engine/entry_serve.py, "${steps.plan.outputs.refresh_needed}"]
+  routes:
+    - {when: "${steps.plan.outputs.refresh_needed} == true", to: map_plan}
+    - {to: lock}
 ```
 
 ```yaml
@@ -419,7 +408,7 @@ nodes:
   type: subworkflow
   workflow: workflows/design.yaml
   inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
-  next: arch_review
+  next: delivery
 ```
 
 ## Trust & execution model

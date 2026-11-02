@@ -1,106 +1,68 @@
 ---
 name: architecture-review
-description: Review the per-stack LLDs and the cross-repo contract — analyze architecture gaps, security, scaling, reliability, data model, and contract soundness. Read-only; writes a review artifact. Front door for /architecture-review.
+description: Review a high-level design before it is approved, as a reviewer who did not write it — architecture style, boundaries, interfaces, security, failure, scale, operations, and over- or under-engineering — with evidence-backed findings and a blocking verdict. Read-only; writes a review artifact. Front door for /architecture-review.
 allowed-tools: Read, Grep, Glob, Bash, Task, Write
 tags: [sdlc, review]
 ---
 
 # architecture-review
 
-Review the drafted design so architecture problems are caught while they are cheap to fix.
-Read-only — never edit code.
+Catch architecture problems while they cost one document edit, before detailed designs and code
+are built on them. You review the HLD as someone who did not write it: judge the design, not the
+prose. Read-only — never edit the design or code.
 
 ## Inputs
-Your instructions name what to read — the per-stack LLDs and the cross-repo contract —
-cross-checked against the HLD, acceptance criteria, and the architecture rules (`AGENTS.md`, `CLAUDE.md`,
-ADRs).
 
-## Steps
-1. **Read** the HLD, every selected repository LLD, the contract, and acceptance criteria;
-   note the stated NFRs. Use `lld-repos.json` as the authoritative selection.
-2. **Trace each acceptance criterion** to a design element — flag anything unmet (a gap).
-3. **Deep, evidence-backed pass** over every dimension in the checklist below. For a more
-   independent read you MAY spawn a fresh read-only sub-agent (via the Task tool) that follows
-   this same skill — do this where your harness supports it (e.g. Claude Code or Codex). Otherwise
-   perform the pass **inline**. Either way: **read-only — never edit code.** You are the
-   read-only backstop; nothing is skipped.
-4. **Consolidate** findings; sort by severity; decide `blocking`.
-5. **Classify the revision route.** For a blocking verdict, select the earliest authoritative
-   layer that would normally need revision: `product`, `hld`, `lld`, `contract`, `verification`,
-   or `cross-cutting`. Name every repository whose LLD must reflect the correction, even when the
-   normal source layer is PRD/HLD/contract; the human is always offered an LLD-only correction
-   path that deliberately preserves the approved PRD/HLD.
-6. **Write** the report and return the verdict.
+Your instructions name the HLD, the approved requirement, and the maintained architecture
+summaries and codebase maps. Read source only to check a specific claim. Standalone? review the
+HLD the user names and write the report to a path you choose (and tell the user where).
 
-## What the review must cover (checklist — independent of the external skill)
-- **Completeness / gaps** — does the design satisfy every requirement & acceptance
-  criterion? Missing flows, unhandled cases, undefined behavior, TBDs.
-- **Boundaries & coupling** — correct service/module boundaries; no coupling that bypasses
-  the contract; clear ownership.
-- **Data model & migrations** — schema soundness; expand→migrate→contract; reversibility;
-  indexing; no online long locks; safe backfill.
-- **Contract soundness** — versioning/backward-compat; consistent error shape; auth per
-  operation; pagination/limits; **idempotency**; concurrency control; breaking changes flagged.
-- **Security posture** — authn/authz model, tenant isolation, PII/data protection, threat
-  surface of new endpoints/integrations, secrets handling.
-- **Scalability & performance** — expected load, hotspots, N+1/fan-out, caching,
-  statelessness, rate limits, payload caps, connection pools.
-- **Reliability** — failure modes, timeouts, retries/backoff, backpressure, partial-failure
-  and rollback behavior, degradation.
-- **Observability & cost** — logs/metrics/traces planned for new paths; cost blast radius.
+## Checklist
 
-## Edge cases / smells to watch for
-- "Happy-path" designs that omit failure and permission paths.
-- Breaking contract changes not labeled as such; missing deprecation/migration plan.
-- Migrations without rollback or without a backfill plan for existing data.
-- New synchronous call in a hot path (latency/coupling); unbounded queries or list endpoints.
-- Multi-tenant leakage; PII in logs; secrets in config committed to the repo.
-- Cross-service transaction assumed where only eventual consistency is available.
+- **Fit to the requirement** — every acceptance criterion and stated constraint has a place in the
+  design; nothing important is left undefined.
+- **Architecture style** — the chosen shape (modular monolith, separate services, event-driven,
+  serverless) is justified by the requirement's load, independence or ownership needs. Flag both
+  under-engineering (no plan for the stated peak, a single point of failure on a critical path)
+  and over-engineering (new services, queues or caches with no requirement that needs them).
+- **Boundaries and data** — clear ownership, one source of truth per piece of state, no hidden
+  coupling between repositories.
+- **Interfaces** — every cross-repository call or event is listed with owner, caller, sync or
+  async; nothing in the design crosses a boundary without appearing there.
+- **Security and privacy** — authentication and authorization model, tenant isolation, sensitive
+  data, new trust boundaries.
+- **Failure and recovery** — timeouts, retries, idempotency, partial failure, backpressure,
+  degradation, data consistency where only eventual consistency is available.
+- **Scale and performance** — expected load against the design's mechanisms (caching,
+  partitioning, async work, rate limits); unbounded work on hot paths.
+- **Operations** — deployment and rollout, backout, migration safety, observability, cost.
+- **Alternatives** — material choices name the alternative they rejected and why.
 
-## External skill (provision — review method)
-If the `requesting-code-review` skill (from the Superpowers pack) is installed, apply its
-review discipline first; it must not narrow the checklist above. If it is not installed,
-review inline per the checklist.
+## Findings
 
-## Findings format (what the review returns — evidence mandatory)
+Each finding needs evidence — the quoted design text, or the requirement it fails — and the
+smallest design change that fixes it:
+
 ```
-summary: <one paragraph: is the design sound to build? what are the top risks?>
-findings:
-  - severity: blocker | major | minor | suggestion
-    area: gaps | boundaries | data-model | contract | security | scaling | reliability | observability
-    location: <lld/*.md section / openapi path / file:line>
-    evidence: <quoted design/contract text or its absence>
-    recommendation: <the design change>
-    safe_for_ai_fix: <true|false>
-blocking: <true if any blocker/major remains>
+- severity: blocker | major | minor | suggestion
+  area: fit | style | boundaries | interfaces | security | failure | scale | operations | alternatives
+  location: <HLD section>
+  evidence: <quote or gap>
+  recommendation: <design change>
 ```
 
-## Re-review
-When your instructions point at a previous review of this design (a re-review after a revision or
-an approved correction), read it first: confirm each earlier blocking finding is resolved, and
-re-check only the changed documents and their consistency with the rest. Do not re-audit
-unchanged documents.
+Sort blocker → major → minor → suggestion. `blocking=true` when any blocker or major remains.
 
-## Decide & output
-Sort findings blocker → major → minor → suggestion; `blocking = true` if any blocker/major
-remains. A contract/auth/data-model change is never `safe_for_ai_fix`. Write the report
-(summary + findings table) to the artifact path your instructions specify (the orchestrator
-passes it). Running standalone? write to a sensible path you choose and tell the user where.
+**Re-review.** When your instructions point at a previous review (a re-review after a revision),
+read it first: confirm each earlier blocking finding is resolved and check only what changed and
+its consistency with the rest. Do not re-audit unchanged sections or raise new minor findings on
+them.
 
-For the routing fields:
+## Safety
 
-- `revision_scope` is the earliest source-of-truth layer whose revision would resolve all
-  blocking findings. Prefer the order product → hld → lld → contract → verification; use
-  `cross-cutting` only when no single layer owns the decision.
-- `affected_repos_csv` is a comma-separated subset of the exact repository names in
-  `lld-repos.json`. It is mandatory for a blocking verdict because the human may approve the
-  finding as an effective-design correction and update only those LLDs.
-- `correction_text` is one or two precise sentences stating the resulting design rule. It must be
-  complete enough to become a human-approved correction receipt; do not put analysis or options in
-  it.
-- For a non-blocking verdict return `revision_scope: "none"`, `affected_repos_csv: ""`, and
-  `correction_text: ""`.
+Read-only. Write only the review report.
 
 ## Output contract
-Return `review_path`, `blocking`, `summary`, `revision_scope`, `affected_repos_csv`, and
-`correction_text`.
+
+Return `review_path`, literal boolean `blocking`, and `summary` (one line: the verdict and the
+count of blocking findings).

@@ -21,8 +21,8 @@ The lead agent's whole protocol:
         maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, todo, reset (--step/--all, --cascade), rebase, graph, runs, workstreams, note,
-and correction-record. `next --peek` re-reads without claiming or running.
+Also: status, todo, reset (--step/--all, --cascade), rebase, graph, runs, and note.
+`next --peek` re-reads without claiming or running.
 
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
 steps itself — argv `python3 .maestro/engine/<script>.py ...` — and completes them, so the lead
@@ -337,16 +337,6 @@ def cmd_note(args):
     return 0
 
 
-def cmd_correction_record(args):
-    import design_corrections
-    result = design_corrections.record(
-        args.slug, args.root, args.scope, args.text, repo=args.repo,
-        parent_slug=args.parent_slug,
-    )
-    _print(result)
-    return 0
-
-
 def cmd_status(args):
     data = statemod.load(args.slug, args.root)
     if data is None:
@@ -399,12 +389,6 @@ def cmd_runs(args):
 def cmd_interview_brief(args):
     run = resolver.Run(args.slug, args.root)
     _print(resolver.interview_brief(run, args.step, args.section, mode=args.mode))
-    return 0
-
-
-def cmd_workstreams(args):
-    import lld_repo_pool
-    _print(lld_repo_pool.workstream_summary(args.slug, args.root))
     return 0
 
 
@@ -558,19 +542,6 @@ def build_parser():
     p.add_argument("--step", help="step it relates to (default: the active step[s])")
     p.set_defaults(fn=cmd_note)
 
-    p = sub.add_parser(
-        "correction-record", help="record one human-approved effective-design correction",
-    )
-    p.add_argument("--slug", required=True, help="feature parent or repository LLD child")
-    p.add_argument("--parent-slug", help="explicit feature parent (normally inferred)")
-    p.add_argument(
-        "--scope", required=True,
-        choices=("product", "architecture", "repository", "contract", "verification", "cross-cutting"),
-    )
-    p.add_argument("--repo", help="required for repository scope unless inferred from a child")
-    p.add_argument("--text", required=True, help="the approved correction, verbatim")
-    p.set_defaults(fn=cmd_correction_record)
-
     p = sub.add_parser("status", help="human-readable run status")
     p.add_argument("--slug", required=True)
     p.add_argument("--json", action="store_true")
@@ -598,12 +569,6 @@ def build_parser():
     p.add_argument("--mode", choices=("subagent", "side"), default="subagent",
                    help="subagent: isolated worker the lead relays; side: a session the human opens")
     p.set_defaults(fn=cmd_interview_brief)
-
-    p = sub.add_parser(
-        "workstreams", help="list repo-owned LLD child runs for resume selection (read-only)",
-    )
-    p.add_argument("--slug", required=True, help="parent feature or repo LLD child slug")
-    p.set_defaults(fn=cmd_workstreams)
     return parser
 
 

@@ -1,38 +1,31 @@
-# Design child: LLD workstreams — one child run and approval ledger per selected repository.
-# The parent owns the shared PRD/HLD and waits here. Backend, frontend, Flutter, or any other
-# repo team resumes only its child slug, so pushing one team's state cannot advance another.
-# Entered by design.yaml after HLD approval, or directly for an
-# LLD-scoped architecture-review correction.
+# Design child: every repository's LLD in one run — one interview, one write, a readiness check,
+# one approval — plus the functional test cases.
+#
+#   scope -> interview -> write LLDs -> validate -> test cases -> readiness check -> approval
+#
+# One file per repository (lld/<repo>.md) keeps each implementation agent's context to its own
+# repository. LLDs implement or call the contract exactly; a repository that needs a contract
+# change reports it, the contract is updated first, and the affected LLDs are revised. Approval
+# records the exact HLD, contract and LLD hashes (lld_set.py), so a later change to any of them
+# makes the design stale and delivery sends it back here. Entered by design.yaml after the HLD
+# (and the contract, when the HLD lists interfaces).
 version: 1
 name: design-lld
-description: Scope the repositories, run one LLD workstream per repo, and wait for every approval.
+description: Clarify, write, check and approve the repository LLDs and the functional test cases.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
-  feedback: {type: string, default: "", description: revision note from a design-review gate (empty on first pass)}
-  revision_mode: {type: string, default: "", description: architecture gate choice for a scoped revision}
-  revision_scope: {type: string, default: "", description: earliest design layer reopened by architecture review}
-  affected_repos: {type: string, default: "", description: comma-separated repositories whose LLDs need the approved change}
-  correction_text: {type: string, default: "", description: architecture-review correction wording approved at the gate}
+  feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
 defaults:
   model: opus
   agent: planner
   max_visits: 10
-start: lld_entry
+start: lld_scope_serve
 nodes:
-  - id: lld_entry
-    type: script
-    label: Choose LLD entry point
-    run: [python3, .maestro/engine/entry_serve.py, "${inputs.revision_mode}${inputs.revision_scope}"]
-    routes:
-      - {when: "${inputs.revision_mode} == lld_only", to: record_arch_lld_correction}
-      - {when: "${inputs.revision_scope} == lld", to: lld_review_reopen}
-      - {to: lld_scope_serve}
-
   - id: lld_scope_serve
     type: script
     label: Discover repos
-    run: [python3, .maestro/engine/lld_repo_pool.py, list, --root, .]
+    run: [python3, .maestro/engine/lld_set.py, list, --root, .]
     next: lld_scope
 
   - id: lld_scope
@@ -41,17 +34,17 @@ nodes:
     prompt: |
       Detected repos: ${steps.lld_scope_serve.outputs.names_csv}
 
-      Write the detailed design for all of them now, or just some?
+      Write the detailed design for all of them, or only the repositories this feature changes?
     options:
       - {id: all, label: All of them, to: lld_scope_init}
       - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
 
   - id: lld_scope_init
     type: script
-    label: Validate scope, build the claim queue
+    label: Record the repositories in scope
     run:
       - python3
-      - .maestro/engine/lld_repo_pool.py
+      - .maestro/engine/lld_set.py
       - init
       - --root
       - "."
@@ -62,84 +55,337 @@ nodes:
       - --repos-text
       - "${steps.lld_scope.outputs.repos_text}"
     on_fail: lld_scope
-    next: lld_workstreams_init
+    next: prepare_lld_questions
 
-  - id: lld_workstreams_init
-    type: script
-    label: Create independent repository LLD runs
-    run: [python3, .maestro/engine/lld_repo_pool.py, workstreams, --root, ., --slug, "${inputs.slug}", --workflow, .maestro/workflows/repo-lld.yaml, --feature, "${inputs.feature}"]
-    on_fail: abort
-    next: lld_workstreams_check
+  - id: prepare_lld_questions
+    type: agent
+    execution: lead
+    label: Find material repository design gaps
+    instruction: |
+      Build the next focused queue at .maestro/runs/${inputs.slug}/lld-questions.json before writing
+      LLD prose for the repositories in scope: ${steps.lld_scope_init.outputs.selected_csv}. Read the
+      approved HLD and its deferred questions, the contract at
+      .maestro/runs/${inputs.slug}/openapi.yaml when it exists, confirmed LLD decisions, and for each
+      repository its docs/codebase-map.md, guidance, manifest, and only the source/tests around the
+      affected seam. Do not scan broadly.
 
-  - id: record_arch_lld_correction
-    type: script
-    label: Record approved LLD-only architecture correction
-    run:
-      - python3
-      - .maestro/engine/design_corrections.py
-      - record-repositories
-      - --root
-      - "."
-      - --slug
-      - "${inputs.slug}"
-      - --repos-text
-      - "${inputs.affected_repos}"
-      - --text
-      - "${inputs.correction_text}"
-    on_fail: abort
-    next: lld_review_reopen
+      Decide normal implementation details from clear existing conventions. Ask only unresolved
+      choices that materially change correctness, the extension seam, local state/data lifecycle,
+      a repository's side of the contract, visible failure/retry/concurrency/offline behavior,
+      authorization or privacy, compatibility/migration/rollout, execution modes, or the
+      verification seam. Do not reopen PRD, HLD or contract choices or ask for filenames,
+      boilerplate, library syntax, or task estimates. Keep one queue: prefix each question title
+      with its repository and ask a decision that spans repositories once.
 
-  - id: lld_review_reopen
-    type: script
-    label: Reopen only affected repository LLDs
-    run:
-      - python3
-      - .maestro/engine/lld_repo_pool.py
-      - reopen
-      - --root
-      - "."
-      - --slug
-      - "${inputs.slug}"
-      - --repos-text
-      - "${inputs.affected_repos}"
-      - --feedback
-      - "${inputs.correction_text} ${inputs.feedback}"
-      - --workflow
-      - .maestro/workflows/repo-lld.yaml
-      - --feature
-      - "${inputs.feature}"
-    on_fail: abort
-    next: lld_workstreams_check
+      Audit prior answers against must_resolve facts and code/HLD/contract constraints. Treat
+      user-raised points as the human's own constraints and honour discussion summaries. A deferred
+      blocking decision must be re-asked with sharper options; it cannot stay parked.
 
-  - id: lld_workstreams_check
+      Make it a design conversation, not a questionnaire: give every genuine trade-off its
+      recommendation plus up to two real alternatives with their concrete consequences, grounded in
+      the code you inspected. When no other gap remains, ask one kind "direction" question whose
+      proposal summarises the intended change in each repository (seam, data/state, contract side,
+      failure handling) for the human to confirm, challenge, or discuss; ask a fresh one whenever
+      later answers change it.
+
+      Write schema version 2 with 3-7 grouped questions when several gaps remain, fewer when nearly
+      clear, and an empty queue only when every blocking decision is concrete and consistent and
+      the latest direction is confirmed. Validate it before completing.
+      If validator_feedback names defects (anything other than "Question queue is valid"), the
+      previous queue failed validation: fix only those defects in the existing file and validate
+      again — do not rebuild the queue or re-read sources.
+    skill: lld-interview
+    inputs:
+      slug: "${inputs.slug}"
+      repos: "${steps.lld_scope_init.outputs.selected_csv}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      deferred_questions: ".maestro/runs/${inputs.slug}/open-questions.json"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      revision_feedback: "${steps.lld_approval.outputs.feedback} ${inputs.feedback}"
+      validator: ".maestro/engine/validate_prd_questions.py"
+      validator_feedback: "${steps.validate_lld_questions.outputs.issues_summary}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
+    max_visits: 8
+    on_exhausted: lld_clarity_limit
+    next: validate_lld_questions
+
+  - id: validate_lld_questions
     type: script
-    label: Check repository LLD approvals
-    run: [python3, .maestro/engine/lld_repo_pool.py, check, --root, ., --slug, "${inputs.slug}"]
-    on_fail: abort
+    label: Validate repository question queue
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --report]
     routes:
-      - {when: "${steps.lld_workstreams_check.outputs.ready} == true", to: end}
-      - {to: lld_workstreams_wait}
+      - {when: "${steps.validate_lld_questions.outputs.valid} == false", to: prepare_lld_questions}
+      - {when: "${steps.validate_lld_questions.outputs.state} == clear", to: author_llds}
+      - {to: lld_interview}
 
-  - id: lld_workstreams_wait
+  - id: lld_interview
+    type: interview
+    label: Clarify repository implementation decisions
+    skill: lld-interview
+    context: |
+      Feature: ${inputs.feature}
+      Repositories: ${steps.lld_scope_init.outputs.selected_csv}
+      Approved HLD: .maestro/runs/${inputs.slug}/hld.md
+    questions_artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
+    batch_size: 12
+    presentation: popup
+    discuss:
+      inputs:
+        hld: ".maestro/runs/${inputs.slug}/hld.md"
+        contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
+        codebase_maps: "each in-scope repository's docs/codebase-map.md"
+        source: "only the source and tests around the seam this question concerns"
+    artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    next: prepare_lld_questions
+
+  - id: lld_clarity_limit
     type: gate
-    label: Repository LLD workstreams
+    label: Repository LLD clarity checkpoint
     prompt: |
-      Each selected repository has its own run and approval. Team members can work in parallel
-      without sharing one mutable state.yaml:
-
-      ${steps.lld_workstreams_init.outputs.workstreams_md}
-      ${steps.lld_review_reopen.outputs.workstreams_md}
-
-      Current status:
-      ${steps.lld_workstreams_check.outputs.status_md}
-
-      Commit and push each child run after its approval. Once those changes are pulled here,
-      refresh this check. The parent will not create the shared contract early.
+      Eight grouped clarification rounds are complete, but blocking repository design decisions
+      remain. Continue with focused questions, or abort?
     options:
-      - {id: refresh, label: Refresh repository approval status, to: lld_workstreams_check}
-      - {id: scope, label: Change selected repositories, to: lld_scope}
-      - {id: reject, label: Abort the parent run, to: abort}
+      - {id: more, label: Continue focused clarification, to: prepare_lld_questions}
+      - {id: reject, label: Abort the run, to: abort}
+
+  - id: author_llds
+    type: agent
+    execution: lead
+    label: Write the repository LLDs once
+    instruction: |
+      Write one concise, buildable LLD per repository in scope, at these paths:
+      ${steps.lld_scope_init.outputs.lld_paths_csv}
+      Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/openapi.yaml when it exists,
+      the confirmed decisions at .maestro/runs/${inputs.slug}/lld-context.json, each repository's
+      guidance and maintained map, and the bounded source/test evidence already inspected.
+
+      Use plain, skimmable technical English and the exact nine-section LLD contract, with the
+      feature slug ${inputs.slug} as the parent feature. Make each repository's implementation
+      seam, persistence schema/migration, its exact side of the contract, state/flows, failure
+      behavior, dependency order, and verification concrete. Implement or call the contract
+      exactly; if a repository needs something the contract lacks, report it as a contract change
+      instead of designing around it. Do not repeat the HLD, include open decisions, produce a
+      file-by-file task dump, or implement code. Never remove necessary detail to reduce length.
+
+      Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
+      post-check. Keep it empty unless synthesis reveals a genuinely new blocking decision; never
+      guess. Run the validators and repair deterministic defects inside this same call.
+
+      If the LLDs already exist from an earlier pass, update them in place: change only the sections
+      whose decisions changed. If post_check_feedback names defects (anything other than "Question
+      queue is valid"), only the post-check file failed validation: fix just that file and leave
+      the LLDs untouched.
+    skill: lld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+      lld_validator: ".maestro/engine/validate_lld.py"
+      question_validator: ".maestro/engine/validate_prd_questions.py"
+      post_check_feedback: "${steps.validate_lld_post_questions.outputs.issues_summary}"
+      lessons: "${memory.knowledge.repo-design}"
+    outputs: [summary, contract_change_needed, contract_change]
+    artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    max_visits: 4
+    routes:
+      - {when: "${steps.author_llds.outputs.contract_change_needed} == true", to: contract_change}
+      - {to: validate_lld_post_questions}
+
+  - id: validate_lld_post_questions
+    type: script
+    label: Validate repository LLD post-check
+    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --report]
+    routes:
+      - {when: "${steps.validate_lld_post_questions.outputs.valid} == false", to: author_llds}
+      - {when: "${steps.validate_lld_post_questions.outputs.state} == ask", to: lld_post_interview}
+      - {to: validate_llds}
+
+  - id: lld_post_interview
+    type: interview
+    label: Resolve newly discovered repository gaps
+    skill: lld-interview
+    context: |
+      A new blocking decision emerged while connecting the complete LLDs.
+    questions_artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    batch_size: 12
+    presentation: popup
+    discuss:
+      inputs:
+        hld: ".maestro/runs/${inputs.slug}/hld.md"
+        contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
+        lld_drafts: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+        source: "only the source and tests around the seam this question concerns"
+    artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    next: author_llds
+
+  # A repository needs something the contract does not cover: change the contract first, so every
+  # repository builds against the same version, then revise the affected LLDs.
+  - id: contract_change
+    type: agent
+    label: Update the contract for a repository need
+    instruction: |
+      Apply this requested change to the contract at .maestro/runs/${inputs.slug}/openapi.yaml
+      (create it if no contract exists yet): ${steps.author_llds.outputs.contract_change}
+      ${steps.revise_llds.outputs.contract_change}
+      Keep every unaffected operation unchanged and flag the change as breaking or additive.
+    skill: api-contract
+    inputs:
+      slug: "${inputs.slug}"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+    outputs: [contract_summary]
+    artifact: ".maestro/runs/${inputs.slug}/openapi.yaml"
+    fresh: true
+    max_visits: 3
+    on_exhausted: lld_approval
+    next: revise_llds
+
+  - id: validate_llds
+    type: script
+    label: Validate every repository LLD
+    run: [python3, .maestro/engine/lld_set.py, validate, --root, ., --slug, "${inputs.slug}"]
+    max_visits: 12
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.validate_llds.outputs.valid} == true", to: test_cases}
+      - {to: repair_llds}
+
+  - id: repair_llds
+    type: agent
+    label: Repair LLD validation defects
+    model: haiku
+    instruction: |
+      Repair only these deterministic LLD defects: ${steps.validate_llds.outputs.issues_summary}
+      The LLDs are at ${steps.lld_scope_init.outputs.lld_paths_csv}. Bring only the named
+      structural defects to the nine-section format; preserve every confirmed design decision
+      and unrelated content. Run the LLD validator before completing. This is a narrow fallback,
+      not another design pass.
+    skill: lld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      lld_validator: ".maestro/engine/validate_lld.py"
+      validator_feedback: "${steps.validate_llds.outputs.issues_summary}"
+    outputs: [summary]
+    max_visits: 6
+    next: validate_llds
+
+  - id: test_cases
+    type: agent
+    label: Functional test cases
+    instruction: |
+      Produce the functional test-case catalog for this feature at
+      .maestro/runs/${inputs.slug}/test-cases.md from the requirement's acceptance criteria, the
+      HLD, the contract when it exists, and the repository LLDs — the QA source of truth. If the
+      catalog exists from an earlier pass, update it for what changed.
+    skill: functional-testcases
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+    outputs: [test_cases_path, case_count]
+    artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
+    next: readiness_review
+
+  - id: readiness_review
+    type: agent
+    label: Implementation readiness check (fresh reviewer)
+    instruction: |
+      Check that the repository LLDs (${steps.lld_scope_init.outputs.lld_paths_csv}) and the test
+      cases at .maestro/runs/${inputs.slug}/test-cases.md are ready to implement: no design decision
+      left to the implementer, every LLD consistent with the contract at
+      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and with each other, and every
+      acceptance criterion in .maestro/runs/${inputs.slug}/requirement/ covered by an LLD section
+      and a test case. This is not an architecture review; the HLD was reviewed and approved.
+      If .maestro/runs/${inputs.slug}/reviews/lld-readiness.md exists from an earlier round, read it
+      first, confirm each earlier finding is resolved, and check only what changed. Then overwrite
+      the report.
+    skill: lld-readiness
+    agent: reviewer
+    model: opus
+    inputs:
+      slug: "${inputs.slug}"
+      lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+      test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      previous_review: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+    outputs: [review_path, blocking, summary]
+    artifact: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+    fresh: true
+    max_visits: 6
+    on_exhausted: lld_approval
+    routes:
+      - {when: "${steps.readiness_review.outputs.blocking} == true", to: revise_llds}
+      - {to: lld_approval}
+
+  - id: lld_approval
+    type: gate
+    label: Repository LLD approval
+    prompt: |
+      Repository LLDs ready: ${steps.lld_scope_init.outputs.lld_paths_csv}
+      Test cases: .maestro/runs/${inputs.slug}/test-cases.md
+      Readiness check: ${steps.readiness_review.outputs.summary}
+      Report: .maestro/runs/${inputs.slug}/reviews/lld-readiness.md
+
+      Approving starts implementation of every repository in scope.
+    options:
+      - {id: approve, label: Approve — implement these designs, to: record_approval}
+      - {id: revise, label: Request changes — targeted edits, to: revise_llds, input: feedback}
+      - {id: rethink, label: Re-clarify repository decisions and regenerate, to: prepare_lld_questions, input: feedback}
+      - {id: reject, label: Reject — abort the run, to: abort}
+
+  # Targeted edits from the readiness check, the approval gate, or a contract change.
+  - id: revise_llds
+    type: agent
+    execution: lead
+    label: Revise the repository LLDs
+    instruction: |
+      Make targeted edits to the LLDs at ${steps.lld_scope_init.outputs.lld_paths_csv} (and the test
+      cases at .maestro/runs/${inputs.slug}/test-cases.md when they are affected) for whichever of
+      these applies:
+      - human feedback: ${steps.lld_approval.outputs.feedback}
+      - readiness findings in .maestro/runs/${inputs.slug}/reviews/lld-readiness.md, when blocking;
+      - the contract changed (${steps.contract_change.outputs.contract_summary}): bring every LLD
+        that implements or calls the changed operation in line with it.
+      Change only the sections affected; keep every confirmed decision. If a change needs a new
+      repository decision the confirmed decisions cannot settle, do not guess: return
+      needs_clarification true. If it needs a contract change, return contract_change_needed true
+      with the change described in contract_change.
+    skill: lld-writing
+    inputs:
+      slug: "${inputs.slug}"
+      lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      lld_validator: ".maestro/engine/validate_lld.py"
+      revision_feedback: "${steps.lld_approval.outputs.feedback}"
+    outputs: [summary, contract_change_needed, contract_change, needs_clarification]
+    max_visits: 10
+    routes:
+      - {when: "${steps.revise_llds.outputs.needs_clarification} == true", to: prepare_lld_questions}
+      - {when: "${steps.revise_llds.outputs.contract_change_needed} == true", to: contract_change}
+      - {to: validate_llds}
+
+  - id: record_approval
+    type: script
+    label: Record the approved design hashes
+    run: [python3, .maestro/engine/lld_set.py, approve, --root, ., --slug, "${inputs.slug}"]
+    on_fail: abort
+    next: end
 
 outputs:
-  hld_summary: "${steps.lld_review_reopen.outputs.hld_summary}"
   repos_csv: "${steps.lld_scope_init.outputs.selected_csv}"
+  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+  readiness_summary: "${steps.readiness_review.outputs.summary}"
+  approval_path: "${steps.record_approval.outputs.approval_path}"

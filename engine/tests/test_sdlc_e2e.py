@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 import codebase_scan  # noqa: E402
+import lld_set  # noqa: E402
 import workspace_sync  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -38,15 +39,20 @@ def canned_agent_outputs(step, action):
         "repair_hld": {"hld_summary": "Repaired the HLD"},
         "revise_hld": {"hld_summary": "Applied review feedback", "needs_clarification": False},
         "prepare_lld_questions": {"summary": "Prepared repository design questions"},
-        "author_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
-        "repair_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes"},
-        "revise_lld": {"lld_path": "lld.md", "contract_notes": "repo contract notes",
-                       "needs_clarification": False},
+        "author_llds": {"summary": "LLDs written", "contract_change_needed": False,
+                        "contract_change": "None"},
+        "repair_llds": {"summary": "LLDs repaired"},
+        "revise_llds": {"summary": "LLDs revised", "contract_change_needed": False,
+                        "contract_change": "None", "needs_clarification": False},
         "contract": {"contract_summary": "5 endpoints"},
+        "contract_change": {"contract_summary": "added one field"},
         "test_cases": {"test_cases_path": "test-cases.md", "case_count": 12},
         "arch_review": {"review_path": "reviews/architecture.md", "blocking": False,
-                        "summary": "sound", "revision_scope": "none",
-                        "affected_repos_csv": "", "correction_text": ""},
+                        "summary": "sound"},
+        "revise_from_review": {"hld_summary": "Resolved review findings",
+                               "needs_clarification": False},
+        "readiness_review": {"review_path": "reviews/lld-readiness.md", "blocking": False,
+                             "summary": "ready"},
         "tasks": {"task_count": 4, "slice_count": 2},
         "implement": {"branch": "feature/x", "worktree": "/tmp/simulated",
                       "commit": "0" * 40, "summary": "built", "tests_passed": True},
@@ -90,7 +96,7 @@ class SdlcE2E(unittest.TestCase):
         os.makedirs(req)
         with open(os.path.join(req, "requirement.md"), "w") as fh:
             fh.write("Build the demo feature.\n")
-        # lld_repo_pool.py discovers repos under codebase/* — give it exactly backend+frontend
+        # lld_set.py discovers repos under codebase/* — give it exactly backend+frontend
         # so the real script (run for real below, not stubbed) matches every other assumption
         # in this file (backend.md/frontend.md artifacts, per-stack tasks/impl/review).
         for stack in ("backend", "frontend"):
@@ -218,12 +224,20 @@ class SdlcE2E(unittest.TestCase):
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")
-        elif rel.endswith("/lld.md"):
-            parts = rel.split("/")
-            slug = parts[parts.index("runs") + 1]
-            child_state = statemod.load(slug, self.tmp)
-            parent_slug = child_state["inputs"]["parent_slug"]
-            repo = child_state["inputs"]["repo"]
+        elif rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
+            with open(full, "w") as fh:
+                json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
+        else:
+            # Unique per write: `fresh: true` steps must produce new proof on every visit.
+            with open(full, "w") as fh:
+                fh.write(f"artifact {next(_ARTIFACT_WRITES)}\n")
+
+    def write_llds(self, slug="demo"):
+        """What the LLD writer produces: one LLD per selected repository at lld/<repo>.md."""
+        for repo in lld_set.selected(slug, self.tmp):
+            full = lld_set.lld_path(slug, repo, self.tmp)
+            os.makedirs(os.path.dirname(full), exist_ok=True)
+            parent_slug = slug
             sections = {
                 "Change summary": "\n".join(
                     f"- Deliver repository behavior {index}." for index in range(1, 5)
@@ -267,13 +281,6 @@ class SdlcE2E(unittest.TestCase):
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")
-        elif rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
-            with open(full, "w") as fh:
-                json.dump({"schema_version": 1, "feature_slug": "demo", "questions": []}, fh)
-        else:
-            # Unique per write: `fresh: true` steps must produce new proof on every visit.
-            with open(full, "w") as fh:
-                fh.write(f"artifact {next(_ARTIFACT_WRITES)}\n")
 
     def implementation_outputs(self, act):
         def prompt_value(name):
@@ -293,71 +300,6 @@ class SdlcE2E(unittest.TestCase):
                                 capture_output=True, text=True).stdout.strip()
         return {"branch": branch, "worktree": worktree, "commit": commit,
                 "summary": "built", "tests_passed": True}
-
-    def drive_lld_workstreams(self, trace, gate_script):
-        """Drive every repo-owned child run without mutating the parent feature state."""
-        queue_path = os.path.join(
-            self.tmp, ".maestro", "runs", "demo", "lld-repos.json",
-        )
-        with open(queue_path, encoding="utf-8") as fh:
-            workstreams = json.load(fh)["workstreams"]
-        for item in workstreams:
-            slug, repo = item["slug"], item["repo"]
-            decisions = gate_script.get(f"lld:{repo}", [("approve", None)])
-            gate_index = 0
-            for _ in range(20):
-                run = resolver.Run(slug, self.tmp)
-                action = resolver.next_action(run)
-                if action["action"] == "done":
-                    break
-                step = action["step"]
-                trace_step = f"lld:{repo}/{step}"
-                trace.append((action["action"], trace_step))
-                run = resolver.Run(slug, self.tmp)
-                if action["action"] in ("run_agent", "run_lead"):
-                    for rel in action.get("artifacts", []):
-                        self.write_agent_artifact(rel, trace_step)
-                    resolver.complete_step(
-                        run, step, outputs=canned_agent_outputs(step, action),
-                    )
-                elif action["action"] == "ask_interview":
-                    resolver.record_interview(
-                        run, step, action["section"],
-                        answer=None if action.get("proposal") else f"Confirmed {action['title']}",
-                        accept=bool(action.get("proposal")),
-                    )
-                elif action["action"] == "ask_interview_batch":
-                    resolver.record_interview_batch(run, step, {
-                        question["section"]: (
-                            {"accept": True} if question.get("proposal")
-                            else {"answer": f"Confirmed {question['title']}"}
-                        )
-                        for question in action["questions"]
-                    })
-                elif action["action"] == "run_script":
-                    proc = subprocess.run(
-                        action["argv"], cwd=self.tmp, capture_output=True, text=True, timeout=30,
-                    )
-                    resolver.complete_step(
-                        run, step, exit_code=proc.returncode, stdout=proc.stdout,
-                    )
-                elif action["action"] == "ask_gate":
-                    self.assertLess(gate_index, len(decisions), f"{repo} LLD gate overscripted")
-                    option, feedback = decisions[gate_index]
-                    gate_index += 1
-                    selected = next(o for o in action["options"] if o["id"] == option)
-                    resolver.record_gate(run, step, option)
-                    if selected.get("input"):
-                        self.assertIsNotNone(feedback)
-                        pending = resolver.next_action(run)
-                        self.assertEqual(pending["action"], "ask_input")
-                        trace.append(("ask_input", trace_step))
-                        resolver.record_gate_input(run, step, feedback)
-                else:
-                    self.fail(f"unexpected child LLD action: {action}")
-                statemod.save(slug, run.state, self.tmp)
-            else:
-                self.fail(f"LLD workstream {slug} did not finish")
 
     # -- driver ----------------------------------------------------------
 
@@ -387,6 +329,8 @@ class SdlcE2E(unittest.TestCase):
                     for rel in act.get("artifacts", []):
                         self.write_agent_artifact(rel, step)
                     node = step.rsplit("/", 1)[-1]
+                    if node in ("author_llds", "repair_llds", "revise_llds"):
+                        self.write_llds()
                     override = overrides.get(node)
                     outputs = (
                         override() if callable(override) else override
@@ -401,8 +345,7 @@ class SdlcE2E(unittest.TestCase):
                             or any(a.endswith("validate_prd.py") or a.endswith("validate_prd_questions.py")
                                    or a.endswith("validate_hld.py")
                                    for a in act.get("argv", []))
-                            or "record-repositories" in act.get("argv", [])
-                            or any("mem_consolidate" in a or "lld_repo_pool" in a
+                            or any("mem_consolidate" in a or "lld_set" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
                                    or "repo_checks" in a
                                    for a in act.get("argv", []))):
@@ -413,12 +356,9 @@ class SdlcE2E(unittest.TestCase):
                         code, out = canned_script(step)
                     resolver.complete_step(run, step, exit_code=code, stdout=out)
                 elif act["action"] == "ask_gate":
-                    if step.endswith("/lld_workstreams_wait"):
-                        self.drive_lld_workstreams(trace, gate_script)
-                        resolver.record_gate(run, step, "refresh")
-                        statemod.save("demo", run.state, self.tmp)
-                        continue
                     decisions = gate_script.get(step)
+                    if decisions is None and step == "design/lld/lld_approval":
+                        decisions = [("approve", None)] * 20
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -499,24 +439,30 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("design/prd/prd_interview", steps)
         self.assertIn("design/prd/author_prd", steps)
         self.assertLess(steps.index("design/prd/author_prd"), steps.index("design/hld/author_hld"))
-        # the LLDs are approved by a human before any implementation begins
+        # one LLD run: one interview, one write, a readiness check and one human approval,
+        # all before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
-        self.assertIn("design/lld/lld_workstreams_wait", gate_steps)
-        child_approvals = [step for step in gate_steps if step.endswith("/lld_approval")]
-        self.assertEqual(len(child_approvals), 2)
-        child_authors = [step for step in steps if step.endswith("/author_lld")]
-        child_interviews = [step for step in steps if step.endswith("/lld_interview")]
-        self.assertEqual(len(child_authors), 2)
-        self.assertEqual(len(child_interviews), 2)
-        self.assertTrue(all(
-            steps.index(step.replace("/author_lld", "/lld_interview")) < steps.index(step)
-            for step in child_authors
-        ))
+        self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/hld/hld_approval",
+                                      "design/lld/lld_scope", "design/lld/lld_approval",
+                                      "delivery/release_approval"])
+        self.assertEqual(steps.count("design/lld/author_llds"), 1)
+        self.assertEqual(steps.count("design/lld/lld_interview"), 1)
+        self.assertLess(steps.index("design/lld/lld_interview"), steps.index("design/lld/author_llds"))
         self.assertFalse(any(step.endswith("/lld_post_interview") for step in steps))
-        self.assertFalse(any(step.endswith("/repair_lld") for step in steps))
-        self.assertLess(steps.index("design/lld/lld_workstreams_wait"), steps.index(impl_steps[0]))
-        # design ran before implementation, qa after
-        self.assertLess(steps.index("design/hld/author_hld"), steps.index("review/arch_review"))
+        self.assertFalse(any(step.endswith("/repair_llds") for step in steps))
+        for repo in ("backend", "frontend"):
+            self.assertTrue(os.path.isfile(lld_set.lld_path("demo", repo, self.tmp)))
+        approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
+        self.assertEqual(sorted(approval["llds"]), ["backend", "frontend"])
+        self.assertIsNotNone(approval["contract_sha256"])  # the HLD lists an interface
+        # the architecture is reviewed before HLD approval; the contract precedes the LLDs;
+        # test cases and the readiness check follow the LLDs; delivery checks staleness first
+        order = ["design/hld/author_hld", "design/hld/arch_review", "design/contract/contract",
+                 "design/lld/author_llds", "design/lld/test_cases",
+                 "design/lld/readiness_review", "design/lld/record_approval",
+                 "delivery/design_check", impl_steps[0]]
+        self.assertEqual([steps.index(step) for step in order],
+                         sorted(steps.index(step) for step in order))
         self.assertLess(steps.index("delivery/finalize_implementation"), steps.index("delivery/qa/qa_run"))
 
     def test_valid_existing_prd_uses_fast_path(self):
@@ -538,24 +484,6 @@ class SdlcE2E(unittest.TestCase):
         self.assertNotIn("design/prd/prepare_prd_questions", steps)
         self.assertNotIn("design/prd/prd_interview", steps)
         self.assertNotIn("design/prd/author_prd", steps)
-
-    def test_revise_cascade_from_contract_gate(self):
-        self.prep_tasks_json()
-        gates = {
-            "design/prd/prd_approval": [("approve", None), ("approve", None)],
-            "design/hld/hld_approval": [("approve", None), ("approve", None)],
-            "design/lld/lld_scope": [("all", None), ("all", None)],
-            "review/contract_approval": [("revise", "tighten the API"), ("approve", None)],
-            "delivery/release_approval": [("approve", None)],
-        }
-        action, trace = self.drive(gates)
-        self.assertEqual(action["action"], "done", action)
-        steps = [s for _, s in trace]
-        # Shared design ran twice. Repo approvals remain separate child ledgers and are reused
-        # only because the deterministic fixture produced the same HLD bytes.
-        self.assertEqual(steps.count("design/hld/author_hld"), 2)
-        self.assertEqual(steps.count("design/contract/contract"), 2)
-        self.assertEqual(len([s for s in steps if s.endswith("/lld_approval")]), 2)
 
     def test_release_sent_back_to_design_reimplements_every_repo(self):
         """No batches: each delivery pass builds every designed repo against the current design."""
@@ -656,33 +584,6 @@ class SdlcE2E(unittest.TestCase):
         self.assertNotIn("design/hld/revise_hld", steps)
         self.assertEqual(steps.count("design/hld/author_hld"), 2)
 
-    def test_repo_lld_revise_is_isolated_and_requires_feedback(self):
-        self.prep_tasks_json()
-        gates = {
-            "design/prd/prd_approval": [("approve", None)],
-            "design/hld/hld_approval": [("approve", None)],
-            "design/lld/lld_scope": [("all", None)],
-            "lld:backend": [
-                ("revise", "Rotate refresh tokens and document the failure path."),
-                ("approve", None),
-            ],
-            "review/contract_approval": [("approve", None)],
-            "delivery/release_approval": [("approve", None)],
-        }
-        action, trace = self.drive(gates)
-        self.assertEqual(action["action"], "done", action)
-        self.assertIn(("ask_input", "lld:backend/lld_approval"), trace)
-        backend_steps = [s for _, s in trace if s.startswith("lld:backend/")]
-        self.assertEqual(backend_steps.count("lld:backend/revise_lld"), 1)
-        self.assertEqual(backend_steps.count("lld:backend/author_lld"), 1)
-        state = statemod.load("demo--lld--backend", self.tmp)
-        revisions = [g for g in state["gates"]
-                     if g["step"] == "lld_approval" and g["option"] == "revise"]
-        self.assertEqual(len(revisions), 1)
-        self.assertIn("rotate refresh tokens", revisions[0]["input"].lower())
-        frontend = statemod.load("demo--lld--frontend", self.tmp)
-        self.assertFalse(any(g["option"] == "revise" for g in frontend["gates"]))
-
     def _qa_gates(self, qa_gate):
         return {
             "design/prd/prd_approval": [("approve", None)],
@@ -718,89 +619,84 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("delivery/qa/qa_fix"), 1)
         self.assertNotIn("delivery/qa/qa_gate", steps)
 
-    def test_blocking_arch_review_gate_waive(self):
+    DESIGN_GATES = {
+        "design/prd/prd_approval": [("approve", None)],
+        "design/hld/hld_approval": [("approve", None)],
+        "design/lld/lld_scope": [("all", None)],
+        "delivery/release_approval": [("approve", None)],
+    }
+
+    @staticmethod
+    def blocking_once(clean):
+        """A reviewer override that blocks on its first call and is clean afterwards."""
+        calls = []
+
+        def outputs():
+            calls.append(1)
+            return {**clean, "blocking": len(calls) == 1,
+                    "summary": "1 blocker" if len(calls) == 1 else clean["summary"]}
+        return outputs
+
+    def test_blocking_architecture_review_is_resolved_before_hld_approval(self):
         self.prep_tasks_json()
-        gates = {
-            "design/prd/prd_approval": [("approve", None)],
-            "design/hld/hld_approval": [("approve", None)],
-            "design/lld/lld_scope": [("all", None)],
-            "review/arch_gate": [("waive", None)],
-            "review/contract_approval": [("approve", None)],
-            "delivery/release_approval": [("approve", None)],
-        }
-        action, trace = self.drive(gates, agent_overrides={
-            "arch_review": {
-                "review_path": "r.md", "blocking": True, "summary": "risky",
-                "revision_scope": "lld", "affected_repos_csv": "backend",
-                "correction_text": "Use the typed backend failure contract.",
-            },
-        })
+        review = self.blocking_once({"review_path": "reviews/architecture.md", "summary": "sound"})
+        action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"arch_review": review})
         self.assertEqual(action["action"], "done", action)
-        self.assertIn("review/arch_gate", [s for a, s in trace if a == "ask_gate"])
+        steps = [s for _, s in trace]
+        hld = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/hld/")]
+        start = hld.index("arch_review")
+        self.assertEqual(hld[start:start + 5], ["arch_review", "revise_from_review",
+                                                "validate_hld", "arch_review", "hld_approval"])
+        self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
 
-    def test_arch_review_lld_only_correction_does_not_revisit_prd_or_hld(self):
+    def test_blocking_readiness_findings_revise_llds_before_approval(self):
         self.prep_tasks_json()
-        review_calls = {"count": 0}
-
-        def review_outputs():
-            review_calls["count"] += 1
-            if review_calls["count"] == 1:
-                return {
-                    "review_path": "reviews/architecture.md",
-                    "blocking": True,
-                    "summary": "Backend failure behavior is incomplete.",
-                    "revision_scope": "hld",
-                    "affected_repos_csv": "backend",
-                    "correction_text": (
-                        "The backend must return the existing typed failure result and preserve "
-                        "the prior state when the operation fails."
-                    ),
-                }
-            return {
-                "review_path": "reviews/architecture.md",
-                "blocking": False,
-                "summary": "sound",
-                "revision_scope": "none",
-                "affected_repos_csv": "",
-                "correction_text": "",
-            }
-
-        gates = {
-            "design/prd/prd_approval": [("approve", None)],
-            "design/hld/hld_approval": [("approve", None)],
-            "design/lld/lld_scope": [("all", None)],
-            "review/arch_gate": [("lld_only", None)],
-            "review/contract_approval": [("approve", None)],
-            "delivery/release_approval": [("approve", None)],
-        }
-        action, trace = self.drive(gates, agent_overrides={"arch_review": review_outputs})
+        readiness = self.blocking_once({"review_path": "reviews/lld-readiness.md",
+                                        "summary": "ready"})
+        action, trace = self.drive(dict(self.DESIGN_GATES),
+                                   agent_overrides={"readiness_review": readiness})
         self.assertEqual(action["action"], "done", action)
-        steps = [step for _, step in trace]
-        self.assertEqual(steps.count("design/prd/prd_approval"), 1)
-        self.assertEqual(steps.count("design/hld/author_hld"), 1)
-        self.assertEqual(steps.count("design/lld/lld_scope"), 1)
-        self.assertEqual(steps.count("lld:backend/lld_approval"), 2)
-        self.assertEqual(steps.count("lld:frontend/lld_approval"), 1)
-        self.assertEqual(steps.count("review/arch_review"), 2)
+        lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
+        start = lld.index("readiness_review")
+        self.assertEqual(lld[start:start + 6], ["readiness_review", "revise_llds", "validate_llds",
+                                                "test_cases", "readiness_review", "lld_approval"])
 
-        queue_path = os.path.join(
-            self.tmp, ".maestro", "runs", "demo", "lld-repos.json",
-        )
-        with open(queue_path, encoding="utf-8") as fh:
-            workstreams = {item["repo"]: item for item in json.load(fh)["workstreams"]}
-        self.assertEqual(workstreams["backend"]["slug"], "demo--lld--backend--v2")
-        self.assertEqual(workstreams["frontend"]["slug"], "demo--lld--frontend")
+    def test_lld_change_request_needs_feedback_and_is_a_targeted_revision(self):
+        self.prep_tasks_json()
+        gates = dict(self.DESIGN_GATES)
+        gates["design/lld/lld_approval"] = [("revise", "name the retry limit"), ("approve", None)]
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        self.assertIn(("ask_input", "design/lld/lld_approval"), trace)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("design/lld/author_llds"), 1)
+        self.assertEqual(steps.count("design/lld/revise_llds"), 1)
+        self.assertNotIn("design/hld/hld_approval", steps[steps.index("design/lld/revise_llds"):])
 
-        corrections_dir = os.path.join(
-            self.tmp, ".maestro", "runs", "demo", "approved-corrections",
-        )
-        receipts = [
-            json.loads(Path(corrections_dir, name).read_text(encoding="utf-8"))
-            for name in os.listdir(corrections_dir)
-        ]
-        self.assertEqual(len(receipts), 1)
-        self.assertEqual(receipts[0]["scope"], "repository")
-        self.assertEqual(receipts[0]["repo"], "backend")
+    def test_contract_change_from_an_lld_updates_the_contract_before_the_llds(self):
+        """A frontend need the contract lacks: the contract changes first, then the LLDs follow."""
+        self.prep_tasks_json()
+        contract = Path(self.tmp, ".maestro", "runs", "demo", "openapi.yaml")
+        writes = []
+
+        def author_llds():
+            writes.append(1)
+            return {"summary": "LLDs written", "contract_change_needed": len(writes) == 1,
+                    "contract_change": "frontend needs `updated_at` on GET /items"}
+
+        def contract_change():
+            contract.write_text(contract.read_text() + "# updated_at added\n")
+            return {"contract_summary": "added updated_at (additive)"}
+
+        action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={
+            "author_llds": author_llds, "contract_change": contract_change})
+        self.assertEqual(action["action"], "done", action)
+        lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
+        start = lld.index("author_llds")
+        self.assertEqual(lld[start:start + 4], ["author_llds", "contract_change", "revise_llds",
+                                                "validate_llds"])
+        approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
+        self.assertEqual(approval["contract_sha256"], statemod.sha256_file(str(contract)))
 
     def test_fix_cycle_runs_when_review_blocks(self):
         self.prep_tasks_json()
