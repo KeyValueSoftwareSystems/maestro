@@ -100,14 +100,44 @@ class StateTest(unittest.TestCase):
         statemod.save("real", good, self.tmp)
         self.assertEqual([r["slug"] for r in statemod.list_runs(self.tmp)], ["real"])
 
-    def test_list_runs_surfaces_corrupt_ledger_for_upgrade(self):
-        path = statemod.state_path("legacy", self.tmp)
+    def test_list_runs_surfaces_conflicted_ledger_as_unreadable(self):
+        path = statemod.state_path("conflicted", self.tmp)
         os.makedirs(os.path.dirname(path))
         with open(path, "w") as fh:
             fh.write("<<<<<<< ours\n")
         summary = statemod.list_runs(self.tmp)[0]
-        self.assertEqual(summary["slug"], "legacy")
+        self.assertEqual(summary["slug"], "conflicted")
+        self.assertEqual(summary["status"], "unreadable")
+        self.assertIn("merge-conflict", summary["problem"])
+
+    def test_list_runs_surfaces_old_ledger_version_for_upgrade(self):
+        data = statemod.new_state("legacy", "w.yaml", "h", {})
+        data["version"] = 0
+        statemod.save("legacy", data, self.tmp)
+        summary = statemod.list_runs(self.tmp)[0]
         self.assertEqual(summary["status"], "needs-upgrade")
+
+    def test_inspect_names_conflict_even_when_the_rest_parses(self):
+        good = statemod.new_state("s", "w.yaml", "h", {})
+        statemod.save("s", good, self.tmp)
+        path = statemod.state_path("s", self.tmp)
+        with open(path) as fh:
+            text = fh.read()
+        with open(path, "w") as fh:
+            fh.write(text + "<<<<<<< ours\n=======\n>>>>>>> theirs\n")
+        data, problem = statemod.inspect("s", self.tmp)
+        self.assertIsNone(data)
+        self.assertEqual(problem[0], "unreadable")
+
+    def test_quarantine_keeps_the_old_file(self):
+        path = statemod.state_path("s", self.tmp)
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            fh.write("<<<<<<< ours\n")
+        moved = statemod.quarantine("s", self.tmp)
+        self.assertFalse(os.path.exists(path))
+        with open(moved) as fh:
+            self.assertEqual(fh.read(), "<<<<<<< ours\n")
 
 
 

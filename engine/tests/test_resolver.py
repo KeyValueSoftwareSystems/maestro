@@ -961,6 +961,40 @@ class ResumeTest(Sim):
         self.assertEqual(st["steps"]["work"]["status"], "pending")
         self.assertEqual(self.nxt()["step"], "work")
 
+    def _conflict_ledger(self, slug="feat"):
+        path = statemod.state_path(slug, self.tmp)
+        with open(path, "a") as fh:
+            fh.write("<<<<<<< ours\n=======\n>>>>>>> theirs\n")
+        return path
+
+    def test_conflicted_ledger_is_never_overwritten(self):
+        rel = self.write_wf("w.yaml", BACKEDGE_WF)
+        self.start(rel)
+        self.touch(".maestro/feat/work.md")
+        self.complete("work", {"note": "x"})
+        path = self._conflict_ledger()
+        with open(path) as fh:
+            before = fh.read()
+        with self.assertRaises(resolver.RunError) as ctx:
+            resolver.init_run("feat", rel, {}, self.tmp)
+        self.assertEqual(ctx.exception.code, 3)
+        self.assertIn("merge-conflict", str(ctx.exception))
+        with self.assertRaises(resolver.RunError) as ctx:
+            self.nxt()
+        self.assertIn("merge-conflict", str(ctx.exception))
+        with open(path) as fh:
+            self.assertEqual(fh.read(), before)
+
+    def test_force_restart_keeps_the_conflicted_ledger(self):
+        rel = self.write_wf("w.yaml", BACKEDGE_WF)
+        self.start(rel)
+        self._conflict_ledger()
+        data, created = resolver.init_run("feat", rel, {}, self.tmp, force=True)
+        self.assertTrue(created)
+        run_dir = os.path.dirname(statemod.state_path("feat", self.tmp))
+        kept = [n for n in os.listdir(run_dir) if n.startswith("state.yaml.unreadable-")]
+        self.assertEqual(len(kept), 1)
+
     def test_reset_all(self):
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))
         self.touch(".maestro/feat/work.md")

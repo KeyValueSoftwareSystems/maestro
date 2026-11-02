@@ -98,7 +98,13 @@ class Run:
         self.slug = slug
         self.root = root
         self.config = _load_config(root)
-        self.state = state_data if state_data is not None else statemod.load(slug, root)
+        problem = None
+        if state_data is not None:
+            self.state = state_data
+        else:
+            self.state, problem = statemod.inspect(slug, root)
+        if problem is not None:
+            raise RunError(_unusable_ledger_message(slug, root, problem[1]), code=3)
         if self.state is None:
             raise RunError(f"no run found for slug {slug!r} — run `init` first", code=3)
         self._wf_cache = {}
@@ -317,6 +323,15 @@ def coerce_input(declared, raw, name="input"):
     return raw
 
 
+def _unusable_ledger_message(slug, root, detail):
+    path = os.path.relpath(statemod.state_path(slug, root), root)
+    return (
+        f"run ledger {path} {detail}. Maestro will not overwrite it. Resolve the conflict, "
+        f"or restore the file from git (`git checkout -- {path}`), then retry. "
+        f"`init --force` starts the run over and keeps the old file beside it."
+    )
+
+
 def init_run(slug, workflow_file, inputs, root=".", force=False):
     """Create (or no-op onto) the run ledger. Returns (state, created?)."""
     if not statemod.valid_slug(slug):
@@ -328,7 +343,13 @@ def init_run(slug, workflow_file, inputs, root=".", force=False):
     if not os.path.exists(full):
         raise RunError(f"workflow file not found: {workflow_file}", code=3)
     digest = statemod.sha256_file(full)
-    existing = statemod.load(slug, root)
+    existing, problem = statemod.inspect(slug, root)
+    if problem is not None:
+        if not force:
+            raise RunError(_unusable_ledger_message(slug, root, problem[1]), code=3)
+        # --force restarts the run but keeps the old ledger beside it for recovery.
+        statemod.quarantine(slug, root)
+        existing = None
     if existing is not None and not force:
         if existing["workflow"]["file"] != workflow_file:
             raise RunError(

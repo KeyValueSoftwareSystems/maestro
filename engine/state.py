@@ -2,8 +2,9 @@
 
 Only engine code writes this file — the lead agent never edits it (LLMs corrupt
 hand-edited state). Writes go through an fcntl lock plus tmp+rename, both carried over
-from the v1 workflows/state.py. A corrupt ledger fails soft: treated as absent, with a
-warning on stderr, so a damaged file never bricks a run.
+from the v1 workflows/state.py. Read-only callers fail soft on a corrupt ledger (treated as
+absent, with a warning on stderr); `inspect` names the problem so writers can refuse to
+overwrite it — a git merge conflict in a committed ledger must never silently restart a run.
 """
 
 from __future__ import annotations
@@ -14,7 +15,6 @@ import hashlib
 import os
 import re
 import sys
-import time
 import time
 
 try:
@@ -188,21 +188,54 @@ def step_entry(state, path):
     return entry
 
 
-def load(slug, root="."):
-    """Read-only load. Returns None if absent; corrupt files fail soft to None."""
+_CONFLICT_MARKER_RE = re.compile(r"^(?:<{7}|={7}|>{7})(?: |$)", re.MULTILINE)
+
+
+def inspect(slug, root="."):
+    """Read-only load that says why a present ledger is unusable.
+
+    Returns (data, None) for a valid ledger, (None, None) when there is none, and
+    (None, (kind, detail)) when the file exists but cannot be used. `kind` is "unreadable"
+    (parse error or git merge-conflict markers) or "unsupported" (another ledger version).
+    """
     path = state_path(slug, root)
     if not os.path.exists(path):
-        return None
+        return None, None
     try:
-        data = wf.load_file(path)
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
     except (OSError, ValueError) as exc:
-        # ValueError covers wf.WfError and UnicodeDecodeError (non-UTF-8 / binary junk).
-        print(f"warning: corrupt state file {path}: {exc}", file=sys.stderr)
-        return None
+        # ValueError covers UnicodeDecodeError (non-UTF-8 / binary junk).
+        return None, ("unreadable", f"cannot be read: {exc}")
+    # Checked before parsing: a conflicted ledger can still parse into the wrong state.
+    if _CONFLICT_MARKER_RE.search(text):
+        return None, ("unreadable", "contains unresolved git merge-conflict markers")
+    try:
+        data = wf.loads(text)
+    except ValueError as exc:  # wf.WfError
+        return None, ("unreadable", f"cannot be parsed: {exc}")
     if not isinstance(data, dict) or data.get("version") != STATE_VERSION:
-        print(f"warning: unsupported state file {path}; ignoring it", file=sys.stderr)
-        return None
+        found = data.get("version") if isinstance(data, dict) else None
+        return None, ("unsupported", f"has unsupported ledger version {found!r}")
+    return data, None
+
+
+def load(slug, root="."):
+    """Read-only load. Returns None if absent; corrupt files fail soft to None."""
+    data, problem = inspect(slug, root)
+    if problem is not None:
+        print(f"warning: state file {state_path(slug, root)} {problem[1]}; ignoring it",
+              file=sys.stderr)
     return data
+
+
+def quarantine(slug, root="."):
+    """Move an unusable ledger aside (never delete it) and return the new path."""
+    path = state_path(slug, root)
+    stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    target = f"{path}.unreadable-{stamp}"
+    os.replace(path, target)
+    return target
 
 
 def list_runs(root="."):
@@ -221,10 +254,10 @@ def list_runs(root="."):
     for name in names:
         if not valid_slug(name) or not os.path.isdir(os.path.join(base, name)):
             continue
-        data = load(name, root)
+        data, problem = inspect(name, root)
         if data is None:
             path = state_path(name, root)
-            if os.path.isfile(path):
+            if problem is not None:
                 try:
                     updated = _dt.datetime.fromtimestamp(
                         os.path.getmtime(path), _dt.timezone.utc,
@@ -233,7 +266,10 @@ def list_runs(root="."):
                     updated = None
                 runs.append({
                     "slug": name,
-                    "status": "needs-upgrade",
+                    # An unreadable ledger (conflict markers, parse error) needs a human
+                    # fix, not the run-format upgrade.
+                    "status": "unreadable" if problem[0] == "unreadable" else "needs-upgrade",
+                    "problem": problem[1],
                     "workflow": None,
                     "active": [],
                     "updated_at": updated,

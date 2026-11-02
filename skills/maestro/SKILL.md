@@ -45,6 +45,9 @@ list, explicitly ask for the number or slug, and WAIT; plain text is the require
 not a failed gate.
 
 - **Resume** → use the chosen slug and continue to Setup (init is a no-op resume).
+- **`status: unreadable`** → the ledger has a git merge conflict or cannot be parsed; show
+  the engine's `problem` text and stop. The human resolves or restores the file; never edit
+  it yourself, and never pass `--force` unless the human explicitly asks to start over.
 - **Start new, description already supplied** → derive a concise kebab-case slug from the
   description (lowercase ASCII letters and digits, non-alphanumeric runs collapsed to one
   hyphen, no leading/trailing hyphen), tell the human `Starting <slug> — <description>`, and
