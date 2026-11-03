@@ -3,6 +3,7 @@
 # genuinely need judgement-based refresh.
 version: 1
 name: workspace-sync
+title: Sync the workspace
 description: Fetch repository upstreams, safely update on approval, refresh stale knowledge, and pin commits.
 inputs:
   slug: {type: string, required: true}

@@ -4,6 +4,7 @@
 # changes no interface between repositories skips it.
 version: 1
 name: design-contract
+title: Interface contract
 description: Define the API/event contract for every interface the approved HLD lists.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

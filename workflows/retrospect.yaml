@@ -5,6 +5,7 @@
 # Also reused as the harvest half of workflows/archive.yaml.
 version: 1
 name: retrospect
+title: Lessons (retrospect)
 description: Distill a finished run into staged lessons, then consolidate the memory store.
 inputs:
   slug: {type: string, required: true, description: the finished feature to harvest}

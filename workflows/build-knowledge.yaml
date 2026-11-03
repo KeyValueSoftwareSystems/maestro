@@ -5,6 +5,7 @@
 # Re-runnable — refresh in place.
 version: 1
 name: build-knowledge
+title: Build the knowledge base
 description: Build docs/ (technical + functional per domain + architecture) from the codebase.
 inputs:
   slug: {type: string, default: bootstrap, description: throwaway run id for the bootstrap}

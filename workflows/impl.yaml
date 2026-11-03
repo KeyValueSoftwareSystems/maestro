@@ -5,6 +5,7 @@
 # fix cycle built from a visit-capped back-edge.
 version: 1
 name: impl
+title: Implement one repository
 description: Build one selected repo from its approved LLD — task DAG, sliced implementation, engine verification, review, bounded fix loop.
 inputs:
   slug: {type: string, required: true}

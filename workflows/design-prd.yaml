@@ -7,6 +7,7 @@
 # child; a complete existing prd.md takes the fast path straight to approval.
 version: 1
 name: design-prd
+title: PRD
 description: Clarify and write the feature PRD, then get it approved.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

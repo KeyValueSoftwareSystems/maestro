@@ -6,6 +6,7 @@
 # approval.
 version: 1
 name: design-hld
+title: HLD and architecture review
 description: Clarify and write the feature HLD, then get it approved.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

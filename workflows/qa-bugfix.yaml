@@ -5,6 +5,7 @@
 # and re-runs QA.
 version: 1
 name: qa-bugfix
+title: Fix a QA bug
 description: Fix a QA-found product bug in one repository's verified worktree, re-verify and re-review it.
 inputs:
   slug: {type: string, required: true}

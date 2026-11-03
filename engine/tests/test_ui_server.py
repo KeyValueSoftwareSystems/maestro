@@ -119,6 +119,48 @@ class UiServerTest(unittest.TestCase):
         # workflows sort before non-workflows
         self.assertTrue(obj[0]["workflow"])
 
+    def test_workflows_list_carries_title_and_resolved_uses(self):
+        # a parent that calls demo.yaml through a symlinked .maestro/workflows (as this pack
+        # repo does) and from inside a parallel branch; a templated path is dropped
+        os.makedirs(os.path.join(self.tmp, ".maestro"), exist_ok=True)
+        os.symlink("../workflows", os.path.join(self.tmp, ".maestro", "workflows"))
+        with open(os.path.join(self.tmp, "workflows", "parent.yaml"), "w") as fh:
+            fh.write("""\
+version: 1
+name: parent
+title: Build a feature
+description: Calls demo.
+nodes:
+  - id: a
+    type: subworkflow
+    workflow: .maestro/workflows/demo.yaml
+    next: fan
+  - id: fan
+    type: parallel
+    branches:
+      - id: one
+        start: s
+        steps:
+          - id: s
+            type: subworkflow
+            workflow: workflows/demo.yaml
+      - id: two
+        start: s
+        steps:
+          - id: s
+            type: subworkflow
+            workflow: "workflows/${inputs.stack}.yaml"
+""")
+        code, obj = self._get_json("/api/workflows")
+        self.assertEqual(code, 200)
+        parent = {e["file"]: e for e in obj}[os.path.join("workflows", "parent.yaml")]
+        self.assertEqual(parent["title"], "Build a feature")
+        self.assertEqual(parent["description"], "Calls demo.")
+        self.assertEqual(parent["steps"], 2)
+        self.assertEqual(parent["uses"], [os.path.join("workflows", "demo.yaml")])
+        demo = {e["file"]: e for e in obj}[os.path.join("workflows", "demo.yaml")]
+        self.assertEqual((demo["title"], demo["uses"]), ("", []))
+
     def test_workflows_list_skips_host_skill_and_fixture_directories(self):
         for dirname in (".claude", ".cursor", ".agents", ".codex", "testdata"):
             nested = os.path.join(self.tmp, dirname, "skills", "noise")

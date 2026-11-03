@@ -5,6 +5,7 @@
 # re-runs QA. The environment is stopped on every normal exit.
 version: 1
 name: qa
+title: QA
 description: Automate and run the functional test suite; fix loop on failures.
 inputs:
   slug: {type: string, required: true}

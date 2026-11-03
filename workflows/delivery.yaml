@@ -9,6 +9,7 @@
 # parent archives.
 version: 1
 name: delivery
+title: Delivery
 description: Implement every repository of the approved design, verify it with QA, and approve the release.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

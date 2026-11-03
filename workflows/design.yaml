@@ -11,6 +11,7 @@
 # `on_fail: abort`, so a rejection inside a stage fails this workflow.
 version: 1
 name: design
+title: Design
 description: Design a feature end-to-end, from requirement folder to approved repository designs.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

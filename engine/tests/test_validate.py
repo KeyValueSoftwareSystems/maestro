@@ -76,6 +76,19 @@ class FixtureTest(unittest.TestCase):
             self.assertIn("subworkflow-cycle", {i.code for i in issues})
 
 
+class TitleTest(unittest.TestCase):
+    def _doc(self, title):
+        return {"version": 1, "name": "t", "title": title,
+                "nodes": [{"id": "work", "instruction": "go", "next": "end"}]}
+
+    def test_title_accepted(self):
+        self.assertEqual([str(i) for i in validate.validate_doc(self._doc("Build a feature"))], [])
+
+    def test_title_must_be_a_string(self):
+        issues = validate.validate_doc(self._doc(["no"]))
+        self.assertTrue(any(i.code == "bad-type" for i in issues), [str(i) for i in issues])
+
+
 class MemoryPlaceholderTest(unittest.TestCase):
     def _doc(self, ref):
         return {

@@ -5,92 +5,117 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Maestro Workflow Builder</title>
 <style>
+/* Palette follows the README hero: warm paper (light) / deep navy (dark), amber brand, green ok. */
 :root {
-  --bg: #f6f7fb; --panel: #ffffff; --panel2: #f1f3f9; --border: #e4e7f0; --border-strong: #d6dae7;
-  --text: #1b2233; --muted: #727a8c; --faint: #9aa1b2; --accent: #4f6bf5; --accent-soft: #eef1ff;
-  --danger: #d64550; --warn: #c98a1e; --ok: #2f9e6e; --edge: #c3c8d6;
-  --agent: #4f6bf5; --gate: #c98a1e; --interview: #d65a7a; --script: #2f9e6e; --parallel: #9a5df0; --subworkflow: #d6558e;
-  --shadow-sm: 0 1px 2px rgba(20,28,60,.07);
-  --shadow: 0 4px 20px rgba(20,28,60,.09), 0 1px 3px rgba(20,28,60,.06);
-  --shadow-lg: 0 18px 50px rgba(20,28,60,.16);
-  --radius: 12px;
-  --serif: "Newsreader", Georgia, "Times New Roman", serif;
-  --font: "Hanken Grotesk", ui-sans-serif, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  color-scheme: light;
+  --bg: #f6f4ef; --panel: #ffffff; --panel2: #f3f0e9; --panel3: #ebe7de; --border: #e5e0d5; --border-strong: #d4cdbf;
+  --text: #151a22; --muted: #5c6370; --faint: #8a919d; --edge: #b4ad9f; --grid: #e2ddd2;
+  --accent: #a86a00; --accent-soft: #fbf0d9; --accent-ring: rgba(201,133,16,.26);
+  --brand: #eaa83a; --on-brand: #1b1300;
+  --danger: #c8423b; --warn: #b7770a; --ok: #1e9a5a;
+  --agent: #4a63e0; --gate: #c2410c; --interview: #c0408a; --script: #0f8a72; --parallel: #7a4fe0; --subworkflow: #0e7fb0;
+  --shadow-sm: 0 1px 2px rgba(40,30,10,.06);
+  --shadow: 0 6px 22px rgba(40,30,10,.08), 0 1px 3px rgba(40,30,10,.06);
+  --shadow-lg: 0 24px 64px rgba(40,30,10,.18), 0 2px 6px rgba(40,30,10,.08);
+  --radius: 12px; --tbh: 56px;
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
 }
 :root[data-theme="dark"] {
-  --bg: #111318; --panel: #191b21; --panel2: #15171c; --border: #2a2d36; --border-strong: #363a47;
-  --text: #e8eaf0; --muted: #8b909e; --faint: #616675; --accent: #7288ff; --accent-soft: #20264a;
-  --danger: #ef6b74; --warn: #e0aa54; --ok: #4dbd8f; --edge: #3a3f4c;
-  --agent: #7288ff; --gate: #e0aa54; --interview: #ef7898; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
-  --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
-  --shadow: 0 4px 20px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.4);
-  --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
+  color-scheme: dark;
+  --bg: #0d1118; --panel: #141a23; --panel2: #10151d; --panel3: #1b2230; --border: #222a37; --border-strong: #2f3848;
+  --text: #e8ecf2; --muted: #98a1b0; --faint: #5e6878; --edge: #3d4757; --grid: #1a212c;
+  --accent: #f2b441; --accent-soft: rgba(242,180,65,.12); --accent-ring: rgba(242,180,65,.30);
+  --brand: #f2b441; --on-brand: #1a1300;
+  --danger: #f0706a; --warn: #f2b441; --ok: #4fc48a;
+  --agent: #7c93ff; --gate: #f59e6b; --interview: #ee7db8; --script: #4cc9a8; --parallel: #a98bff; --subworkflow: #5bc0eb;
+  --shadow-sm: 0 1px 2px rgba(0,0,0,.45);
+  --shadow: 0 8px 26px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.4);
+  --shadow-lg: 0 28px 70px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4);
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) {
-    --bg: #111318; --panel: #191b21; --panel2: #15171c; --border: #2a2d36; --border-strong: #363a47;
-    --text: #e8eaf0; --muted: #8b909e; --faint: #616675; --accent: #7288ff; --accent-soft: #20264a;
-    --danger: #ef6b74; --warn: #e0aa54; --ok: #4dbd8f; --edge: #3a3f4c;
-    --agent: #7288ff; --gate: #e0aa54; --interview: #ef7898; --script: #4dbd8f; --parallel: #b183f5; --subworkflow: #ef7fae;
-    --shadow-sm: 0 1px 2px rgba(0,0,0,.4);
-    --shadow: 0 4px 20px rgba(0,0,0,.42), 0 1px 3px rgba(0,0,0,.4);
-    --shadow-lg: 0 18px 50px rgba(0,0,0,.55);
+    color-scheme: dark;
+    --bg: #0d1118; --panel: #141a23; --panel2: #10151d; --panel3: #1b2230; --border: #222a37; --border-strong: #2f3848;
+    --text: #e8ecf2; --muted: #98a1b0; --faint: #5e6878; --edge: #3d4757; --grid: #1a212c;
+    --accent: #f2b441; --accent-soft: rgba(242,180,65,.12); --accent-ring: rgba(242,180,65,.30);
+    --brand: #f2b441; --on-brand: #1a1300;
+    --danger: #f0706a; --warn: #f2b441; --ok: #4fc48a;
+    --agent: #7c93ff; --gate: #f59e6b; --interview: #ee7db8; --script: #4cc9a8; --parallel: #a98bff; --subworkflow: #5bc0eb;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.45);
+    --shadow: 0 8px 26px rgba(0,0,0,.45), 0 1px 3px rgba(0,0,0,.4);
+    --shadow-lg: 0 28px 70px rgba(0,0,0,.6), 0 2px 6px rgba(0,0,0,.4);
   }
 }
-@keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-@keyframes pulseRing { 0%, 100% { box-shadow: 0 0 0 0 rgba(201,138,30,.35); } 50% { box-shadow: 0 0 0 6px rgba(201,138,30,0); } }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pulseRing { 0%, 100% { box-shadow: 0 0 0 0 var(--accent-ring); } 50% { box-shadow: 0 0 0 7px transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
 * { box-sizing: border-box; margin: 0; }
 html, body { height: 100%; overflow: hidden; }
-body { font-family: var(--font); font-size: 13px; color: var(--text); background: var(--bg); }
+body { font-family: var(--font); font-size: 13px; line-height: 1.4; color: var(--text); background: var(--bg);
+  -webkit-font-smoothing: antialiased; }
 button, input, select, textarea { font: inherit; color: inherit; }
+code { font-family: var(--mono); font-size: .92em; background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 5px; padding: 0 4px; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+::selection { background: var(--accent-ring); }
+.n-agent { --tc: var(--agent); } .n-gate { --tc: var(--gate); } .n-interview { --tc: var(--interview); }
+.n-script { --tc: var(--script); } .n-parallel { --tc: var(--parallel); } .n-subworkflow { --tc: var(--subworkflow); }
 
 /* ---- layout ---- */
-#app { display: grid; grid-template-rows: 58px 1fr; grid-template-columns: 220px 1fr 344px; height: 100%; }
-#toolbar { grid-column: 1 / 4; display: flex; align-items: center; gap: 7px; padding: 0 16px;
+#app { display: grid; grid-template-rows: var(--tbh) 1fr; grid-template-columns: 232px 1fr 340px; height: 100%; }
+#toolbar { grid-column: 1 / 4; display: flex; align-items: center; gap: 8px; padding: 0 14px 0 16px;
   background: var(--panel); border-bottom: 1px solid var(--border); z-index: 30; }
-#palette { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; padding: 10px; }
+#palette { background: var(--panel); border-right: 1px solid var(--border); overflow-y: auto; }
 #canvas-wrap { position: relative; overflow: hidden; background: var(--bg);
-  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 22px 22px; }
-#inspector { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 20px; }
+  background-image: radial-gradient(circle, var(--grid) 1.1px, transparent 1.2px); background-size: 22px 22px; }
+#inspector { background: var(--panel); border-left: 1px solid var(--border); overflow-y: auto; padding: 18px 18px 28px; }
 
 /* ---- toolbar ---- */
-.logo { font-family: var(--serif); font-weight: 600; font-size: 20px; letter-spacing: .2px; margin-right: 2px; }
-.logo b { font-weight: 600; color: inherit; }
-.logo-badge { font-family: var(--mono); font-size: 10px; color: var(--muted); border: 1px solid var(--border);
-  border-radius: 6px; padding: 2px 7px; margin-right: 4px; }
-.seg { display: flex; gap: 3px; background: var(--panel2); border: 1px solid var(--border); border-radius: 11px; padding: 4px; }
-.seg > button { display: flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--muted);
-  border-radius: 8px; padding: 6px 15px; font-size: 13px; font-weight: 500; cursor: pointer; font-family: var(--font); }
-.seg > button.active { background: var(--panel); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 600; }
-.tb { border: 1px solid var(--border); background: var(--panel); border-radius: 8px; padding: 6px 12px;
-  cursor: pointer; color: var(--text); transition: background .12s; white-space: nowrap; }
-.tb:hover { background: var(--panel2); }
-.tb.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-.tb.primary:hover { filter: brightness(1.08); }
+.brand { display: inline-flex; align-items: center; gap: 9px; flex: none; }
+.brand-mark { display: block; }
+.logo { font-weight: 700; font-size: 15.5px; letter-spacing: -.2px; }
+.tb { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border); background: var(--panel);
+  border-radius: 8px; padding: 6px 12px; cursor: pointer; color: var(--text); white-space: nowrap; font-weight: 500;
+  transition: background .12s, border-color .12s, box-shadow .12s; }
+.tb:hover { background: var(--panel2); border-color: var(--border-strong); }
+.tb.primary { background: var(--brand); border-color: var(--brand); color: var(--on-brand); font-weight: 650; }
+.tb.primary:hover { filter: brightness(1.05); }
+.tb.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+.tb.ghost:hover { background: var(--panel2); color: var(--text); }
 .tb:disabled { opacity: .45; cursor: default; }
-.tb-icon { width: 34px; height: 34px; padding: 0; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 9px; color: var(--muted); }
-.tb-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; }
-#crumbs { display: flex; gap: 4px; align-items: center; margin-left: 8px; font-weight: 600; }
-#crumbs .crumb { cursor: pointer; padding: 3px 8px; border-radius: 6px; }
-#crumbs .crumb:hover { background: var(--panel2); }
-#crumbs .crumb.here { background: var(--accent-soft); color: var(--accent); cursor: default; }
-#crumbs .sep { color: var(--muted); }
+.tb-icon { width: 34px; height: 34px; padding: 0; justify-content: center; border-radius: 9px; color: var(--muted); }
+#btn-theme { font-size: 16px; }
+.tb-sep { width: 1px; height: 22px; background: var(--border); margin: 0 4px; flex: none; }
+.seg { display: flex; gap: 2px; background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 3px; }
+.seg > button { display: flex; align-items: center; gap: 6px; border: none; background: transparent; color: var(--muted);
+  border-radius: 7px; padding: 5px 14px; font-size: 12.5px; font-weight: 550; cursor: pointer; }
+.seg > button:hover { color: var(--text); }
+.seg > button.active { background: var(--panel); color: var(--text); box-shadow: var(--shadow-sm); font-weight: 650; }
+#crumbs { display: flex; gap: 2px; align-items: center; min-width: 0; overflow: hidden; font-weight: 600; }
+#crumbs .crumb { cursor: pointer; padding: 4px 8px; border-radius: 7px; color: var(--muted); white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; max-width: 220px; }
+#crumbs .crumb:hover { background: var(--panel2); color: var(--text); }
+#crumbs .crumb.here { color: var(--text); cursor: default; background: none; }
+#crumbs .crumb .kind { font-size: 10px; font-weight: 600; color: var(--faint); margin-left: 5px; }
+#crumbs .sep { color: var(--faint); padding: 0 1px; }
 .spacer { flex: 1; }
-#dirty-dot { color: var(--warn); font-size: 18px; visibility: hidden; }
+#dirty-dot { color: var(--warn); font-size: 11px; visibility: hidden; flex: none; }
 .tb-left { display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0; }
 .tb-center { display: flex; align-items: center; justify-content: center; flex: none; }
 .tb-right { display: flex; align-items: center; gap: 7px; flex: 1; min-width: 0; justify-content: flex-end; }
-.tb-right #crumbs { margin-left: 0; margin-right: 2px; font-weight: 600; overflow: hidden; }
+body[data-view="runs"] #crumbs, body[data-view="library"] #crumbs,
+body[data-view="runs"] .crumb-sep, body[data-view="library"] .crumb-sep,
+body[data-view="runs"] #dirty-dot, body[data-view="library"] #dirty-dot { display: none; }
 /* overflow menu */
 .menu { position: relative; }
-.menu-panel { position: absolute; top: calc(100% + 6px); right: 0; min-width: 216px; background: var(--panel);
+.menu-panel { position: absolute; top: calc(100% + 6px); right: 0; min-width: 228px; background: var(--panel);
   border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg); padding: 6px; z-index: 60; display: none; }
 .menu-panel.show { display: block; animation: fadeUp .15s ease both; }
 .menu-item { display: flex; align-items: center; justify-content: space-between; gap: 18px; width: 100%; text-align: left;
-  border: none; background: transparent; color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
-  cursor: pointer; font-family: var(--font); }
+  border: none; background: transparent; color: var(--text); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; cursor: pointer; }
 .menu-item:hover { background: var(--panel2); }
 .menu-item:disabled { opacity: .4; cursor: default; }
 .menu-item kbd { font-family: var(--mono); font-size: 10px; color: var(--faint); background: var(--panel2);
@@ -99,44 +124,51 @@ button, input, select, textarea { font: inherit; color: inherit; }
 /* editor-only controls: hidden on the Runs and Library views (irrelevant there) */
 #editor-actions { display: flex; align-items: center; gap: 7px; }
 body[data-view="runs"] #editor-actions, body[data-view="library"] #editor-actions { display: none; }
-/* "← Workflows" back button: only in server mode (where the library exists) and only in the Builder editor */
-#btn-library { display: none; margin-left: 6px; }
-body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-items: center; gap: 5px; }
+/* "Workflows" button: only in server mode (where the library exists) and only in the Builder editor */
+#btn-library { display: none; }
+body.has-server[data-view="builder"] #btn-library { display: inline-flex; }
+body.has-server #menu-folder { display: none; }
 
 /* ---- palette ---- */
-#palette { padding: 16px 14px; }
-.pal-h { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); margin: 2px 4px 10px; }
+#palette { padding: 16px 12px; }
+.pal-h { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); margin: 2px 6px 9px; }
 .pal-h + .pal-h, .pal-item + .pal-h { margin-top: 20px; }
-.pal-item { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border: 1px solid var(--border);
-  border-radius: 11px; margin-bottom: 7px; cursor: grab; background: var(--panel); transition: box-shadow .15s, transform .15s; }
-.pal-item:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-.pal-item .ico { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center;
-  justify-content: center; font-family: var(--mono); font-size: 13px; flex: none; }
-.pal-item .ico.letter { font-weight: 600; font-size: 12px; }
+.pal-item { display: flex; align-items: center; gap: 10px; padding: 8px 9px; border: 1px solid var(--border);
+  border-radius: 10px; margin-bottom: 6px; cursor: grab; background: var(--panel); transition: box-shadow .15s, transform .15s, border-color .15s; }
+.pal-item:hover { box-shadow: var(--shadow); transform: translateY(-1px); border-color: var(--border-strong); }
+.pal-item .ico, .node .ico { display: flex; align-items: center; justify-content: center; flex: none; font-family: var(--mono);
+  background: color-mix(in srgb, var(--tc, var(--accent)) 15%, transparent); color: var(--tc, var(--accent)); }
+.pal-item .ico { width: 28px; height: 28px; border-radius: 8px; font-size: 13px; }
+.pal-item .ico.letter { font-weight: 700; font-size: 12px; font-family: var(--font); }
 .pal-item .nm { font-weight: 600; font-size: 12.5px; }
 .pal-item .ds { color: var(--muted); font-size: 11px; }
-.hint { color: var(--faint); font-size: 11px; padding: 14px 4px 4px; line-height: 1.55; }
+.hint { color: var(--faint); font-size: 11px; padding: 14px 6px 4px; line-height: 1.6; }
 
 /* ---- canvas ---- */
 #viewport { position: absolute; inset: 0; transform-origin: 0 0; }
 #edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-#edges path.edge { fill: none; stroke: var(--edge); stroke-width: 1.7; pointer-events: stroke; cursor: pointer; }
-#edges path.edge.back { stroke-dasharray: 6 5; stroke: var(--parallel); }
-#edges path.edge.selected { stroke: var(--accent); stroke-width: 2.6; }
+#edges path.edge { fill: none; stroke: var(--edge); stroke-width: 1.6; pointer-events: stroke; cursor: pointer; }
+#edges path.edge.back { stroke-dasharray: 5 5; stroke: color-mix(in srgb, var(--parallel) 75%, var(--edge)); }
+#edges path.edge.selected { stroke: var(--accent); stroke-width: 2.4; }
 #edges path.hit { fill: none; stroke: transparent; stroke-width: 14; pointer-events: stroke; cursor: pointer; }
-#edges text { font-size: 10.5px; fill: var(--muted); font-family: var(--mono); pointer-events: none; }
+#edges text { font-size: 10.5px; fill: var(--muted); font-family: var(--mono); pointer-events: none;
+  paint-order: stroke; stroke: var(--bg); stroke-width: 4px; stroke-linejoin: round; }
 #edges .arrow { fill: var(--edge); }
-#edges .arrow.back { fill: var(--parallel); }
+#edges .arrow.back { fill: color-mix(in srgb, var(--parallel) 75%, var(--edge)); }
 #edges .arrow.selected { fill: var(--accent); }
 #edges .cap-badge { font-size: 9.5px; fill: var(--parallel); font-weight: 700; }
-.node { position: absolute; width: 190px; background: var(--panel); border: 1.5px solid var(--border-strong);
-  border-radius: 13px; box-shadow: var(--shadow-sm); cursor: grab; user-select: none; transition: box-shadow .15s, border-color .15s; }
+.node { position: absolute; width: 200px; background: var(--panel); border: 1px solid var(--border-strong);
+  border-radius: 12px; box-shadow: var(--shadow-sm); cursor: grab; user-select: none; transition: box-shadow .15s, border-color .15s; }
+.node::before { content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 3px; border-radius: 12px 12px 0 0;
+  background: var(--tc, var(--border-strong)); }
 .node:hover { box-shadow: var(--shadow); }
-.node.selected { border-color: var(--accent); box-shadow: 0 0 0 4px var(--accent-soft), var(--shadow); }
-.node .head { display: flex; align-items: center; gap: 9px; padding: 11px 12px 6px; }
-.node .ico { width: 24px; height: 24px; border-radius: 7px; display: flex; align-items: center;
-  justify-content: center; font-family: var(--mono); font-size: 13px; flex: none; }
-.node .ttl { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
+.node.selected { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring), var(--shadow); }
+.node .head { display: flex; align-items: center; gap: 10px; padding: 12px 12px 8px; }
+.node .ico { width: 28px; height: 28px; border-radius: 8px; font-size: 13px; }
+.node .ttl-wrap { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.node .ttl { font-weight: 650; font-size: 13px; line-height: 1.3; overflow: hidden; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow-wrap: anywhere; }
+.node .sub { font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .node .node-del { position: absolute; top: -9px; right: -9px; width: 21px; height: 21px; padding: 0;
   display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-strong);
   background: var(--panel); color: var(--muted); border-radius: 50%; cursor: pointer; font-size: 14px; line-height: 1;
@@ -144,104 +176,115 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
   transition: opacity .12s, transform .12s, background .12s, color .12s, border-color .12s; }
 .node:hover .node-del, .node.selected .node-del { opacity: 1; transform: scale(1); }
 .node .node-del:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
-.node .body { padding: 0 12px 11px; display: flex; flex-wrap: wrap; gap: 5px; min-height: 8px; }
-.chip { font-size: 10.5px; font-family: var(--mono); background: var(--panel2); border: 1px solid var(--border); border-radius: 7px;
-  padding: 2px 8px; color: var(--muted); max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip.skill { color: var(--accent); border-color: var(--accent-soft); background: var(--accent-soft); }
-.node .err-badge { position: absolute; top: -7px; left: -7px; right: auto; width: 17px; height: 17px; border-radius: 50%;
+.node .body { padding: 0 12px 11px; display: flex; flex-wrap: wrap; gap: 5px; }
+.node .body:empty { padding-bottom: 4px; }
+/* a subworkflow reads as a stack of cards: it holds a whole workflow */
+.node.n-subworkflow { box-shadow: 5px 5px 0 -1px var(--panel), 5px 5px 0 0 var(--border-strong), var(--shadow-sm); }
+.node.n-subworkflow:hover { box-shadow: 5px 5px 0 -1px var(--panel), 5px 5px 0 0 var(--border-strong), var(--shadow); }
+.node.n-subworkflow.selected { box-shadow: 0 0 0 3px var(--accent-ring), 5px 5px 0 -1px var(--panel), 5px 5px 0 0 var(--border-strong); }
+.chip { font-size: 10.5px; font-family: var(--mono); background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+  padding: 2px 7px; color: var(--muted); max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip.skill { color: var(--tc, var(--accent)); border-color: color-mix(in srgb, var(--tc, var(--accent)) 22%, transparent);
+  background: color-mix(in srgb, var(--tc, var(--accent)) 9%, transparent); }
+.node .err-badge { position: absolute; top: -8px; left: -8px; width: 18px; height: 18px; border-radius: 50%;
   background: var(--danger); color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center;
-  justify-content: center; cursor: pointer; }
+  justify-content: center; cursor: pointer; box-shadow: 0 0 0 2px var(--bg); }
 .node .err-badge.warn { background: var(--warn); }
-.port { position: absolute; width: 13px; height: 13px; border-radius: 50%; background: var(--panel);
-  border: 2.5px solid var(--accent); right: -7px; cursor: crosshair; z-index: 5; }
-.port:hover { background: var(--accent); }
-.port.in { left: -7px; right: auto; border-color: var(--muted); cursor: default; }
-.port-label { position: absolute; right: 10px; font-size: 9.5px; color: var(--muted); transform: translateY(-1px);
-  pointer-events: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node.n-agent .ico, .pal-item.n-agent .ico { background: color-mix(in srgb, var(--agent) 15%, transparent); color: var(--agent); }
-.node.n-gate .ico, .pal-item.n-gate .ico { background: color-mix(in srgb, var(--gate) 15%, transparent); color: var(--gate); }
-.node.n-interview .ico, .pal-item.n-interview .ico { background: color-mix(in srgb, var(--interview) 15%, transparent); color: var(--interview); }
-.node.n-script .ico, .pal-item.n-script .ico { background: color-mix(in srgb, var(--script) 15%, transparent); color: var(--script); }
-.node.n-parallel .ico, .pal-item.n-parallel .ico { background: color-mix(in srgb, var(--parallel) 15%, transparent); color: var(--parallel); }
-.node.n-subworkflow .ico, .pal-item.n-subworkflow .ico { background: color-mix(in srgb, var(--subworkflow) 15%, transparent); color: var(--subworkflow); }
-.pal-item .ico.letter { background: var(--accent-soft); color: var(--accent); }
-.node.n-terminal { width: 118px; opacity: .95; }
-.node.n-terminal .head { justify-content: center; padding-bottom: 11px; }
-.node.n-terminal .ico { color: #fff; }
-.node .open-btn { font-size: 11px; color: var(--accent); cursor: pointer; padding: 1.5px 8px;
-  border: 1px solid var(--accent-soft); background: var(--accent-soft); border-radius: 20px; }
+.port { position: absolute; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--panel);
+  border: 2px solid var(--tc, var(--accent)); right: -7px; cursor: crosshair; z-index: 5; transition: transform .12s, background .12s; }
+.port:hover { background: var(--tc, var(--accent)); transform: scale(1.25); }
+.port.in { left: -7px; right: auto; border-color: var(--border-strong); cursor: default; }
+.port.in:hover { background: var(--panel); transform: none; }
+.node.n-terminal { width: 110px; border-radius: 999px; }
+.node.n-terminal::before { display: none; }
+.node.n-terminal .head { justify-content: center; padding: 8px 12px; }
+.node.n-terminal .ico { width: 20px; height: 20px; border-radius: 50%; color: #fff; font-size: 10px; }
+.node.n-terminal .ttl { font-weight: 600; color: var(--muted); }
+.node .open-btn { font-size: 11px; font-weight: 600; color: var(--tc, var(--accent)); cursor: pointer; padding: 2px 9px;
+  border: 1px solid color-mix(in srgb, var(--tc, var(--accent)) 30%, transparent);
+  background: color-mix(in srgb, var(--tc, var(--accent)) 10%, transparent); border-radius: 20px; }
+.node .open-btn:hover { background: color-mix(in srgb, var(--tc, var(--accent)) 20%, transparent); }
 #temp-edge { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
 #temp-edge path { stroke: var(--accent); stroke-width: 2; fill: none; stroke-dasharray: 5 4; }
-#empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; align-items: center;
-  justify-content: center; color: var(--muted); pointer-events: none; }
-#empty-state .big { font-family: var(--serif); font-size: 21px; font-weight: 600; }
-#zoom-dock { position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%); display: flex; align-items: center;
-  gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 5px; z-index: 15; }
+#empty-state { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 6px; align-items: center;
+  justify-content: center; color: var(--muted); pointer-events: none; text-align: center; padding: 20px; }
+#empty-state .big { font-size: 18px; font-weight: 700; color: var(--text); }
+#zoom-dock { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; align-items: center;
+  gap: 2px; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 4px; z-index: 15; }
 #zoom-dock button { border: none; background: transparent; color: var(--text); border-radius: 8px; cursor: pointer;
-  height: 30px; font-family: var(--font); display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  height: 30px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 #zoom-dock button:hover { background: var(--panel2); }
-#zoom-dock .zb-round { width: 30px; font-size: 17px; }
-#zoom-dock .zb-txt { padding: 0 11px; font-size: 12px; }
-#zoom-dock .zsep { width: 1px; height: 20px; background: var(--border); margin: 0 4px; }
+#zoom-dock .zb-round { width: 30px; font-size: 16px; }
+#zoom-dock .zb-txt { padding: 0 11px; font-size: 12px; font-weight: 500; }
+#zoom-dock .zsep { width: 1px; height: 18px; background: var(--border); margin: 0 3px; }
 #zoom-label { min-width: 46px; text-align: center; font-family: var(--mono); font-size: 11.5px; color: var(--muted); }
+#level-note { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); z-index: 14; display: none;
+  align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--border); border-radius: 999px;
+  box-shadow: var(--shadow); padding: 5px 6px 5px 14px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+#level-note.show { display: flex; animation: fadeUp .2s ease both; }
+#level-note b { color: var(--text); font-weight: 650; }
+#level-note .tb { padding: 3px 10px; font-size: 12px; }
 
 /* ---- inspector ---- */
-#inspector h3 { font-family: var(--serif); font-weight: 600; font-size: 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 11px; }
-#inspector h3 .ico { width: 34px; height: 34px; border-radius: 9px; color: #fff; display: flex;
-  align-items: center; justify-content: center; font-size: 15px; flex: none; }
-.f { margin-bottom: 10px; }
-.f label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+#inspector h3 { font-weight: 700; font-size: 15px; margin-bottom: 16px; display: flex; align-items: center; gap: 11px; }
+#inspector h3 .ico { width: 32px; height: 32px; border-radius: 9px; color: #fff; display: flex;
+  align-items: center; justify-content: center; font-size: 14px; flex: none; }
+#inspector h3 .h-sub { display: block; font-size: 11.5px; font-weight: 500; color: var(--muted); margin-top: 1px; }
+.f { margin-bottom: 12px; }
+.f label { display: block; font-size: 11.5px; font-weight: 600; color: var(--muted); margin-bottom: 5px; }
 .f input[type=text], .f input[type=number], .f select, .f textarea { width: 100%; border: 1px solid var(--border);
-  border-radius: 7px; padding: 6px 8px; background: var(--panel2); outline: none; }
-.f input:focus, .f select:focus, .f textarea:focus { border-color: var(--accent); }
-.f textarea { min-height: 84px; resize: vertical; font-family: var(--mono); font-size: 12px; line-height: 1.45; }
+  border-radius: 8px; padding: 7px 9px; background: var(--panel2); outline: none; transition: border-color .12s, box-shadow .12s; }
+.f input:focus, .f select:focus, .f textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.f textarea { min-height: 84px; resize: vertical; font-family: var(--mono); font-size: 12px; line-height: 1.5; }
 .f .invalid { border-color: var(--danger) !important; }
 .frow { display: flex; gap: 8px; }
-.frow .f { flex: 1; }
+.frow .f { flex: 1; min-width: 0; }
 .mini-list { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin-bottom: 6px; }
-.mini-row { display: flex; gap: 5px; align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--border);
-  background: var(--panel2); }
+.mini-row { display: flex; gap: 5px; align-items: center; padding: 5px 6px; border-bottom: 1px solid var(--border); background: var(--panel2); }
 .mini-row:last-child { border-bottom: none; }
-.mini-row input, .mini-row select { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 5px;
-  padding: 3px 6px; background: var(--panel); font-size: 12px; }
+.mini-row input, .mini-row select { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 6px;
+  padding: 4px 6px; background: var(--panel); font-size: 12px; }
 .mini-row .del { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 14px; padding: 0 3px; }
 .mini-row .del:hover { color: var(--danger); }
-.add-btn { border: 1px dashed var(--border); background: none; color: var(--muted); border-radius: 7px;
-  padding: 5px; width: 100%; cursor: pointer; margin-bottom: 10px; }
+.add-btn { border: 1px dashed var(--border-strong); background: none; color: var(--muted); border-radius: 8px;
+  padding: 6px; width: 100%; cursor: pointer; margin-bottom: 10px; }
 .add-btn:hover { color: var(--accent); border-color: var(--accent); }
-.sec { border-top: 1px solid var(--border); margin-top: 14px; padding-top: 12px; }
-.sec > .sec-h { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin-bottom: 8px; }
-.danger-btn { color: var(--danger); border: 1px solid var(--border); background: none; border-radius: 7px;
-  padding: 6px; width: 100%; cursor: pointer; margin-top: 8px; }
+.open-wf { width: 100%; justify-content: center; margin: 2px 0 12px; }
+.sec { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 14px; }
+.sec > .sec-h { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); margin-bottom: 10px; }
+.danger-btn { color: var(--danger); border: 1px solid var(--border); background: none; border-radius: 8px;
+  padding: 7px; width: 100%; cursor: pointer; margin-top: 8px; }
 .danger-btn:hover { background: var(--danger); color: #fff; border-color: var(--danger); }
-.note { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.note { color: var(--muted); font-size: 11.5px; line-height: 1.55; }
+.callout { background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  border-radius: 9px; padding: 9px 11px; margin-bottom: 14px; font-size: 12px; line-height: 1.5; }
 
 /* ---- issues panel ---- */
-#issues { position: absolute; left: 14px; bottom: 62px; right: 14px; max-height: 150px; overflow-y: auto;
-  background: var(--panel); border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-lg);
+#issues { position: absolute; left: 14px; bottom: 62px; right: 14px; max-height: 160px; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow-lg);
   z-index: 20; display: none; }
-#issues.show { display: block; }
+#issues.show { display: block; animation: fadeUp .15s ease both; }
 #issues .ih { display: flex; align-items: center; padding: 7px 12px; border-bottom: 1px solid var(--border);
   font-weight: 650; font-size: 12px; position: sticky; top: 0; background: var(--panel); }
-#issues .irow { padding: 5px 12px; cursor: pointer; display: flex; gap: 8px; font-size: 12px; }
+#issues .irow { padding: 6px 12px; cursor: pointer; display: flex; gap: 8px; font-size: 12px; }
 #issues .irow:hover { background: var(--panel2); }
 #issues .lvl { font-weight: 700; width: 14px; }
 #issues .lvl.error { color: var(--danger); } #issues .lvl.warning { color: var(--warn); }
-#lint-pill { cursor: pointer; }
-#lint-pill.bad { color: var(--danger); font-weight: 650; }
-#lint-pill.warn { color: var(--warn); font-weight: 650; }
+#lint-pill { cursor: pointer; font-size: 12px; font-weight: 600; }
+#lint-pill.bad { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 35%, var(--border)); }
+#lint-pill.warn { color: var(--warn); border-color: color-mix(in srgb, var(--warn) 35%, var(--border)); }
 #lint-pill.good { color: var(--ok); }
 
 /* ---- modals ---- */
-.modal-bg { position: fixed; inset: 0; background: rgba(10,14,30,.45); display: none; align-items: center;
-  justify-content: center; z-index: 100; }
+.modal-bg { position: fixed; inset: 0; background: rgba(8,10,16,.5); display: none; align-items: center;
+  justify-content: center; z-index: 100; backdrop-filter: blur(2px); }
 .modal-bg.show { display: flex; }
-.modal { background: var(--panel); border-radius: 14px; box-shadow: var(--shadow-lg); width: min(680px, 92vw);
-  max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
-.modal .mh { padding: 15px 20px; font-weight: 700; font-size: 15px; border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; }
+.modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow-lg);
+  width: min(680px, 92vw); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; animation: fadeUp .18s ease both; }
+.modal .mh { padding: 15px 20px; font-weight: 700; font-size: 15px; border-bottom: 1px solid var(--border); display: flex; align-items: center; }
 .modal .mh .x { margin-left: auto; cursor: pointer; color: var(--muted); border: none; background: none; font-size: 17px; }
 .modal .mb { padding: 16px 20px; overflow-y: auto; }
+.modal .mb p { margin-bottom: 9px; }
 .modal .mf { padding: 12px 20px; border-top: 1px solid var(--border); display: flex; gap: 8px; justify-content: flex-end; }
 .tpl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .tpl { border: 1.5px solid var(--border); border-radius: 12px; padding: 14px; cursor: pointer; transition: all .12s; }
@@ -256,8 +299,8 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
 #paste-ta { width: 100%; min-height: 240px; font-family: var(--mono); font-size: 12px; border: 1px solid var(--border);
   border-radius: 8px; padding: 10px; background: var(--panel2); }
 .toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text);
-  color: var(--bg); border-radius: 9px; padding: 9px 16px; z-index: 200; box-shadow: var(--shadow-lg);
-  opacity: 0; transition: opacity .2s; pointer-events: none; font-weight: 600; }
+  color: var(--bg); border-radius: 10px; padding: 9px 16px; z-index: 200; box-shadow: var(--shadow-lg);
+  opacity: 0; transition: opacity .2s; pointer-events: none; font-weight: 600; max-width: 80vw; }
 .toast.show { opacity: 1; }
 
 /* ---- selftest ---- */
@@ -268,81 +311,135 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
 .st-row.fail { background: color-mix(in srgb, var(--danger) 14%, transparent); }
 
 /* ---- runs view ---- */
-#runs-view { position: fixed; inset: 58px 0 0 0; background: var(--bg); z-index: 400; display: none; flex-direction: column;
-  animation: fadeUp .4s ease both; }
+#runs-view { position: fixed; inset: var(--tbh) 0 0 0; background: var(--bg); z-index: 400; display: none; flex-direction: column;
+  animation: fadeUp .3s ease both; }
 #runs-view.show { display: flex; }
 #runs-top { height: 52px; flex: none; display: flex; align-items: center; gap: 10px; padding: 0 16px;
   background: var(--panel); border-bottom: 1px solid var(--border); }
-.runs-title { font-family: var(--serif); font-size: 20px; font-weight: 600; margin-right: 2px; }
-.runs-tag { font-family: var(--mono); font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 6px; padding: 2px 7px; }
-#runs-body { flex: 1; display: grid; grid-template-columns: 344px 1fr; min-height: 0; }
+.runs-title { font-size: 15px; font-weight: 700; margin-right: 2px; }
+.runs-tag { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
+#runs-body { flex: 1; display: grid; grid-template-columns: 320px 1fr; min-height: 0; }
 #runs-list { border-right: 1px solid var(--border); overflow-y: auto; padding: 12px; background: var(--panel); }
 #runs-list .empty { color: var(--muted); font-size: 12px; line-height: 1.6; padding: 8px 4px; }
-.run-card { border: 1.5px solid var(--border); border-radius: 12px; padding: 12px 13px; margin-bottom: 8px; cursor: pointer;
-  transition: box-shadow .15s, border-color .15s; background: var(--panel); border-left: 3px solid transparent; }
-.run-card:hover { box-shadow: var(--shadow); }
-.run-card.sel { border-color: var(--accent); border-left-color: var(--accent); background: var(--accent-soft); }
+.run-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 13px; margin-bottom: 8px; cursor: pointer;
+  transition: box-shadow .15s, border-color .15s; background: var(--panel); }
+.run-card:hover { box-shadow: var(--shadow); border-color: var(--border-strong); }
+.run-card.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
 .run-card .rc-top { display: flex; align-items: center; gap: 7px; }
 .run-card .rc-slug { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-card .rc-file { color: var(--muted); font-size: 11px; margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-card .rc-bar { height: 6px; border-radius: 4px; background: var(--panel2); margin-top: 8px; overflow: hidden; }
-.run-card .rc-bar > i { display: block; height: 100%; background: var(--ok); }
-.run-card .rc-meta { color: var(--muted); font-size: 11px; margin-top: 5px; }
-.rbadge { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; padding: 2px 7px;
-  border-radius: 20px; margin-left: auto; flex: none; }
-.rbadge.running { background: color-mix(in srgb, var(--warn) 22%, transparent); color: var(--warn); }
-.rbadge.done { background: color-mix(in srgb, var(--ok) 22%, transparent); color: var(--ok); }
-.rbadge.failed { background: color-mix(in srgb, var(--danger) 22%, transparent); color: var(--danger); }
+.run-card .rc-file { color: var(--muted); font-size: 11px; margin-top: 3px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run-card .rc-bar { height: 5px; border-radius: 4px; background: var(--panel3); margin-top: 9px; overflow: hidden; }
+.run-card .rc-bar > i { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
+.run-card .rc-meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
+.rbadge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px;
+  border-radius: 999px; margin-left: auto; flex: none; }
+.rbadge.running { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+.rbadge.done { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--ok); }
+.rbadge.failed { background: color-mix(in srgb, var(--danger) 18%, transparent); color: var(--danger); }
 #runs-graph { position: relative; overflow: auto; background: var(--bg);
-  background-image: radial-gradient(circle, var(--border) 1px, transparent 1px); background-size: 22px 22px; }
+  background-image: radial-gradient(circle, var(--grid) 1.1px, transparent 1.2px); background-size: 22px 22px; }
 #runs-graph .placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
-  color: var(--muted); font-size: 14px; }
+  color: var(--muted); font-size: 13px; text-align: center; padding: 20px; }
+.runs-crumbs { position: sticky; top: 0; left: 0; z-index: 3; display: flex; align-items: center; gap: 2px; padding: 10px 14px;
+  font-weight: 600; background: linear-gradient(var(--bg) 70%, transparent); width: max-content; min-width: 100%; }
+.runs-crumbs .crumb { padding: 3px 8px; border-radius: 7px; color: var(--muted); cursor: pointer; }
+.runs-crumbs .crumb:hover { background: var(--panel2); color: var(--text); }
+.runs-crumbs .crumb.here { color: var(--text); cursor: default; background: none; }
+.runs-crumbs .sep { color: var(--faint); }
+.runs-crumbs .note { margin-left: 12px; font-weight: 400; }
 #runs-plane { position: relative; }
 #runs-graph svg { position: absolute; inset: 0; overflow: visible; }
-#runs-graph svg path { fill: none; stroke: var(--muted); stroke-width: 1.8; }
-#runs-graph svg path.back { stroke-dasharray: 7 5; stroke: var(--parallel); }
-#runs-graph svg .arrow { fill: var(--muted); }
-.rnode { position: absolute; width: 190px; border-radius: 13px; border: 1.5px solid var(--border); background: var(--panel);
+#runs-graph svg path { fill: none; stroke: var(--edge); stroke-width: 1.6; }
+#runs-graph svg path.back { stroke-dasharray: 5 5; stroke: color-mix(in srgb, var(--parallel) 75%, var(--edge)); }
+.rnode { position: absolute; width: 190px; border-radius: 12px; border: 1px solid var(--border-strong); background: var(--panel);
   box-shadow: var(--shadow-sm); overflow: hidden; }
-.rnode .rn-head { display: flex; align-items: center; gap: 7px; padding: 7px 10px; font-weight: 650; }
-.rnode .rn-dot { width: 10px; height: 10px; border-radius: 50%; flex: none; background: var(--muted); }
-.rnode .rn-type { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .05em; padding: 4px 10px 8px; }
-.rnode.s-done { border-color: var(--ok); } .rnode.s-done .rn-dot { background: var(--ok); }
-.rnode.s-done .rn-head { background: color-mix(in srgb, var(--ok) 12%, transparent); }
+.rnode .rn-head { display: flex; align-items: center; gap: 8px; padding: 8px 11px 3px; font-weight: 650; }
+.rnode .rn-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; background: var(--faint); }
+.rnode .rn-type { color: var(--muted); font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em; padding: 0 11px 8px 28px; }
+.rnode.s-done { border-color: color-mix(in srgb, var(--ok) 55%, var(--border)); } .rnode.s-done .rn-dot { background: var(--ok); }
+.rnode.s-done .rn-head { color: var(--text); }
 .rnode.s-running { border-color: var(--warn); animation: pulseRing 1.8s ease-out infinite; } .rnode.s-running .rn-dot { background: var(--warn); }
-.rnode.s-running .rn-head { background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .rnode.s-failed { border-color: var(--danger); } .rnode.s-failed .rn-dot { background: var(--danger); }
-.rnode.s-failed .rn-head { background: color-mix(in srgb, var(--danger) 12%, transparent); }
-.rnode .rn-count { font-size: 10px; color: var(--muted); font-weight: 600; margin-left: auto; }
-@keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .35; } }
+.rnode.s-pending { opacity: .78; }
+.rnode.sub { cursor: zoom-in; box-shadow: 4px 4px 0 -1px var(--panel), 4px 4px 0 0 var(--border-strong); overflow: visible; }
+.rnode.sub .rn-type::after { content: " · double-click to open"; text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--faint); }
+.rnode .rn-count { font-size: 10.5px; color: var(--muted); font-weight: 600; margin-left: auto; font-family: var(--mono); }
 #runs-legend { display: flex; gap: 14px; align-items: center; font-size: 11px; color: var(--muted); margin-left: 6px; }
-#runs-legend b { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
+#runs-legend b { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; }
 
 /* ---- library ---- */
-#library-view { position: fixed; inset: 58px 0 0 0; background: var(--bg); z-index: 350; display: none; overflow-y: auto;
-  animation: fadeUp .4s ease both; }
+#library-view { position: fixed; inset: var(--tbh) 0 0 0; background: var(--bg); z-index: 350; display: none; overflow-y: auto;
+  animation: fadeUp .3s ease both; }
 #library-view.show { display: block; }
-.lib-wrap { max-width: 940px; margin: 0 auto; padding: 44px 32px 60px; }
-.lib-head { display: flex; align-items: flex-end; gap: 12px; }
-.lib-title { font-family: var(--serif); font-size: 31px; font-weight: 600; }
-.lib-sub { font-size: 13px; color: var(--muted); margin-top: 5px; }
-.lib-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 28px; }
-.lib-card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex;
-  flex-direction: column; gap: 11px; cursor: pointer; transition: box-shadow .15s, transform .15s; }
-.lib-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); }
-.lib-file { font-family: var(--mono); font-size: 12px; color: var(--accent); background: var(--accent-soft); border-radius: 7px; padding: 4px 9px; }
-.lib-name { font-size: 13px; color: var(--text); line-height: 1.5; font-weight: 600; }
-.lib-meta { font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.lib-foot { font-size: 11.5px; color: var(--faint); margin-top: 22px; font-family: var(--mono); }
+.lib-wrap { max-width: 980px; margin: 0 auto; padding: 40px 32px 64px; }
+.lib-head { display: flex; align-items: flex-end; gap: 10px; }
+.lib-title { font-size: 26px; font-weight: 750; letter-spacing: -.5px; }
+.lib-sub { font-size: 13px; color: var(--muted); margin-top: 6px; max-width: 560px; line-height: 1.55; }
+.lib-search { margin-top: 24px; position: relative; }
+.lib-search input { width: 100%; padding: 10px 14px 10px 36px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel); outline: none; font-size: 13px; box-shadow: var(--shadow-sm); }
+.lib-search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-ring); }
+.lib-search::before { content: "⌕"; position: absolute; left: 13px; top: 50%; transform: translateY(-52%); color: var(--faint); font-size: 16px; }
+.lib-sec { margin-top: 30px; }
+.lib-sec-h { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--faint); margin: 0 2px 12px; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; }
+.lib-card { position: relative; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 20px;
+  display: flex; flex-direction: column; gap: 10px; cursor: pointer; text-align: left;
+  transition: box-shadow .15s, transform .15s, border-color .15s; }
+.lib-card:hover { box-shadow: var(--shadow); transform: translateY(-1px); border-color: var(--border-strong); }
+.lib-card.primary { border-color: color-mix(in srgb, var(--accent) 40%, var(--border)); }
+.lib-card.primary::before { content: ""; position: absolute; left: -1px; right: -1px; top: -1px; height: 3px;
+  border-radius: 14px 14px 0 0; background: var(--brand); }
+.lc-top { display: flex; align-items: center; gap: 11px; }
+.lc-ico { width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex: none;
+  background: var(--accent-soft); color: var(--accent); font-size: 15px; }
+.lc-title { font-size: 16px; font-weight: 700; letter-spacing: -.2px; }
+.lc-file { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.lc-desc { color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.lc-stages { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.lc-stage { border: 1px solid var(--border); background: var(--panel2); color: var(--text); border-radius: 999px;
+  padding: 3px 10px; font-size: 11.5px; font-weight: 550; cursor: pointer; }
+.lc-stage:hover { border-color: var(--accent); color: var(--accent); }
+.lc-arrow { color: var(--faint); font-size: 11px; }
+.lc-foot { display: flex; align-items: center; gap: 8px; margin-top: 2px; font-size: 11.5px; color: var(--muted); }
+.lc-foot .go { margin-left: auto; color: var(--accent); font-weight: 650; }
+.lib-tree { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; margin-bottom: 12px; overflow: hidden; }
+.lib-tree > summary { list-style: none; cursor: pointer; display: flex; align-items: center; gap: 8px; padding: 13px 16px;
+  font-weight: 600; user-select: none; }
+.lib-tree > summary::-webkit-details-marker { display: none; }
+.lib-tree > summary::before { content: "›"; display: inline-block; width: 12px; color: var(--faint); font-size: 15px; transition: transform .15s; }
+.lib-tree[open] > summary::before { transform: rotate(90deg); }
+.lib-tree > summary:hover { background: var(--panel2); }
+.lib-tree .count { font-size: 11px; font-weight: 600; color: var(--muted); background: var(--panel2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 0 8px; }
+.lib-tree .sum-note { margin-left: auto; font-weight: 400; font-size: 11.5px; color: var(--faint); }
+.lib-rows { border-top: 1px solid var(--border); padding: 6px; }
+.lib-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; border: none; background: none;
+  border-radius: 9px; padding: 8px 10px 8px calc(10px + var(--depth, 0) * 22px); cursor: pointer; color: var(--text); }
+.lib-row:hover { background: var(--panel2); }
+.lib-row .lr-ico { color: var(--subworkflow); font-family: var(--mono); width: 16px; text-align: center; flex: none; }
+.lib-row .lr-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.lib-row .lr-title { font-weight: 600; }
+.lib-row .lr-desc { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lib-row .lr-meta { display: flex; flex-direction: column; align-items: flex-end; flex: none; gap: 1px; }
+.lib-row .lr-file { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+.lib-row .lr-steps { font-size: 11px; color: var(--muted); }
+.lib-row .bad { color: var(--danger); font-weight: 600; }
+.lib-empty { color: var(--muted); padding: 18px 4px; }
+.lib-foot { font-size: 11.5px; color: var(--faint); margin-top: 26px; line-height: 1.6; }
+@media (max-width: 640px) { .lib-wrap { padding: 28px 16px 48px; } .lib-row .lr-meta { display: none; } }
 </style>
 </head>
 <body>
 <div id="app">
   <div id="toolbar">
     <div class="tb-left">
-      <span class="logo">Maestro</span>
-      <span class="logo-badge">orchestrator</span>
-      <button class="tb" id="btn-library" title="Back to all workflows"><span style="font-size:13px">←</span> Workflows</button>
+      <span class="brand"><svg class="brand-mark" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 1.5 22.5 12 12 22.5 1.5 12Z" fill="var(--brand)"/><path d="M12 7.2 16.8 12 12 16.8 7.2 12Z" fill="var(--panel)"/></svg><span class="logo">Maestro</span></span>
+      <button class="tb ghost" id="btn-library" title="All workflows in this repo"><span aria-hidden="true">▦</span> Workflows</button>
+      <span class="tb-sep crumb-sep"></span>
+      <nav id="crumbs" aria-label="Where you are"></nav>
+      <span id="dirty-dot" title="Unsaved changes">●</span>
     </div>
     <div class="tb-center">
       <div class="seg" id="view-seg">
@@ -352,8 +449,6 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
     </div>
     <div class="tb-right">
       <div id="editor-actions">
-        <div id="crumbs"></div>
-        <span id="dirty-dot" title="Unsaved changes">●</span>
         <span class="tb" id="lint-pill">…</span>
         <button class="tb primary" id="btn-export" title="Export / Save (⌘S)">Export ⤓</button>
         <div class="menu" id="wf-menu">
@@ -362,6 +457,7 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
             <button class="menu-item" id="btn-new" role="menuitem"><span>✚&nbsp; New workflow</span></button>
             <button class="menu-item" id="btn-open" role="menuitem"><span>Open…</span><kbd>⌘O</kbd></button>
             <button class="menu-item" id="btn-paste" role="menuitem"><span>Paste YAML</span></button>
+            <button class="menu-item" id="menu-folder" role="menuitem"><span>Open project folder…</span></button>
             <div class="menu-sep"></div>
             <button class="menu-item" id="btn-undo" role="menuitem"><span>Undo</span><kbd>⌘Z</kbd></button>
             <button class="menu-item" id="btn-redo" role="menuitem"><span>Redo</span><kbd>⇧⌘Z</kbd></button>
@@ -391,7 +487,8 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
   </div>
 
   <div id="canvas-wrap">
-    <div id="empty-state"><div class="big">Empty workflow</div><div>Drag a node from the palette to start — or Open / Paste an existing workflow.yaml.</div></div>
+    <div id="empty-state"><div class="big">Empty workflow</div><div>Drag a step from the left to start, or open an existing workflow from the ⋯ menu.</div></div>
+    <div id="level-note"></div>
     <div id="viewport">
       <svg id="edges"></svg>
       <div id="nodes-layer"></div>
@@ -443,9 +540,9 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
     <p><b>Create</b> — drag nodes from the palette. Every node's properties live in the right panel; the <b>Instruction</b> box is all an agent step needs (pin a skill under Advanced for reproducible runs).</p>
     <p><b>Connect</b> — drag from a node's ⚪ output port onto another node. Arrows back to an earlier node create a <b>loop</b>: the engine re-runs from there and a repeat-limit (max&nbsp;visits) keeps it bounded — click the dashed edge to tune it.</p>
     <p><b>Gates</b> — each option is its own outgoing edge. Edit options in the inspector.</p>
-    <p><b>Parallel / subworkflow</b> — double-click (or use the card's open buttons) to drill into branches; breadcrumbs bring you back.</p>
+    <p><b>Open a stage</b> — double-click a <b>subworkflow</b> step (or press Enter on it) to open the workflow it runs; double-click a <b>parallel</b> step to edit its branches. The breadcrumbs at the top show where you are — click one, or press Esc, to go back up.</p>
     <p><b>Export</b> — one click, always validated. Positions are saved in a <code>ui:</code> key the engine ignores. YAML comments are not preserved on export — keep prose in <i>description</i> and node <i>notes</i>.</p>
-    <p class="note">Run a workflow with <code>/maestro &lt;slug&gt; &lt;file&gt;</code> in Claude Code / Cursor. Validate anytime with <code>python3 engine/maestroctl.py validate &lt;file&gt;</code>.</p>
+    <p class="note">Run a workflow with <code>/maestro &lt;slug&gt; &lt;file&gt;</code> in Claude Code, Codex, Cursor or Hermes Agent. Validate anytime with <code>python3 .maestro/engine/maestroctl.py validate &lt;file&gt;</code>.</p>
   </div>
 </div></div>
 
@@ -457,14 +554,15 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
     <div class="lib-head">
       <div>
         <div class="lib-title">Workflows</div>
-        <div class="lib-sub">Every workflow in this repo. Open one to edit, or start fresh.</div>
+        <div class="lib-sub">Start with one of the workflows below. Each is built from stages, and each stage is a workflow of its own: open one here, or double-click it on the canvas.</div>
       </div>
       <span class="spacer"></span>
-      <button class="tb primary" id="lib-new"><span style="font-size:15px">＋</span> New workflow</button>
+      <button class="tb primary" id="lib-new"><span aria-hidden="true">＋</span> New workflow</button>
       <button class="tb tb-icon" id="lib-close" title="Back to editor">✕</button>
     </div>
-    <div class="lib-grid" id="library-grid"></div>
-    <div class="lib-foot">found in workflows/ · maestro workflows are tagged</div>
+    <div class="lib-search"><input id="lib-q" type="search" placeholder="Search by title, file or description" spellcheck="false" aria-label="Search workflows"></div>
+    <div id="library-body"></div>
+    <div class="lib-foot" id="lib-foot"></div>
   </div>
 </div>
 
@@ -474,14 +572,14 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
     <span class="runs-tag">read-only</span>
     <span class="tb-sep"></span>
     <button class="tb primary" id="runs-open">Open project folder…</button>
-    <label class="tb" for="runs-file" title="Load one or more .maestro/&lt;slug&gt;/state.yaml files">Load state.yaml…</label>
+    <label class="tb" for="runs-file" title="Load one or more .maestro/runs/&lt;slug&gt;/state.yaml files">Load state.yaml…</label>
     <input id="runs-file" type="file" accept=".yaml,.yml" multiple style="display:none">
     <button class="tb" id="runs-refresh" title="Re-read state from disk">⟳ Refresh</button>
     <div id="runs-legend">
       <span><b style="background:var(--ok)"></b>done</span>
       <span><b style="background:var(--warn)"></b>in&nbsp;progress</span>
       <span><b style="background:var(--danger)"></b>failed</span>
-      <span><b style="background:var(--muted)"></b>pending</span>
+      <span><b style="background:var(--faint)"></b>pending</span>
     </div>
     <span class="spacer"></span>
     <button class="tb" id="runs-close">✕ Close</button>
@@ -512,6 +610,9 @@ body.has-server[data-view="builder"] #btn-library { display: inline-flex; align-
     "name": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "title": {
+      "type": "string"
     },
     "description": {
       "type": "string"
@@ -1275,7 +1376,9 @@ const YAML_DUMP_OPTS = { lineWidth: -1, noRefs: true, noCompatMode: true };
 /* ---------------- state ---------------- */
 let doc = null;                       // the workflow object (unknown keys preserved)
 const ed = { stack: [], sel: null, pan: { x: 60, y: 40 }, zoom: 1,
-  undo: [], redo: [], dirty: false, fileHandle: null, fileName: "workflow.yaml" };
+  undo: [], redo: [], dirty: false, fileHandle: null, fileName: "workflow.yaml",
+  files: [],          // parent workflows opened through a subworkflow step, outermost first
+  dirHandle: null };  // offline only: the project folder subworkflow files are read from
 
 function blankDoc() {
   return { name: "my-workflow", nodes: [] };
@@ -1343,7 +1446,11 @@ function edgesOf(nodes) {
   }
   return edges;
 }
-function shortCond(w) { return w.length > 34 ? w.slice(0, 32) + "…" : w; }
+function shortCond(w) {               // edge label: "${steps.x.outputs.decision} == revise" -> "decision == revise"
+  w = w.replace(/\$\{steps\.[^.}]+\.(?:outputs|branches\.[^.}]+\.outputs)\.([^}]+)\}/g, "$1")
+       .replace(/\$\{(?:inputs|run|config)\.([^}]+)\}/g, "$1");
+  return w.length > 30 ? w.slice(0, 28) + "…" : w;
+}
 function nodeIndexOf(nodes, id) { return nodes.findIndex(n => n.id === id); }
 function isBackEdge(nodes, e) {       // heuristic used for styling: target earlier in flow order
   const order = layoutOrder(nodes);
@@ -1371,7 +1478,7 @@ function autoLayout(nodes, force, dir) {
   const layer = layoutOrder(nodes);
   const byLayer = {};
   nodes.forEach(n => { (byLayer[layer[n.id]] = byLayer[layer[n.id]] || []).push(n); });
-  const COLW = 260, ROWH = 130;
+  const COLW = 290, ROWH = 130;
   for (const [l, group] of Object.entries(byLayer)) {
     group.forEach((n, i) => {
       if (force || !n.ui || n.ui.x == null) {
@@ -1464,7 +1571,7 @@ function renderAll() {
   lastIssues = lint();
   renderCrumbs(); renderCanvas(); renderInspector(); renderIssuesPill();
   $("#dirty-dot").style.visibility = ed.dirty ? "visible" : "hidden";
-  try { localStorage.setItem("maestro-builder-doc", JSON.stringify(doc)); } catch (e) {}
+  try { localStorage.setItem("maestro-builder-doc", JSON.stringify(ed.files.length ? ed.files[0].doc : doc)); } catch (e) {}
 }
 function applyTransform() {
   vp.style.transform = `translate(${ed.pan.x}px, ${ed.pan.y}px) scale(${ed.zoom})`;
@@ -1478,20 +1585,39 @@ function zoomBy(factor) {
   ed.pan.y = my - (my - ed.pan.y) * (nz / ed.zoom);
   ed.zoom = nz; applyTransform();
 }
+function docTitle(d) { return (d && (d.title || d.name)) || "workflow"; }
 function renderCrumbs() {
   const c = $("#crumbs"); c.innerHTML = "";
-  const mk = (label, depth) => {
+  if (!doc) return;
+  const mk = (label, here, go, kind) => {
     const s = document.createElement("span"); s.className = "crumb"; s.textContent = label;
-    if (depth === ed.stack.length) s.classList.add("here");
-    else s.onclick = () => { ed.stack = ed.stack.slice(0, depth); ed.sel = null; renderAll(); fitView(); };
+    if (kind) { const k = document.createElement("span"); k.className = "kind"; k.textContent = kind; s.appendChild(k); }
+    if (here) s.classList.add("here"); else s.onclick = go;
     return s;
   };
-  if (!doc) return;
-  c.appendChild(mk(doc.name || "workflow", 0));
+  const sep = () => { const s = document.createElement("span"); s.className = "sep"; s.textContent = "›"; c.appendChild(s); };
+  ed.files.forEach((f, i) => { if (i) sep(); c.appendChild(mk(docTitle(f.doc), false, () => popFilesTo(i))); });
+  if (ed.files.length) sep();
+  c.appendChild(mk(docTitle(doc), !ed.stack.length, () => { ed.stack = []; ed.sel = null; renderAll(); fitView(); }));
   ed.stack.forEach((f, i) => {
-    const sep = document.createElement("span"); sep.className = "sep"; sep.textContent = "›";
-    c.appendChild(sep); c.appendChild(mk(`${f.nodeId} · ${f.branchId}`, i + 1));
+    sep();
+    c.appendChild(mk(f.branchId, i === ed.stack.length - 1,
+      () => { ed.stack = ed.stack.slice(0, i + 1); ed.sel = null; renderAll(); fitView(); }, "branch of " + f.nodeId));
   });
+  // a floating "you are inside …" note with a way back up
+  const note = $("#level-note");
+  if (ed.files.length || ed.stack.length) {
+    const up = ed.stack.length ? (ed.stack.length > 1 ? ed.stack[ed.stack.length - 2].branchId : docTitle(doc)) : docTitle(ed.files[ed.files.length - 1].doc);
+    const html = (ed.stack.length
+      ? `Editing branch <b>${esc(ed.stack[ed.stack.length - 1].branchId)}</b> of <b>${esc(ed.stack[ed.stack.length - 1].nodeId)}</b>`
+      : `Inside <b>${esc(docTitle(doc))}</b> · a stage of ${esc(up)}`) +
+      `<button class="tb" title="Esc">↑ Back to ${esc(up)}</button>`;
+    if (note.dataset.html !== html) {     // rebuild only when it changes, so a click in flight keeps its button
+      note.innerHTML = html; note.dataset.html = html;
+      note.querySelector("button").onclick = goUp;
+    }
+    note.classList.add("show");
+  } else note.classList.remove("show");
 }
 function terminalTargets(nodes) {     // which reserved targets are referenced here
   const t = new Set();
@@ -1519,7 +1645,7 @@ function renderCanvas() {
     const el = document.createElement("div");
     el.className = "node n-terminal"; el.dataset.id = "$" + t;
     el.style.left = p.x + "px"; el.style.top = p.y + "px";
-    el.innerHTML = `<div class="head"><span class="ico" style="background:${t === "end" ? "var(--ok)" : "var(--danger)"}">${t === "end" ? "◉" : "✕"}</span><span class="ttl">${t}</span></div>`;
+    el.innerHTML = `<div class="head"><span class="ico" style="background:${t === "end" ? "var(--ok)" : "var(--danger)"}">${t === "end" ? "✓" : "✕"}</span><span class="ttl">${t}</span></div><div class="port in"></div>`;
     nodesLayer.appendChild(el);
   }
   // edges need DOM sizes — draw after insert
@@ -1531,13 +1657,15 @@ function nodeEl(n, issues) {
   el.style.left = (n.ui.x || 0) + "px"; el.style.top = (n.ui.y || 0) + "px";
   if (ed.sel && ed.sel.kind === "node" && ed.sel.id === n.id) el.classList.add("selected");
   const chips = [];
+  let sub = { agent: "Agent", gate: "Gate", interview: "Interview", script: "Script", parallel: "Parallel", subworkflow: "Subworkflow" }[n.type] || n.type;
   if (n.type === "agent") {
+    if (n.execution === "lead") sub += " · lead";
     chips.push(`<span class="chip skill">${esc(n.skill || "auto skill")}</span>`);
     if (n.model) chips.push(`<span class="chip">${esc(n.model)}</span>`);
     if (n.agent) chips.push(`<span class="chip">${esc(n.agent)}</span>`);
     if (n.artifact) chips.push(`<span class="chip" title="artifact">📄</span>`);
   } else if (n.type === "gate") {
-    chips.push(`<span class="chip">${(n.options || []).length} option${(n.options || []).length === 1 ? "" : "s"}</span>`);
+    const k = (n.options || []).length; sub += ` · ${k} option${k === 1 ? "" : "s"}`;
   } else if (n.type === "interview") {
     if (n.questions_artifact) chips.push(`<span class="chip">dynamic questions</span>`);
     else chips.push(`<span class="chip">${(n.sections || []).length} section${(n.sections || []).length === 1 ? "" : "s"}</span>`);
@@ -1546,13 +1674,15 @@ function nodeEl(n, issues) {
   } else if (n.type === "script") {
     chips.push(`<span class="chip" style="font-family:var(--mono)">${esc((n.run || []).join(" ").slice(0, 30))}</span>`);
   } else if (n.type === "parallel") {
-    for (const b of n.branches || []) chips.push(`<span class="open-btn" data-branch="${esc(b.id)}">${esc(b.id)} ↗</span>`);
+    const k = (n.branches || []).length; sub += ` · ${k} branch${k === 1 ? "" : "es"}`;
+    for (const b of n.branches || []) chips.push(`<span class="open-btn" data-branch="${esc(b.id)}" title="Edit this branch">${esc(b.id)} ↗</span>`);
   } else if (n.type === "subworkflow") {
-    chips.push(`<span class="chip" style="font-family:var(--mono)">${esc(n.workflow || "?")}</span>`);
+    sub += " · " + (String(n.workflow || "no file").split("/").pop().replace(/\.ya?ml$/, ""));
+    chips.push(`<span class="open-btn" data-open-sub="1" title="Open the workflow this step runs (double-click)">Open ↗</span>`);
   }
   if (n.ui && n.ui.note) chips.push(`<span class="chip" title="${esc(n.ui.note)}">🗒</span>`);
-  el.innerHTML = `<div class="head"><span class="ico">${ICONS[n.type] || "?"}</span><span class="ttl">${esc(n.label || n.id)}</span><button class="node-del" title="Delete node">×</button></div>
-    <div class="body">${chips.join("")}</div><div class="port in"></div><div class="port out" style="top: 14px"></div>`;
+  el.innerHTML = `<div class="head"><span class="ico">${ICONS[n.type] || "?"}</span><span class="ttl-wrap"><span class="ttl">${esc(n.label || n.id)}</span><span class="sub">${esc(sub)}</span></span><button class="node-del" title="Delete node">×</button></div>
+    <div class="body">${chips.join("")}</div><div class="port in"></div><div class="port out"></div>`;
   const del = el.querySelector(".node-del");
   del.addEventListener("mousedown", ev => ev.stopPropagation());
   del.addEventListener("click", ev => { ev.stopPropagation(); deleteNode(n.id); });
@@ -1668,8 +1798,14 @@ function targetChoices(nodes, extra) {
   return [...(extra || []), ...nodes.map(n => n.id), "end", "abort"];
 }
 function inspectWorkflow(box) {
-  box.innerHTML = `<h3><span class="ico" style="background:var(--accent)">⚙</span> Workflow settings</h3>`;
-  box.appendChild(field("Name", txt(doc.name, v => commit("name", () => doc.name = v))));
+  box.innerHTML = `<h3><span class="ico" style="background:var(--brand);color:var(--on-brand)">⚙</span><span>${esc(docTitle(doc))}<span class="h-sub">Workflow settings · ${esc(String(ed.fileName).split("/").pop())}</span></span></h3>`;
+  if (ed.files.length) {
+    const c = document.createElement("div"); c.className = "callout";
+    c.innerHTML = `A stage of <b>${esc(docTitle(ed.files[ed.files.length - 1].doc))}</b>. Saving here saves this file; use the breadcrumbs or Esc to go back.`;
+    box.appendChild(c);
+  }
+  box.appendChild(field("Title", txt(doc.title, v => commit("title", () => v ? doc.title = v : delete doc.title), { placeholder: "Build a feature" }), "What people see in the workflow list."));
+  box.appendChild(field("Name", txt(doc.name, v => commit("name", () => doc.name = v)), "kebab-case id"));
   box.appendChild(field("Description", txt(doc.description, v => commit("desc", () => doc.description = v), { area: true })));
   const nodes = ctxNodes();
   if (!ed.stack.length) {
@@ -1738,7 +1874,7 @@ function inspectNode(box) {
   const nodes = ctxNodes();
   const n = nodes.find(x => x.id === ed.sel.id);
   if (!n) { ed.sel = null; return inspectWorkflow(box); }
-  box.innerHTML = `<h3><span class="ico" style="background:var(--${n.type})">${ICONS[n.type]}</span> ${esc(n.type)} step</h3>`;
+  box.innerHTML = `<h3><span class="ico" style="background:var(--${n.type})">${ICONS[n.type]}</span><span>${esc(n.label || n.id)}<span class="h-sub">${esc(n.type[0].toUpperCase() + n.type.slice(1))} step</span></span></h3>`;
   const rid = document.createElement("div"); rid.className = "frow";
   rid.appendChild(field("Id", txt(n.id, v => renameNode(n, v))));
   rid.appendChild(field("Label", txt(n.label, v => commit("label", () => v ? n.label = v : delete n.label))));
@@ -1845,6 +1981,10 @@ function inspectNode(box) {
     box.appendChild(sec);
   } else if (n.type === "subworkflow") {
     box.appendChild(field("Workflow file", txt(n.workflow, v => commit("wf", () => n.workflow = v), { mono: true, placeholder: "workflows/design.yaml" })));
+    const open = document.createElement("button"); open.className = "tb open-wf"; open.textContent = "Open this workflow ↗";
+    open.title = "Or double-click the step on the canvas";
+    open.onclick = () => openSubworkflow(n);
+    box.appendChild(open);
     const kv = document.createElement("div"); kv.className = "mini-list";
     for (const [k, v] of Object.entries(n.inputs || {})) {
       const r = document.createElement("div"); r.className = "mini-row";
@@ -2014,6 +2154,9 @@ function canvasPos(ev) {
   return { x: (ev.clientX - r.left - ed.pan.x) / ed.zoom, y: (ev.clientY - r.top - ed.pan.y) / ed.zoom };
 }
 wrap.addEventListener("mousedown", ev => {
+  // floating panels over the canvas are not the canvas: a press there must not start a pan,
+  // whose mouseup re-renders and swaps out the very button being clicked
+  if (ev.target.closest("#level-note, #zoom-dock, #issues")) return;
   const nodeEl = ev.target.closest(".node");
   if (ev.target.classList.contains("port") && !ev.target.classList.contains("in")) {
     const from = nodeEl.dataset.id;
@@ -2029,6 +2172,10 @@ wrap.addEventListener("mousedown", ev => {
       ed.sel = null; renderAll(); fitView(); return;
     }
     const n = ctxNodes().find(x => x.id === id);
+    if (ev.target.dataset.openSub) { ev.preventDefault(); openSubworkflow(n); return; }
+    // Double-click is read from the click count here, not from a dblclick event: the first
+    // press re-renders the cards, so the browser would aim dblclick at the canvas, not the card.
+    if (ev.detail === 2 && !ev.target.closest(".node-del")) { ev.preventDefault(); openNode(n); return; }
     ed.sel = { kind: "node", id };
     drag = { kind: "node", n, start: canvasPos(ev), ox: n.ui.x, oy: n.ui.y, moved: false,
       snap: JSON.stringify(doc) };
@@ -2114,15 +2261,13 @@ function connect(fromId, toId) {
     }
   });
 }
-wrap.addEventListener("dblclick", ev => {
-  const el = ev.target.closest(".node");
-  if (!el) return;
-  const n = ctxNodes().find(x => x.id === el.dataset.id);
+// Double-click / Enter: a parallel opens its first branch, a subworkflow opens the file it runs.
+function openNode(n) {
   if (n && n.type === "parallel" && n.branches && n.branches.length) {
     ed.stack.push({ nodeId: n.id, branchId: n.branches[0].id });
     ed.sel = null; renderAll(); fitView();
-  }
-});
+  } else if (n && n.type === "subworkflow") openSubworkflow(n);
+}
 wrap.addEventListener("wheel", ev => {
   ev.preventDefault();
   const r = wrap.getBoundingClientRect();
@@ -2144,9 +2289,11 @@ function fitView() {
       x1 = Math.max(x1, el.offsetLeft + el.offsetWidth); y1 = Math.max(y1, el.offsetTop + el.offsetHeight);
     }
     const r = wrap.getBoundingClientRect();
-    const z = Math.min(1.15, Math.max(0.25, Math.min((r.width - 80) / (x1 - x0), (r.height - 80) / (y1 - y0))));
+    const fit = Math.min((r.width - 80) / (x1 - x0), (r.height - 80) / (y1 - y0));
+    // never shrink below a readable size: a long flow starts at its left edge and pans from there
+    const z = Math.min(1.15, Math.max(0.6, fit));
     ed.zoom = z;
-    ed.pan.x = (r.width - (x1 - x0) * z) / 2 - x0 * z;
+    ed.pan.x = fit < 0.6 ? 48 - x0 * z : (r.width - (x1 - x0) * z) / 2 - x0 * z;
     ed.pan.y = (r.height - (y1 - y0) * z) / 2 - y0 * z;
     applyTransform();
   });
@@ -2204,17 +2351,94 @@ function addNode(preset, x, y) {
 }
 
 /* ---------------- io ---------------- */
-function loadYamlText(text, name, handle) {
+function parseWorkflowText(text) {
   let parsed;
   try { parsed = jsyaml.load(text); }
-  catch (e) { toast("YAML error: " + e.message); return false; }
-  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.nodes)) { toast("Not a workflow file (needs a nodes: list)"); return false; }
+  catch (e) { toast("YAML error: " + e.message); return null; }
+  if (!parsed || typeof parsed !== "object" || !Array.isArray(parsed.nodes)) { toast("Not a workflow file (needs a nodes: list)"); return null; }
+  return parsed;
+}
+function setDoc(parsed, name, handle) {
   doc = normalizeDoc(parsed);
   ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = []; ed.dirty = false;
   ed.fileName = name || "workflow.yaml"; ed.fileHandle = handle || null;
+}
+function loadYamlText(text, name, handle) {
+  const parsed = parseWorkflowText(text);
+  if (!parsed) return false;
+  ed.files = [];
+  setDoc(parsed, name, handle);
   closeModals(); renderAll(); fitView();
-  toast(`Loaded ${ed.fileName}`);
+  toast(`Loaded ${docTitle(doc)}`);
   return true;
+}
+function anyUnsaved() { return ed.dirty || ed.files.some(f => f.dirty); }
+
+/* ---------------- subworkflows: open the file a step runs, and come back ---------------- */
+function snapshotCtx(via, fresh) {
+  return { doc, fileName: ed.fileName, fileHandle: ed.fileHandle, dirty: ed.dirty, undo: ed.undo, redo: ed.redo,
+    stack: ed.stack, pan: { x: ed.pan.x, y: ed.pan.y }, zoom: ed.zoom, via, fresh: !!fresh };
+}
+// Back to ed.files[i] (the current file when i is past the end). Asks before dropping unsaved edits.
+function popFilesTo(i, force) {
+  if (i >= ed.files.length) return true;
+  const leaving = [{ dirty: ed.dirty, fileName: ed.fileName }, ...ed.files.slice(i + 1)].filter(f => f.dirty);
+  if (!force && leaving.length &&
+      !confirm(`Unsaved changes in ${leaving.map(f => f.fileName.split("/").pop()).join(", ")} will be lost. Go back anyway?`)) return false;
+  const f = ed.files[i];
+  ed.files = ed.files.slice(0, i);
+  doc = f.doc; ed.fileName = f.fileName; ed.fileHandle = f.fileHandle; ed.dirty = f.dirty;
+  ed.undo = f.undo; ed.redo = f.redo; ed.stack = f.stack; ed.pan = f.pan; ed.zoom = f.zoom;
+  ed.sel = f.via && ctxNodes().some(n => n.id === f.via) ? { kind: "node", id: f.via } : null;
+  renderAll();
+  if (f.fresh) fitView();
+  return true;
+}
+function goUp() {
+  if (ed.stack.length) { ed.stack.pop(); ed.sel = null; renderAll(); fitView(); }
+  else if (ed.files.length) popFilesTo(ed.files.length - 1);
+}
+// A repo-relative workflow file: over HTTP from `maestro ui`, else from the picked project folder.
+async function readRepoFile(path) {
+  const rel = String(path).replace(/^\.?\/+/, "");
+  if (window.MAESTRO_SERVER) {
+    const r = await fetch("/api/workflow?file=" + encodeURIComponent(rel));
+    if (!r.ok) throw new Error(`Couldn't open ${rel}`);
+    return { text: await r.text(), handle: { server: rel }, name: rel };
+  }
+  let dir = ed.dirHandle || window.__maestroDir;
+  if (!dir) {
+    if (!window.showDirectoryPicker)
+      throw new Error("To open stages, run ./maestro ui in your repo (or use Chrome/Edge and pick the project folder)");
+    toast("Pick your project folder to open stages");
+    try { dir = await window.showDirectoryPicker(); } catch (e) { return null; }
+    ed.dirHandle = dir;
+  }
+  // this pack repo keeps the source at workflows/ behind a .maestro/workflows symlink
+  for (const cand of [rel, rel.replace(/^\.maestro\//, "")]) {
+    try {
+      const parts = cand.split("/").filter(Boolean);
+      let h = dir;
+      for (let k = 0; k < parts.length - 1; k++) h = await h.getDirectoryHandle(parts[k]);
+      const fh = await h.getFileHandle(parts[parts.length - 1]);
+      return { text: await (await fh.getFile()).text(), handle: fh, name: rel };
+    } catch (e) { /* try the next candidate */ }
+  }
+  if (dir === ed.dirHandle) ed.dirHandle = null;
+  throw new Error(`Couldn't find ${rel} in that folder — pick the project root`);
+}
+async function openSubworkflow(n) {
+  const ref = String((n && n.workflow) || "").trim();
+  if (!ref) { toast("Set this step's workflow file first"); return; }
+  if (ref.includes("${")) { toast("This file is chosen when the workflow runs, so it can't be opened here"); return; }
+  let got;
+  try { got = await readRepoFile(ref); } catch (e) { toast(e.message); return; }
+  if (!got) return;
+  const parsed = parseWorkflowText(got.text);
+  if (!parsed) return;
+  ed.files.push(snapshotCtx(n.id));
+  setDoc(parsed, got.name, got.handle);
+  renderAll(); fitView();
 }
 function exportYaml() {
   const clean = orderedDoc(doc);
@@ -2223,7 +2447,7 @@ function exportYaml() {
 const NODE_KEY_ORDER = ["id", "label", "type", "instruction", "skill", "agent", "model", "inputs", "outputs",
   "artifact", "retries", "isolate", "prompt", "options", "auto", "run", "timeout", "workflow", "join",
   "on_branch_fail", "branches", "max_visits", "on_exhausted", "on_fail", "next", "routes", "ui"];
-const TOP_KEY_ORDER = ["version", "name", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"];
+const TOP_KEY_ORDER = ["version", "name", "title", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"];
 function orderKeys(obj, order) {
   const out = {};
   for (const k of order) if (k in obj) out[k] = obj[k];
@@ -2302,35 +2526,123 @@ async function openFromServer() {
   bg.addEventListener("mousedown", ev => { if (ev.target === bg) done(); });
   bg.querySelector("[data-x]").addEventListener("click", done);
 }
-// Server mode: the redesign's landing — a card grid of every workflow in the repo.
-// Reuses /api/workflows (same source as the picker) and /api/workflow to open one.
-async function openLibrary() {
-  let list;
-  try { list = await fetch("/api/workflows").then(r => r.json()); }
-  catch (e) { toast("Could not reach the server"); return; }
+// Server mode landing: the workflows people start from, with their stages as a tree.
+function wfLabel(w) { return w.title || w.name || String(w.file).split("/").pop(); }
+// Roots are workflows no other workflow uses; every other one is placed once, under the first
+// parent that reaches it (depth first, in the order the parent runs its stages).
+function buildLibraryTree(list) {
   const wfs = (list || []).filter(w => w.workflow);
-  const shown = wfs.length ? wfs : (list || []);
-  const grid = $("#library-grid");
-  grid.innerHTML = shown.length ? "" : '<div class="note" style="grid-column:1/3">No workflows found under this repo.</div>';
-  for (const w of shown) {
-    const card = document.createElement("div");
-    card.className = "lib-card";
-    const bad = w.workflow && !w.valid ? ' · <span style="color:var(--danger)">⚠ invalid</span>' : '';
-    card.innerHTML =
-      '<div style="display:flex;align-items:center;gap:10px"><span class="lib-file">' + esc(w.file) + '</span></div>' +
-      '<div class="lib-name">' + esc(w.name || w.file) + '</div>' +
-      '<div class="lib-meta">' + (w.workflow ? 'maestro workflow' : 'yaml') + bad + '</div>';
-    card.onclick = async () => {
-      try {
-        const text = await fetch("/api/workflow?file=" + encodeURIComponent(w.file)).then(r => r.text());
-        if (loadYamlText(text, w.file, { server: w.file })) closeLibrary();
-      } catch (e) { toast("Open failed: " + e.message); }
+  const byFile = Object.fromEntries(wfs.map(w => [w.file, w]));
+  const parents = {};
+  for (const w of wfs) for (const u of w.uses || []) if (byFile[u] && u !== w.file) (parents[u] = parents[u] || []).push(w.file);
+  const placed = new Set(), trees = [];
+  for (const root of wfs.filter(w => !parents[w.file])) {
+    placed.add(root.file);
+    const rows = [];
+    const walk = (w, depth, path) => {
+      for (const u of w.uses || []) {
+        if (!byFile[u] || placed.has(u)) continue;
+        placed.add(u);
+        rows.push({ entry: byFile[u], depth, path: [...path, u], parents: parents[u] });
+        walk(byFile[u], depth + 1, [...path, u]);
+      }
     };
-    grid.appendChild(card);
+    walk(root, 0, [root.file]);
+    trees.push({ root, rows });
   }
+  trees.sort((a, b) => b.rows.length - a.rows.length || wfLabel(a.root).localeCompare(wfLabel(b.root)));
+  const other = wfs.filter(w => !placed.has(w.file)).map(w => ({ entry: w, depth: 0, path: [w.file], parents: parents[w.file] }));
+  return { trees, other, byFile };
+}
+let libList = null;
+async function openLibrary() {
+  try { libList = await fetch("/api/workflows").then(r => r.json()); }
+  catch (e) { toast("Could not reach the server"); return; }
+  $("#lib-q").value = "";
+  renderLibrary();
   $("#library-view").classList.add("show");
   updateChrome();
+  setTimeout(() => $("#lib-q").focus(), 0);
 }
+function renderLibrary() {
+  const body = $("#library-body"), q = ($("#lib-q").value || "").trim().toLowerCase();
+  const { trees, other, byFile } = buildLibraryTree(libList);
+  const title = f => byFile[f] ? wfLabel(byFile[f]) : f;
+  const baseName = f => String(f).split("/").pop();
+  const row = (r, opts) => {
+    const w = r.entry, also = (r.parents || []).filter(p => p !== r.path[r.path.length - 2]).map(title);
+    const where = opts && opts.where && r.path.length > 1 ? "in " + r.path.slice(0, -1).map(title).join(" › ") : "";
+    const desc = [where, w.description, also.length ? "also used by " + also.join(", ") : ""].filter(Boolean).join(" · ");
+    return `<button class="lib-row" style="--depth:${opts && opts.flat ? 0 : r.depth}" data-path="${esc(JSON.stringify(r.path))}">
+      <span class="lr-ico">${r.path.length > 1 ? "⧉" : "◆"}</span>
+      <span class="lr-main"><span class="lr-title">${esc(wfLabel(w))}</span><span class="lr-desc" title="${esc(desc)}">${esc(desc)}</span></span>
+      <span class="lr-meta"><span class="lr-file">${esc(baseName(w.file))}</span><span class="lr-steps">${w.valid ? w.steps + " step" + (w.steps === 1 ? "" : "s") : '<span class="bad">⚠ invalid</span>'}</span></span></button>`;
+  };
+  let html = "";
+  if (!Object.keys(byFile).length) {
+    const yamls = (libList || []).filter(w => !w.workflow);
+    html = `<div class="lib-empty">No workflows found in this repo yet. Start one with <b>New workflow</b>${yamls.length ? `, or open one of these YAML files:</div><div class="lib-tree"><div class="lib-rows">${yamls.map(w => row({ entry: Object.assign({ steps: 0 }, w), depth: 0, path: [w.file] }, { flat: true })).join("")}</div></div>` : ".</div>"}`;
+  } else if (q) {
+    const all = [...trees.flatMap(t => [{ entry: t.root, depth: 0, path: [t.root.file] }, ...t.rows]), ...other];
+    const hits = all.filter(r => [wfLabel(r.entry), r.entry.name, r.entry.file, r.entry.description].join(" ").toLowerCase().includes(q));
+    html = hits.length
+      ? `<div class="lib-sec"><div class="lib-sec-h">${hits.length} match${hits.length === 1 ? "" : "es"}</div><div class="lib-tree"><div class="lib-rows">${hits.map(r => row(r, { flat: true, where: true })).join("")}</div></div></div>`
+      : `<div class="lib-empty">No workflow matches “${esc(q)}”.</div>`;
+  } else {
+    html += `<div class="lib-sec"><div class="lib-sec-h">Start here</div><div class="lib-grid">`;
+    trees.forEach((t, i) => {
+      const w = t.root, kids = (w.uses || []).filter(u => byFile[u]);
+      const stages = kids.map((u, k) => (k ? '<span class="lc-arrow">›</span>' : "") +
+        `<span class="lc-stage" data-path="${esc(JSON.stringify([w.file, u]))}" title="${esc(byFile[u].description || "")}">${esc(title(u))}</span>`).join("");
+      html += `<div class="lib-card${i === 0 && t.rows.length ? " primary" : ""}" role="button" tabindex="0" data-path="${esc(JSON.stringify([w.file]))}">
+        <div class="lc-top"><span class="lc-ico">◆</span><span><div class="lc-title">${esc(wfLabel(w))}</div><div class="lc-file">${esc(w.file)}</div></span></div>
+        ${w.description ? `<div class="lc-desc">${esc(w.description)}</div>` : ""}
+        ${stages ? `<div class="lc-stages">${stages}</div>` : ""}
+        <div class="lc-foot"><span>${t.rows.length ? t.rows.length + " stage" + (t.rows.length === 1 ? "" : "s") + " inside" : w.steps + " step" + (w.steps === 1 ? "" : "s")}${w.valid ? "" : ' · <span class="bad">⚠ invalid</span>'}</span><span class="go">Open →</span></div>
+      </div>`;
+    });
+    html += `</div></div>`;
+    const withRows = trees.filter(t => t.rows.length);
+    if (withRows.length) {
+      html += `<div class="lib-sec"><div class="lib-sec-h">Stages</div>`;
+      for (const t of withRows)
+        html += `<details class="lib-tree"><summary>Inside ${esc(wfLabel(t.root))} <span class="count">${t.rows.length}</span><span class="sum-note">open a stage on its own to edit it</span></summary>
+          <div class="lib-rows">${t.rows.map(r => row(r)).join("")}</div></details>`;
+      html += `</div>`;
+    }
+    if (other.length)
+      html += `<div class="lib-sec"><div class="lib-sec-h">Other workflows</div><div class="lib-tree"><div class="lib-rows">${other.map(r => row(r, { flat: true })).join("")}</div></div></div>`;
+  }
+  body.innerHTML = html;
+  body.querySelectorAll("[data-path]").forEach(el => {
+    const go = ev => { ev.stopPropagation(); openFromLibrary(JSON.parse(el.dataset.path)); };
+    el.addEventListener("click", go);
+    el.addEventListener("keydown", ev => { if (ev.key === "Enter" && ev.target === el) go(ev); });
+  });
+  const n = Object.keys(byFile).length;
+  $("#lib-foot").textContent = n ? `${n} workflow${n === 1 ? "" : "s"} in this repo · stages open with their parents in the breadcrumbs, so you can step back up` : "";
+}
+// Open the last file of a library path [root, …, stage] with its parents behind it in the breadcrumbs.
+async function openFromLibrary(chain) {
+  let texts;
+  try {
+    texts = await Promise.all(chain.map(f => fetch("/api/workflow?file=" + encodeURIComponent(f))
+      .then(r => { if (!r.ok) throw new Error(f); return r.text(); })));
+  } catch (e) { toast("Open failed: " + e.message); return; }
+  const docs = texts.map(parseWorkflowText);
+  if (docs.some(d => !d)) return;
+  if (anyUnsaved() && !confirm("Discard your unsaved changes?")) return;
+  ed.files = [];
+  setDoc(docs[0], chain[0], { server: chain[0] });
+  for (let i = 1; i < chain.length; i++) {
+    const base = chain[i].split("/").pop();
+    const via = (doc.nodes || []).find(n => n.type === "subworkflow" && String(n.workflow || "").split("/").pop() === base);
+    ed.files.push(snapshotCtx(via && via.id, true));
+    setDoc(docs[i], chain[i], { server: chain[i] });
+  }
+  closeLibrary(); renderAll(); fitView();
+}
+$("#lib-q").addEventListener("input", renderLibrary);
 function closeLibrary() { $("#library-view").classList.remove("show"); updateChrome(); }
 // Editor-only controls (valid pill, Save, ⋯, crumbs) show only in the Builder editor —
 // not on the Runs or Library views. Drives body[data-view] which CSS keys off.
@@ -2406,13 +2718,17 @@ $("#paste-load").addEventListener("click", () => {
 
 /* ---------------- new ---------------- */
 function newBlank() {
-  if (ed.dirty && !confirm("Discard unsaved changes?")) return;
-  doc = blankDoc(); ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = [];
+  if (anyUnsaved() && !confirm("Discard unsaved changes?")) return;
+  doc = blankDoc(); ed.files = []; ed.stack = []; ed.sel = null; ed.undo = []; ed.redo = [];
   ed.dirty = false; ed.fileHandle = null; ed.fileName = "workflow.yaml";
   renderAll();
   toast("Fresh workflow — drag a node from the palette");
 }
 $("#btn-new").addEventListener("click", newBlank);
+$("#menu-folder").addEventListener("click", async () => {
+  if (!window.showDirectoryPicker) { toast("This browser can't open a folder — run ./maestro ui instead"); return; }
+  try { ed.dirHandle = await window.showDirectoryPicker(); toast("Project folder set — double-click a stage to open it"); } catch (e) {}
+});
 
 /* ---------------- modals / toast / theme ---------------- */
 function openModal(id) { $("#" + id).classList.add("show"); }
@@ -2453,6 +2769,10 @@ $("#btn-zoom-in").addEventListener("click", () => zoomBy(1.12));
 $("#btn-zoom-out").addEventListener("click", () => zoomBy(1 / 1.12));
 
 /* ---------------- keyboard ---------------- */
+function inEditor() { return document.body.dataset.view === "builder"; }
+function overlayOpen() {
+  return $$(".modal-bg.show").length > 0 || $("#issues").classList.contains("show") || menuPanel.classList.contains("show");
+}
 window.addEventListener("keydown", ev => {
   const inField = /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName);
   const mod = ev.metaKey || ev.ctrlKey;
@@ -2474,13 +2794,21 @@ window.addEventListener("keydown", ev => {
       ed.sel = { kind: "node", id: c.id };
     });
   }
-  else if ((ev.key === "Delete" || ev.key === "Backspace") && !inField && ed.sel) {
+  else if ((ev.key === "Delete" || ev.key === "Backspace") && !inField && ed.sel && inEditor()) {
     ev.preventDefault();
     if (ed.sel.kind === "node") deleteNode(ed.sel.id);
     else if (ed.sel.kind === "edge") deleteEdge(ed.sel.edge);
   }
-  else if (ev.key === "f" && !inField && !mod) fitView();
-  else if (ev.key === "Escape") { closeModals(); $("#issues").classList.remove("show"); menuPanel.classList.remove("show"); if (doc && doc.nodes) $("#library-view").classList.remove("show"); }
+  else if (ev.key === "Backspace" && !inField && !ed.sel && inEditor() && !overlayOpen()) { ev.preventDefault(); goUp(); }
+  else if (ev.key === "Enter" && !inField && !mod && ed.sel && ed.sel.kind === "node" && inEditor() && !overlayOpen())
+    openNode(ctxNodes().find(n => n.id === ed.sel.id));
+  else if (ev.key === "f" && !inField && !mod && inEditor()) fitView();
+  else if (ev.key === "Escape" && !ev.defaultPrevented) {
+    const overlay = overlayOpen() || $("#library-view").classList.contains("show");
+    closeModals(); $("#issues").classList.remove("show"); menuPanel.classList.remove("show");
+    if (doc && doc.nodes && $("#library-view").classList.contains("show")) closeLibrary();
+    if (!overlay && !inField && inEditor()) { if (ed.sel) { ed.sel = null; renderAll(); } else goUp(); }
+  }
 });
 
 /* ---------------- selftest ---------------- */
@@ -2579,6 +2907,37 @@ function runSelftest() {
     doc = jsyaml.load("version: 1\nname: t\nstart: a\nnodes:\n  - {id: a, type: agent, instruction: \"${inputs.ghost}\", next: end}\n");
     assert(lint().some(i => i.code === "undeclared-input"));
   });
+  t("title survives round-trip and exports after name", () => {
+    doc = jsyaml.load("nodes:\n  - {id: a, instruction: A., next: end}\nname: t\ntitle: Build a feature\n");
+    const y = exportYaml();
+    assert(jsyaml.load(y).title === "Build a feature");
+    assert(y.indexOf("name:") < y.indexOf("title:") && y.indexOf("title:") < y.indexOf("nodes:"), "key order");
+  });
+  t("subworkflow drill-in: opening a stage and going back restores the parent", () => {
+    ed.files = [];
+    setDoc(jsyaml.load(GOLDEN), "golden.yaml", null);
+    ed.dirty = true; ed.zoom = 0.7;
+    ed.files.push(snapshotCtx("check"));
+    setDoc(jsyaml.load("name: child\nnodes:\n  - {id: a, instruction: A., next: end}\n"), "child.yaml", null);
+    assert(doc.name === "child" && ed.files.length === 1 && !ed.dirty, "child not loaded");
+    assert(popFilesTo(0, true), "pop refused");
+    assert(doc.name === "golden" && ed.dirty && ed.zoom === 0.7 && !ed.files.length, "parent not restored");
+    assert(ed.sel && ed.sel.id === "check", "came-from step not selected");
+    ed.dirty = false;
+  });
+  t("library: roots are unused workflows, stages placed once under their first parent", () => {
+    const w = (file, uses) => ({ file, name: file, workflow: true, valid: true, steps: 1, uses });
+    const { trees, other } = buildLibraryTree([
+      w("main.yaml", ["sync.yaml", "design.yaml", "deliver.yaml"]), w("design.yaml", ["prd.yaml"]),
+      w("deliver.yaml", ["sync.yaml"]), w("sync.yaml", []), w("prd.yaml", []), w("solo.yaml", []),
+      w("loop-a.yaml", ["loop-b.yaml"]), w("loop-b.yaml", ["loop-a.yaml"]),
+      { file: "notes.yaml", name: "notes.yaml", workflow: false }]);
+    assert(trees.map(t => t.root.file).join() === "main.yaml,solo.yaml", trees.map(t => t.root.file).join());
+    assert(trees[0].rows.map(r => r.entry.file + ":" + r.depth).join() === "sync.yaml:0,design.yaml:0,prd.yaml:1,deliver.yaml:0",
+      trees[0].rows.map(r => r.entry.file + ":" + r.depth).join());
+    assert(trees[0].rows[0].parents.join() === "main.yaml,deliver.yaml", "also-used-by");
+    assert(other.map(r => r.entry.file).join() === "loop-a.yaml,loop-b.yaml", "cycle goes to other");
+  });
   t("lint rule ids are a subset of the engine catalog", () => {
     const used = ["bad-id","dup-id","no-start","gate-no-options","no-default-route",
       "empty-instruction","bad-type","missing-key","missing-route-target","undeclared-input",
@@ -2653,6 +3012,7 @@ boot();
   let runs = [];            // [{slug, state, repoHandle?}]
   let source = null;        // {kind:'dir', handle} — for refresh
   let selected = null;      // slug
+  let drill = [];           // subworkflow steps opened inside the selected run: [{id, title}]
 
   function notify(msg) { try { toast(msg); } catch (e) { alert(msg); } }
   const esc = s => String(s == null ? "" : s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
@@ -2713,7 +3073,9 @@ boot();
     try { maestro = await repoHandle.getDirectoryHandle(".maestro"); }
     catch (e) { throw new Error("No .maestro/ folder here — pick your project root (the repo where you run /maestro)."); }
     const found = [];
-    for await (const [name, h] of maestro.entries()) {
+    let base = maestro;
+    try { base = await maestro.getDirectoryHandle("runs"); } catch (e) { /* older layout: .maestro/<slug>/ */ }
+    for await (const [name, h] of base.entries()) {
       if (h.kind !== "directory") continue;
       try {
         const fh = await h.getFileHandle("state.yaml");
@@ -2736,6 +3098,7 @@ boot();
     try {
       runs = await scanDir(handle);
       source = { kind: "dir", handle };
+      window.__maestroDir = handle;
       selected = runs.length ? runs[0].slug : null;
       renderList(); renderSelected();
       if (!runs.length) notify("No runs found under .maestro/ yet.");
@@ -2791,8 +3154,8 @@ boot();
     const el = q("#runs-list");
     if (!runs.length) {
       el.innerHTML = window.MAESTRO_SERVER
-        ? '<div class="empty">No runs yet under <code>.maestro/</code>.<br><br>Start one from your IDE with <code>/maestro &lt;slug&gt;</code>; each <code>.maestro/&lt;slug&gt;/state.yaml</code> will appear here. Hit <b>⟳ Refresh</b> as it progresses.</div>'
-        : '<div class="empty">No runs loaded.<br><br>Click <b>Open project folder…</b> and pick the repo where you run <code>/maestro</code>. Each <code>.maestro/&lt;slug&gt;/</code> with a <code>state.yaml</code> shows up here.</div>';
+        ? '<div class="empty">No runs yet under <code>.maestro/</code>.<br><br>Start one from your IDE with <code>/maestro &lt;slug&gt;</code>; each <code>.maestro/runs/&lt;slug&gt;/state.yaml</code> will appear here. Hit <b>⟳ Refresh</b> as it progresses.</div>'
+        : '<div class="empty">No runs loaded.<br><br>Click <b>Open project folder…</b> and pick the repo where you run <code>/maestro</code>. Each <code>.maestro/runs/&lt;slug&gt;/</code> with a <code>state.yaml</code> shows up here.</div>';
       return;
     }
     el.innerHTML = "";
@@ -2808,7 +3171,7 @@ boot();
         '<div class="rc-bar"><i style="width:' + pct + '%"></i></div>' +
         '<div class="rc-meta">' + c.done + ' / ' + c.total + ' steps' +
         ((r.repoHandle || r.server) ? '' : ' · table only (load folder for graph)') + '</div>';
-      card.onclick = () => { selected = r.slug; renderList(); renderSelected(); };
+      card.onclick = () => { if (selected !== r.slug) drill = []; selected = r.slug; renderList(); renderSelected(); };
       el.appendChild(card);
     }
   }
@@ -2824,14 +3187,48 @@ boot();
     }
     if ((r.repoHandle || r.server) && r.state.workflow && r.state.workflow.file) {
       try {
-        const text = r.server
-          ? await fetch("/api/workflow?file=" + encodeURIComponent(r.state.workflow.file)).then(x => x.text())
-          : await readPath(r.repoHandle, r.state.workflow.file);
-        renderGraph(graph, jsyaml.load(text), r.state);
+        // walk down the opened subworkflow steps: each level's graph comes from its parent's node
+        let wf = jsyaml.load(await readWf(r, r.state.workflow.file));
+        const titles = [wf.title || wf.name || r.slug];
+        for (let i = 0; i < drill.length; i++) {
+          const node = (wf.nodes || []).find(n => n.id === drill[i].id);
+          if (!node || !node.workflow) { drill = drill.slice(0, i); break; }
+          wf = jsyaml.load(await readWf(r, node.workflow));
+          titles.push(wf.title || wf.name || node.label || node.id);
+        }
+        renderGraph(graph, wf, r.state, drill.map(d => d.id + "/").join(""));
+        graph.prepend(crumbBar(r.slug, titles));
+        graph.ondblclick = ev => {
+          const el = ev.target.closest(".rnode.sub");
+          if (!el) return;
+          drill.push({ id: el.dataset.id });
+          renderSelected();
+        };
         return;
-      } catch (e) { /* fall through to table */ }
+      } catch (e) { drill = []; /* fall through to table */ }
     }
+    graph.ondblclick = null;
     renderTable(graph, r.state);
+  }
+  function readWf(r, file) {
+    const rel = String(file).replace(/^\.?\/+/, "");
+    if (r.server)
+      return fetch("/api/workflow?file=" + encodeURIComponent(rel)).then(x => { if (!x.ok) throw new Error(rel); return x.text(); });
+    return readPath(r.repoHandle, rel).catch(() => readPath(r.repoHandle, rel.replace(/^\.maestro\//, "")));
+  }
+  function crumbBar(slug, titles) {
+    const bar = document.createElement("div"); bar.className = "runs-crumbs";
+    titles.forEach((t, i) => {
+      if (i) { const s = document.createElement("span"); s.className = "sep"; s.textContent = "›"; bar.appendChild(s); }
+      const c = document.createElement("span"); c.className = "crumb" + (i === titles.length - 1 ? " here" : "");
+      c.textContent = i ? t : slug + " · " + t;
+      if (i < titles.length - 1) c.onclick = () => { drill = drill.slice(0, i); renderSelected(); };
+      bar.appendChild(c);
+    });
+    const n = document.createElement("span"); n.className = "note";
+    n.textContent = drill.length ? "Esc to go back up" : "Double-click a stage to see its steps";
+    bar.appendChild(n);
+    return bar;
   }
 
   function forwardTargets(node) {
@@ -2842,7 +3239,8 @@ boot();
     return t;
   }
 
-  function renderGraph(container, wf, state) {
+  function renderGraph(container, wf, state, pre) {
+    pre = pre || "";
     const nodes = (wf.nodes || []).filter(n => n && n.id);
     if (!nodes.length) { renderTable(container, state); return; }
     const byId = {}; nodes.forEach(n => byId[n.id] = n);
@@ -2889,21 +3287,22 @@ boot();
     let html = '<div id="runs-plane" style="width:' + planeW + 'px;height:' + planeH + 'px">';
     html += '<svg width="' + planeW + '" height="' + planeH + '">' + paths + '</svg>';
     for (const n of nodes) {
-      const p = pos[n.id], s = nodeStatus(state, n.id), type = n.type || "agent";
-      const under = stepsUnder(state, n.id), keys = Object.keys(under);
+      const p = pos[n.id], key = pre + n.id, s = nodeStatus(state, key), type = n.type || "agent";
+      const under = stepsUnder(state, key), keys = Object.keys(under);
       const isContainer = type === "parallel" || type === "subworkflow";
       let cnt = "";
       if (isContainer && keys.length) {
         const d = keys.filter(k => under[k].status === "done" || under[k].status === "skipped").length;
         cnt = '<span class="rn-count">' + d + '/' + keys.length + '</span>';
-      } else if (keys.length && under[n.id]) {
-        const v = under[n.id].visits || 0;
+      } else if (keys.length && under[key]) {
+        const v = under[key].visits || 0;
         if (v > 1) cnt = '<span class="rn-count">×' + v + '</span>';
       }
-      html += '<div class="rnode s-' + s + '" style="left:' + p.x + 'px;top:' + p.y + 'px">' +
+      const sub = type === "subworkflow" && n.workflow && !String(n.workflow).includes("${");
+      html += '<div class="rnode s-' + s + (sub ? ' sub' : '') + '" data-id="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px">' +
         '<div class="rn-head"><span class="rn-dot"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
         esc(n.label || n.id) + '</span>' + cnt + '</div>' +
-        '<div class="rn-type">' + esc(type) + '</div></div>';
+        '<div class="rn-type">' + esc(type === "subworkflow" ? "stage" : type) + '</div></div>';
     }
     html += "</div>";
     container.innerHTML = html;
@@ -2949,7 +3348,11 @@ boot();
   q("#runs-open").addEventListener("click", pickFolder);
   q("#runs-refresh").addEventListener("click", refresh);
   q("#runs-file").addEventListener("change", e => loadFiles(e.target.files));
-  document.addEventListener("keydown", e => { if (e.key === "Escape" && q("#runs-view").classList.contains("show")) close(); });
+  document.addEventListener("keydown", e => {
+    if (e.key !== "Escape" || !q("#runs-view").classList.contains("show")) return;
+    e.preventDefault();   // the editor's Escape (go up a level) must not also fire
+    if (drill.length) { drill.pop(); renderSelected(); } else close();
+  });
 })();
 </script>
 </body>

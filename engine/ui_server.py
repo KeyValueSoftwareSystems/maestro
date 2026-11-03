@@ -6,7 +6,7 @@ launched in, so the builder no longer needs the browser File System Access API:
 
     GET  /                     the builder page
     GET  /api/health           {"ok": true, "root": ...}   (the client's server probe)
-    GET  /api/workflows        [{"file","name"}] under <root>/.maestro/workflows
+    GET  /api/workflows        [{"file","name","title","description","steps","uses"}]
     GET  /api/workflow?file=X  raw YAML source of <root>/.maestro/workflows/X
     PUT  /api/workflow?file=X   overwrite that workflow (source only, atomic)
     GET  /api/runs             [{"slug","state"}] from <root>/.maestro/runs/*/state.yaml
@@ -93,10 +93,42 @@ def _sort_workflows(entries):
     return sorted(entries, key=key)
 
 
+def _subworkflow_refs(nodes):
+    # every subworkflow file a node list references, parallel branches included, in order
+    out = []
+    for n in nodes or []:
+        if not isinstance(n, dict):
+            continue
+        if n.get("type") == "subworkflow" and isinstance(n.get("workflow"), str):
+            out.append(n["workflow"])
+        for b in n.get("branches") or []:
+            if isinstance(b, dict):
+                out.extend(_subworkflow_refs(b.get("steps")))
+    return out
+
+
+def _uses(root_real, doc):
+    # resolved repo-relative paths (realpath, so a symlinked .maestro/workflows/x.yaml and
+    # workflows/x.yaml agree); a templated or missing path is dropped
+    out = []
+    for ref in _subworkflow_refs(doc.get("nodes")):
+        if "${" in ref:
+            continue
+        cand = os.path.realpath(os.path.join(root_real, ref))
+        if os.path.commonpath([cand, root_real]) != root_real or not os.path.isfile(cand):
+            continue
+        rel = os.path.relpath(cand, root_real)
+        if rel not in out:
+            out.append(rel)
+    return out
+
+
 def list_workflows(root):
     """Recursively list every YAML file under root, tagging maestro workflows.
 
-    Each entry: {file: <repo-relative path>, name, workflow: bool, valid: bool}.
+    Each entry: {file: <repo-relative path>, name, workflow: bool, valid: bool}; a workflow
+    also carries title, description, steps (top-level node count) and uses (the subworkflow
+    files it references, resolved), which the builder's library turns into its tree.
     'workflow' means the top level is a non-empty nodes: list; 'valid' means it parsed.
     """
     root_real = os.path.realpath(root)
@@ -122,6 +154,10 @@ def list_workflows(root):
                     entry["workflow"] = True
                     if doc.get("name"):
                         entry["name"] = str(doc["name"])
+                    entry["title"] = str(doc.get("title") or "")
+                    entry["description"] = str(doc.get("description") or "")
+                    entry["steps"] = len(doc["nodes"])
+                    entry["uses"] = _uses(root_real, doc)
             except (OSError, ValueError):
                 pass  # unparseable: still listed, tagged not-a-workflow / invalid
             out.append(entry)

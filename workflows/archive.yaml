@@ -4,6 +4,7 @@
 # Nothing is merged here: a person merges the pull requests (or the reported branches).
 version: 1
 name: archive
+title: Deliver and archive
 description: Deliver the released feature's branches (or pull requests), then harvest its lessons.
 inputs:
   slug: {type: string, required: true}

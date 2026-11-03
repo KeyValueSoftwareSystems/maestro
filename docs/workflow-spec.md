@@ -38,6 +38,7 @@ nodes:
 ```yaml
 version: 1                  # spec version; anything else is rejected
 name: design                # kebab-case identifier
+title: Design               # optional display name the builder shows (the engine ignores it)
 description: Design phase.  # optional prose
 inputs:                     # declared inputs (all optional keys except the map itself)
   slug:    {type: string, required: true, description: kebab-case feature id}

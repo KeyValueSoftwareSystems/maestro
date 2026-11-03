@@ -11,6 +11,7 @@
 # (and the contract, when the HLD lists interfaces).
 version: 1
 name: design-lld
+title: Repository designs (LLD) and test cases
 description: Clarify, write, check and approve the repository LLDs and the functional test cases.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

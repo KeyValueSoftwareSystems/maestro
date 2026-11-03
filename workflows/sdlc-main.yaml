@@ -11,7 +11,8 @@
 # `on_fail: abort`, so a rejection inside a stage aborts the run as it did inline.
 version: 1
 name: sdlc-main
-description: Full feature pipeline — requirement to release-ready review pack.
+title: Build a feature
+description: From a requirement to verified branches or pull requests — design, build, QA, release.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}

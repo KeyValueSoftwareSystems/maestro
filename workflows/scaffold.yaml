@@ -6,6 +6,7 @@
 #   -> pin (engine)
 version: 1
 name: scaffold
+title: Scaffold new repositories
 description: Create and scaffold the repositories a greenfield HLD lists, then verify and pin them.
 inputs:
   slug: {type: string, required: true}

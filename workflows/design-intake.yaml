@@ -5,6 +5,7 @@
 # requirement inputs only; it never scans application source. Its outputs ground the PRD phase.
 version: 1
 name: design-intake
+title: Intake
 description: Check the requirement and summarize the project context.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}

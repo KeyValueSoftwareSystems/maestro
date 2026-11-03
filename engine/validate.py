@@ -39,7 +39,7 @@ _ID_RE = re.compile(r"^[a-z0-9][a-z0-9_-]*$")
 _NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 
-_TOP_KEYS = {"version", "name", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"}
+_TOP_KEYS = {"version", "name", "title", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"}
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
@@ -125,6 +125,9 @@ def validate_doc(doc, where=""):
         err("bad-version", f"unsupported version {doc['version']!r} (expected 1)")
     if "name" in doc and (not isinstance(doc["name"], str) or not _NAME_RE.match(doc["name"])):
         err("bad-name", f"name must be kebab-case: {doc.get('name')!r}")
+    for key in ("title", "description"):
+        if key in doc and not isinstance(doc[key], str):
+            err("bad-type", f"{key} must be a string")
     if (doc.get("defaults") or {}).get("brief", "minimal") not in ("none", "minimal", "full"):
         err("bad-type", "defaults.brief must be 'none', 'minimal' or 'full'")
     if "max_visits" in (doc.get("defaults") or {}):
