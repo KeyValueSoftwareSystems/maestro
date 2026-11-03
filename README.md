@@ -21,15 +21,19 @@ at each decision, and saves every result as a file in your repo.
 ## What can you do with it
 
 - **Change several repos for one feature.** One PRD and one high-level design cover the whole
-  feature. Each affected repo then gets its own detailed design, approved by the team that owns it,
-  and its own isolated branch for the code changes. The repos share one API contract, so frontend
-  and backend build against the same interface.
+  feature. Each affected repo then gets its own detailed design and its own branch for the code
+  changes. The repos share one API contract, so frontend and backend build against the same
+  interface.
 - **Keep a knowledge base of all your repos.** Maestro writes and maintains docs for every repo
   (architecture, technical and functional docs per area, a codebase map per repo). Every design
   step reads them, and they're refreshed after each feature, only for the parts that changed.
-- **Build a feature end to end** with the included pipeline: requirements (PRD) → high-level
-  design → detailed design per repo → API contract → review → implementation → QA.
-- **Stay in charge.** Maestro stops at approval points ("gates") and asks you instead of guessing.
+- **Build a feature end to end** with the included pipeline: requirements (PRD) → reviewed
+  high-level design → API contract → detailed design per repo → build with tests → QA → pull
+  requests.
+- **Trust the results.** Maestro runs your build, lint and tests itself, and checks that every
+  requirement has a passing test before it asks you to release.
+- **Stay in charge, or go hands-off.** Maestro stops at approval points ("gates") and asks you
+  instead of guessing. Ask for autopilot and it approves only what its own checks pass.
 - **Stop and come back anytime.** Progress is saved after every step. Resume exactly where you
   left off, even on another machine.
 - **Make your own processes.** Draw a workflow in the visual builder or write a short YAML file.
@@ -106,8 +110,8 @@ Each service repo stays independent; this is **not** a monorepo. Full walkthroug
 maestro               helper: ./maestro ui (builder) · ./maestro install (upgrade)
 ```
 
-Commit `.maestro/workflows/`, `.maestro/runs/`, `.maestro/memory/`, `.maestro/docs/` and
-`.maestro/workflow-manifest.json`. `./maestro help` prints a ready-made `.gitignore` for the rest.
+Commit `maestro.config.yaml`, `.maestro/workflows/`, `.maestro/runs/`, `.maestro/memory/`,
+`.maestro/docs/` and `.maestro/workflow-manifest.json`. `./maestro help` prints a ready-made `.gitignore` for the rest.
 
 ## Install
 
@@ -133,6 +137,23 @@ You don't need to maintain the docs by hand. Maestro records which commit each d
 re-running `/maestro-init` only re-reads what changed, and each finished feature refreshes the docs
 for the areas it touched.
 
+**3. Tell Maestro how to build and test.** Create `maestro.config.yaml` in the same folder, with
+one entry per repo (in a single-repo setup, the repo is your folder's name):
+
+```yaml
+version: 1
+repos:
+  backend:
+    commands:
+      build: make build
+      test: make test
+      lint: make lint          # optional
+```
+
+Maestro runs these commands itself to check every change, so a run can't finish without them.
+Check the file with `python3 .maestro/engine/maestroctl.py preflight`. All the options:
+[docs/project-config.md](docs/project-config.md).
+
 > Using a private fork? `curl` can't log in. Clone the repo and run `./install.sh claude-code`
 > from the clone instead.
 
@@ -151,24 +172,21 @@ for the areas it touched.
    question shows a recommendation and alternatives. Pick one, type your own answer, or say you
    want to discuss it.
 4. **Approve at gates.** At each approval point you choose **Approve** or **Revise** (and say what
-   to change).
-5. **Find the results** in `.maestro/runs/<feature>/`: PRD, designs, API contract, test cases and
-   review reports.
+   to change). Want fewer stops? Say "run it on autopilot" when you start (Maestro then stops only
+   when a check fails), or "only stop for design approval".
+5. **Find the results** in `.maestro/runs/<feature>/`: PRD, designs, API contract, test cases,
+   review reports, and the branches (or pull requests) ready to merge.
 
-**When the feature spans several repos,** the run fans out and back in:
+**When the feature spans several repos,** one design covers all of them:
 
 ```
-one PRD → one high-level design ─┬─ backend design   (approved by the backend team)  ─┬─ one API contract
-                                 └─ frontend design  (approved by the frontend team) ─┘
-   → review → build each repo on its own branch (all at once, or one batch at a time) → QA → docs refreshed
+one PRD → one high-level design → one API contract → a detailed design per repo
+   → each repo built and tested on its own branch → QA across repos → pull requests
 ```
 
-- Before designing, and again before building, Maestro fetches the latest code of **every** repo and
-  pins the exact commits the design is based on.
-- Each repo team works on its own part: `/maestro my-feature` lets you pick "backend design" or
-  "frontend design" without touching the other team's work.
-- You can build all repos now, or only some (for example backend first) and the rest later, without
-  redoing the design.
+Before designing, and again before building, Maestro fetches the latest code of every repo and
+pins the exact commits the design is based on. A small change in one repo skips the high-level
+design, and an empty workspace gets its new repos created for you.
 
 **See progress.** Your assistant's task list shows each stage. You can also run:
 
@@ -227,8 +245,7 @@ The full format is in [docs/workflow-spec.md](docs/workflow-spec.md).
 | To change… | Do this |
 |---|---|
 | **The included pipeline** | Copy the workflow file under a new name (for example `my-sdlc.yaml`) and edit the copy. Upgrades never touch your own file names. |
-| **How a step does its job** | Write your own skill in `.claude/skills/<your-skill>/SKILL.md` (`.agents/skills/` for Codex) and set `skill: <your-skill>` on that step. Prefer your own skill to editing Maestro's: an edited installed skill is kept on upgrade, but you
-then merge each new version by hand from its `.upstream` file. |
+| **How a step does its job** | Write your own skill in `.claude/skills/<your-skill>/SKILL.md` (`.agents/skills/` for Codex) and set `skill: <your-skill>` on that step. Prefer this to editing Maestro's skills: an edited skill is kept on upgrade, but you merge each new version by hand. |
 | **Which AI model a step uses** | Set `model:` on the step, or `defaults.model` for the whole workflow (for example `haiku`, `sonnet` or `opus` in Claude Code). |
 | **How often a loop may repeat** | Set `max_visits` on the step (the default is 10). |
 | **Which tech stacks are installed** | `./maestro install claude-code --stack go,react` |
@@ -239,8 +256,9 @@ More options (third-party skills, memory, delivery):
 ## Working as a team
 
 - **Commit your workflows and runs.** A run's progress lives in git, so a teammate can resume it.
-- **One person drives a feature at a time.** Detailed design is split per repo automatically, so
-  the backend and frontend teams each approve their own part, in parallel.
+- **One person drives a feature at a time.** The included pipeline is built for one developer
+  taking a feature across every repo. Teams that split the work can add parallel steps to their
+  own copy of the workflow.
 - **Share one knowledge base.** Commit `docs/` in the umbrella (and each repo's
   `docs/codebase-map.md` in that repo), so everyone's runs start from the same picture of the code.
 - **Workflow changed during a run?** Maestro stops and asks whether to accept the change or start
@@ -267,6 +285,7 @@ or `.agents/skills/` equivalents), plus `.maestro/engine/` and `.maestro/ui/`. K
 |---|---|
 | "workflow changed" | The workflow file was edited mid-run. Maestro asks whether to accept the change or start over. |
 | A step won't finish | Each step must write its output file. Maestro retries once, then asks how to continue. |
+| "cannot verify" | `maestro.config.yaml` is missing a repo or its `build`/`test` command. Run `maestroctl.py preflight` to see what's missing. |
 | A skill is missing | Run `./maestro install <your assistant>`, then restart the assistant. |
 | Where is my run? | `python3 .maestro/engine/maestroctl.py status --slug <feature>` |
 | The assistant stopped mid-run | This is normal. Run `/maestro <feature>` again to continue. Claude Code can continue automatically; see [docs/reference.md](docs/reference.md#pausing--resuming-a-run). |
