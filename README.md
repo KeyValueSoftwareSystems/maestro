@@ -1,50 +1,95 @@
-# Maestro
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/maestro.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/maestro-light.svg">
+    <img src="assets/maestro.svg" alt="Maestro — deterministic workflow engine for AI coding agents" width="100%">
+  </picture>
+</p>
 
-![Maestro — deterministic workflows for AI coding agents](assets/maestro.svg)
+<p align="center">
+  <strong>Your software-delivery process, run step by step inside the AI coding agent you already use.</strong><br>
+  The same steps, in the same order, checked by an engine, with you approving at the points that matter.
+</p>
 
-**Maestro runs your team's software-delivery process inside your AI coding assistant — the same
-steps, in the same order, with a human approving at the points that matter.**
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-EBB24A?style=flat-square"></a>
+  <img alt="Python 3.8+" src="https://img.shields.io/badge/python-3.8%2B-57B784?style=flat-square">
+  <img alt="No dependencies" src="https://img.shields.io/badge/dependencies-none-8B94A3?style=flat-square">
+  <img alt="Runs in Claude Code, Codex, Cursor, Hermes Agent" src="https://img.shields.io/badge/runs%20in-Claude%20Code%20%C2%B7%20Codex%20%C2%B7%20Cursor%20%C2%B7%20Hermes-1E2530?style=flat-square">
+</p>
 
-It's built for teams whose product spans **several repos** (frontend, backend, services). Maestro
-keeps one shared, up-to-date **knowledge base** of all those repos, and lets you deliver **one
-feature across several repos** in a single run: one requirement, one design, coordinated changes
-in every repo that needs them.
+<p align="center">
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#works-with-your-agent">Supported agents</a> ·
+  <a href="#start-your-first-feature">First feature</a> ·
+  <a href="#create-your-own-workflow">Your own workflow</a> ·
+  <a href="docs/sdlc-pipeline.md">The pipeline</a> ·
+  <a href="docs/reference.md">Reference</a>
+</p>
 
-You describe the process once as a workflow file (for example: requirements → design → review →
-build → test). Then anyone on the team types `/maestro my-feature` in Claude Code, Codex or
-Cursor, and Maestro walks the AI through that exact process. It runs each step, stops to ask you
-at each decision, and saves every result as a file in your repo.
+---
 
-> **New here?** Read [What can you do with it](#what-can-you-do-with-it), then follow
-> [Prerequisites](#prerequisites) → [Install](#install) → [Start your first feature](#start-your-first-feature).
+Hand Maestro a PRD, a ticket or a one-line request. It walks your AI agent through requirements →
+design → build → tests → QA → pull request, one step at a time. It stops to ask you at each
+decision and saves every result as a file in your repo.
 
-## What can you do with it
+The order of the steps lives in a workflow file, not in the AI's head. A small engine in your repo
+reads that file and hands the AI **one** step at a time. It also runs your build and tests itself,
+and counts a step as done only when its output really exists.
 
-- **Change several repos for one feature.** One PRD and one high-level design cover the whole
-  feature. Each affected repo then gets its own detailed design and its own branch for the code
-  changes. The repos share one API contract, so frontend and backend build against the same
-  interface.
-- **Keep a knowledge base of all your repos.** Maestro writes and maintains docs for every repo
-  (architecture, technical and functional docs per area, a codebase map per repo). Every design
-  step reads them, and they're refreshed after each feature, only for the parts that changed.
-- **Build a feature end to end** with the included pipeline: requirements (PRD) → reviewed
-  high-level design → API contract → detailed design per repo → build with tests → QA → pull
-  requests.
-- **Trust the results.** Maestro runs your build, lint and tests itself, and checks that every
-  requirement has a passing test before it asks you to release.
-- **Stay in charge, or go hands-off.** Maestro stops at approval points ("gates") and asks you
-  instead of guessing. Ask for autopilot and it approves only what its own checks pass.
-- **Stop and come back anytime.** Progress is saved after every step. Resume exactly where you
-  left off, even on another machine.
-- **Make your own processes.** Draw a workflow in the visual builder or write a short YAML file.
-- **Use any skills.** Each step can use the included skills, your own, or a third-party pack.
-- **No extra cost or setup.** It runs on the AI assistant you already use: no API key, no server,
-  nothing to `pip install`.
+## Quick start
+
+```bash
+# 1. Install into your repo (use codex, cursor or hermes instead of claude-code, or list several)
+curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/maestro/main/install.sh | bash -s -- claude-code
+```
+
+```text
+# 2. In your agent, in the same folder: detect the stack and build the knowledge base
+/maestro-init
+
+# 3. Start a feature
+/maestro add phone OTP login
+```
+
+Before the first feature, tell Maestro how to build and test your code
+([step 3 below](#install)). Codex uses `$` instead of `/`: `$maestro-init`, `$maestro …`.
+
+## What you get
+
+- **One feature across several repos.** One PRD and one design cover the whole feature. Each
+  affected repo gets its own detailed design and branch, and all of them share one API contract.
+- **A knowledge base of all your repos.** Architecture, technical and functional docs, and a
+  codebase map per repo. Every design step reads them, and each feature refreshes the parts it
+  changed.
+- **Results you can trust.** Maestro runs your build, lint, tests and a secret scan itself, and
+  checks that every requirement has a passing test before it asks you to release.
+- **You stay in charge, or go hands-off.** Maestro stops at approval points ("gates") instead of
+  guessing. On autopilot it approves only what its own checks pass.
+- **Stop and resume anytime.** Progress is saved after every step, in git, so you can pick up
+  exactly where you left off, even on another machine.
+- **Your process, your skills.** Draw a workflow in the visual builder or write a short YAML file.
+  Each step can use the included skills, your own, or a third-party pack.
+- **Nothing extra to run.** No API key, no server, nothing to `pip install`. It runs on the agent
+  you already pay for.
+
+## Works with your agent
+
+Maestro is a set of skills plus a small Python engine. It runs in any agent that loads
+`SKILL.md` skills and can run a shell command.
+
+| Agent | Install target | Start a feature | Notes |
+|---|---|---|---|
+| **Claude Code** | `claude-code` | `/maestro my-feature` | Each step runs in its own subagent. |
+| **Codex** | `codex` | `$maestro my-feature` | Uses Codex's native subagents. |
+| **Cursor** | `cursor` | `/maestro my-feature` | Steps run one at a time in the chat. |
+| **Hermes Agent** | `hermes` | `/maestro my-feature` | Run `hermes skills trust` in the repo once. |
+| **Any other agent** | `codex` | its own skill command | Installs to `.agents/skills/`, the standard Agent Skills folder. If your agent reads skills from somewhere else, copy them there. |
 
 ## How it works
 
 ```
- you ── /maestro my-feature ──►  your AI assistant (Claude Code / Codex / Cursor)
+ you ── /maestro my-feature ──►  your AI agent (Claude Code, Codex, Cursor, Hermes, …)
                                      │ "what's next?"         ▲ "done, here's the result"
                                      ▼                        │
                            Maestro engine (a small Python program in your repo)
@@ -53,7 +98,7 @@ at each decision, and saves every result as a file in your repo.
                ┌─────────────────────┼──────────────────────┐
                ▼                     ▼                      ▼
         an AI worker runs      a script runs          you answer a question
-        a step (writes a file) (checks, tests)        or approve a gate
+        a step (writes a file) (build, tests, checks) or approve a gate
 ```
 
 - **The workflow** (a `.yaml` file) lists the steps, their order, and where you approve.
@@ -65,7 +110,7 @@ at each decision, and saves every result as a file in your repo.
 
 | You need | Check with |
 |---|---|
-| An AI coding assistant: **Claude Code**, **Codex** or **Cursor** | — |
+| An AI coding agent ([see above](#works-with-your-agent)) | — |
 | **python3** 3.8 or newer (nothing extra to install) | `python3 --version` |
 | **git**, **bash** and **curl** | `git --version` |
 | **macOS or Linux** (on Windows, use WSL) | — |
@@ -111,27 +156,29 @@ maestro               helper: ./maestro ui (builder) · ./maestro install (upgra
 ```
 
 Commit `maestro.config.yaml`, `.maestro/workflows/`, `.maestro/runs/`, `.maestro/memory/`,
-`.maestro/docs/` and `.maestro/workflow-manifest.json`. `./maestro help` prints a ready-made `.gitignore` for the rest.
+`.maestro/docs/` and `.maestro/workflow-manifest.json`. `./maestro help` prints a ready-made
+`.gitignore` for the rest.
 
 ## Install
 
 **1. Install.** From the root of your repo (or umbrella workspace):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/main/install.sh | bash -s -- claude-code
+curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/maestro/main/install.sh | bash -s -- claude-code
 ```
 
-Use `codex` or `cursor` instead of `claude-code`, or list several.
+Replace `claude-code` with your agent's [install target](#works-with-your-agent), or list several
+(`claude-code codex`).
 
-**2. Set up once.** Open your assistant in the same folder and run:
+> Using a private fork? `curl` can't log in. Clone the repo and run `./install.sh claude-code`
+> from the clone instead.
 
-| Claude Code / Cursor | Codex |
-|---|---|
-| `/maestro-init` | `$maestro-init` |
+**2. Set up once.** Open your agent in the same folder and run `/maestro-init` (`$maestro-init` in
+Codex). On Hermes Agent, run `hermes skills trust` first.
 
 This detects your tech stack, installs only the matching skills, and builds the **knowledge
 base**: an architecture overview of how your repos connect, technical and functional docs per area
-in `docs/`, and a `docs/codebase-map.md` inside each repo. Every design step reads these.
+in `docs/`, and a `docs/codebase-map.md` inside each repo.
 
 You don't need to maintain the docs by hand. Maestro records which commit each doc describes, so
 re-running `/maestro-init` only re-reads what changed, and each finished feature refreshes the docs
@@ -154,14 +201,11 @@ Maestro runs these commands itself to check every change, so a run can't finish 
 Check the file with `python3 .maestro/engine/maestroctl.py preflight`. All the options:
 [docs/project-config.md](docs/project-config.md).
 
-> Using a private fork? `curl` can't log in. Clone the repo and run `./install.sh claude-code`
-> from the clone instead.
-
 ## Start your first feature
 
-1. **Start it** in your assistant:
+1. **Start it** in your agent:
    ```
-   /maestro add phone OTP login        # Claude Code / Cursor
+   /maestro add phone OTP login        # Claude Code, Cursor, Hermes Agent
    $maestro add phone OTP login        # Codex
    ```
    Maestro names the run `add-phone-otp-login` and creates `.maestro/runs/add-phone-otp-login/`.
@@ -188,7 +232,7 @@ Before designing, and again before building, Maestro fetches the latest code of 
 pins the exact commits the design is based on. A small change in one repo skips the high-level
 design, and an empty workspace gets its new repos created for you.
 
-**See progress.** Your assistant's task list shows each stage. You can also run:
+**See progress.** Your agent's task list shows each stage. You can also run:
 
 ```bash
 python3 .maestro/engine/maestroctl.py todo --slug add-phone-otp-login
@@ -245,7 +289,7 @@ The full format is in [docs/workflow-spec.md](docs/workflow-spec.md).
 | To change… | Do this |
 |---|---|
 | **The included pipeline** | Copy the workflow file under a new name (for example `my-sdlc.yaml`) and edit the copy. Upgrades never touch your own file names. |
-| **How a step does its job** | Write your own skill in `.claude/skills/<your-skill>/SKILL.md` (`.agents/skills/` for Codex) and set `skill: <your-skill>` on that step. Prefer this to editing Maestro's skills: an edited skill is kept on upgrade, but you merge each new version by hand. |
+| **How a step does its job** | Write your own skill in `.claude/skills/<your-skill>/SKILL.md` (`.agents/skills/` for Codex and Hermes Agent) and set `skill: <your-skill>` on that step. Prefer this to editing Maestro's skills: an edited skill is kept on upgrade, but you merge each new version by hand. |
 | **Which AI model a step uses** | Set `model:` on the step, or `defaults.model` for the whole workflow (for example `haiku`, `sonnet` or `opus` in Claude Code). |
 | **How often a loop may repeat** | Set `max_visits` on the step (the default is 10). |
 | **Which tech stacks are installed** | `./maestro install claude-code --stack go,react` |
@@ -286,15 +330,16 @@ or `.agents/skills/` equivalents), plus `.maestro/engine/` and `.maestro/ui/`. K
 | "workflow changed" | The workflow file was edited mid-run. Maestro asks whether to accept the change or start over. |
 | A step won't finish | Each step must write its output file. Maestro retries once, then asks how to continue. |
 | "cannot verify" | `maestro.config.yaml` is missing a repo or its `build`/`test` command. Run `maestroctl.py preflight` to see what's missing. |
-| A skill is missing | Run `./maestro install <your assistant>`, then restart the assistant. |
+| A skill is missing | Run `./maestro install <your agent>`, then restart the agent. On Hermes Agent, also run `hermes skills trust`. |
 | Where is my run? | `python3 .maestro/engine/maestroctl.py status --slug <feature>` |
-| The assistant stopped mid-run | This is normal. Run `/maestro <feature>` again to continue. Claude Code can continue automatically; see [docs/reference.md](docs/reference.md#pausing--resuming-a-run). |
+| The agent stopped mid-run | This is normal. Run `/maestro <feature>` again to continue. Claude Code can continue automatically; see [docs/reference.md](docs/reference.md#pausing--resuming-a-run). |
 
 ## Learn more
 
 - [docs/sdlc-pipeline.md](docs/sdlc-pipeline.md): what each stage of the included pipeline does
 - [docs/workflow-spec.md](docs/workflow-spec.md): the full workflow format
 - [docs/umbrella-workspace.md](docs/umbrella-workspace.md): multi-repo setup in detail
+- [docs/project-config.md](docs/project-config.md): build, test, QA and delivery settings
 - [docs/reference.md](docs/reference.md): comparisons, the builder, pausing, teams, upgrades, file layout
 - [docs/memory.md](docs/memory.md): how Maestro learns across features
 - [CONTRIBUTING.md](CONTRIBUTING.md): working on Maestro itself

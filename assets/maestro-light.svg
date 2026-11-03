@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 640" role="img" font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace">
+  <title>Maestro — deterministic workflow engine for AI coding agents</title>
+  <desc>From PRD to pull request, every step checked. Runs in Claude Code, Codex, Cursor, Hermes Agent, or your own agent. A mid-run feature graph: PRD and design approved, two repositories implementing in parallel, engine verify, QA with a fix loop, and a human release gate.</desc>
+  <defs>
+    <linearGradient id="card" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FCFBF8"/><stop offset="1" stop-color="#F6F4EE"/>
+    </linearGradient>
+    <linearGradient id="acc" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#D9900F"/><stop offset="1" stop-color="#DC5A2A"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#FDFCFA"/>
+    </linearGradient>
+    <linearGradient id="panelhi" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="live" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1E9A5A" stop-opacity="0.7"/><stop offset="1" stop-color="#C98510"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.82" cy="0.12" r="0.62">
+      <stop offset="0" stop-color="#F2A93B" stop-opacity="0.16"/>
+      <stop offset="0.6" stop-color="#F2A93B" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glow2" cx="0.05" cy="1" r="0.55">
+      <stop offset="0" stop-color="#2FA66A" stop-opacity="0.07"/>
+      <stop offset="0.6" stop-color="#2FA66A" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="fade" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#fff" stop-opacity="1"/><stop offset="1" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <mask id="gridmask"><rect x="20" y="20" width="1160" height="600" fill="url(#fade)"/></mask>
+    <pattern id="grid" width="32" height="32" patternUnits="userSpaceOnUse" x="20" y="20">
+      <path d="M32 0 H0 V32" fill="none" stroke="#1A1F29" stroke-opacity="0.05" stroke-width="1"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="18" stdDeviation="22" flood-color="#000" flood-opacity="0.10"/>
+    </filter>
+    <filter id="soft" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="8"/></filter>
+    <clipPath id="cardclip"><rect x="20" y="20" width="1160" height="600" rx="18"/></clipPath>
+  </defs>
+
+  <rect width="1200" height="640" fill="#FFFFFF"/>
+  <rect x="20" y="20" width="1160" height="600" rx="18" fill="url(#card)" stroke="#E7E2D7"/>
+  <g clip-path="url(#cardclip)">
+    <rect x="20" y="20" width="1160" height="600" fill="url(#grid)" mask="url(#gridmask)"/>
+    <rect x="20" y="20" width="1160" height="600" fill="url(#glow)"/>
+    <rect x="20" y="20" width="1160" height="600" fill="url(#glow2)"/>
+  </g>
+
+  <!-- top bar -->
+  <path d="M58 52 l9 -10 l9 10 l-9 10 Z" fill="none" stroke="url(#acc)" stroke-width="1.8" stroke-linejoin="round"/>
+  <circle cx="67" cy="52" r="2.2" fill="url(#acc)"/>
+  <text x="86" y="58" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="17" font-weight="700" letter-spacing="-0.3" fill="#151A22">Maestro</text>
+  <text x="1148" y="57" font-size="11.5" text-anchor="end" letter-spacing="0.4" fill="#8A919D">open source<tspan fill="#C98510" dx="8">·</tspan><tspan dx="8">MIT</tspan></text>
+  <line x1="20" y1="80" x2="1180" y2="80" stroke="#E9E5DC"/>
+
+  <!-- left column -->
+  <rect x="56" y="183" width="22" height="2" rx="1" fill="url(#acc)"/>
+  <text x="88" y="189" font-size="11.5" font-weight="600" letter-spacing="2" fill="#C98510">FROM PRD TO PULL REQUEST · EVERY STEP CHECKED</text>
+
+  <text font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="56" font-weight="750" letter-spacing="-1.1">
+    <tspan x="53" y="262" fill="url(#acc)">Deterministic</tspan>
+    <tspan x="53" y="324" fill="#151A22">workflow engine for</tspan>
+    <tspan x="53" y="386" fill="#151A22">AI coding agents.</tspan>
+  </text>
+
+  <text x="56" y="444" font-size="10.5" font-weight="600" letter-spacing="1.8" fill="#8A919D">RUNS ANYWHERE YOUR AGENT RUNS</text>
+  <g font-size="12.5">
+    <rect x="56" y="460" width="125" height="30" rx="15" fill="#FFFFFF" stroke="#E3DED3"/><circle cx="72" cy="475" r="3" fill="url(#acc)"/><text x="84" y="479" fill="#151A22">Claude Code</text>    <rect x="191" y="460" width="80" height="30" rx="15" fill="#FFFFFF" stroke="#E3DED3"/><circle cx="207" cy="475" r="3" fill="url(#acc)"/><text x="219" y="479" fill="#151A22">Codex</text>    <rect x="281" y="460" width="87" height="30" rx="15" fill="#FFFFFF" stroke="#E3DED3"/><circle cx="297" cy="475" r="3" fill="url(#acc)"/><text x="309" y="479" fill="#151A22">Cursor</text>    <rect x="378" y="460" width="133" height="30" rx="15" fill="#FFFFFF" stroke="#E3DED3"/><circle cx="394" cy="475" r="3" fill="url(#acc)"/><text x="406" y="479" fill="#151A22">Hermes Agent</text>    <rect x="521" y="460" width="82" height="30" rx="15" fill="none" stroke="#8A919D" stroke-opacity="0.6" stroke-dasharray="3 3"/><text x="562.0" y="479" text-anchor="middle" fill="#555D6B">+ yours</text>  </g>
+
+  <line x1="56" y1="526" x2="640" y2="526" stroke="#E9E5DC"/>
+  <g font-size="12.5" fill="#555D6B">
+    <path d="M56 553 l3 3.2 l6 -6.4" fill="none" stroke="#C98510" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="74" y="557">No API key</text>
+    <path d="M178 553 l3 3.2 l6 -6.4" fill="none" stroke="#C98510" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="196" y="557">Engine-run tests</text>
+    <path d="M346 553 l3 3.2 l6 -6.4" fill="none" stroke="#C98510" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><text x="364" y="557">Human gates</text>
+  </g>
+
+  <!-- right panel -->
+  <rect x="700" y="108" width="452" height="480" rx="14" fill="url(#panel)" stroke="#E7E2D7" filter="url(#shadow)"/>
+  <rect x="740" y="108" width="372" height="1" fill="url(#panelhi)"/>
+  <line x1="700" y1="152" x2="1152" y2="152" stroke="#E9E5DC"/>
+  <circle cx="722" cy="130" r="6" fill="#C98510" fill-opacity="0.18">
+    <animate attributeName="r" dur="1.8s" repeatCount="indefinite" values="3.5;7;3.5"/>
+    <animate attributeName="fill-opacity" dur="1.8s" repeatCount="indefinite" values="0.35;0;0.35"/>
+  </circle>
+  <circle cx="722" cy="130" r="3" fill="#C98510"/>
+  <text x="734" y="134" font-size="10.5" font-weight="650" letter-spacing="1.5" fill="#C98510">RUNNING</text>
+  <text x="1132" y="134" font-size="11" text-anchor="end" fill="#8A919D">add-phone-otp-login</text>
+
+  <g fill="none" stroke-width="1.4">
+    <path d="M926 208 V228" stroke="#1E9A5A" stroke-opacity="0.5"/>
+    <path d="M926 264 C926 280 1004 274 1004 290" stroke="#1E9A5A" stroke-opacity="0.5"/>
+    <path d="M926 264 C926 280 848 274 848 290" stroke="url(#live)"/>
+    <path d="M848 334 C848 350 926 344 926 360" stroke="#E7E2D7"/>
+    <path d="M1004 334 C1004 350 926 344 926 360" stroke="#E7E2D7"/>
+    <path d="M926 396 V422" stroke="#E7E2D7"/>
+    <path d="M926 458 V484" stroke="#E7E2D7"/>
+  </g>
+
+  <path d="M776 440 C738 440 738 312 776 312" stroke="#C98510" stroke-width="1.3" fill="none" stroke-dasharray="4 5" stroke-linecap="round" opacity="0.8">
+    <animate attributeName="stroke-dashoffset" dur="1.6s" repeatCount="indefinite" values="0;-36"/>
+  </path>
+  <text transform="rotate(-90 728 376)" x="728" y="376" text-anchor="middle" font-size="9.5" letter-spacing="1" fill="#C98510" opacity="0.9">FIX LOOP</text>
+
+  <rect x="776" y="172" width="300" height="36" rx="9" fill="#FFFFFF" stroke="#1E9A5A" stroke-opacity="0.45" stroke-width="1"/><circle cx="796" cy="190.0" r="6.5" fill="#1E9A5A" fill-opacity="0.16" stroke="#1E9A5A" stroke-width="1.2"/><path d="M793 190.0 l2.1 2.2 l3.9 -4.2" fill="none" stroke="#1E9A5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><text x="812" y="194.5" font-size="12.5" fill="#151A22">prd</text><rect x="1022.4" y="181.0" width="41.6" height="18" rx="9" fill="#1E9A5A" fill-opacity="0.10"/><text x="1056" y="193.5" font-size="9.5" font-weight="600" text-anchor="end" letter-spacing="0.6" fill="#1E9A5A">DONE</text>
+  <rect x="776" y="228" width="300" height="36" rx="9" fill="#FFFFFF" stroke="#1E9A5A" stroke-opacity="0.45" stroke-width="1"/><circle cx="796" cy="246.0" r="6.5" fill="#1E9A5A" fill-opacity="0.16" stroke="#1E9A5A" stroke-width="1.2"/><path d="M793 246.0 l2.1 2.2 l3.9 -4.2" fill="none" stroke="#1E9A5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><text x="812" y="250.5" font-size="12.5" fill="#151A22">design <tspan fill="#8A919D" font-size="11">hld · api · lld</tspan></text><rect x="996.8" y="237.0" width="67.2" height="18" rx="9" fill="#1E9A5A" fill-opacity="0.10"/><text x="1056" y="249.5" font-size="9.5" font-weight="600" text-anchor="end" letter-spacing="0.6" fill="#1E9A5A">APPROVED</text>
+
+  <rect x="772" y="286" width="152" height="52" rx="12" fill="#C98510" opacity="0.35" filter="url(#soft)">
+    <animate attributeName="opacity" dur="2.2s" repeatCount="indefinite" values="0.18;0.42;0.18"/>
+  </rect>
+  <rect x="776" y="290" width="144" height="44" rx="9" fill="#FFF5E0" stroke="#C98510" stroke-width="1.4"/>
+  <circle cx="794" cy="312" r="6.5" fill="none" stroke="#C98510" stroke-opacity="0.25" stroke-width="1.6"/><path d="M794 305.5 a6.5 6.5 0 0 1 6.5 6.5" fill="none" stroke="#C98510" stroke-width="1.6" stroke-linecap="round"><animateTransform attributeName="transform" type="rotate" from="0 794 312" to="360 794 312" dur="1.2s" repeatCount="indefinite"/></path>
+  <text x="808" y="309" font-size="12.5" fill="#151A22">backend</text>
+  <text x="808" y="324" font-size="9" font-weight="600" letter-spacing="0.6" fill="#C98510">IMPLEMENTING</text>
+
+  <rect x="932" y="290" width="144" height="44" rx="9" fill="#FFFFFF" stroke="#1E9A5A" stroke-opacity="0.45"/>
+  <circle cx="950" cy="312" r="6.5" fill="#1E9A5A" fill-opacity="0.16" stroke="#1E9A5A" stroke-width="1.2"/><path d="M947 312 l2.1 2.2 l3.9 -4.2" fill="none" stroke="#1E9A5A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  <text x="964" y="309" font-size="12.5" fill="#151A22">frontend</text>
+  <text x="964" y="324" font-size="9" font-weight="600" letter-spacing="0.6" fill="#1E9A5A">VERIFIED</text>
+
+  <rect x="776" y="360" width="300" height="36" rx="9" fill="#FFFFFF" stroke="#E7E2D7" stroke-width="1"/><circle cx="796" cy="378.0" r="5.5" fill="none" stroke="#B9BFC9" stroke-width="1.3"/><text x="812" y="382.5" font-size="12.5" fill="#555D6B">verify <tspan fill="#8A919D" font-size="11">build · lint · test</tspan></text><rect x="1009.6" y="369.0" width="54.4" height="18" rx="9" fill="#6B7280" fill-opacity="0.08"/><text x="1056" y="381.5" font-size="9.5" font-weight="600" text-anchor="end" letter-spacing="0.6" fill="#8A919D">ENGINE</text>
+  <rect x="776" y="422" width="300" height="36" rx="9" fill="#FFFFFF" stroke="#E7E2D7" stroke-width="1"/><circle cx="796" cy="440.0" r="5.5" fill="none" stroke="#B9BFC9" stroke-width="1.3"/><text x="812" y="444.5" font-size="12.5" fill="#555D6B">qa <tspan fill="#8A919D" font-size="11">e2e · every AC traced</tspan></text><rect x="1003.2" y="431.0" width="60.8" height="18" rx="9" fill="#6B7280" fill-opacity="0.08"/><text x="1056" y="443.5" font-size="9.5" font-weight="600" text-anchor="end" letter-spacing="0.6" fill="#8A919D">PENDING</text>
+
+  <rect x="776" y="484" width="300" height="36" rx="9" fill="none" stroke="#C98510" stroke-opacity="0.55" stroke-dasharray="4 4"/>
+  <path d="M796 502 l6.5 -7 l6.5 7 l-6.5 7 Z" fill="#C98510" fill-opacity="0.15" stroke="#C98510" stroke-width="1.3" stroke-linejoin="round"/>
+  <text x="818" y="506.5" font-size="12.5" fill="#151A22">gate: release?</text>
+  <rect x="984.0" y="493" width="80.0" height="18" rx="9" fill="#C98510" fill-opacity="0.13"/><text x="1056" y="505.5" font-size="9.5" font-weight="600" text-anchor="end" letter-spacing="0.6" fill="#C98510">YOU DECIDE</text>
+
+  <line x1="700" y1="542" x2="1152" y2="542" stroke="#E9E5DC"/>
+  <text x="718" y="570" font-size="12" fill="#8A919D"><tspan fill="#C98510" font-weight="700">›</tspan><tspan dx="8" fill="#555D6B">run_agent</tspan><tspan dx="14">skill:</tspan><tspan fill="#151A22">repo-implement</tspan><tspan dx="14">repo:</tspan><tspan fill="#151A22">backend</tspan></text>
+</svg>
