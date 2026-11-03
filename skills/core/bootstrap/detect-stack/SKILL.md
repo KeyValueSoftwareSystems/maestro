@@ -14,7 +14,7 @@ with no `stack:` tag) install regardless. This is a one-time (re-runnable) boots
 ## Inputs
 Run from the root of the target repo (or a `codebase/`-of-repos umbrella). No artifact
 inputs — you discover everything from the files on disk. If your instruction names harness
-targets (`claude-code`, `cursor`, `codex`), use them; otherwise infer them (below).
+targets (`claude-code`, `cursor`, `codex`, `hermes`), use them; otherwise infer them (below).
 
 ## Stack vocabulary
 Emit only these tokens (they match the `stack:` tags on the skills/agents):
@@ -53,7 +53,7 @@ Emit only these tokens (they match the `stack:` tags on the skills/agents):
 1. **Pick harness targets.** Include every already-installed Maestro host you can evidence:
    `.claude/skills/maestro/SKILL.md` ⇒ `claude-code`,
    `.cursor/skills/maestro/SKILL.md` ⇒ `cursor`, and
-   `.agents/skills/maestro/SKILL.md` ⇒ `codex`. If none is present, default to
+   `.agents/skills/maestro/SKILL.md` ⇒ `codex` (that one copy also serves Hermes Agent). If none is present, default to
    `claude-code`. Do not treat a generic `.agents/` folder as proof that Maestro was installed
    for Codex.
 2. **Run the installer with the detected filter.** Prefer the repo-local wrapper; fall back

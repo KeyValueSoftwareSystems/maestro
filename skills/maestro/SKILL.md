@@ -150,8 +150,8 @@ every non-empty served skill at exactly these repository-relative paths:
 `.agents/skills/<skill>/SKILL.md`, `.claude/skills/<skill>/SKILL.md`,
 `.cursor/skills/<skill>/SKILL.md`. Do not use `locate`, search parent/home/Desktop directories,
 or scan the wider filesystem. If no non-empty copy exists, do not mutate the run: name the
-missing skill, suggest `./maestro install codex`, `./maestro install claude-code`, or
-`./maestro install cursor`, then STOP. The cursor remains resumable.
+missing skill, suggest `./maestro install codex`, `./maestro install claude-code`,
+`./maestro install cursor`, or `./maestro install hermes`, then STOP. The cursor remains resumable.
 
 ### `run_agent`
 
@@ -165,6 +165,8 @@ Use ONE worker:
   you name the worker. Treat `model` as a host-specific hint: pass it only when Codex accepts
   that exact model identifier; never translate Claude aliases (`haiku`, `sonnet`, `opus`) to
   a guessed OpenAI model. Wait for the worker and use its returned last-line JSON.
+- **Any other host with a subagent tool** (for example Hermes Agent): as for Codex — one
+  subagent, the served `prompt` EXACTLY, `model` only when the host accepts that identifier.
 - **No subagent tool:** use inline mode below.
 - The subagent's reply ends with one JSON line (the action's `outputs` fields). Extract
   it and record:

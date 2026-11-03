@@ -13,10 +13,11 @@
 #
 # Two ways to run — no clone required either way:
 #   • Piped: curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/main/install.sh \
-#              | bash -s -- claude-code cursor codex
+#              | bash -s -- claude-code cursor codex hermes
 #   • From a checkout: /path/to/kv-skills/install.sh claude-code
 #
-# Bare words are harness targets: claude-code (default), cursor, and/or codex.
+# Bare words are harness targets: claude-code (default), cursor, codex and/or hermes.
+# codex and hermes share .agents/skills (the Agent Skills project folder both read).
 #
 # Stack filter (optional):
 #   --stack go,react   install core SDLC skills/agents + ONLY those tagged stack:go /
@@ -203,10 +204,13 @@ for agent in $AGENTS; do
       copy_tree commands "$DEST/.cursor/commands"
       # Cursor has no subagent registry; the Maestro skill degrades to inline mode.
       ;;
-    codex)
-      say "Installing skills for Codex${STACKS:+ (stacks: $STACKS)}"
-      # Codex discovers repository skills from .agents/skills and invokes them with
-      # `$skill-name`; its native subagents need no copied Claude agent definitions.
+    codex|hermes)
+      # Codex (`$skill-name`) and Hermes Agent (`/skill-name`, after `hermes skills trust`)
+      # both discover repository skills from .agents/skills; their native subagents need no
+      # copied Claude agent definitions. One copy serves both, recorded as host `codex`.
+      if [ -n "${AGENTS_SKILLS_DONE:-}" ]; then continue; fi
+      AGENTS_SKILLS_DONE=1
+      say "Installing skills for Codex / Hermes Agent (.agents/skills)${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.agents/skills" codex
       remove_retired_skills "$DEST/.agents/skills"
       ;;
@@ -258,6 +262,11 @@ case " $AGENTS " in
   *" codex "*)
     note 'Codex: open the repo and invoke  $maestro-init  (detect stack + build the knowledge base)'
     note 'Codex: then start a feature with $maestro my-feature'
+    ;;
+esac
+case " $AGENTS " in
+  *" hermes "*)
+    note 'Hermes Agent: run  hermes skills trust  in the repo, then  /maestro-init  and  /maestro my-feature'
     ;;
 esac
 case " $AGENTS " in
