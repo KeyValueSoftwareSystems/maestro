@@ -316,8 +316,10 @@ nodes:
       (${steps.infra_profile.outputs.platforms_csv}): scaling, capacity, failure domains, secrets,
       rollout and observability. When it is none, raise no infrastructure findings beyond what the
       requirement's targets need. Use the architecture-patterns skill and the matching
-      infrastructure pack as your reference. Findings need evidence; severity blocking only
-      for must-fix issues.
+      infrastructure pack as your reference. The decisions the person confirmed are in
+      .maestro/runs/${inputs.slug}/decision-log.md: a confirmed decision is not a finding unless it
+      breaks a requirement or carries a risk they may not have seen, and then say the finding
+      overrides it. Findings need evidence; severity blocking only for must-fix issues.
       Write every finding to .maestro/runs/${inputs.slug}/reviews/architecture-findings.json as well as
       the report (the engine decides from that file). If it exists from an earlier round, this is a
       re-review: read it and the author's resolutions at .maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json first. Mark a fixed finding
@@ -332,6 +334,7 @@ nodes:
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
+      decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
@@ -372,7 +375,9 @@ nodes:
         a finding the reviewer already upheld cannot be contested again;
       - escalated: it needs a person's decision — the note states the decision.
       Change only what the fixes need and keep every confirmed decision a finding does not
-      contradict. Keep open-questions.json consistent with the edit. If a fix needs a new
+      contradict. A finding that would overturn a decision the person confirmed is never fixed
+      silently: contest it, citing the decision, when the decision still meets the requirements;
+      otherwise escalate it so the person decides. Keep open-questions.json consistent with the edit. If a fix needs a new
       architecture decision the confirmed decisions cannot settle and you are not escalating it,
       return needs_clarification true; otherwise return false.
     skill: hld-writing

@@ -1,0 +1,12 @@
+skill: qa-automation
+name: no-fixed-sleeps
+prompt: |
+  You cannot run commands or write files. Reply with the Playwright spec you would write for
+  TC-order-export-001 (an admin clicks "Export CSV" on /reports and the download starts; the
+  button shows a spinner while the request runs), then your last-line JSON.
+must_include:
+  - 'TC-order-export-001'
+  - 'getByRole|getByTestId'
+  - 'waitForEvent\(.download.\)|expect\('
+must_not_include:
+  - 'waitForTimeout\(|setTimeout\(|sleep\('

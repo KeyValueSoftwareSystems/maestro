@@ -1,0 +1,16 @@
+skill: lld-writing
+name: contest-when-decision-holds
+prompt: |
+  Resolve the readiness reviewer's blocking findings. Reply with the resolutions file JSON only.
+  Findings file: {"schema_version": 1, "findings": [{"id": "R1", "severity": "blocking",
+  "area": "open-decision", "status": "open", "finding": "The backend LLD counts rows on the read
+  replica; switch the count to the primary database.", "evidence": "lld/backend.md#State and flows"}]}
+  Confirmed decisions: LLD-02 — the person chose the read replica for the row count
+  (chosen-alternative), accepting that the count can lag by up to 30 seconds, because exports are
+  admin-only reports and the primary is near capacity. Requirement: exports over 50,000 rows are
+  refused; nothing requires the count to be real-time.
+must_include:
+  - '"resolution"\s*:\s*"contested"'
+  - 'LLD-02|replica'
+must_not_include:
+  - '"resolution"\s*:\s*"fixed"'

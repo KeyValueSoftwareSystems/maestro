@@ -1,0 +1,17 @@
+skill: repo-review
+name: missing-authorization-blocks
+prompt: |
+  Review this change and reply with the findings file JSON, then your last-line JSON.
+  LLD: GET /exports is admin-only — non-admins get 403 {"error": {"code": "forbidden"}}.
+  Engine checks passed. Diff (reports/views.py):
+    +class ExportView(APIView):
+    +    permission_classes = [IsAuthenticated]
+    +    def get(self, request):
+    +        return stream_orders_csv(OrderQuery.filter(request.GET))
+  No test covers a non-admin request.
+must_include:
+  - '"severity"\s*:\s*"blocking"'
+  - '"area"\s*:\s*"(security|correctness|contract)"'
+  - '"blocking"\s*:\s*true'
+must_not_include:
+  - '"severity"\s*:\s*"blocker"'

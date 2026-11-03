@@ -1,0 +1,23 @@
+skill: hld-writing
+name: no-lld-detail
+prompt: |
+  Write the HLD in your reply (you cannot write files or run validators). Feature slug:
+  order-export.
+  Approved PRD: admins export the filtered orders report as CSV from the reports page (AC-01);
+  more than 50,000 rows are refused with a message naming the limit (AC-02). Non-functional
+  requirements: None beyond the existing service standards.
+  Confirmed decisions: synchronous streamed download from the Django service (chosen-alternative;
+  async job rejected); the React admin app adds the button (accepted-proposal). Nothing was
+  deferred. Codebase map: one Django service and one React admin app; no infrastructure
+  definitions in the workspace.
+must_include:
+  - '^#.*HLD'
+  - '^## Decision summary'
+  - '^## Interfaces'
+  - '^## Key decisions and trade-offs'
+  - '^## Open questions'
+  - 'async'
+must_not_include:
+  - 'varchar|VARCHAR|PRIMARY KEY|CREATE TABLE'
+  - '^## Infrastructure and operations'
+  - '\bTBD\b'

@@ -88,6 +88,16 @@ class FindingsTest(unittest.TestCase):
         self.assertEqual((result["state"], result["escalated_csv"]), ("escalate", "F2"))
         self.assertIn("contest already rejected", result["summary"])
 
+    def test_answers_from_an_earlier_round_do_not_count(self):
+        # round 1 answered F1; the re-review keeps it open and is written after those answers
+        self.write(self.f, {"findings": [finding("F1")]})
+        self.resolve([{"id": "F1", "resolution": "fixed", "note": "done"}])
+        self.write(self.f, {"findings": [finding("F1")]})
+        old = os.stat(self.f).st_mtime_ns - 1_000_000_000
+        os.utime(self.r, ns=(old, old))
+        result = self.run_cmd("resolve", "--findings", self.f, "--resolutions", self.r)
+        self.assertEqual((result["state"], result["missing_csv"]), ("incomplete", "F1"))
+
     def test_nothing_blocking_proceeds(self):
         self.write(self.f, {"findings": [finding("F1", status="resolved")]})
         self.assertEqual(self.resolve()["state"], "proceed")

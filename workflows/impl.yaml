@@ -1,8 +1,9 @@
 # Implementation phase for ONE selected repository.
 #
 # Showcases: a repo-parameterized workflow, engine-validated task DAGs, exact git
-# handoffs, engine-run verification (build/lint/test from maestro.config.yaml), and a bounded
-# fix cycle built from a visit-capped back-edge.
+# handoffs, engine-run verification (build/lint/test from maestro.config.yaml), a code review
+# decided from its findings file (the author fixes, contests or escalates each blocking finding),
+# and a bounded fix cycle built from a visit-capped back-edge.
 version: 1
 name: impl
 title: Implement one repository
@@ -28,7 +29,10 @@ nodes:
       .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one). Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
       .maestro/engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
-      reported.
+      reported. If the LLD needs work it does not plan (a change in another repository, or an
+      unplanned migration, permission change or dependency), plan what it does plan and return
+      escalate true with the gap in escalation. Honour any human guidance:
+      ${steps.stop_gate.outputs.guidance}
     skill: repo-tasks
     agent: planner
     inputs:
@@ -36,11 +40,14 @@ nodes:
       stack: "${inputs.stack}"
       schema: .maestro/engine/schemas/tasks.schema.json
       validator: .maestro/engine/validate_tasks.py
-    outputs: [task_count, slice_count]
+      guidance: "${steps.stop_gate.outputs.guidance}"
+    outputs: [task_count, slice_count, escalate, escalation]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
     max_visits: 3
     on_exhausted: abort
-    next: validate_tasks
+    routes:
+      - {when: "${steps.tasks.outputs.escalate} == true", to: stop_gate}
+      - {to: validate_tasks}
 
   - id: validate_tasks
     type: script
@@ -62,7 +69,12 @@ nodes:
       maintained codebase map
       at ${inputs.repo_path}/docs/codebase-map.md. Explore
       the live source further only where the map or LLD doesn't cover what a slice
-      touches. Report tests honestly.
+      touches. Report tests honestly. The approved LLD and contract are the human approval for
+      what they describe, including tasks marked needs_human_gate: build those exactly as
+      designed. When the work needs something they do not describe (an unplanned migration,
+      permission change, payment logic, production config, secret or dependency upgrade, or a
+      design decision that looks wrong), stop and return escalate true with the reason in
+      escalation. Honour any human guidance: ${steps.stop_gate.outputs.guidance}
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-implement
@@ -73,11 +85,28 @@ nodes:
       tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
       repo_path: "${inputs.repo_path}"
       branch: "feature/${inputs.slug}-${inputs.stack}"
+      guidance: "${steps.stop_gate.outputs.guidance}"
       stack_skills: "${inputs.stack_skills}"
-    outputs: [branch, worktree, commit, summary, tests_passed]
+    outputs: [branch, worktree, commit, summary, tests_passed, escalate, escalation]
     retries: 1
     max_visits: 3
-    next: handoff
+    routes:
+      - {when: "${steps.implement.outputs.escalate} == true", to: stop_gate}
+      - {to: handoff}
+
+  - id: stop_gate
+    type: gate
+    label: Implementation needs a decision
+    prompt: |
+      The ${inputs.stack} implementation stopped because the work needs something the approved
+      design does not describe.
+      Task planning: ${steps.tasks.outputs.escalation}
+      Implementation: ${steps.implement.outputs.escalation}
+      Continue with your guidance (it reaches the planner and the implementer), or stop. A change
+      to the design itself goes back through design: abort here and revise the LLD.
+    options:
+      - {id: continue, label: Continue with my guidance, to: tasks, input: guidance}
+      - {id: abandon, label: Abort this stack, to: abort}
 
   - id: handoff
     type: script
@@ -130,20 +159,28 @@ nodes:
     instruction: |
       Review the ${inputs.stack} implementation on branch
       ${steps.handoff.outputs.branch} at exact commit ${steps.handoff.outputs.commit}
-      against the LLD, contract, standards and the
-      maintained codebase map (docs/codebase-map.md in the ${inputs.stack} repo) — use the
-      map to check blast radius, not just the diff in isolation. Build, lint and tests already
+      against the LLD at .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md, the contract at
+      .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one), the task list at
+      .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json, the functional test cases at
+      .maestro/runs/${inputs.slug}/test-cases.md, the standards and the maintained codebase map
+      (docs/codebase-map.md in the ${inputs.stack} repo) — use the map to check blast radius, not
+      just the diff in isolation. Check every task in the task list is built; look closely at the
+      tasks marked needs_human_gate. Build, lint and tests already
       passed in the engine's run (receipt: ${steps.verify.outputs.receipt_path}); review the
       design and code, not whether it compiles. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed}. For each one, state in the report
       whether the change follows the approved design; a weakened, skipped or deleted assertion
-      without that basis is blocking. Findings need file:line evidence; set blocking=true only
+      without that basis is blocking. Findings need file:line evidence; severity blocking only
       for must-fix issues. Record the reviewed commit at the top of the report.
-      If the report from an earlier round exists at
-      .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md, this is a re-review after a
-      fix (${steps.fix.outputs.fix_summary}): read it first, review only the diff from the commit
-      it records to this commit, confirm each earlier blocking finding is resolved, and do not
-      re-audit unchanged code. Then overwrite the report.
+      Write every finding to .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json as
+      well as the report (the engine decides from that file). If it exists from an earlier round,
+      this is a re-review after a fix (${steps.fix.outputs.fix_summary}): read it, the report and
+      the author's resolutions at
+      .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json first; review only the
+      diff from the commit the report records to this commit; mark a fixed finding resolved; for a
+      contested one, mark it withdrawn when the author is right or upheld with your reason; keep
+      finding ids stable and give new findings new ids. Do not re-audit unchanged code. Then
+      overwrite both files.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-review
@@ -155,21 +192,39 @@ nodes:
       worktree: "${steps.handoff.outputs.worktree}"
       commit: "${steps.handoff.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
+      lld_path: ".maestro/runs/${inputs.slug}/lld/${inputs.stack}.md"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
+      test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
       previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+      findings_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"
       fix_summary: "${steps.fix.outputs.fix_summary}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
       stack_skills: "${inputs.stack_skills}"
     outputs: [review_path, blocking, summary]
-    artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+      - ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
     fresh: true
     max_visits: 5
     on_exhausted: impl_gate
-    # Only engine-produced signals route this loop: verify decides build/test health and the
-    # review decides design findings. Agent-reported `tests_passed`/`checks_passed` never do.
+    next: review_verdict
+
+  # Only engine-produced signals route this loop: verify decides build/test health and
+  # findings.py decides from the review's findings file. Agent-reported `blocking`,
+  # `tests_passed` and `checks_passed` never do.
+  - id: review_verdict
+    type: script
+    label: Blocking review findings?
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"]
+    max_visits: 8
+    on_exhausted: impl_gate
     routes:
-      - {when: "${steps.review.outputs.blocking} == true", to: fix}
+      - {when: "${steps.review_verdict.outputs.valid} == false", to: review}
+      - {when: "${steps.review_verdict.outputs.blocking} == true", to: fix}
       - {to: end}
 
   - id: fix
@@ -180,11 +235,20 @@ nodes:
       ${steps.handoff.outputs.worktree}. Address what sent you here:
       - failing engine checks "${steps.verify.outputs.failed_checks}" — read the receipt at
         ${steps.verify.outputs.receipt_path} and the logs it names;
-      - blocking review findings in ${steps.review.outputs.review_path}, when that report exists.
+      - blocking review findings (status open or upheld) in
+        .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json, when that file exists:
+        answer each one in .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json as
+        {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed (the note says
+        what changed), contested (the finding is wrong; the note gives the evidence from the LLD,
+        contract or code; never a second time for a finding the reviewer upheld) or escalated (it
+        needs a person's decision; the note states it). The report is
+        ${steps.review.outputs.review_path}.
       Smallest safe fix; never weaken, skip or delete a test. Start from the implement report
       (${steps.implement.outputs.summary}) instead of rediscovering context. Re-run the failing
       commands before returning; the engine re-verifies after you. Commit your fix on the branch.
-      Honour any human guidance: ${steps.impl_gate.outputs.guidance}
+      If a hard stop applies (an unapproved migration, a contract or permission change, a
+      dependency upgrade, or a fix that would weaken a test), make no change and return escalate
+      true. Honour any human guidance: ${steps.impl_gate.outputs.guidance}
       Do NOT loop — the workflow re-invokes you if needed.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
@@ -197,22 +261,43 @@ nodes:
       worktree: "${steps.handoff.outputs.worktree}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       review_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
+      findings_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"
       implement_summary: "${steps.implement.outputs.summary}"
       guidance: "${steps.impl_gate.outputs.guidance}"
       stack_skills: "${inputs.stack_skills}"
-    outputs: [fix_summary, checks_passed]
+    outputs: [fix_summary, checks_passed, escalate]
     max_visits: 3
     on_exhausted: impl_gate
-    next: handoff
+    routes:
+      - {when: "${steps.fix.outputs.escalate} == true", to: impl_gate}
+      - {to: review_resolution}
+
+  # Engine-owned: each blocking finding must be fixed, contested or escalated. An escalation, or
+  # a second contest of a finding the reviewer upheld, goes to the person; a fix for failing
+  # checks alone (no blocking finding) proceeds.
+  - id: review_resolution
+    type: script
+    label: Findings fixed, contested or escalated?
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --resolutions, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"]
+    max_visits: 8
+    on_exhausted: impl_gate
+    routes:
+      - {when: "${steps.review_resolution.outputs.state} == escalate", to: impl_gate}
+      - {when: "${steps.review_resolution.outputs.state} == incomplete", to: fix}
+      - {to: handoff}
 
   - id: impl_gate
     type: gate
     label: Implementation escalation
     prompt: |
-      The ${inputs.stack} implementation still has problems after the automated fix
-      rounds.
+      The ${inputs.stack} implementation needs a decision: the automated fix rounds ran out, or
+      the fixer escalated.
       Engine checks: ${steps.verify.outputs.summary}
       Last review: ${steps.review.outputs.summary}
+      Blocking findings (engine): ${steps.review_verdict.outputs.summary}
+      Escalated: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
+      Last fix: ${steps.fix.outputs.fix_summary}
       Branch: ${steps.handoff.outputs.branch}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}

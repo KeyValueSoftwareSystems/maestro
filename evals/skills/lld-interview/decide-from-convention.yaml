@@ -1,0 +1,18 @@
+skill: lld-interview
+name: decide-from-convention
+prompt: |
+  Write the next repository question queue (schema_version 2) as JSON in your reply.
+  Repository: backend (Django). Approved HLD: synchronous streamed CSV export, admin-only,
+  50,000-row cap refused with 422.
+  Code evidence: every existing CSV report in reports/views.py streams with Python's `csv`
+  module through `StreamingHttpResponse`; every admin view uses the `IsAdmin` permission class
+  (reports/permissions.py:12); errors use `error_response(status, code)` (core/errors.py:8).
+  Open gap: whether the row count is checked against the primary database or the read replica
+  (the replica can lag by up to 30 seconds).
+  Confirmed LLD decisions so far: none. Decision log: empty.
+must_include:
+  - '"schema_version"\s*:\s*2'
+  - 'replica'
+  - '"settled"'
+must_not_include:
+  - '"question"\s*:\s*"[^"]*(which|what) (csv )?(library|permission class|error helper)'

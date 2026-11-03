@@ -19,8 +19,9 @@ name.
 
 - **Small, verifiable tasks** — about one commit and one testable behavior each, with exact
   reads and writes, a concrete test to write first, the standards it must honor, and whether
-  it needs a human gate (migrations, auth/permission, payments, production config,
-  dependencies).
+  it touches a sensitive area (`needs_human_gate`: migrations, auth/permission, payments,
+  production config, dependencies) — the approved LLD already authorizes it; the flag makes the
+  implementer build it exactly as designed and the review check it closely.
 - **Slices** — split work into independent slices with disjoint writes; dependencies may only
   point within a slice. Prefer a thin end-to-end slice before breadth.
 - **Order** — types and schema → domain logic → persistence → API, UI or entry point → tests →
@@ -33,8 +34,11 @@ The plan as a whole includes tasks for input validation and error responses, the
 negative and authorization paths, idempotency and rate limits where required, migration plus
 backfill and rollback when the schema changes, every required UI state, observability, and
 framework-native verification for this repository's technology. Add characterization tests
-before touching untested legacy code, and flag any task that needs a coordinated change in
-another repository.
+before touching untested legacy code.
+
+**Gaps in the design.** If the LLD needs work it does not plan — a change in another repository,
+an unplanned migration, permission change or dependency — do not plan around it. Plan what the
+LLD does plan, then return `escalate` true with the gap in `escalation`.
 
 ## Validate
 
@@ -43,4 +47,5 @@ returning. Never return an invalid task file.
 
 ## Output contract
 
-Return `task_count` and `slice_count` as short scalar JSON fields on the last line.
+Return `task_count` and `slice_count`, literal boolean `escalate`, and `escalation` (one line
+naming the gap, or `None`) as short scalar JSON fields on the last line.

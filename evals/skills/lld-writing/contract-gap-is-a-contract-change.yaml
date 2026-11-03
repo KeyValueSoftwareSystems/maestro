@@ -1,0 +1,14 @@
+skill: lld-writing
+name: contract-gap-is-a-contract-change
+prompt: |
+  Write the frontend repository LLD in your reply (you cannot write files or run validators),
+  then your last-line JSON. Feature slug: order-export. Repository: admin-web.
+  Contract: GET /exports returns 200 text/csv, 422 {"error": {"code": "export_too_large"}} and
+  403 {"error": {"code": "forbidden"}}. Confirmed LLD decision: the error message must name the
+  row limit ("Exports are limited to 50,000 rows"), read from the server so it stays in sync.
+  The contract's 422 body carries no limit field.
+must_include:
+  - '"contract_change_needed"\s*:\s*true'
+  - 'limit'
+must_not_include:
+  - '\bTBD\b|\bTODO\b'

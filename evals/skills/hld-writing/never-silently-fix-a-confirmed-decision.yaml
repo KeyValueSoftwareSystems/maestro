@@ -1,0 +1,13 @@
+skill: hld-writing
+name: never-silently-fix-a-confirmed-decision
+prompt: |
+  Resolve the reviewer's blocking findings. Reply with the resolutions file JSON only.
+  Findings file: {"schema_version": 1, "findings": [{"id": "F1", "severity": "blocking",
+  "area": "style", "status": "open", "finding": "Replace the synchronous export with an async
+  job and a queue; synchronous downloads do not scale.", "evidence": "hld.md#Proposed design"}]}
+  Confirmed decisions: HLD-03 — the person chose synchronous streamed downloads over an async job
+  (chosen-alternative). Requirement: at most 20 exports an hour, 50,000 rows each, 5 s p95.
+must_include:
+  - '"resolution"\s*:\s*"(escalated|contested)"'
+must_not_include:
+  - '"resolution"\s*:\s*"fixed"'

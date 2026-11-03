@@ -97,6 +97,7 @@ nodes:
 
       Write schema version 2 with 3-7 grouped questions when several gaps remain, fewer when nearly
       clear, and an empty queue only when every blocking decision is concrete and consistent and
+      the latest direction is confirmed. Validate it before completing.
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
       decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
       change (ownership, failure handling, rollout).
@@ -106,7 +107,6 @@ nodes:
       `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
       document, the code or the docs already settle a point, record it under `settled`
       ({topic, title, decision, source: "<path>[#section|:line]"}) instead of asking.
-      the latest direction is confirmed. Validate it before completing.
       If validator_feedback names defects (anything other than "Question queue is valid"), the
       previous queue failed validation: fix only those defects in the existing file and validate
       again — do not rebuild the queue or re-read sources.
@@ -219,9 +219,7 @@ nodes:
     outputs: [summary, contract_change_needed, contract_change]
     artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
     max_visits: 4
-    routes:
-      - {when: "${steps.author_llds.outputs.contract_change_needed} == true", to: contract_change}
-      - {to: validate_lld_post_questions}
+    next: validate_lld_post_questions
 
   - id: validate_lld_post_questions
     type: script
@@ -230,6 +228,8 @@ nodes:
     routes:
       - {when: "${steps.validate_lld_post_questions.outputs.valid} == false", to: author_llds}
       - {when: "${steps.validate_lld_post_questions.outputs.state} == ask", to: lld_post_interview}
+      # a contract change is applied only after the post-check is clean, so no gap is skipped
+      - {when: "${steps.author_llds.outputs.contract_change_needed} == true", to: contract_change}
       - {to: validate_llds}
 
   - id: lld_post_interview
@@ -257,9 +257,11 @@ nodes:
     type: agent
     label: Update the contract for a repository need
     instruction: |
-      Apply this requested change to the contract at .maestro/runs/${inputs.slug}/openapi.yaml
-      (create it if no contract exists yet): ${steps.author_llds.outputs.contract_change}
-      ${steps.revise_llds.outputs.contract_change}
+      Apply the requested change to the contract at .maestro/runs/${inputs.slug}/openapi.yaml
+      (create it if no contract exists yet). A request below may be one an earlier round already
+      applied; apply only what the contract does not already include:
+      - from writing the LLDs: ${steps.author_llds.outputs.contract_change}
+      - from revising them: ${steps.revise_llds.outputs.contract_change}
       Keep every unaffected operation unchanged and flag the change as breaking or additive.
     skill: api-contract
     inputs:
@@ -371,9 +373,12 @@ nodes:
       left to the implementer, every LLD consistent with the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and with each other, and every
       acceptance criterion in .maestro/runs/${inputs.slug}/requirement/ covered by an LLD section
-      and a test case. Every change in the HLD's Infrastructure and operations section (when it
-      lists any) needs an LLD in the repository that owns that infrastructure; a missing one is
-      blocking. This is not an architecture review; the HLD was reviewed and approved.
+      and a test case. Every change in the Infrastructure and operations section of the HLD at
+      .maestro/runs/${inputs.slug}/hld.md (absent on the light path) needs an LLD in the repository
+      that owns that infrastructure; a missing one is blocking. This is not an architecture review;
+      the HLD was reviewed and approved. The decisions the person confirmed are in
+      .maestro/runs/${inputs.slug}/decision-log.md: a confirmed decision is not a finding unless it
+      breaks a requirement, and then say the finding overrides it.
       Write every finding to .maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json as well as
       the report (the engine decides from that file; severity blocking only for must-fix). If it
       exists from an earlier round, this is a re-review: read it and the author's resolutions at
@@ -388,8 +393,10 @@ nodes:
       slug: "${inputs.slug}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
       test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
@@ -454,7 +461,10 @@ nodes:
         person's decision; the note states it);
       - the contract changed (${steps.contract_change.outputs.contract_summary}): bring every LLD
         that implements or calls the changed operation in line with it.
-      Change only the sections affected; keep every confirmed decision. If a change needs a new
+      Change only the sections affected; keep every confirmed decision. A finding that would
+      overturn a decision the person confirmed is never fixed silently: contest it, citing the
+      decision, when the decision still meets the requirements; otherwise escalate it so the person
+      decides. If a change needs a new
       repository decision the confirmed decisions cannot settle, do not guess: return
       needs_clarification true. If it needs a contract change, return contract_change_needed true
       with the change described in contract_change.

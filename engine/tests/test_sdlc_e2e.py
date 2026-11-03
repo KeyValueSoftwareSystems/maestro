@@ -54,9 +54,10 @@ def canned_agent_outputs(step, action):
                                "needs_clarification": False},
         "readiness_review": {"review_path": "reviews/lld-readiness.md", "blocking": False,
                              "summary": "ready"},
-        "tasks": {"task_count": 4, "slice_count": 2},
+        "tasks": {"task_count": 4, "slice_count": 2, "escalate": False, "escalation": "None"},
         "implement": {"branch": "feature/x", "worktree": "/tmp/simulated",
-                      "commit": "0" * 40, "summary": "built", "tests_passed": True},
+                      "commit": "0" * 40, "summary": "built", "tests_passed": True,
+                      "escalate": False, "escalation": "None"},
         "review": {"review_path": "reviews/summary.md", "blocking": False, "summary": "clean"},
         "fix": {"fix_summary": "fixed", "checks_passed": True, "escalate": False},
         "qa_run": {"passed": True, "failed_count": 0, "summary": "all green"},
@@ -261,7 +262,7 @@ class SdlcE2E(unittest.TestCase):
         """What a reviewer and its author write beside their reports: the reviewer's findings
         (one open blocking finding exactly when it reports blocking) and the author's resolutions
         (every active blocking finding fixed)."""
-        findings = next((rel for rel in act.get("artifacts", []) if rel.endswith("-findings.json")),
+        findings = next((rel for rel in act.get("artifacts", []) if rel.endswith("findings.json")),
                         None)
         if findings:
             items = ([{"id": "F1", "severity": "blocking", "area": "fit", "status": "open",
@@ -273,10 +274,16 @@ class SdlcE2E(unittest.TestCase):
                             if rel.endswith("-resolutions.json")), None)
         if node == "revise_llds":
             resolutions = ".maestro/runs/demo/reviews/lld-readiness-resolutions.json"
+        if node == "fix":
+            # the code-review fixer names its resolutions file in the prompt, not as an artifact
+            match = re.search(r"\.maestro/runs/demo/[\w-]+/reviews/resolutions\.json",
+                              act.get("prompt", ""))
+            resolutions = match.group(0) if match else None
         if resolutions:
             Path(self.tmp, resolutions).parent.mkdir(parents=True, exist_ok=True)
             Path(self.tmp, resolutions).write_text(json.dumps({"schema_version": 1, "resolutions": [
-                {"id": "F1", "resolution": "fixed", "note": "added the mechanism"}]}))
+                {"id": "F1", "resolution": getattr(self, "fix_resolution", "fixed"),
+                 "note": "added the mechanism"}]}))
 
     def write_llds(self, slug="demo"):
         """What the LLD writer produces: one LLD per selected repository at lld/<repo>.md."""
@@ -345,7 +352,8 @@ class SdlcE2E(unittest.TestCase):
         commit = subprocess.run(["git", "-C", worktree, "rev-parse", "HEAD"], check=True,
                                 capture_output=True, text=True).stdout.strip()
         return {"branch": branch, "worktree": worktree, "commit": commit,
-                "summary": "built", "tests_passed": True}
+                "summary": "built", "tests_passed": True, "escalate": False,
+                "escalation": "None"}
 
     # -- driver ----------------------------------------------------------
 
@@ -745,7 +753,8 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         bugfix = [s for s in steps if s.startswith("delivery/bugfix/")]
         self.assertEqual([s.rsplit("/", 1)[-1] for s in bugfix],
-                         ["fix", "handoff", "verify", "review"])
+                         ["fix", "review_resolution", "handoff", "verify", "review",
+                          "review_verdict"])
         self.assertEqual(steps.count("delivery/finalize_implementation"), 2)
         self.assertEqual(steps.count("delivery/qa/qa_run"), 2)
         self.assertEqual(steps.count("delivery/qa/env_down"), 2)
@@ -1132,7 +1141,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("author_llds")
-        self.assertEqual(lld[start:start + 5], ["author_llds", "contract_change", "revise_llds",
+        # the post-check is validated first, so a gap it records is never skipped
+        self.assertEqual(lld[start:start + 6], ["author_llds", "validate_lld_post_questions",
+                                                "contract_change", "revise_llds",
                                                 "readiness_resolution", "validate_llds"])
         approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
         self.assertEqual(approval["contract_sha256"], statemod.sha256_file(str(contract)))
@@ -1247,7 +1258,8 @@ class SdlcE2E(unittest.TestCase):
 
         def fix_outputs():
             os.remove(broken)
-            return {"fix_summary": "fixed the failing test", "checks_passed": True}
+            return {"fix_summary": "fixed the failing test", "checks_passed": True,
+                    "escalate": False}
 
         self.implementation_outputs = implementation_outputs
         gates = {
@@ -1264,8 +1276,9 @@ class SdlcE2E(unittest.TestCase):
                     if s.startswith(f"delivery/implement[{slot}]/impl/")]
 
         # slot_1 claims backend (repos are claimed in name order); slot_2 claims frontend
-        self.assertEqual(slot_steps("slot_1")[-5:], ["verify", "fix", "handoff", "verify", "review"])
-        self.assertEqual(slot_steps("slot_2")[-2:], ["verify", "review"])
+        self.assertEqual(slot_steps("slot_1")[-7:], ["verify", "fix", "review_resolution", "handoff",
+                                                      "verify", "review", "review_verdict"])
+        self.assertEqual(slot_steps("slot_2")[-3:], ["verify", "review", "review_verdict"])
         receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "backend",
                                   "verify.json").read_text())
         self.assertTrue(receipt["passed"])
@@ -1274,6 +1287,109 @@ class SdlcE2E(unittest.TestCase):
                                    "implementation-manifest.json").read_text())
         statuses = {r["repo"]: r["verification"]["status"] for r in manifest["repositories"]}
         self.assertEqual(statuses, {"backend": "verified", "frontend": "verified"})
+
+    IMPL_GATES = {
+        "design/prd/prd_approval": [("approve", None)],
+        "design/hld/hld_approval": [("approve", None)],
+        "design/lld/lld_scope": [("all", None)],
+        "review/contract_approval": [("approve", None)],
+        "delivery/release_approval": [("approve", None)],
+    }
+
+    @staticmethod
+    def impl_steps(trace, node):
+        """The impl steps of the first repository slot that ran `node` (slots interleave)."""
+        slot = next(s.split("]")[0] for _, s in trace if s.endswith(f"/impl/{node}"))
+        return [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith(slot + "]/impl/")]
+
+    def test_blocking_code_review_is_decided_from_the_findings_file(self):
+        """The reviewer's own flag says clean, its findings file says blocking: the file wins,
+        the fixer answers the finding, and the re-review clears it."""
+        self.prep_tasks_json()
+        calls = []
+
+        def review():
+            calls.append(1)
+            # first review: a blocking finding in the file (write_review_files keys off this)
+            return {"review_path": "reviews/summary.md", "blocking": len(calls) == 1,
+                    "summary": "clean"}
+        action, trace = self.drive(dict(self.IMPL_GATES), agent_overrides={"review": review})
+        self.assertEqual(action["action"], "done", action)
+        steps = self.impl_steps(trace, "fix")
+        start = steps.index("review_verdict")
+        self.assertEqual(steps[start:start + 7], ["review_verdict", "fix", "review_resolution",
+                                                  "handoff", "verify", "review", "review_verdict"])
+
+    def test_escalated_review_finding_goes_to_a_person(self):
+        self.prep_tasks_json()
+        self.fix_resolution = "escalated"
+        calls = []
+
+        def review():
+            calls.append(1)
+            return {"review_path": "reviews/summary.md", "blocking": len(calls) == 1,
+                    "summary": "1 blocking" if len(calls) == 1 else "clean"}
+        gates = dict(self.IMPL_GATES)
+        for slot in ("slot_1", "slot_2"):
+            gates[f"delivery/implement[{slot}]/impl/impl_gate"] = [("accept", None)]
+        action, trace = self.drive(gates, agent_overrides={"review": review})
+        self.assertEqual(action["action"], "done", action)
+        steps = self.impl_steps(trace, "fix")
+        start = steps.index("fix")
+        self.assertEqual(steps[start:start + 3], ["fix", "review_resolution", "impl_gate"])
+        gate = next(p[0] for st, p in self.prompts.items() if st.endswith("/impl/impl_gate"))
+        self.assertIn("F1", gate)
+
+    def test_fix_hard_stop_goes_to_a_person(self):
+        """fix-loop's escalate (an unapproved migration, a contract change) is never ignored."""
+        self.prep_tasks_json()
+        calls = []
+
+        def review():
+            calls.append(1)
+            return {"review_path": "reviews/summary.md", "blocking": len(calls) == 1,
+                    "summary": "1 blocking" if len(calls) == 1 else "clean"}
+        gates = dict(self.IMPL_GATES)
+        for slot in ("slot_1", "slot_2"):
+            gates[f"delivery/implement[{slot}]/impl/impl_gate"] = [("accept", None)]
+        action, trace = self.drive(gates, agent_overrides={
+            "review": review,
+            "fix": {"fix_summary": "needs a migration the LLD does not plan",
+                    "checks_passed": False, "escalate": True}})
+        self.assertEqual(action["action"], "done", action)
+        steps = self.impl_steps(trace, "fix")
+        start = steps.index("fix")
+        self.assertEqual(steps[start:start + 2], ["fix", "impl_gate"])
+
+    def test_implementer_stop_goes_to_a_person_then_continues(self):
+        """Work the approved design does not describe stops the implementer; the person's
+        guidance reaches the planner and the implementer on the next pass."""
+        self.prep_tasks_json()
+        real_implementation_outputs = self.implementation_outputs
+        calls = []
+
+        def implementation_outputs(act):
+            calls.append(1)
+            outputs = real_implementation_outputs(act)
+            if len(calls) == 1:
+                outputs.update(escalate=True, escalation="needs an unplanned orders.tax column")
+            return outputs
+        self.implementation_outputs = implementation_outputs
+        gates = dict(self.IMPL_GATES)
+        for slot in ("slot_1", "slot_2"):
+            gates[f"delivery/implement[{slot}]/impl/stop_gate"] = [
+                ("continue", "Compute tax at read time; no new column.")]
+        action, trace = self.drive(gates)
+        self.assertEqual(action["action"], "done", action)
+        steps = self.impl_steps(trace, "stop_gate")
+        start = steps.index("stop_gate")
+        # the gate, then its guidance input, then a fresh plan
+        self.assertEqual(steps[start:start + 4], ["stop_gate", "stop_gate", "tasks",
+                                                  "validate_tasks"])
+        gate = next(p[0] for st, p in self.prompts.items() if st.endswith("/impl/stop_gate"))
+        self.assertIn("unplanned orders.tax column", gate)
+        replanned = [p for st, ps in self.prompts.items() if st.endswith("/impl/tasks") for p in ps]
+        self.assertTrue(any("Compute tax at read time" in p for p in replanned))
 
     def test_hld_clarifies_before_single_write(self):
         """The HLD resolves one grouped architecture round before writing once."""

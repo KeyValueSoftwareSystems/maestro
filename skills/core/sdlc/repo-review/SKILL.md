@@ -24,6 +24,9 @@ differs, report a blocking integrity finding instead of reviewing another checko
 
 ## Checklist
 
+- **Completeness** — every task in the task list your instructions name is built, and nothing
+  outside the LLD's scope is; a task marked as needing a human gate (migrations, permissions,
+  payments, production config, dependencies) matches the LLD exactly.
 - **Correctness** — logic matches the LLD and acceptance criteria; concurrency, transactions
   and idempotency for retried writes.
 - **Contract** — endpoints, payloads, error shape and status codes match exactly; a consumer
@@ -50,24 +53,40 @@ Every finding needs `file:line` evidence (quoted code, test or contract clause, 
 absence of one) and the smallest safe recommendation:
 
 ```
-- severity: blocker | major | minor | suggestion
-  area: correctness | contract | security | compatibility | data | reliability | performance | ui | observability | tests
+- severity: blocking | major | minor
+  area: completeness | correctness | contract | security | compatibility | data | reliability | performance | ui | observability | tests
   file: <path:line>
   evidence: <quote or gap>
   recommendation: <smallest safe change>
 ```
 
-Sort blocker → major → minor → suggestion. Any blocker or major makes `blocking=true`. Write
-the report outside the product worktree and record the reviewed commit at its top.
+Each finding has one severity, the same in the report and the findings file:
+
+- `blocking` — must change before this code ships: a correctness, security, contract or data-loss
+  defect, a missing task, or a weakened test without a design basis;
+- `major` — a real problem worth fixing that does not make the change unsafe to ship;
+- `minor` — style, naming, a suggestion.
+
+Sort blocking → major → minor. `blocking` is true exactly when a `blocking` finding is open or
+upheld. Write the report outside the product worktree and record the reviewed commit at its top.
+
+**Findings file.** When your instructions give a findings path, also write every finding there as
+JSON — the workflow decides from this file, not from your prose:
+`{"schema_version": 1, "findings": [{"id", "severity": "blocking" | "major" | "minor", "area",
+"finding", "evidence", "status": "open" | "upheld" | "withdrawn" | "resolved"}]}`. Keep ids stable
+across rounds; new findings get new ids.
 
 **Re-review.** When your instructions supply a previous review (a re-review after a fix), read it
-first and review only the diff from the commit it records to the supplied commit: confirm each
-earlier blocker/major is resolved and check the new change for regressions. Do not re-audit
-unchanged code or raise new minor findings on it.
+first, with the author's resolutions when your instructions give them, and review only the diff
+from the commit it records to the supplied commit. Mark a fixed finding `resolved` (or keep it
+`open` if the fix falls short) and answer each contest: `withdrawn` when the author is right,
+`upheld` with your reason when not. A contested finding is never silently dropped. Check the new
+change for regressions; do not re-audit unchanged code or raise new minor findings on it.
 
 ## Safety
 
-Read-only. Never edit product code, push, or change the worktree; write only the report.
+Read-only. Never edit product code, push, or change the worktree; write only the report and the
+findings file.
 
 ## Output contract
 

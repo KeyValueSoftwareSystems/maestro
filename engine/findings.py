@@ -21,6 +21,8 @@ The author answers every blocking finding still open or upheld:
         escalate    the author escalated one, or contested a finding the reviewer already upheld
                     (a finding is contested at most once)
         incomplete  a blocking finding has no resolution (back to the author)
+      A resolutions file older than the findings file answers an earlier review round and is
+      ignored, so the author must answer the current round.
 Both always exit 0; workflows route on the fields.
 """
 import argparse
@@ -42,6 +44,11 @@ def _read(path):
         return None, f"{path} is missing"
     except (OSError, ValueError) as exc:
         return None, f"{path} is not readable JSON: {exc}"
+
+
+def _older(path, than):
+    """True when `path` was last written before `than` (an earlier round's answers)."""
+    return os.stat(path).st_mtime_ns < os.stat(than).st_mtime_ns
 
 
 def load_findings(path):
@@ -103,7 +110,9 @@ def cmd_resolve(args):
                           "escalated_csv": "", "missing_csv": "",
                           "summary": "No blocking findings to resolve"}))
         return 0
-    doc, error = _read(args.resolutions) if os.path.exists(args.resolutions) else (None, None)
+    doc = None
+    if os.path.exists(args.resolutions) and not _older(args.resolutions, args.findings):
+        doc, _error = _read(args.resolutions)
     items = doc.get("resolutions") if isinstance(doc, dict) else None
     answers = {}
     for item in items if isinstance(items, list) else []:

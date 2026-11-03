@@ -28,8 +28,13 @@ fall back to the repository's main worktree. If a worktree cannot be created, st
 2. Follow the LLD's technology decisions (libraries, state management, API client, test
    frameworks). Do not introduce a new library or pattern; if a decision looks wrong, report
    it instead of substituting your own.
-3. Stop and ask a human before any task marked as needing a human gate, and before auth or
-   permission logic, payments, migrations, production config, secrets, or dependency upgrades.
+3. The approved LLD and contract are the human approval for what they describe. Build a task
+   marked as needing a human gate (migrations, permissions, payments, production config,
+   dependencies) exactly as the LLD says, and name it in your summary so the review checks it.
+   **Stop** when the work needs something the approved design does not describe — an unplanned
+   migration, auth or permission change, payment logic, production config, secret or dependency
+   upgrade, or a design decision that looks wrong: do not build around it; return `escalate`
+   true with the reason in `escalation` (see the output contract).
 
 ## Slices
 
@@ -119,5 +124,8 @@ Before returning, capture:
 ## Output contract
 
 Return `branch`, `worktree`, `commit`, `summary`, and literal boolean `tests_passed` in the
-last-line JSON object. The engine verifies that branch, worktree, and commit agree before QA
-can start.
+last-line JSON object, plus literal boolean `escalate` (true only when you stopped for something
+the approved design does not describe) and `escalation` (one line naming what needs deciding, or
+`None`). When you stop, still return every field: the branch and worktree you created and the
+last commit, or empty strings if you created none. The engine verifies that branch, worktree, and
+commit agree before QA can start.

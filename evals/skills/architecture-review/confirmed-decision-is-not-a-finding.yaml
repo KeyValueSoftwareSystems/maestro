@@ -1,0 +1,19 @@
+skill: architecture-review
+name: confirmed-decision-is-not-a-finding
+prompt: |
+  Review this HLD and reply with the findings file JSON only.
+  Requirement Non-functional requirements: exports of up to 50,000 rows return within 5 seconds
+  at p95; volume is at most 20 exports an hour.
+  Confirmed decisions (decision log): HLD-03 export-delivery — the person chose a synchronous
+  streamed CSV download over an async export job (source: chosen-alternative), because exports
+  are rare and admins want the file immediately.
+  HLD Proposed design: GET /exports streams rows from a read replica in 1,000-row pages straight
+  into the CSV response; the 50,000-row cap is checked with a COUNT before streaming starts and
+  refused with 422 when exceeded. Interfaces: the admin app calls GET /exports (synchronous).
+  Key decisions: synchronous streaming (async job rejected: needs a queue, storage and polling
+  for 20 exports an hour).
+must_include:
+  - '"findings"'
+must_not_include:
+  - '"severity"\s*:\s*"blocking"'
+  - '"severity"\s*:\s*"blocker"'

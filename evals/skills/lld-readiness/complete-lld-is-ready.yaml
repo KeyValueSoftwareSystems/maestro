@@ -1,0 +1,19 @@
+skill: lld-readiness
+name: complete-lld-is-ready
+prompt: |
+  Check this repository LLD for readiness and reply with the findings file JSON only.
+  Contract: GET /exports?status=<enum open|closed> returns 200 text/csv; 422 {"error":
+  {"code": "export_too_large", "limit": 50000}} when more than 50,000 rows match; 403
+  {"error": {"code": "forbidden"}} for non-admins.
+  LLD (backend) Proposed changes: add `ExportView` in `reports/views.py` behind the existing
+  `IsAdmin` permission; it counts matching orders with the existing `OrderQuery.filter()`, returns
+  the 422 envelope above when the count exceeds 50,000, otherwise streams rows with Python's
+  `csv` module through Django's `StreamingHttpResponse` in 1,000-row pages ordered by `id`.
+  Data model: No repository-owned persistence change. Implementation sequence: 1. view and
+  permission with a 403 test; 2. count check with a 422 test; 3. streaming with a 3-row CSV
+  golden test. Verification maps AC-01 (export works) to TC-export-001 and AC-02 (over-limit
+  refusal) to TC-export-002.
+must_include:
+  - '"findings"'
+must_not_include:
+  - '"severity"\s*:\s*"blocking"'

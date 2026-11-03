@@ -1,0 +1,14 @@
+skill: fix-loop
+name: contest-a-wrong-finding
+prompt: |
+  One fix attempt. You cannot run commands. Reply with the resolutions file JSON you would write,
+  then your last-line JSON.
+  Findings file: {"schema_version": 1, "findings": [{"id": "F1", "severity": "blocking",
+  "area": "contract", "status": "open", "finding": "GET /exports/{id} returns one object; it must
+  be paginated with a cursor.", "evidence": "reports/views.py:42"}]}
+  Contract: GET /exports/{id} returns a single Export object (200) or 404. The LLD says the same;
+  no list operation exists.
+must_include:
+  - '"resolution"\s*:\s*"contested"'
+must_not_include:
+  - '"resolution"\s*:\s*"fixed"'

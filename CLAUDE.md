@@ -154,7 +154,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
   `fixed`/`contested`/`escalated` answers → `proceed` (re-review), `incomplete` (back to the author)
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
-  The HLD architecture review and the LLD readiness check route on it.
+  A resolutions file older than the findings file answers an earlier round and is ignored. The HLD
+  architecture review, the LLD readiness check and the code reviews in `impl` / `qa-bugfix` route
+  on it (the code fixer, `fix-loop`, is the author there).
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.

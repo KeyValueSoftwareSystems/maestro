@@ -1,0 +1,19 @@
+skill: functional-testcases
+name: every-criterion-traced-exactly
+prompt: |
+  Write the functional test-case catalog in your reply (you cannot write files), then your
+  last-line JSON. Feature slug: order-export.
+  Acceptance criteria: AC-01 an admin downloads the filtered orders report as CSV; AC-02 more
+  than 50,000 matching rows are refused with a message naming the limit; AC-03 a non-admin never
+  sees the export button and gets 403 from GET /exports.
+  Contract: GET /exports returns 200 text/csv, 422 {"error": {"code": "export_too_large"}},
+  403 {"error": {"code": "forbidden"}}.
+must_include:
+  - '### TC-order-export-001'
+  - 'AC-01'
+  - 'AC-02'
+  - 'AC-03'
+  - '50,?000|50 000|50001|50,001'
+must_not_include:
+  - 'AC-0[4-9]'
+  - '\bTBD\b'

@@ -1,0 +1,22 @@
+skill: repo-review
+name: matching-change-is-clean
+prompt: |
+  Review this change and reply with the findings file JSON, then your last-line JSON.
+  LLD: GET /exports is admin-only (403 {"error": {"code": "forbidden"}} otherwise) and refuses
+  more than 50,000 rows with 422 {"error": {"code": "export_too_large", "limit": 50000}}.
+  Task list: t1 view + permission, t2 row-limit check; both done. Engine checks passed; no
+  existing test file changed.
+  Diff (reports/views.py):
+    +class ExportView(APIView):
+    +    permission_classes = [IsAdmin]
+    +    def get(self, request):
+    +        query = OrderQuery.filter(request.GET)
+    +        if query.count() > EXPORT_LIMIT:
+    +            return error_response(422, "export_too_large", limit=EXPORT_LIMIT)
+    +        return stream_orders_csv(query.order_by("id"))
+  Diff (reports/tests/test_export.py): new tests for 403 as a non-admin, 422 at 50,001 rows,
+  and a 3-row CSV golden file, all asserting status and body.
+must_include:
+  - '"blocking"\s*:\s*false'
+must_not_include:
+  - '"severity"\s*:\s*"blocking"'

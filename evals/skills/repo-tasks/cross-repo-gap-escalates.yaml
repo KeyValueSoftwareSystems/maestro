@@ -1,0 +1,11 @@
+skill: repo-tasks
+name: cross-repo-gap-escalates
+prompt: |
+  Plan the task DAG for the admin-web repository. You cannot write files or run validators;
+  reply with the tasks.json content and your last-line JSON.
+  Approved LLD (admin-web): show the export row limit from the 422 response body field `limit`.
+  Contract: the 422 body is {"error": {"code": "export_too_large"}} — no `limit` field, and the
+  backend LLD does not add one.
+must_include:
+  - '"escalate"\s*:\s*true'
+  - 'limit'

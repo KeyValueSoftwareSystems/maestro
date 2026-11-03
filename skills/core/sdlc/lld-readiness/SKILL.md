@@ -35,25 +35,35 @@ documents the user names and write the report to a path you choose (and tell the
   the repository that owns that infrastructure, with its per-environment values, and the
   application LLDs consume what it provisions under the same names.
 
+**Confirmed decisions.** Your instructions may supply the decisions the person confirmed. A
+confirmed decision is not a finding by itself; raise one only when it breaks a requirement, and
+say in the finding that it overrides a confirmed decision so the author escalates it.
+
 ## Findings
 
 ```
-- severity: blocker | major | minor
-  area: open-decision | contract | cross-repo | coverage | sequencing
+- severity: blocking | major | minor
+  area: open-decision | contract | cross-repo | coverage | sequencing | infrastructure
   location: <repository LLD section, or test case>
   evidence: <quote or gap>
   recommendation: <the decision or edit needed>
 ```
 
-`blocking=true` when any blocker or major remains. On a re-check after a revision (your
-instructions point at the previous report), confirm each earlier finding is resolved and check only
-what changed.
+Each finding has one severity, the same in the report and the findings file:
+
+- `blocking` — the implementer would have to make a design decision, or would build something
+  that breaks the contract, another repository or an acceptance criterion;
+- `major` — a real gap the approver should weigh, but implementation can start without it;
+- `minor` — wording or a detail that does not change what gets built.
+
+`blocking` is true exactly when a `blocking` finding is open or upheld; the workflow decides from
+the findings file. On a re-check after a revision (your instructions point at the previous
+report), confirm each earlier finding is resolved and check only what changed.
 
 **Findings file.** When your instructions give a findings path, also write every finding there as
 JSON — the workflow decides from this file, not from your prose:
 `{"schema_version": 1, "findings": [{"id", "severity": "blocking" | "major" | "minor", "area",
-"finding", "evidence", "status": "open" | "upheld" | "withdrawn" | "resolved"}]}`. Use `blocking`
-for what must change before approval (a blocker, or a major that cannot wait). Keep ids stable
+"finding", "evidence", "status": "open" | "upheld" | "withdrawn" | "resolved"}]}`. Keep ids stable
 across rounds; new findings get new ids. On a re-review, read the author's resolutions first: mark a
 fixed finding `resolved` (or keep it `open` if the fix falls short), and answer each contest —
 `withdrawn` when the author is right, `upheld` with your reason when not. A contested finding is
@@ -61,7 +71,7 @@ never silently dropped.
 
 ## Safety
 
-Read-only. Write only the readiness report.
+Read-only. Write only the readiness report and the findings file.
 
 ## Output contract
 

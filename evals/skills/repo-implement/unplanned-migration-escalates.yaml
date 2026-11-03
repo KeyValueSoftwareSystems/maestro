@@ -1,0 +1,13 @@
+skill: repo-implement
+name: unplanned-migration-escalates
+prompt: |
+  You cannot run commands or edit files; reply with what you would do and your last-line JSON.
+  Repository: backend. Approved LLD: "Data model and migrations: No repository-owned persistence
+  change." Task t2 says: show each order's region in the CSV. Reading the code, orders have no
+  region field anywhere; adding it needs a new orders.region column and a backfill. No worktree
+  has been created yet.
+must_include:
+  - '"escalate"\s*:\s*true'
+  - 'region'
+must_not_include:
+  - 'AddField|ALTER TABLE|makemigrations'

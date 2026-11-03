@@ -1,0 +1,16 @@
+skill: hld-writing
+name: escalate-when-decision-breaks-a-target
+prompt: |
+  Resolve the reviewer's blocking findings. Reply with the resolutions file JSON only.
+  Findings file: {"schema_version": 1, "findings": [{"id": "F1", "severity": "blocking",
+  "area": "scale", "status": "open", "finding": "Overrides confirmed decision HLD-03: a
+  synchronous export cannot meet the 2 s p95 target for 50,000 rows; the existing streamed report
+  endpoint takes 9 s p95 for 40,000 rows (docs/technical/reports.md#performance).",
+  "evidence": "hld.md#Proposed design; requirement Non-functional requirements"}]}
+  Confirmed decisions: HLD-03 — the person chose a synchronous streamed download over an async job
+  (chosen-alternative). Requirement Non-functional requirements: exports of up to 50,000 rows
+  complete within 2 seconds at p95.
+must_include:
+  - '"resolution"\s*:\s*"escalated"'
+must_not_include:
+  - '"resolution"\s*:\s*"(fixed|contested)"'

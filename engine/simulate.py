@@ -208,8 +208,8 @@ def _stub_agent(root, act, slug=None):
             elif rel.endswith("/hld.md"):
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write(_simulated_hld())
-            elif rel.endswith("-findings.json") or rel.endswith("-resolutions.json"):
-                key = "findings" if rel.endswith("-findings.json") else "resolutions"
+            elif rel.endswith("findings.json") or rel.endswith("resolutions.json"):
+                key = "findings" if rel.endswith("findings.json") else "resolutions"
                 with open(full, "w", encoding="utf-8") as fh:
                     json.dump({"schema_version": 1, key: []}, fh)
                     fh.write("\n")

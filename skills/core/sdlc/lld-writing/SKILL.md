@@ -150,6 +150,10 @@ resolutions path, answer every blocking finding whose status is `open` or `uphel
 - `escalated` — it needs a person's decision (budget, product trade-off, ownership); the note
   states the decision exactly. Escalate instead of guessing.
 
+A finding that would overturn a decision the person confirmed is never `fixed` silently: contest
+it, citing the decision, when the decision still meets the requirements; otherwise escalate it so
+the person decides. Only the person who made a decision changes it.
+
 ## Safety
 
 Write only the supplied LLDs and post-question queue. Never edit source, the HLD, the contract,

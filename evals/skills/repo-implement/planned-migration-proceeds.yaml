@@ -1,0 +1,13 @@
+skill: repo-implement
+name: planned-migration-proceeds
+prompt: |
+  You cannot run commands or edit files; reply with your plan for task t1 and your last-line JSON
+  as if the work were done (use branch feature/order-export-backend, worktree /work/backend,
+  commit 0000000000000000000000000000000000000000, tests_passed false since nothing ran).
+  Repository: backend. Approved LLD, Data model and migrations: add nullable `exported_at`
+  (timestamptz, default null) to `orders`, expand-only migration, no backfill, backout drops the
+  column. Task t1 (needs_human_gate: true): add that migration with a test that the column exists
+  and is nullable.
+must_include:
+  - '"escalate"\s*:\s*false'
+  - 'exported_at'

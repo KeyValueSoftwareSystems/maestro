@@ -1,0 +1,18 @@
+skill: api-contract
+name: only-listed-interfaces
+prompt: |
+  Write the contract as OpenAPI YAML in your reply (you cannot write files), then your
+  last-line JSON.
+  HLD Interfaces: the admin app calls GET /exports (owner: backend; synchronous) with the report
+  filters and receives the CSV, or a refusal when more than 50,000 rows match, or a denial for
+  non-admins. Nothing else crosses a repository boundary.
+  Owner conventions: errors use {"error": {"code", "message"}}; bearer-token auth; admin
+  permission named `reports:export`.
+must_include:
+  - '/exports'
+  - '422'
+  - '403'
+  - 'reports:export'
+must_not_include:
+  - '^\s*(post|put|patch|delete):'
+  - '/exports/\{'
