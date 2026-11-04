@@ -12,9 +12,9 @@
 # interactive session via the Maestro skill; the engine is stdlib-only python3.
 #
 # Two ways to run — no clone required either way:
-#   • Piped: curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/kv-skills/main/install.sh \
+#   • Piped: curl -fsSL https://raw.githubusercontent.com/KeyValueSoftwareSystems/maestro/main/install.sh \
 #              | bash -s -- claude-code cursor codex hermes
-#   • From a checkout: /path/to/kv-skills/install.sh claude-code
+#   • From a checkout: /path/to/maestro/install.sh claude-code
 #
 # Bare words are harness targets: claude-code (default), cursor, codex and/or hermes.
 # codex and hermes share .agents/skills (the Agent Skills project folder both read).
@@ -37,14 +37,14 @@
 #   --ref <tag|sha|branch>   install exactly this version (e.g. --ref v1.4.0, --ref main)
 #
 # Env overrides:
-#   KV_SKILLS_REPO   pack's GitHub slug      (default KeyValueSoftwareSystems/kv-skills)
-#   KV_SKILLS_REF    git ref for the tarball (default: --ref, else the recorded one, else main)
+#   MAESTRO_REPO     pack's GitHub slug      (default KeyValueSoftwareSystems/maestro)
+#   MAESTRO_REF      git ref for the tarball (default: --ref, else the recorded one, else main)
 #   DEST             where to copy runtime   (default: current directory)
 # =============================================================================
 set -uo pipefail   # not -e: one failed skill install must not abort the rest
 
-REPO="${KV_SKILLS_REPO:-KeyValueSoftwareSystems/kv-skills}"
-REF="${KV_SKILLS_REF:-}"
+REPO="${MAESTRO_REPO:-KeyValueSoftwareSystems/maestro}"
+REF="${MAESTRO_REF:-}"
 DEST="${DEST:-$PWD}"
 
 AGENTS=""

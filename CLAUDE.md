@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Guidance for working in this repo (`kv-skills` — Maestro, the KeyValue AI-SDLC pack).
+Guidance for working in this repo (`maestro` — the KeyValue AI-SDLC pack).
 
 ## What this repo is
 

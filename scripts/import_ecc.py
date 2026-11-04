@@ -84,7 +84,7 @@ STACKS = {
 
 
 def fetch(url):
-    req = urllib.request.Request(url, headers={"User-Agent": "kv-skills-import"})
+    req = urllib.request.Request(url, headers={"User-Agent": "maestro-import"})
     with urllib.request.urlopen(req, timeout=30) as r:
         return r.read().decode("utf-8")
 
