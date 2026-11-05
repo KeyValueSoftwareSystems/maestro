@@ -19,7 +19,7 @@ nodes:
   - id: plan_freshness
     type: script
     label: Check living-docs + map freshness
-    # Combined knowledge-state + codebase-map gate (no network). refresh_needed false → skip authoring.
+    # Combined docs/.index-state.yaml + codebase-map gate (no network). refresh_needed false → skip authoring.
     run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json", --no-fetch]
     routes:
       - {when: "${steps.plan_freshness.outputs.refresh_needed} == true", to: plan_maps}
@@ -29,6 +29,14 @@ nodes:
     type: script
     label: Docs already current — skip authoring
     run: [python3, -c, "import json; print(json.dumps({'domains_written': 0, 'architecture_path': 'docs/architecture.md', 'summary': 'docs already current; skipped authoring'}))"]
+    next: ensure_index_state
+
+  - id: ensure_index_state
+    type: script
+    label: Ensure docs_sha256/evidence on shared index-state
+    # Template workspace-index may have written commits without docs_sha256; fill those
+    # without re-authoring. No-op when provenance is already complete or docs are stale.
+    run: [python3, .maestro/engine/workspace_sync.py, ensure-index-state, --root, ., --evidence, docs/architecture.md]
     next: consolidate
 
   - id: plan_maps

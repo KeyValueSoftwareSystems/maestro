@@ -184,6 +184,77 @@ class WorkspaceSyncTest(unittest.TestCase):
         _, second = quiet(ws.cmd_lock, self.tmp, lock_path)
         self.assertTrue(second["head_changed"])
 
+    def test_record_knowledge_writes_shared_index_state_yaml(self):
+        path = os.path.join(self.tmp, "docs", ".index-state.yaml")
+        self.assertTrue(os.path.isfile(path))
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("schema_version: 1", text)
+        self.assertIn("docs_sha256:", text)
+        self.assertIn("branch:", text)
+        self.assertIn("path:", text)
+        self.assertIn("name: backend", text)
+        parsed = ws._parse_index_state_yaml(text)
+        self.assertEqual(parsed["schema_version"], 1)
+        self.assertEqual(parsed["repos"][0]["name"], "backend")
+        self.assertEqual(parsed["repos"][0]["path"], "codebase/backend")
+        self.assertEqual(parsed["repos"][0]["branch"], "main")
+        self.assertTrue(parsed["docs_sha256"])
+
+    def test_docs_content_drift_marks_knowledge_stale(self):
+        with open(os.path.join(self.tmp, "docs", "architecture.md"), "a") as fh:
+            fh.write("\nupdated\n")
+        _, out, doc = self.plan()
+        self.assertTrue(out["needs_attention"])
+        self.assertTrue(doc["knowledge"]["stale"])
+        self.assertTrue(doc["knowledge"]["docs_hash_stale"])
+
+    def test_legacy_knowledge_state_json_still_read(self):
+        yaml_path = os.path.join(self.tmp, "docs", ".index-state.yaml")
+        os.remove(yaml_path)
+        legacy = os.path.join(self.tmp, ".maestro", "index", "knowledge-state.json")
+        os.makedirs(os.path.dirname(legacy), exist_ok=True)
+        head = git(self.repo, "rev-parse", "HEAD")
+        with open(legacy, "w", encoding="utf-8") as fh:
+            json.dump({
+                "schema_version": 1,
+                "updated_at": "2026-01-01T00:00:00+00:00",
+                "repos": [{"name": "backend", "path": "codebase/backend", "commit": head}],
+                "docs_sha256": ws._docs_hash(self.tmp),
+                "evidence": "evidence.md",
+                "evidence_sha256": "abc",
+            }, fh)
+        _, out, doc = self.plan()
+        self.assertFalse(doc["knowledge"]["stale"])
+        self.assertFalse(out["needs_attention"])
+
+    def test_ensure_index_state_fills_missing_docs_hash_without_reauthoring(self):
+        path = os.path.join(self.tmp, "docs", ".index-state.yaml")
+        head = git(self.repo, "rev-parse", "HEAD")
+        # Simulate template-only index-state (commits present, no docs_sha256).
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "schema_version: 1\n"
+                "indexed_at: \"2026-01-01T00:00:00+00:00\"\n"
+                "repos:\n"
+                f"  - name: backend\n"
+                f"    path: codebase/backend\n"
+                f"    branch: main\n"
+                f"    commit: {head}\n"
+                f"    indexed_at: \"2026-01-01T00:00:00+00:00\"\n"
+            )
+        code, out = quiet(ws.cmd_ensure_index_state, self.tmp, self.evidence)
+        self.assertEqual(code, 0)
+        self.assertTrue(out["ensured"])
+        state = ws._read_index_state(path)
+        self.assertTrue(state["docs_sha256"])
+        self.assertEqual(state["evidence"], "evidence.md")
+        # Second call is a no-op.
+        code, out = quiet(ws.cmd_ensure_index_state, self.tmp, self.evidence)
+        self.assertEqual(code, 0)
+        self.assertFalse(out["ensured"])
+        self.assertEqual(out["reason"], "already_complete")
+
 
 if __name__ == "__main__":
     unittest.main()

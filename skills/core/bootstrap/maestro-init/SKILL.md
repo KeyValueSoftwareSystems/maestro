@@ -38,20 +38,24 @@ inline. Never parallelize these steps because each consumes the previous step's 
 3. **Docs freshness gate** — before authoring, run a **full** (not `--remote-only`) plan:
    `python3 .maestro/engine/workspace_sync.py plan --root . --no-fetch --out .maestro/index/workspace-sync-init-knowledge.json`
    and `python3 .maestro/engine/codebase_scan.py plan --root .`.
-   Also accept a template umbrella that already indexed: if `docs/.index-state.yaml` exists
-   and `.maestro/index/knowledge-state.json` does not, run
-   `./scripts/docs-drift import-provenance` (when that script exists) once, then re-check.
-   **Skip** step 4 (build-knowledge) and step 5 map/knowledge `record` when
-   `refresh_needed=false`, maps are not stale, and `docs/architecture.md` is present —
-   set `domains_written=0` and note “docs already current”.
+   Provenance is `docs/.index-state.yaml` (shared with the template workspace-index skill);
+   no separate knowledge-state import step.
+   **Skip** step 4 (build-knowledge) when `refresh_needed=false`, maps are not stale, and
+   `docs/architecture.md` is present — set `domains_written=0` and note “docs already current”.
+   Still run step 5b (`ensure-index-state`) so template-written state gets `docs_sha256`.
 4. **Build the knowledge base (only if stale / missing)** — load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
    write the per-domain technical + functional docs, the architecture diagram, and a
    per-repo `docs/codebase-map.md`. Capture `domains_written` and `architecture_path`.
-5. **Record exact provenance** — only after knowledge authoring in step 4 succeeds, run
-   `python3 .maestro/engine/codebase_scan.py record --root .`, then
-   `python3 .maestro/engine/workspace_sync.py record-knowledge --root . --evidence <architecture_path>`.
-   (The `build-knowledge` workflow already does this when you run it as a workflow.)
+5. **Record exact provenance**
+   - **5a (after authoring in step 4):** run
+     `python3 .maestro/engine/codebase_scan.py record --root .`, then
+     `python3 .maestro/engine/workspace_sync.py record-knowledge --root . --evidence <architecture_path>`.
+     (The `build-knowledge` workflow already does this when you run it as a workflow.)
+   - **5b (always when docs are current, including skip of step 4):** run
+     `python3 .maestro/engine/workspace_sync.py ensure-index-state --root . --evidence docs/architecture.md`.
+     No-op if `docs_sha256` already present; fills it when template indexed first. Do **not** skip
+     this on the “docs already current” path — without it, doc-content drift is invisible.
    This makes later `/maestro` or `$maestro` starts a fast fetch + local SHA comparison with
    zero model call when nothing changed.
 6. **Summarize + next step.** Report the stacks installed and whether docs were written or
@@ -67,7 +71,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
 
 ## Safety
 - Writes are installer output into harness config dirs (`.claude/`, `.cursor/`, `.agents/`), documentation,
-  codebase-map markers, and engine-owned `.maestro/index/` provenance. Never edit application
+  codebase-map markers, and `docs/.index-state.yaml` provenance. Never edit application
   code; never touch `.maestro/runs/` state. Repository updates are explicit-user-approved,
   verified fast-forwards only.
 

@@ -157,8 +157,9 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
 ## Upgrading in detail
 
 - **Upgrade:** re-run the install one-liner (add `--dry-run` to preview). It overwrites
-  `.maestro/engine/`, `.maestro/ui/` and the installed skills; `.maestro/index/` provenance and
-  `.maestro/runs/` are left alone. Workflows upgrade **file by file, never over a local edit**:
+  `.maestro/engine/`, `.maestro/ui/` and the installed skills; `docs/.index-state.yaml`
+  provenance and `.maestro/runs/` are left alone. Workflows upgrade **file by file, never over
+  a local edit**:
 
   | Your `.maestro/workflows/<name>.yaml` | Upgrade does |
   |---|---|
@@ -225,7 +226,9 @@ After install, in your project repo:
   ui/         builder.html (single-file visual editor)
   docs/       workflow-spec.md (the workflow spec)
   memory/     knowledge/ (seeded by /build-knowledge)
-  index/      engine-owned living-doc commit provenance
+  index/      sync plans / locks (living-doc provenance lives in docs/.index-state.yaml)
   runs/<slug>/  everything for one feature: requirement/ + all artifacts + state.yaml
+docs/
+  .index-state.yaml  shared living-doc provenance (commits, branches, docs hash)
 maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install` + `maestro help`
 ```
