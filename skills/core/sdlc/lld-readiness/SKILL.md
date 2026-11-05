@@ -1,6 +1,6 @@
 ---
 name: lld-readiness
-description: Check that a feature's repository LLDs and test cases are ready to implement — no design decision left to the implementer, every repository consistent with the contract and with each other, every acceptance criterion covered. Read-only; writes a readiness report. Front door for /lld-readiness.
+description: Check that a feature's repository LLDs (and test cases, when supplied) are ready to implement — no design decision left to the implementer, every repository consistent with the contract and with each other, every acceptance criterion covered. Read-only; writes a readiness report. Front door for /lld-readiness.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [sdlc, review, lld]
 ---
@@ -14,7 +14,7 @@ approved with the HLD. Read-only — never edit the designs.
 ## Inputs
 
 Your instructions name the approved HLD, the contract (when one exists), every repository LLD,
-the functional test cases, and the requirement's acceptance criteria. Standalone? read the
+the functional test cases when they exist, and the requirement's acceptance criteria. Standalone? read the
 documents the user names and write the report to a path you choose (and tell the user where).
 
 ## Checks
@@ -27,8 +27,8 @@ documents the user names and write the report to a path you choose (and tell the
   operations, fields, types, errors and pagination. An LLD never redefines the contract.
 - **Cross-repository consistency** — a producer's LLD and its consumers' LLDs agree on ordering,
   states, retries and error handling for every interface they share.
-- **Acceptance coverage** — every acceptance criterion maps to a section of some LLD and to at
-  least one test case; name any criterion with no home.
+- **Acceptance coverage** — every acceptance criterion maps to a section of some LLD (and, when
+  your instructions supply test cases, to at least one of them); name any criterion with no home.
 - **Verifiable increments** — each implementation sequence step leaves the repository buildable
   and testable, and the verification section names real test seams.
 - **Infrastructure ownership** — when the HLD lists infrastructure changes, each one has an LLD in

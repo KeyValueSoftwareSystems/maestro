@@ -3,8 +3,8 @@
 
   sizing.py [--root .] --prd <prd.md> [--path auto|full|light]
 
-The light path skips the HLD and the contract: the PRD goes straight to the repository LLD, test
-cases, readiness check and approval. `auto` (the default) takes it only when every rule holds —
+The light path skips the HLD and the contract: the PRD goes straight to the repository LLD,
+readiness check, test cases and approval. `auto` (the default) takes it only when every rule holds —
   - at most MAX_CRITERIA acceptance criteria,
   - Non-functional requirements says None (no targets to design for),
   - the workspace has exactly one repository (nothing crosses repositories),

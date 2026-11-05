@@ -14,7 +14,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
           → architecture review by a fresh reviewer → [approve])
    → API contract (only when the HLD lists cross-repo interfaces)
    → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
-          → functional test cases (every AC traced) → readiness check → [approve])
+          → readiness check → functional test cases (every AC traced) → [approve])
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
@@ -147,11 +147,12 @@ the repositories in scope, then one LLD file per repository (`lld/<repo>.md`), s
 implementation agent later reads only its own repository's design. Each LLD implements or calls
 the contract exactly. If a repository needs something the contract lacks — for example a field
 the frontend needs — the LLD writer reports it, the contract is updated first, and every
-affected LLD is revised. Functional test cases follow; the engine checks that every PRD
-acceptance criterion (`AC-xx`) is traced by at least one case and that no case traces a criterion
-the PRD lacks, and sends the catalog back with the exact gaps otherwise. Then a readiness check by
-a fresh reviewer: no design decision left to the implementer, every LLD consistent with the
-contract and with each other, every acceptance criterion covered. One approval covers all of them.
+affected LLD is revised. Then a readiness check by a fresh reviewer: no design decision left to
+the implementer, every LLD consistent with the contract and with each other, every acceptance
+criterion covered by an LLD. Once the LLDs pass it, the functional test cases are written once
+(not on every revision round); the engine checks that every PRD acceptance criterion (`AC-xx`) is
+traced by at least one case and that no case traces a criterion the PRD lacks, and sends the
+catalog back with the exact gaps otherwise. One approval covers all of them.
 
 Approval records the exact HLD, contract and LLD hashes. Delivery starts by checking them: a
 design that changed after approval goes back through design instead of being built stale.
@@ -204,7 +205,7 @@ repositories exactly as on existing code.
 After PRD approval the engine sizes the feature. A small change — at most five acceptance
 criteria, no non-functional targets, one repository in the workspace, nothing left "(to confirm)"
 — skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
-and rollout notes an HLD would) → test cases → readiness check → approval → delivery. Everything
+and rollout notes an HLD would) → readiness check → test cases → approval → delivery. Everything
 else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
 (`init --input path=light`). The approval binds the PRD's hash, so a PRD edited after approval is
 still caught before delivery.

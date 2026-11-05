@@ -524,10 +524,10 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(sorted(approval["llds"]), ["backend", "frontend"])
         self.assertIsNotNone(approval["contract_sha256"])  # the HLD lists an interface
         # the architecture is reviewed before HLD approval; the contract precedes the LLDs;
-        # test cases and the readiness check follow the LLDs; delivery checks staleness first
+        # the readiness check follows the LLDs, then the test cases; delivery checks staleness first
         order = ["design/hld/author_hld", "design/hld/arch_review", "design/contract/contract",
-                 "design/lld/author_llds", "design/lld/test_cases",
-                 "design/lld/readiness_review", "design/lld/record_approval",
+                 "design/lld/author_llds", "design/lld/readiness_review",
+                 "design/lld/test_cases", "design/lld/record_approval",
                  "delivery/design_check", impl_steps[0]]
         self.assertEqual([steps.index(step) for step in order],
                          sorted(steps.index(step) for step in order))
@@ -871,8 +871,11 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(dict(self.DESIGN_GATES))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
+        # the catalog is written once the LLDs pass the readiness check
+        self.assertLess(steps.index("design/lld/readiness_review"),
+                        steps.index("design/lld/test_cases"))
         self.assertLess(steps.index("design/lld/trace_test_cases"),
-                        steps.index("design/lld/readiness_review"))
+                        steps.index("design/lld/lld_approval"))
         self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/review_pack"))
         trace_md = Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text()
         self.assertIn("1/1 acceptance criteria passing", trace_md)
@@ -899,9 +902,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("test_cases")
-        self.assertEqual(lld[start:start + 6], ["test_cases", "trace_test_cases", "test_cases",
-                                                "trace_test_cases", "sync_decisions",
-                                                "readiness_review"])
+        self.assertEqual(lld[start:start + 5], ["test_cases", "trace_test_cases", "test_cases",
+                                                "trace_test_cases", "lld_approval"])
         self.assertEqual(len(calls), 2)
 
     def test_auto_mode_stops_at_release_when_a_criterion_fails_qa(self):
@@ -1103,11 +1105,13 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
+        # the revision round re-checks the LLDs; the test cases are written once, after it
         self.assertEqual(lld[start:start + 11], ["readiness_review", "readiness_verdict",
                                                  "revise_llds", "readiness_resolution",
-                                                 "validate_llds", "test_cases", "trace_test_cases",
-                                                 "sync_decisions", "readiness_review",
-                                                 "readiness_verdict", "lld_approval"])
+                                                 "validate_llds", "sync_decisions",
+                                                 "readiness_review", "readiness_verdict",
+                                                 "test_cases", "trace_test_cases", "lld_approval"])
+        self.assertEqual(lld.count("test_cases"), 1)
 
     def test_lld_change_request_needs_feedback_and_is_a_targeted_revision(self):
         self.prep_tasks_json()

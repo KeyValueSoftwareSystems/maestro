@@ -200,7 +200,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   each build and test once, stamps and commits each codebase map). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
-  (PRD → LLD → test cases → readiness → approval; no HLD or contract) only for ≤5 acceptance
+  (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤5 acceptance
   criteria, Non-functional requirements None, one repository and no "(to confirm)"; the run input
   `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
