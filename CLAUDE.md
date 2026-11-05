@@ -211,9 +211,16 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   the scaffold report's commands to maestro.config.yaml without touching existing entries, runs
   each build and test once, stamps and commits each codebase map). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
+- **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
+  `feature-impact` agent right after PRD approval): the repositories the feature changes and
+  whether it changes an interface between them, stored data or infrastructure. `validate` checks
+  every name is a discovered repository; sizing and the LLD scope (`lld_set.py init --choice
+  impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
 - **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
-  (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤5 acceptance
-  criteria, Non-functional requirements None, one repository and no "(to confirm)"; the run input
+  (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
+  `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
+  exactly one repository changed and no interface or infrastructure change (from `--impact`;
+  without one, the workspace must hold one repository) and no "(to confirm)"; the run input
   `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as

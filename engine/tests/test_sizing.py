@@ -57,6 +57,47 @@ class SizingTest(unittest.TestCase):
         self.repo("api")
         self.assertIn("2 repositories", self.size(prd())["reasons"])
 
+    def impact(self, repos, interfaces=False, infrastructure=False):
+        path = os.path.join(self.root, f"impact-{len(os.listdir(self.root))}.json")
+        with open(path, "w") as fh:
+            json.dump({"schema_version": 1,
+                       "repos": [{"name": name, "change": "changes"} for name in repos],
+                       "interfaces_change": interfaces, "data_migration": False,
+                       "infrastructure_change": infrastructure}, fh)
+        return path
+
+    def size_with(self, impact_path, text=None):
+        with open(os.path.join(self.root, "prd.md"), "w") as fh:
+            fh.write(text or prd())
+        out = io.StringIO()
+        with redirect_stdout(out):
+            sizing.main(["--root", self.root, "--prd", "prd.md", "--impact", impact_path])
+        return json.loads(out.getvalue())
+
+    def test_the_impact_assessment_not_the_workspace_decides_the_scope(self):
+        for name in ("api", "worker", "admin"):
+            self.repo(name)
+        self.assertEqual(self.size_with(self.impact(["web"]))["path"], "light")
+        cases = [
+            (self.impact(["web", "api"]), "changes 2 repositories (web, api"),
+            (self.impact(["web"], interfaces=True), "interface between repositories"),
+            (self.impact(["web"], infrastructure=True), "changes infrastructure"),
+            (self.impact(["mobile"]), "no valid impact assessment"),
+            (os.path.join(self.root, "missing.json"), "no valid impact assessment"),
+        ]
+        for path, reason in cases:
+            with self.subTest(reason=reason):
+                result = self.size_with(path)
+                self.assertEqual(result["path"], "full")
+                self.assertIn(reason, result["reasons"])
+
+    def test_the_criteria_limit_is_a_config_value(self):
+        with open(os.path.join(self.root, "maestro.config.yaml"), "w") as fh:
+            fh.write("version: 1\nrepos: {}\ndesign:\n  light_max_criteria: 8\n")
+        self.assertEqual(self.size_with(self.impact(["web"]), prd(criteria=8))["path"], "light")
+        result = self.size_with(self.impact(["web"]), prd(criteria=9))
+        self.assertIn("9 acceptance criteria (light allows 8)", result["reasons"])
+
     def test_a_person_can_force_either_path(self):
         self.assertEqual(self.size(prd(criteria=9), path="light")["path"], "light")
         self.assertEqual(self.size(prd(), path="full")["path"], "full")

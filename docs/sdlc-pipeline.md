@@ -206,9 +206,13 @@ repositories exactly as on existing code.
 
 ## Light path for small changes
 
-After PRD approval the engine sizes the feature. A small change — at most five acceptance
-criteria, no non-functional targets, one repository in the workspace, nothing left "(to confirm)"
-— skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
+After PRD approval an impact assessment (skill `feature-impact`) names the repositories the
+feature changes and whether it changes an interface between them, stored data or infrastructure;
+the engine checks every name is a repository the workspace has. The engine then sizes the
+feature from that, not from how many repositories the workspace holds. A small change — at most
+five acceptance criteria (`design.light_max_criteria` in maestro.config.yaml), no non-functional
+targets, exactly one repository changed, no interface or infrastructure change, nothing left
+"(to confirm)" — skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
 and rollout notes an HLD would) → readiness check → test cases → approval → delivery. Everything
 else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
 (`init --input path=light`). The approval binds the PRD's hash, so a PRD edited after approval is
@@ -223,7 +227,7 @@ for design approval"). The mode decides who answers each gate:
 |---|---|---|---|
 | PRD approval | you | you | approved |
 | HLD approval | you | you | approved if the architecture review has no blocking findings |
-| LLD scope | you | all repositories | all repositories |
+| LLD scope | you | the repositories the impact assessment names (plus infrastructure owners) | same |
 | LLD approval | you | approved if the readiness check passes | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
 | Release | you | approved if the engine verified every repository and every acceptance criterion passes QA | same |

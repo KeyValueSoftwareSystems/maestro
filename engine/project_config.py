@@ -175,6 +175,20 @@ def check(config, discovered):
             issues.append(Issue("error", "config-shape",
                                 f"must be one of: {', '.join(INFRASTRUCTURE_LEVELS)}",
                                 "infrastructure.level"))
+    if "design" in config:
+        design = config["design"]
+        if not isinstance(design, dict):
+            issues.append(Issue("error", "config-shape", "`design` must be a mapping", "design"))
+        else:
+            for key, value in design.items():
+                if key != "light_max_criteria":
+                    issues.append(Issue("error", "config-unknown-key",
+                                        f"unknown key `{key}` (allowed: light_max_criteria)",
+                                        f"design.{key}"))
+                elif not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+                    issues.append(Issue("error", "config-shape",
+                                        "must be a positive whole number of acceptance criteria",
+                                        "design.light_max_criteria"))
     if "reviews" in config:
         reviews = config["reviews"]
         if not isinstance(reviews, dict):

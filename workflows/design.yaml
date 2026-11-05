@@ -50,14 +50,52 @@ nodes:
     type: script
     label: Existing code or a new product?
     run: [python3, .maestro/engine/greenfield.py, check, --root, "."]
-    next: sizing
+    routes:
+      - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: sizing}
+      - {to: impact}
 
-  # Engine-owned: a small single-repository change with no non-functional targets skips the HLD
-  # and contract (PRD -> LLD -> test cases -> readiness -> approval); everything else, the full path.
+  # Which repositories the feature changes, and whether it crosses a boundary between them. The
+  # agent judges; the engine checks the names and decides the design path and the LLD scope.
+  - id: impact
+    type: agent
+    label: Impact assessment
+    model: sonnet
+    brief: minimal
+    instruction: |
+      Assess which repositories the approved PRD at
+      .maestro/runs/${inputs.slug}/requirement/prd.md changes, and whether it changes an interface
+      between repositories, stored data (a migration) or infrastructure. Use each repository's
+      codebase map and only the source needed to place a change; do not design. Write the
+      assessment to .maestro/runs/${inputs.slug}/impact.json. Engine check:
+      ${steps.impact_check.outputs.issues_summary}
+    skill: feature-impact
+    inputs:
+      slug: "${inputs.slug}"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
+      validator_feedback: "${steps.impact_check.outputs.issues_summary}"
+    outputs: [impact_summary, repos_csv]
+    artifact: ".maestro/runs/${inputs.slug}/impact.json"
+    fresh: true
+    max_visits: 3
+    on_exhausted: sizing
+    next: impact_check
+
+  - id: impact_check
+    type: script
+    label: Impact assessment valid?
+    run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]
+    routes:
+      - {when: "${steps.impact_check.outputs.valid} == false", to: impact}
+      - {to: sizing}
+
+  # Engine-owned: a small change to one repository, with no interface, infrastructure or
+  # non-functional targets, skips the HLD and contract (PRD -> LLD -> readiness -> test cases ->
+  # approval); everything else, the full path.
   - id: sizing
     type: script
     label: Full or light design?
-    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --path, "${inputs.path}"]
+    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --impact, ".maestro/runs/${inputs.slug}/impact.json", --path, "${inputs.path}"]
     routes:
       - {when: "${steps.sizing.outputs.path} == light", to: lld}
       - {to: hld}
@@ -108,6 +146,7 @@ nodes:
       feedback: "${inputs.feedback}"
       light: "${steps.sizing.outputs.path}"
       required_repos: "${steps.hld.outputs.infra_repos_csv}"
+      impact_repos: "${steps.impact_check.outputs.repos_csv}"
     on_fail: abort
     next: end
 

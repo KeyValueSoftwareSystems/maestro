@@ -179,6 +179,22 @@ class LldSetTest(unittest.TestCase):
                            "--repos-text", "web, api", "--require", "api")
         self.assertEqual((code, out["selected_csv"]), (0, "web,api"))
 
+    def test_impact_scope_takes_the_assessed_repos_plus_infrastructure_owners(self):
+        self.write("impact.json", json.dumps({
+            "schema_version": 1, "repos": [{"name": "web", "change": "new screen"}],
+            "interfaces_change": False, "data_migration": False, "infrastructure_change": False}))
+        impact = os.path.join(self.run_dir, "impact.json")
+        code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "impact",
+                           "--impact", impact)
+        self.assertEqual((code, out["selected_csv"]), (0, "web"))
+        code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "impact",
+                           "--impact", impact, "--require", "api")
+        self.assertEqual((code, out["selected_csv"]), (0, "web,api"))
+        # no usable assessment (greenfield, light path forced, invalid): every repository
+        code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "impact",
+                           "--impact", os.path.join(self.run_dir, "missing.json"))
+        self.assertEqual((code, out["selected_csv"]), (0, "api,web"))
+
     def test_approve_refuses_a_missing_lld(self):
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds(("api",))

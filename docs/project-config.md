@@ -41,6 +41,8 @@ environment:                    # optional: bring the stack up for QA
   stop: docker compose down
 infrastructure:                 # optional; overrides the detected level for HLD questions
   level: iac                    # none | containers | iac
+design:                         # optional
+  light_max_criteria: 5         # most acceptance criteria a light (no HLD) design may have (default 5)
 reviews:                        # optional
   max_rounds: 3                 # reviews of one document or branch before a person decides (default 3)
 delivery:                       # optional; what happens after release approval
@@ -100,7 +102,7 @@ python3 .maestro/engine/maestroctl.py preflight
 | File missing or unreadable | error |
 | A repository has no entry under `repos` | error |
 | A repository has no `build` or `test` command | error |
-| Unknown key inside `repos`, `commands`, `environment`, `reviews` or `delivery` (a typo) | error |
+| Unknown key inside `repos`, `commands`, `environment`, `design`, `reviews` or `delivery` (a typo) | error |
 | No `lint`, `security` or `e2e` command | warning — that check is skipped |
 | A configured repository is not in the workspace | warning |
 

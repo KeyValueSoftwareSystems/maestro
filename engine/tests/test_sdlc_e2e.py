@@ -35,6 +35,7 @@ def canned_agent_outputs(step, action):
         "normalize_prd": {"summary": "Client PRD normalized; 1 gap open"},
         "repair_prd": {"summary": "PRD repaired to match the contract"},
         "revise_prd": {"summary": "Applied review feedback", "needs_clarification": False},
+        "impact": {"impact_summary": "backend and frontend change", "repos_csv": "backend,frontend"},
         "prepare_hld_questions": {"summary": "Prepared architecture questions"},
         "author_hld": {"hld_summary": "3 services, 2 new tables"},
         "repair_hld": {"hld_summary": "Repaired the HLD"},
@@ -190,6 +191,15 @@ class SdlcE2E(unittest.TestCase):
                     "questions": [],
                     "audit": {"unresolved": [], "contradictions": []},
                 }, fh)
+            return
+        if rel.endswith("/impact.json"):  # rewritten on every visit, as `fresh` requires
+            with open(full, "w") as fh:
+                json.dump({"schema_version": 1, "repos": [
+                    {"name": "backend", "change": "owns the decision"},
+                    {"name": "frontend", "change": "renders it"}],
+                    "interfaces_change": True, "data_migration": False,
+                    "infrastructure_change": False,
+                    "summary": f"two repositories {next(_ARTIFACT_WRITES)}"}, fh)
             return
         if os.path.exists(full):
             with open(full) as fh:
@@ -968,7 +978,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual((outputs["valid"], outputs["infra_changed"]), (True, True))
         self.assertEqual(outputs["infra_repos_csv"], "backend")
         # the repository that owns the infrastructure change cannot be dropped from LLD scope
-        self.assertIn("must stay in scope: backend", self.prompts["design/lld/lld_scope"][0])
+        self.assertIn("stay in scope: backend", self.prompts["design/lld/lld_scope"][0])
 
     def test_escalated_architecture_finding_goes_to_the_person_at_hld_approval(self):
         self.prep_tasks_json()

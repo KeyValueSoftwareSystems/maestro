@@ -21,6 +21,7 @@ inputs:
   feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
   light: {type: string, default: full, description: "light when the feature took the light path (no HLD)"}
   required_repos: {type: string, default: "", description: repositories the HLD's infrastructure changes need in scope}
+  impact_repos: {type: string, default: "", description: repositories the impact assessment says the feature changes}
 defaults:
   model: opus
   agent: planner
@@ -38,13 +39,15 @@ nodes:
     label: LLD scope
     prompt: |
       Detected repos: ${steps.lld_scope_serve.outputs.names_csv}
+      The impact assessment says this feature changes: ${inputs.impact_repos}
 
-      Write the detailed design for all of them, or only the repositories this feature changes?
-      Repositories that own infrastructure changes in the HLD must stay in scope: ${inputs.required_repos}
+      Write the detailed design for the repositories this feature changes, all of them, or a set
+      you pick? Repositories that own infrastructure changes in the HLD stay in scope: ${inputs.required_repos}
     options:
+      - {id: impact, label: The repositories this feature changes (all when no assessment ran), to: lld_scope_init}
       - {id: all, label: All of them, to: lld_scope_init}
       - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
-    auto: {option: all}
+    auto: {option: impact}
 
   - id: lld_scope_init
     type: script
@@ -63,6 +66,8 @@ nodes:
       - "${steps.lld_scope.outputs.repos_text}"
       - --require
       - "${inputs.required_repos}"
+      - --impact
+      - ".maestro/runs/${inputs.slug}/impact.json"
     on_fail: lld_scope
     next: prepare_lld_questions
 
