@@ -175,6 +175,53 @@ class RepoChecksTest(unittest.TestCase):
         self.assertNotIn(token, receipt_text)
         self.assertEqual(self.receipt()["secret_scan"], "ran")
 
+    def commit_feature(self, worktree, rel="feature.txt", text="new\n"):
+        with open(os.path.join(worktree, rel), "w") as fh:
+            fh.write(text)
+        subprocess.run(["git", "-C", worktree, "add", rel], check=True)
+        subprocess.run(["git", "-C", worktree, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-qm", "feature"], check=True)
+
+    def test_a_check_that_also_fails_on_the_base_commit_is_pre_existing(self):
+        main, worktree = self._repo_with_branch()
+        self.commit_feature(worktree)
+        # lint fails everywhere (an old backlog); the build fails only where feature.txt exists
+        self.config({"setup": "touch .setup-ran", "build": "true",
+                     "lint": "echo 1392 problems; exit 1", "test": "true"})
+        result = self.run_guarded(main)
+        self.assertTrue(result["passed"], result)
+        self.assertEqual((result["failed_checks"], result["pre_existing_csv"]), ("", "lint"))
+        self.assertIn("pre-existing failures, also failing on base", result["summary"])
+        lint = next(c for c in self.receipt()["checks"] if c["name"] == "lint")
+        self.assertEqual(lint["status"], "pre-existing")
+        base = subprocess.run(["git", "-C", main, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        self.assertEqual(lint["baseline"]["commit"], base)
+        self.assertEqual(self.receipt()["pre_existing"], ["lint"])
+        checkout = os.path.join(self.root, ".maestro", "baseline", "backend", base[:12])
+        self.assertTrue(os.path.exists(os.path.join(checkout, ".setup-ran")))  # setup ran first
+        with open(os.path.join(self.root, ".maestro", "baseline", ".gitignore")) as fh:
+            self.assertIn("*", fh.read())
+
+    def test_a_failure_the_feature_caused_still_fails(self):
+        main, worktree = self._repo_with_branch()
+        self.commit_feature(worktree)
+        self.config({"build": "test ! -f feature.txt", "test": "true"})
+        result = self.run_guarded(main)
+        self.assertFalse(result["passed"])
+        self.assertEqual((result["failed_checks"], result["pre_existing_csv"]),
+                         ("build,test", ""))
+
+    def test_the_baseline_runs_once_per_base_commit_and_command(self):
+        main, worktree = self._repo_with_branch()
+        self.commit_feature(worktree)
+        counter = os.path.join(self.root, "baseline-runs")
+        self.config({"build": "true", "test": f"test -f feature.txt || echo x >> {counter}; exit 1"})
+        self.assertEqual(self.run_guarded(main)["pre_existing_csv"], "test")
+        self.assertEqual(self.run_guarded(main)["pre_existing_csv"], "test")
+        with open(counter) as fh:
+            self.assertEqual(fh.read().count("x"), 1)  # the second verify used the cached result
+
     def test_guard_without_base_repo_says_why(self):
         self.config({"build": "true", "test": "true"})
         self.run_checks()

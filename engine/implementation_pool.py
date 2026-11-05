@@ -46,8 +46,11 @@ def _verification(slug, entry, root):
     """What the engine actually verified for this repository's shipped commit.
 
     `verified` only when the receipt passed AND names the exact commit being released; a
-    receipt for an earlier commit is `stale`. Never blocks: a human may have accepted an
-    unverified batch at the implementation gate, and the release gate shows this verdict.
+    receipt for an earlier commit is `stale`. A receipt that passed only because the tests also
+    fail on the base commit (`pre-existing`) is `baseline-failing`: the engine cannot show the
+    feature's tests pass, so autopilot leaves the release to a person. Never blocks: a human may
+    have accepted an unverified batch at the implementation gate, and the release gate shows
+    this verdict.
     """
     if os.environ.get("MAESTRO_SIMULATION") == "1":
         return {"status": "simulated", "receipt": None, "test_changes": []}
@@ -58,14 +61,19 @@ def _verification(slug, entry, root):
         return {"status": "missing", "receipt": None, "test_changes": []}
     passed = receipt.get("passed") is True
     matches = receipt.get("commit") == entry.get("commit")
+    pre_existing = [c["name"] for c in receipt.get("checks") or []
+                    if c.get("status") == "pre-existing"]
     status = "verified" if passed and matches else ("stale" if passed else "failed")
+    if status == "verified" and "test" in pre_existing:
+        status = "baseline-failing"
     return {
         "status": status,
         "receipt": os.path.relpath(path, root),
         "receipt_sha256": _sha256(path),
         "verified_commit": receipt.get("commit"),
         "failed_checks": [c["name"] for c in receipt.get("checks") or []
-                          if c.get("status") != "passed"],
+                          if c.get("status") not in ("passed", "pre-existing")],
+        "pre_existing": pre_existing,
         "test_changes": receipt.get("test_changes") or [],
     }
 
@@ -77,6 +85,8 @@ def _verification_summary(entries):
         text = f"{entry['repo']} {check['status']}"
         if check.get("failed_checks"):
             text += f" ({', '.join(check['failed_checks'])})"
+        if check.get("pre_existing"):
+            text += f", pre-existing failures on the base commit: {', '.join(check['pre_existing'])}"
         if check.get("test_changes"):
             text += f", {len(check['test_changes'])} existing test file(s) changed"
         parts.append(text)

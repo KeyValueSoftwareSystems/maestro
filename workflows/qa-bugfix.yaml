@@ -36,7 +36,8 @@ nodes:
       a test. If the fix needs a design or contract change, do not make it: escalate.
       When the engine checks or the review sent you back, address what they found:
       failing checks "${steps.verify.outputs.failed_checks}" (receipt
-      ${steps.verify.outputs.receipt_path}) and blocking findings (status open or upheld) in
+      ${steps.verify.outputs.receipt_path}; checks marked pre-existing fail on the base commit too
+      and are not yours to fix) and blocking findings (status open or upheld) in
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json: answer each one in
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json as
       {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed, contested

@@ -148,7 +148,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`repo_checks.py`** — the `verify` script step: runs a repo's configured setup/build/
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check), plus an engine
-  secret scan of the lines the branch added (fails as `secrets`; values never recorded). The impl loop
+  secret scan of the lines the branch added (fails as `secrets`; values never recorded). A failing
+  check is re-run on the branch's base commit (cached checkout + results under the git-ignored
+  `.maestro/baseline/<repo>/`); failing there too makes it `pre-existing`, which does not fail
+  verification — but a pre-existing `test` failure makes the release verdict `baseline-failing`
+  (`implementation_pool.py`), so autopilot will not release it. The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
   findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's

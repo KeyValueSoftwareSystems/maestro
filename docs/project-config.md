@@ -75,6 +75,14 @@ the value. It
 also lists existing test files the branch modified, renamed or deleted (matched by
 `test_patterns`); the code reviewer must justify each one. New test files are not listed.
 
+A check that fails is run once more on the commit the branch started from, in an engine-owned
+checkout under `.maestro/baseline/<repo>/` (ignored by git; `setup` runs there first). If it fails
+there too, the receipt marks it `pre-existing` and it does not fail verification: an old lint
+backlog or a broken build script no longer sends the fixer after problems the feature did not
+cause. The result is cached per base commit and command, so a slow build runs on the base once.
+Pre-existing **test** failures are different: the engine cannot show the feature's tests pass, so
+the release verdict is `baseline-failing` and autopilot leaves the release to a person.
+
 Every review loop (architecture review of the HLD, LLD readiness check, code review) stops after
 `reviews.max_rounds` reviews; any blocking finding still open then goes to the person at that
 stage's gate instead of another revision round. A re-review sees only the changes since its last

@@ -172,6 +172,22 @@ class ImplementationPoolTest(unittest.TestCase):
         self.assertEqual(check["status"], "failed")
         self.assertEqual(final["verification_summary"], "mobile-app failed (test)")
 
+    def test_pre_existing_lint_is_verified_but_pre_existing_tests_need_a_person(self):
+        final, check = self._finalize_with_receipt(lambda commit: {
+            "passed": True, "commit": commit,
+            "checks": [{"name": "lint", "status": "pre-existing"}, {"name": "test", "status": "passed"}]})
+        self.assertTrue(final["verified_ok"])
+        self.assertEqual((check["status"], check["failed_checks"], check["pre_existing"]),
+                         ("verified", [], ["lint"]))
+        self.assertIn("pre-existing failures on the base commit: lint", final["verification_summary"])
+
+    def test_pre_existing_test_failures_are_baseline_failing(self):
+        final, check = self._finalize_with_receipt(lambda commit: {
+            "passed": True, "commit": commit,
+            "checks": [{"name": "build", "status": "passed"}, {"name": "test", "status": "pre-existing"}]})
+        self.assertFalse(final["verified_ok"])  # autopilot leaves this release to a person
+        self.assertEqual(check["status"], "baseline-failing")
+
     def test_finalize_rechecks_branch_did_not_move_after_record(self):
         run("init", "--root", self.root, "--slug", "feature-x")
         run("claim", "--root", self.root, "--slug", "feature-x")
