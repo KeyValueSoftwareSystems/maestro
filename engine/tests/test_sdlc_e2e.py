@@ -753,8 +753,8 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         bugfix = [s for s in steps if s.startswith("delivery/bugfix/")]
         self.assertEqual([s.rsplit("/", 1)[-1] for s in bugfix],
-                         ["fix", "review_resolution", "handoff", "verify", "review",
-                          "review_verdict"])
+                         ["fix", "review_resolution", "handoff", "verify", "review_scope",
+                          "review", "review_verdict"])
         self.assertEqual(steps.count("delivery/finalize_implementation"), 2)
         self.assertEqual(steps.count("delivery/qa/qa_run"), 2)
         self.assertEqual(steps.count("delivery/qa/env_down"), 2)
@@ -806,10 +806,10 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         hld = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/hld/")]
         start = hld.index("arch_review")
-        self.assertEqual(hld[start:start + 9], ["arch_review", "review_verdict",
-                                                "revise_from_review", "review_resolution",
-                                                "validate_hld", "sync_decisions", "arch_review",
-                                                "review_verdict", "hld_approval"])
+        self.assertEqual(hld[start:start + 10], ["arch_review", "review_verdict",
+                                                 "revise_from_review", "review_resolution",
+                                                 "validate_hld", "sync_decisions", "arch_scope",
+                                                 "arch_review", "review_verdict", "hld_approval"])
         self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
 
     def test_design_mode_asks_only_for_prd_and_hld_approval(self):
@@ -1106,12 +1106,32 @@ class SdlcE2E(unittest.TestCase):
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
         # the revision round re-checks the LLDs; the test cases are written once, after it
-        self.assertEqual(lld[start:start + 11], ["readiness_review", "readiness_verdict",
+        self.assertEqual(lld[start:start + 12], ["readiness_review", "readiness_verdict",
                                                  "revise_llds", "readiness_resolution",
                                                  "validate_llds", "sync_decisions",
-                                                 "readiness_review", "readiness_verdict",
+                                                 "readiness_scope", "readiness_review",
+                                                 "readiness_verdict",
                                                  "test_cases", "trace_test_cases", "lld_approval"])
         self.assertEqual(lld.count("test_cases"), 1)
+
+    def test_readiness_rounds_stop_at_the_limit_and_the_person_decides(self):
+        self.prep_tasks_json()
+
+        def never_ready():
+            return {"review_path": "reviews/lld-readiness.md", "blocking": True,
+                    "summary": "still blocked"}
+        action, trace = self.drive(dict(self.DESIGN_GATES),
+                                   agent_overrides={"readiness_review": never_ready})
+        self.assertEqual(action["action"], "done", action)
+        lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
+        # three reviews (reviews.max_rounds default), two revisions, then the person decides
+        self.assertEqual(lld.count("readiness_review"), 3)
+        self.assertEqual(lld.count("revise_llds"), 2)
+        self.assertEqual(lld[lld.index("test_cases"):][:3],
+                         ["test_cases", "trace_test_cases", "lld_approval"])
+        verdict = statemod.load("demo", self.tmp)["steps"]["design/lld/readiness_verdict"]["outputs"]
+        self.assertEqual((verdict["limit_reached"], verdict["blocking"]), (True, True))
+        self.assertIn(("ask_gate", "design/lld/lld_approval"), trace)
 
     def test_lld_change_request_needs_feedback_and_is_a_targeted_revision(self):
         self.prep_tasks_json()
@@ -1280,9 +1300,11 @@ class SdlcE2E(unittest.TestCase):
                     if s.startswith(f"delivery/implement[{slot}]/impl/")]
 
         # slot_1 claims backend (repos are claimed in name order); slot_2 claims frontend
-        self.assertEqual(slot_steps("slot_1")[-7:], ["verify", "fix", "review_resolution", "handoff",
-                                                      "verify", "review", "review_verdict"])
-        self.assertEqual(slot_steps("slot_2")[-3:], ["verify", "review", "review_verdict"])
+        self.assertEqual(slot_steps("slot_1")[-8:], ["verify", "fix", "review_resolution", "handoff",
+                                                      "verify", "review_scope", "review",
+                                                      "review_verdict"])
+        self.assertEqual(slot_steps("slot_2")[-4:], ["verify", "review_scope", "review",
+                                                      "review_verdict"])
         receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "backend",
                                   "verify.json").read_text())
         self.assertTrue(receipt["passed"])
@@ -1321,8 +1343,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = self.impl_steps(trace, "fix")
         start = steps.index("review_verdict")
-        self.assertEqual(steps[start:start + 7], ["review_verdict", "fix", "review_resolution",
-                                                  "handoff", "verify", "review", "review_verdict"])
+        self.assertEqual(steps[start:start + 8], ["review_verdict", "fix", "review_resolution",
+                                                  "handoff", "verify", "review_scope", "review",
+                                                  "review_verdict"])
 
     def test_escalated_review_finding_goes_to_a_person(self):
         self.prep_tasks_json()

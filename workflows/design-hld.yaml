@@ -296,6 +296,13 @@ nodes:
       - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
       - --stage
       - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+    next: arch_scope
+
+  # Engine-owned: a re-review sees the HLD changes since its last round, not the whole HLD again.
+  - id: arch_scope
+    type: script
+    label: What changed since the last architecture review
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --name, architecture, --files, ".maestro/runs/${inputs.slug}/hld.md", --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"]
     next: arch_review
 
   - id: arch_review
@@ -324,8 +331,12 @@ nodes:
       the report (the engine decides from that file). If it exists from an earlier round, this is a
       re-review: read it and the author's resolutions at .maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json first. Mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
-      reason; keep finding ids stable and give new findings new ids. Check only what changed.
-      Then overwrite both files.
+      reason; keep finding ids stable and give new findings new ids.
+      ${steps.arch_scope.outputs.summary}. On a re-review the changes since your last round are at
+      ${steps.arch_scope.outputs.diff_path}: check those, not the unchanged text. Raise a new
+      blocking finding only for a problem the revision introduced, and mark it
+      "introduced_by_revision": true; anything you could have raised earlier goes to the person as
+      late, not back to the author. Then overwrite both files.
     skill: architecture-review
     agent: reviewer
     model: opus
@@ -336,6 +347,7 @@ nodes:
       codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
       decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
+      changes_since_last_review: "${steps.arch_scope.outputs.diff_path}"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
       infra_profile: "${steps.infra_profile.outputs.profile_path}"
@@ -349,16 +361,18 @@ nodes:
     on_exhausted: hld_approval
     next: review_verdict
 
-  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag.
+  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag. The
+  # engine also bounds the loop: after reviews.max_rounds reviews (default 3), or for a blocking
+  # finding first raised on a re-review, the person decides at approval instead of another round.
   - id: review_verdict
     type: script
     label: Blocking architecture findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json", --previous, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.previous.json", --round, "${steps.arch_review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: hld_approval
     routes:
       - {when: "${steps.review_verdict.outputs.valid} == false", to: arch_review}
-      - {when: "${steps.review_verdict.outputs.blocking} == true", to: revise_from_review}
+      - {when: "${steps.review_verdict.outputs.revise} == true", to: revise_from_review}
       - {to: hld_approval}
 
   # The author resolves the reviewer's blocking findings; the human sees the review at approval.
@@ -431,8 +445,11 @@ nodes:
       - {id: rethink, label: Re-clarify the architecture and regenerate, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
     # Autopilot approves only an HLD the fresh architecture review cleared; blocking findings left
-    # after the revision limit stop the run here.
-    auto: {option: approve, modes: [auto], when: "${steps.review_verdict.outputs.blocking} == false"}
+    # after the round limit, or late ones, stop the run here.
+    auto:
+      option: approve
+      modes: [auto]
+      when: ["${steps.review_verdict.outputs.blocking} == false", "${steps.review_verdict.outputs.late} == false"]
 
   # Fast revision: a targeted HLD edit, then re-validation. Only feedback that needs a new
   # architecture decision goes back through the clarification loop; 'rethink' is the full pass.

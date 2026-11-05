@@ -67,6 +67,7 @@ Pure string substitution — no templating engine, no filters, no expressions. S
 | `${inputs.<name>}` | workflow input value |
 | `${steps.<id>.outputs.<field>}` | recorded output of a completed step |
 | `${steps.<id>.branches.<key>.outputs.<field>}` | a parallel-branch result |
+| `${steps.<id>.visits}` | how many times the step was entered in this stage entry (a review's round number); 0 before it runs |
 | `${config.<dot.path>}` | value from an optional `maestro.config.yaml` at the repo root (advanced; nothing ships or requires one) |
 | `${run.mode}` | the run mode: `human`, `design` or `auto` (see the gate's autopilot policy) |
 | `${memory.knowledge.<domain>}` | a lesson file from the memory store, frozen at init (see [memory.md](memory.md)) — resolves leniently to empty when absent |

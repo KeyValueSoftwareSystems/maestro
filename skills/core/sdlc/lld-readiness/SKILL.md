@@ -67,7 +67,10 @@ JSON — the workflow decides from this file, not from your prose:
 across rounds; new findings get new ids. On a re-review, read the author's resolutions first: mark a
 fixed finding `resolved` (or keep it `open` if the fix falls short), and answer each contest —
 `withdrawn` when the author is right, `upheld` with your reason when not. A contested finding is
-never silently dropped.
+never silently dropped. A finding new in a re-review carries
+`"introduced_by_revision": true` only when the revision since your last round caused it; when
+your instructions give the changes since that round, review those rather than re-auditing
+unchanged text. Raise everything you can see in the first round.
 
 ## Safety
 

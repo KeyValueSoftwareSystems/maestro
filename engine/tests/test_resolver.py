@@ -855,6 +855,33 @@ class ScriptTest(Sim):
         self.assertEqual((action["action"], action["step"]), ("run_script", "cleanup"))  # on_fail
 
 
+VISITS_WF = """\
+version: 1
+nodes:
+  - id: review
+    instruction: Review.
+    outputs: [blocking]
+    next: verdict
+  - id: verdict
+    type: script
+    run: [echo, "round ${steps.review.visits}"]
+    routes:
+      - {when: "${steps.review.outputs.blocking} == true", to: review}
+      - {to: end}
+"""
+
+
+class VisitsPlaceholderTest(Sim):
+    def test_a_step_visit_count_is_a_placeholder(self):
+        self.start(self.write_wf("w.yaml", VISITS_WF))
+        self.nxt()
+        action = self.complete("review", {"blocking": True})
+        self.assertEqual(action["argv"], ["echo", "round 1"])
+        self.complete("verdict", exit_code=0)
+        action = self.complete("review", {"blocking": False})
+        self.assertEqual(action["argv"], ["echo", "round 2"])
+
+
 class ParallelTest(Sim):
     def test_join_all_and_batch(self):
         self.start(self.write_wf("w.yaml", PARALLEL_WF % {"mode": "fail_all"}))

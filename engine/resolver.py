@@ -235,6 +235,8 @@ class Run:
                     raise KeyError(ref)
                 if parts[2] == "outputs" and len(parts) == 4:
                     return entry.get("outputs", {})[parts[3]]
+                if parts[2] == "visits" and len(parts) == 3:
+                    return entry.get("visits", 0)  # this stage entry's visit count
                 if parts[2] == "branches" and len(parts) == 6 and parts[4] == "outputs":
                     return entry.get("branches", {})[parts[3]].get("outputs", {})[parts[5]]
                 raise KeyError(ref)

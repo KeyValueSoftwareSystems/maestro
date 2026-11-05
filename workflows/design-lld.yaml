@@ -364,6 +364,13 @@ nodes:
       - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
       - --stage
       - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+    next: readiness_scope
+
+  # Engine-owned: a re-review sees the LLD changes since its last round, not the whole set again.
+  - id: readiness_scope
+    type: script
+    label: What changed since the last readiness check
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --name, lld-readiness, --files, "${steps.lld_scope_init.outputs.lld_paths_csv}", --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"]
     next: readiness_review
 
   - id: readiness_review
@@ -386,8 +393,12 @@ nodes:
       exists from an earlier round, this is a re-review: read it and the author's resolutions at
       .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json first. Mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
-      reason; keep ids stable and give new findings new ids. Check only what changed, then
-      overwrite both files.
+      reason; keep ids stable and give new findings new ids. ${steps.readiness_scope.outputs.summary}.
+      On a re-review the changes since your last round are at
+      ${steps.readiness_scope.outputs.diff_path}: check those, not the unchanged text. Raise a new
+      blocking finding only for a problem the revision introduced, and mark it
+      "introduced_by_revision": true; anything you could have raised earlier goes to the person as
+      late, not back to the author. Then overwrite both files.
     skill: lld-readiness
     agent: reviewer
     model: opus
@@ -399,6 +410,7 @@ nodes:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+      changes_since_last_review: "${steps.readiness_scope.outputs.diff_path}"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
     outputs: [review_path, blocking, summary]
@@ -410,16 +422,18 @@ nodes:
     on_exhausted: test_cases
     next: readiness_verdict
 
-  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag.
+  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag. The
+  # engine also bounds the loop: after reviews.max_rounds reviews (default 3), or for a blocking
+  # finding first raised on a re-review, a person decides at approval instead of another round.
   - id: readiness_verdict
     type: script
     label: Blocking readiness findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json", --previous, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.previous.json", --round, "${steps.readiness_review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: test_cases
     routes:
       - {when: "${steps.readiness_verdict.outputs.valid} == false", to: readiness_review}
-      - {when: "${steps.readiness_verdict.outputs.blocking} == true", to: revise_llds}
+      - {when: "${steps.readiness_verdict.outputs.revise} == true", to: revise_llds}
       - {to: test_cases}
 
   - id: lld_approval
@@ -441,8 +455,11 @@ nodes:
       - {id: rethink, label: Re-clarify repository decisions and regenerate, to: prepare_lld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
     # Design and auto modes approve LLDs that passed the readiness check (the person approved the
-    # HLD they implement); blocking findings left after the revision limit stop the run here.
-    auto: {option: approve, when: "${steps.readiness_verdict.outputs.blocking} == false"}
+    # HLD they implement); blocking findings left after the round limit, or late ones, stop the
+    # run here.
+    auto:
+      option: approve
+      when: ["${steps.readiness_verdict.outputs.blocking} == false", "${steps.readiness_verdict.outputs.late} == false"]
 
   # Targeted edits from the readiness check, the approval gate, or a contract change.
   - id: revise_llds

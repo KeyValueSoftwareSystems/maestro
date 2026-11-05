@@ -150,8 +150,15 @@ nodes:
     max_visits: 10
     on_exhausted: impl_gate
     routes:
-      - {when: "${steps.verify.outputs.passed} == true", to: review}
+      - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
       - {to: fix}
+
+  # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
+  - id: review_scope
+    type: script
+    label: Previous review round
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews", --name, code-review, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"]
+    next: review
 
   - id: review
     type: agent
@@ -179,8 +186,10 @@ nodes:
       .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json first; review only the
       diff from the commit the report records to this commit; mark a fixed finding resolved; for a
       contested one, mark it withdrawn when the author is right or upheld with your reason; keep
-      finding ids stable and give new findings new ids. Do not re-audit unchanged code. Then
-      overwrite both files.
+      finding ids stable and give new findings new ids. Do not re-audit unchanged code. A new blocking finding is only for a problem the fix introduced
+      (mark it "introduced_by_revision": true); anything you could have raised earlier goes to the
+      person as late.
+      Then overwrite both files.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-review
@@ -219,12 +228,15 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
     routes:
       - {when: "${steps.review_verdict.outputs.valid} == false", to: review}
-      - {when: "${steps.review_verdict.outputs.blocking} == true", to: fix}
+      - {when: "${steps.review_verdict.outputs.revise} == true", to: fix}
+      # round limit reached with blocking findings open, or late ones: a person decides
+      - {when: "${steps.review_verdict.outputs.blocking} == true", to: impl_gate}
+      - {when: "${steps.review_verdict.outputs.late} == true", to: impl_gate}
       - {to: end}
 
   - id: fix
@@ -291,8 +303,8 @@ nodes:
     type: gate
     label: Implementation escalation
     prompt: |
-      The ${inputs.stack} implementation needs a decision: the automated fix rounds ran out, or
-      the fixer escalated.
+      The ${inputs.stack} implementation needs a decision: the automated fix or review rounds ran
+      out, the fixer escalated, or a re-review raised a blocking finding late.
       Engine checks: ${steps.verify.outputs.summary}
       Last review: ${steps.review.outputs.summary}
       Blocking findings (engine): ${steps.review_verdict.outputs.summary}

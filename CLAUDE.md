@@ -156,7 +156,15 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
   A resolutions file older than the findings file answers an earlier round and is ignored. The HLD
   architecture review, the LLD readiness check and the code reviews in `impl` / `qa-bugfix` route
-  on it (the code fixer, `fix-loop`, is the author there).
+  on it (the code fixer, `fix-loop`, is the author there). The engine also bounds each loop:
+  `verdict --round ${steps.<review>.visits}` sets `limit_reached` after `reviews.max_rounds`
+  (maestro.config.yaml, default 3), and `--previous` marks a blocking finding first raised on a
+  re-review and not `introduced_by_revision` as `late`; workflows route on `revise` (blocking,
+  valid, under the limit), so a limit or a late finding goes to the person, never another round.
+- **`review_scope.py`** — before each review, `prepare` writes the diff of the reviewed documents
+  since the last round (`<name>.diff`, from a kept copy) and keeps the previous round's findings
+  (`<name>-findings.previous.json`) for `verdict --previous`; a re-review checks the changes, not
+  the whole document again.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
@@ -308,7 +316,7 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
   `on_exhausted` (default: a synthesized ask-gate). A route taken through a REAL gate
   option bypasses the cap — the human is the loop bound.
 - **Placeholders** are pure text substitution (`${inputs.x}`, `${steps.id.outputs.f}`,
-  `${steps.id.branches.k.outputs.f}`; `${config.path}` reads the project's
+  `${steps.id.branches.k.outputs.f}`, `${steps.id.visits}`; `${config.path}` reads the project's
   maestro.config.yaml — the pack ships none) — no templating engine. `when:` conditions
   support only `==`, `!=`, truthy, `in [a, b]` (`engine/condctl.py`).
 - **Artifacts gate completion**: `complete` refuses to mark an agent step done unless

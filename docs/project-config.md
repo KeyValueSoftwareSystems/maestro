@@ -41,6 +41,8 @@ environment:                    # optional: bring the stack up for QA
   stop: docker compose down
 infrastructure:                 # optional; overrides the detected level for HLD questions
   level: iac                    # none | containers | iac
+reviews:                        # optional
+  max_rounds: 3                 # reviews of one document or branch before a person decides (default 3)
 delivery:                       # optional; what happens after release approval
   mode: branch                  # branch (report the verified branches) | pull-request
   base: main                    # pull-request base (default: the remote's default branch)
@@ -73,6 +75,12 @@ the value. It
 also lists existing test files the branch modified, renamed or deleted (matched by
 `test_patterns`); the code reviewer must justify each one. New test files are not listed.
 
+Every review loop (architecture review of the HLD, LLD readiness check, code review) stops after
+`reviews.max_rounds` reviews; any blocking finding still open then goes to the person at that
+stage's gate instead of another revision round. A re-review sees only the changes since its last
+round, and a blocking finding first raised on a re-review that the revision did not introduce is
+shown to the person as "late" rather than starting another round.
+
 ## Check it
 
 ```bash
@@ -84,7 +92,7 @@ python3 .maestro/engine/maestroctl.py preflight
 | File missing or unreadable | error |
 | A repository has no entry under `repos` | error |
 | A repository has no `build` or `test` command | error |
-| Unknown key inside `repos`, `commands`, `environment` or `delivery` (a typo) | error |
+| Unknown key inside `repos`, `commands`, `environment`, `reviews` or `delivery` (a typo) | error |
 | No `lint`, `security` or `e2e` command | warning — that check is skipped |
 | A configured repository is not in the workspace | warning |
 

@@ -133,8 +133,12 @@ re-review; you see the review next to the HLD at approval. The reviewer records 
 findings file and the engine — not the reviewer's own verdict — decides what blocks. The HLD author
 answers every blocking finding: fixed (an edit), contested (with evidence, which the reviewer
 then withdraws or upholds — once) or escalated to you. An escalation, or a second contest of an
-upheld finding, stops at HLD approval with the question stated. The LLD readiness check works the
-same way. A wrong architecture call found here
+upheld finding, stops at HLD approval with the question stated. The LLD readiness check and the
+code reviews work the same way. Each re-review sees only what changed since its last round (the
+engine hands it the diff), and the loop is bounded by the engine: after three reviews
+(`reviews.max_rounds` in maestro.config.yaml), or for a blocking finding first raised on a
+re-review that the revision did not cause, the open findings go to you at the stage's gate
+instead of another round. A wrong architecture call found here
 costs one document edit instead of a redo of the contract, LLDs and code.
 
 The HLD's Interfaces section lists every call or event between repositories, or says None. When
