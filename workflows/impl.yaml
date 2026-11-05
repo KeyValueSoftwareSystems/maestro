@@ -150,8 +150,15 @@ nodes:
     max_visits: 10
     on_exhausted: impl_gate
     routes:
-      - {when: "${steps.verify.outputs.passed} == true", to: review}
+      - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
       - {to: fix}
+
+  # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
+  - id: review_scope
+    type: script
+    label: Previous review round
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews", --name, code-review, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"]
+    next: review
 
   - id: review
     type: agent
@@ -167,7 +174,9 @@ nodes:
       just the diff in isolation. Check every task in the task list is built; look closely at the
       tasks marked needs_human_gate. Build, lint and tests already
       passed in the engine's run (receipt: ${steps.verify.outputs.receipt_path}); review the
-      design and code, not whether it compiles. Existing test files this branch changed
+      design and code, not whether it compiles. Checks that also fail on the base commit
+      (pre-existing, not this branch's doing): ${steps.verify.outputs.pre_existing_csv} — check
+      the branch's own new tests by reading them, since that suite cannot prove them. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed}. For each one, state in the report
       whether the change follows the approved design; a weakened, skipped or deleted assertion
       without that basis is blocking. Findings need file:line evidence; severity blocking only
@@ -179,8 +188,10 @@ nodes:
       .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json first; review only the
       diff from the commit the report records to this commit; mark a fixed finding resolved; for a
       contested one, mark it withdrawn when the author is right or upheld with your reason; keep
-      finding ids stable and give new findings new ids. Do not re-audit unchanged code. Then
-      overwrite both files.
+      finding ids stable and give new findings new ids. Do not re-audit unchanged code. A new blocking finding is only for a problem the fix introduced
+      (mark it "introduced_by_revision": true); anything you could have raised earlier goes to the
+      person as late.
+      Then overwrite both files.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-review
@@ -219,12 +230,15 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
     routes:
       - {when: "${steps.review_verdict.outputs.valid} == false", to: review}
-      - {when: "${steps.review_verdict.outputs.blocking} == true", to: fix}
+      - {when: "${steps.review_verdict.outputs.revise} == true", to: fix}
+      # round limit reached with blocking findings open, or late ones: a person decides
+      - {when: "${steps.review_verdict.outputs.blocking} == true", to: impl_gate}
+      - {when: "${steps.review_verdict.outputs.late} == true", to: impl_gate}
       - {to: end}
 
   - id: fix
@@ -234,7 +248,9 @@ nodes:
       One fix attempt on branch ${steps.handoff.outputs.branch} in exact worktree
       ${steps.handoff.outputs.worktree}. Address what sent you here:
       - failing engine checks "${steps.verify.outputs.failed_checks}" — read the receipt at
-        ${steps.verify.outputs.receipt_path} and the logs it names;
+        ${steps.verify.outputs.receipt_path} and the logs it names. Checks marked pre-existing
+        (${steps.verify.outputs.pre_existing_csv}) fail on the base commit too: they are not
+        yours to fix;
       - blocking review findings (status open or upheld) in
         .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json, when that file exists:
         answer each one in .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json as
@@ -291,8 +307,8 @@ nodes:
     type: gate
     label: Implementation escalation
     prompt: |
-      The ${inputs.stack} implementation needs a decision: the automated fix rounds ran out, or
-      the fixer escalated.
+      The ${inputs.stack} implementation needs a decision: the automated fix or review rounds ran
+      out, the fixer escalated, or a re-review raised a blocking finding late.
       Engine checks: ${steps.verify.outputs.summary}
       Last review: ${steps.review.outputs.summary}
       Blocking findings (engine): ${steps.review_verdict.outputs.summary}

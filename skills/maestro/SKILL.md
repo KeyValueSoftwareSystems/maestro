@@ -24,6 +24,9 @@ is work the workflow deliberately assigns to this session:
   a supplied description; never invent a feature or slug from no input.
 - `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
+- `--mode human|design|auto` (or the same asked in words): the run mode, passed to init.
+- `--debug` (or the user asks to debug, profile or time the run): pass `--debug` to init. Strip
+  these flags before treating the rest as a slug or feature request.
 
 ## Selecting a slug (only when none was given)
 
@@ -84,7 +87,7 @@ description is the seed for the workflow's bounded PRD interview when no require
 ```bash
 python3 .maestro/engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
 python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
-    [--input feature="..." ...] [--mode human|design|auto]
+    [--input feature="..." ...] [--mode human|design|auto] [--debug]
 ```
 
 - **Run mode** — who answers the gates. `human` (default): every gate. `design`: the human
@@ -95,6 +98,11 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   design approval"); never pick a faster mode yourself. `auto` refuses to start until
   `maestroctl preflight` passes — relay that. To take over or hand back a running feature,
   re-run `init` with the new `--mode`; it applies from the next gate.
+- **Debug** — `--debug` records a timing profile of every step visit (work, human and idle time)
+  in the feature folder's `profile.md`. Pass it only when the user asks to debug or profile the
+  run; on a running feature, re-run `init --debug` and it records from then on. `maestroctl
+  profile --slug <slug>` prints it; never read or edit the profile in place of the engine's
+  actions.
 - `init` is safe when the run already exists (that IS the resume path — say "resuming" and
   continue); it only releases worker claims left by an interrupted session. Its output carries
   `todo`, the run's stage checklist: put it in your task list now (see **Task list**).

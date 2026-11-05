@@ -21,6 +21,7 @@ import shlex
 try:
     import condctl
     import memory as memorymod
+    import run_profile
     import state as statemod
     import validate as validatemod
     import validate_prd_questions as prdqmod
@@ -29,6 +30,7 @@ except ImportError:  # imported as a package (tests)
     from . import (
         condctl,
         memory as memorymod,
+        run_profile,
         state as statemod,
         validate as validatemod,
         validate_prd_questions as prdqmod,
@@ -233,6 +235,8 @@ class Run:
                     raise KeyError(ref)
                 if parts[2] == "outputs" and len(parts) == 4:
                     return entry.get("outputs", {})[parts[3]]
+                if parts[2] == "visits" and len(parts) == 3:
+                    return entry.get("visits", 0)  # this stage entry's visit count
                 if parts[2] == "branches" and len(parts) == 6 and parts[4] == "outputs":
                     return entry.get("branches", {})[parts[3]].get("outputs", {})[parts[5]]
                 raise KeyError(ref)
@@ -677,6 +681,12 @@ def _leave_to(run, frame, node, target, last_outputs=None, via_gate=False):
         _enter(run, frame, target, via_gate=via_gate)
 
 
+def _finish_visit(run, path, entry, telemetry=None):
+    """Close the step's current visit; a debug run also keeps it in the profile."""
+    statemod.mark_step_finished(entry, telemetry)
+    run_profile.record_visit(run.state, path, entry)
+
+
 def _frame_end(run, frame, last_outputs, via_gate=False):
     """A frame reached `end`. via_gate: it ended through a real gate option, so the parent's
     route away from the finished subworkflow is that human decision carried upward (a child's
@@ -697,7 +707,7 @@ def _frame_end(run, frame, last_outputs, via_gate=False):
             outputs[key] = run.resolve_value(value, frame, missing_ok=True)
         entry["outputs"] = outputs
         entry["status"] = "done"
-        statemod.mark_step_finished(entry)
+        _finish_visit(run, path, entry)
         _advance(run, frame.parent, node, outputs, via_gate=via_gate)
     else:  # branch
         _branch_terminal(run, frame, "done", last_outputs)
@@ -753,7 +763,7 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
     if join == "any" and status == "done":
         _cancel_branches(run, parent, node, keep=branch_id)
         entry["status"] = "done"
-        statemod.mark_step_finished(entry)
+        _finish_visit(run, ppath, entry)
         _advance(run, parent, node)
         return
     if len(terminal) == len(node.get("branches", [])):
@@ -763,7 +773,7 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
             _apply_on_fail(run, parent, node, entry["reason"])
             return
         entry["status"] = "done"
-        statemod.mark_step_finished(entry)
+        _finish_visit(run, ppath, entry)
         _advance(run, parent, node)
 
 
@@ -1373,7 +1383,7 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
         entry["artifact"] = arts
     entry["status"] = "done"
     entry["attempts"] = 0
-    statemod.mark_step_finished(entry, telemetry)
+    _finish_visit(run, path, entry, telemetry)
     _advance(run, frame, node, entry["outputs"])
     return entry
 
@@ -1396,7 +1406,7 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry
     if exit_code == 0:
         entry["status"] = "done"
         entry["attempts"] = 0
-        statemod.mark_step_finished(entry, telemetry)
+        _finish_visit(run, path, entry, telemetry)
         _advance(run, frame, node, outputs)
     else:
         _register_failure(run, frame, node, path, entry,
@@ -1550,7 +1560,7 @@ def _finish_interview_if_complete(run, frame, node, path, entry, sections, inter
     }
     entry["artifact"] = [context_path]
     entry["status"] = "done"
-    statemod.mark_step_finished(entry, {
+    _finish_visit(run, path, entry, {
         "interview_turns": len(interview["turns"]),
     })
     _advance(run, frame, node, entry["outputs"])
@@ -1862,7 +1872,7 @@ def _register_failure(run, frame, node, path, entry, reason):
         entry.pop(CLAIM_ID_KEY, None)
         return
     entry["status"] = "failed"
-    statemod.mark_step_finished(entry)
+    _finish_visit(run, path, entry)
     _apply_on_fail(run, frame, node, reason)
 
 
@@ -1900,7 +1910,7 @@ def _finish_real_gate(run, frame, node, path, entry, option, input_text=None, au
     entry.pop("pending_gate_input", None)
     entry["outputs"] = outputs
     entry["status"] = "done"
-    statemod.mark_step_finished(entry)
+    _finish_visit(run, path, entry)
     _append_gate_history(run, path, option["id"], input_text=input_text, auto=auto)
     # Only a person's choice lifts the visit cap; an autopilot choice stays loop-bounded.
     _leave_to(run, frame, node, option["to"], outputs, via_gate=not auto)

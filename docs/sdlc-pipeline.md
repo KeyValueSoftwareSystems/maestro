@@ -14,7 +14,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
           → architecture review by a fresh reviewer → [approve])
    → API contract (only when the HLD lists cross-repo interfaces)
    → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
-          → functional test cases (every AC traced) → readiness check → [approve])
+          → readiness check → functional test cases (every AC traced) → [approve])
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
@@ -133,8 +133,12 @@ re-review; you see the review next to the HLD at approval. The reviewer records 
 findings file and the engine — not the reviewer's own verdict — decides what blocks. The HLD author
 answers every blocking finding: fixed (an edit), contested (with evidence, which the reviewer
 then withdraws or upholds — once) or escalated to you. An escalation, or a second contest of an
-upheld finding, stops at HLD approval with the question stated. The LLD readiness check works the
-same way. A wrong architecture call found here
+upheld finding, stops at HLD approval with the question stated. The LLD readiness check and the
+code reviews work the same way. Each re-review sees only what changed since its last round (the
+engine hands it the diff), and the loop is bounded by the engine: after three reviews
+(`reviews.max_rounds` in maestro.config.yaml), or for a blocking finding first raised on a
+re-review that the revision did not cause, the open findings go to you at the stage's gate
+instead of another round. A wrong architecture call found here
 costs one document edit instead of a redo of the contract, LLDs and code.
 
 The HLD's Interfaces section lists every call or event between repositories, or says None. When
@@ -147,11 +151,12 @@ the repositories in scope, then one LLD file per repository (`lld/<repo>.md`), s
 implementation agent later reads only its own repository's design. Each LLD implements or calls
 the contract exactly. If a repository needs something the contract lacks — for example a field
 the frontend needs — the LLD writer reports it, the contract is updated first, and every
-affected LLD is revised. Functional test cases follow; the engine checks that every PRD
-acceptance criterion (`AC-xx`) is traced by at least one case and that no case traces a criterion
-the PRD lacks, and sends the catalog back with the exact gaps otherwise. Then a readiness check by
-a fresh reviewer: no design decision left to the implementer, every LLD consistent with the
-contract and with each other, every acceptance criterion covered. One approval covers all of them.
+affected LLD is revised. Then a readiness check by a fresh reviewer: no design decision left to
+the implementer, every LLD consistent with the contract and with each other, every acceptance
+criterion covered by an LLD. Once the LLDs pass it, the functional test cases are written once
+(not on every revision round); the engine checks that every PRD acceptance criterion (`AC-xx`) is
+traced by at least one case and that no case traces a criterion the PRD lacks, and sends the
+catalog back with the exact gaps otherwise. One approval covers all of them.
 
 Approval records the exact HLD, contract and LLD hashes. Delivery starts by checking them: a
 design that changed after approval goes back through design instead of being built stale.
@@ -201,10 +206,14 @@ repositories exactly as on existing code.
 
 ## Light path for small changes
 
-After PRD approval the engine sizes the feature. A small change — at most five acceptance
-criteria, no non-functional targets, one repository in the workspace, nothing left "(to confirm)"
-— skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
-and rollout notes an HLD would) → test cases → readiness check → approval → delivery. Everything
+After PRD approval an impact assessment (skill `feature-impact`) names the repositories the
+feature changes and whether it changes an interface between them, stored data or infrastructure;
+the engine checks every name is a repository the workspace has. The engine then sizes the
+feature from that, not from how many repositories the workspace holds. A small change — at most
+five acceptance criteria (`design.light_max_criteria` in maestro.config.yaml), no non-functional
+targets, exactly one repository changed, no interface or infrastructure change, nothing left
+"(to confirm)" — skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
+and rollout notes an HLD would) → readiness check → test cases → approval → delivery. Everything
 else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
 (`init --input path=light`). The approval binds the PRD's hash, so a PRD edited after approval is
 still caught before delivery.
@@ -218,7 +227,7 @@ for design approval"). The mode decides who answers each gate:
 |---|---|---|---|
 | PRD approval | you | you | approved |
 | HLD approval | you | you | approved if the architecture review has no blocking findings |
-| LLD scope | you | all repositories | all repositories |
+| LLD scope | you | the repositories the impact assessment names (plus infrastructure owners) | same |
 | LLD approval | you | approved if the readiness check passes | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
 | Release | you | approved if the engine verified every repository and every acceptance criterion passes QA | same |

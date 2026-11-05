@@ -103,5 +103,57 @@ class FindingsTest(unittest.TestCase):
         self.assertEqual(self.resolve()["state"], "proceed")
 
 
+class RoundLimitTest(FindingsTest):
+    """The engine bounds re-review loops: a round limit, and late findings go to the person."""
+
+    def verdict_round(self, round_no, max_rounds=None, previous=True):
+        argv = ["verdict", "--findings", self.f, "--round", str(round_no), "--root", self.dir]
+        if previous:
+            argv += ["--previous", os.path.join(self.dir, "previous.json")]
+        if max_rounds:
+            argv += ["--max-rounds", str(max_rounds)]
+        return self.run_cmd(*argv)
+
+    def test_new_blocking_finding_on_a_re_review_is_late_unless_the_revision_caused_it(self):
+        self.write(os.path.join(self.dir, "previous.json"), {"findings": [finding("F1")]})
+        caused = {**finding("F3"), "introduced_by_revision": True}
+        self.write(self.f, {"findings": [finding("F1", status="resolved"), finding("F2"), caused]})
+        result = self.verdict_round(2)
+        self.assertEqual((result["blocking_count"], result["late"], result["late_csv"]),
+                         (1, True, "F2"))
+        self.assertTrue(result["revise"])  # F3 is the revision's own regression
+        self.write(self.f, {"findings": [finding("F1", status="resolved"), finding("F2")]})
+        result = self.verdict_round(2)
+        self.assertEqual((result["blocking"], result["revise"], result["late"]), (False, False, True))
+        self.assertIn("late blocking finding", result["summary"])
+
+    def test_the_first_round_is_never_late(self):
+        # a findings file left by an earlier pass is not this stage entry's earlier round
+        self.write(os.path.join(self.dir, "previous.json"), {"findings": [finding("F1")]})
+        self.write(self.f, {"findings": [finding("F9")]})
+        result = self.verdict_round(1)
+        self.assertEqual((result["late"], result["revise"]), (False, True))
+
+    def test_round_limit_hands_remaining_findings_to_the_person(self):
+        self.write(self.f, {"findings": [finding("F1")]})
+        self.assertTrue(self.verdict_round(2, previous=False)["revise"])
+        result = self.verdict_round(3, previous=False)
+        self.assertEqual((result["blocking"], result["limit_reached"], result["revise"]),
+                         (True, True, False))
+        self.assertIn("round limit reached (3/3)", result["summary"])
+        self.assertTrue(self.verdict_round(3, max_rounds=5, previous=False)["revise"])
+
+    def test_round_limit_reads_the_project_config(self):
+        self.write(os.path.join(self.dir, "maestro.config.yaml"),
+                   "version: 1\nrepos: {}\nreviews:\n  max_rounds: 1\n")
+        self.write(self.f, {"findings": [finding("F1")]})
+        result = self.verdict_round(1, previous=False)
+        self.assertEqual((result["max_rounds"], result["revise"]), (1, False))
+
+    def test_introduced_by_revision_must_be_a_boolean(self):
+        self.write(self.f, {"findings": [{**finding("F1"), "introduced_by_revision": "yes"}]})
+        self.assertFalse(self.verdict_round(2)["valid"])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,8 +1,10 @@
 # Design child: every repository's LLD in one run — one interview, one write, a readiness check,
 # one approval — plus the functional test cases.
 #
-#   scope -> interview -> write LLDs -> validate -> test cases (AC trace) -> readiness check -> approval
+#   scope -> interview -> write LLDs -> validate -> readiness check -> test cases (AC trace) -> approval
 #
+# The test cases are written once the LLDs pass the readiness check, not on every revision round:
+# the engine's AC trace checks their coverage, and the person reviews them at approval.
 # One file per repository (lld/<repo>.md) keeps each implementation agent's context to its own
 # repository. LLDs implement or call the contract exactly; a repository that needs a contract
 # change reports it, the contract is updated first, and the affected LLDs are revised. Approval
@@ -19,6 +21,7 @@ inputs:
   feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
   light: {type: string, default: full, description: "light when the feature took the light path (no HLD)"}
   required_repos: {type: string, default: "", description: repositories the HLD's infrastructure changes need in scope}
+  impact_repos: {type: string, default: "", description: repositories the impact assessment says the feature changes}
 defaults:
   model: opus
   agent: planner
@@ -36,13 +39,15 @@ nodes:
     label: LLD scope
     prompt: |
       Detected repos: ${steps.lld_scope_serve.outputs.names_csv}
+      The impact assessment says this feature changes: ${inputs.impact_repos}
 
-      Write the detailed design for all of them, or only the repositories this feature changes?
-      Repositories that own infrastructure changes in the HLD must stay in scope: ${inputs.required_repos}
+      Write the detailed design for the repositories this feature changes, all of them, or a set
+      you pick? Repositories that own infrastructure changes in the HLD stay in scope: ${inputs.required_repos}
     options:
+      - {id: impact, label: The repositories this feature changes (all when no assessment ran), to: lld_scope_init}
       - {id: all, label: All of them, to: lld_scope_init}
       - {id: pick, label: Pick specific repos, to: lld_scope_init, input: repos_text}
-    auto: {option: all}
+    auto: {option: impact}
 
   - id: lld_scope_init
     type: script
@@ -61,6 +66,8 @@ nodes:
       - "${steps.lld_scope.outputs.repos_text}"
       - --require
       - "${inputs.required_repos}"
+      - --impact
+      - ".maestro/runs/${inputs.slug}/impact.json"
     on_fail: lld_scope
     next: prepare_lld_questions
 
@@ -272,7 +279,7 @@ nodes:
     artifact: ".maestro/runs/${inputs.slug}/openapi.yaml"
     fresh: true
     max_visits: 3
-    on_exhausted: lld_approval
+    on_exhausted: test_cases
     next: revise_llds
 
   - id: validate_llds
@@ -282,7 +289,7 @@ nodes:
     max_visits: 12
     on_exhausted: abort
     routes:
-      - {when: "${steps.validate_llds.outputs.valid} == true", to: test_cases}
+      - {when: "${steps.validate_llds.outputs.valid} == true", to: sync_decisions}
       - {to: repair_llds}
 
   - id: repair_llds
@@ -314,7 +321,8 @@ nodes:
       Produce the functional test-case catalog for this feature at
       .maestro/runs/${inputs.slug}/test-cases.md from the requirement's acceptance criteria, the
       HLD, the contract when it exists, and the repository LLDs — the QA source of truth. If the
-      catalog exists from an earlier pass, update it for what changed.
+      catalog exists from an earlier pass, update in place only the cases the LLD or acceptance
+      criteria changes affect; keep every other case and its ID unchanged.
       Start each case with a heading whose first word is its ID (`### TC-${inputs.slug}-001 — title`)
       and name in its body every PRD criterion it verifies exactly as the PRD writes it (AC-01).
       Every AC in .maestro/runs/${inputs.slug}/requirement/prd.md needs at least one case; trace no
@@ -339,7 +347,7 @@ nodes:
     label: Every acceptance criterion has a test case?
     run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]
     routes:
-      - {when: "${steps.trace_test_cases.outputs.valid} == true", to: sync_decisions}
+      - {when: "${steps.trace_test_cases.outputs.valid} == true", to: lld_approval}
       - {to: test_cases}
 
   # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
@@ -361,6 +369,13 @@ nodes:
       - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
       - --stage
       - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+    next: readiness_scope
+
+  # Engine-owned: a re-review sees the LLD changes since its last round, not the whole set again.
+  - id: readiness_scope
+    type: script
+    label: What changed since the last readiness check
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --name, lld-readiness, --files, "${steps.lld_scope_init.outputs.lld_paths_csv}", --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"]
     next: readiness_review
 
   - id: readiness_review
@@ -368,12 +383,11 @@ nodes:
     label: Implementation readiness check (fresh reviewer)
     brief: full
     instruction: |
-      Check that the repository LLDs (${steps.lld_scope_init.outputs.lld_paths_csv}) and the test
-      cases at .maestro/runs/${inputs.slug}/test-cases.md are ready to implement: no design decision
-      left to the implementer, every LLD consistent with the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and with each other, and every
-      acceptance criterion in .maestro/runs/${inputs.slug}/requirement/ covered by an LLD section
-      and a test case. Every change in the Infrastructure and operations section of the HLD at
+      Check that the repository LLDs (${steps.lld_scope_init.outputs.lld_paths_csv}) are ready to
+      implement: no design decision left to the implementer, every LLD consistent with the contract
+      at .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and with each other, and every
+      acceptance criterion in .maestro/runs/${inputs.slug}/requirement/ covered by an LLD section.
+      The test cases are written after this check passes; do not ask for them. Every change in the Infrastructure and operations section of the HLD at
       .maestro/runs/${inputs.slug}/hld.md (absent on the light path) needs an LLD in the repository
       that owns that infrastructure; a missing one is blocking. This is not an architecture review;
       the HLD was reviewed and approved. The decisions the person confirmed are in
@@ -384,20 +398,24 @@ nodes:
       exists from an earlier round, this is a re-review: read it and the author's resolutions at
       .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json first. Mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
-      reason; keep ids stable and give new findings new ids. Check only what changed, then
-      overwrite both files.
+      reason; keep ids stable and give new findings new ids. ${steps.readiness_scope.outputs.summary}.
+      On a re-review the changes since your last round are at
+      ${steps.readiness_scope.outputs.diff_path}: check those, not the unchanged text. Raise a new
+      blocking finding only for a problem the revision introduced, and mark it
+      "introduced_by_revision": true; anything you could have raised earlier goes to the person as
+      late, not back to the author. Then overwrite both files.
     skill: lld-readiness
     agent: reviewer
     model: opus
     inputs:
       slug: "${inputs.slug}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
-      test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
+      changes_since_last_review: "${steps.readiness_scope.outputs.diff_path}"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
     outputs: [review_path, blocking, summary]
@@ -406,20 +424,22 @@ nodes:
       - ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
     fresh: true
     max_visits: 6
-    on_exhausted: lld_approval
+    on_exhausted: test_cases
     next: readiness_verdict
 
-  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag.
+  # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag. The
+  # engine also bounds the loop: after reviews.max_rounds reviews (default 3), or for a blocking
+  # finding first raised on a re-review, a person decides at approval instead of another round.
   - id: readiness_verdict
     type: script
     label: Blocking readiness findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json", --previous, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.previous.json", --round, "${steps.readiness_review.visits}", --root, "."]
     max_visits: 8
-    on_exhausted: lld_approval
+    on_exhausted: test_cases
     routes:
       - {when: "${steps.readiness_verdict.outputs.valid} == false", to: readiness_review}
-      - {when: "${steps.readiness_verdict.outputs.blocking} == true", to: revise_llds}
-      - {to: lld_approval}
+      - {when: "${steps.readiness_verdict.outputs.revise} == true", to: revise_llds}
+      - {to: test_cases}
 
   - id: lld_approval
     type: gate
@@ -440,8 +460,11 @@ nodes:
       - {id: rethink, label: Re-clarify repository decisions and regenerate, to: prepare_lld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
     # Design and auto modes approve LLDs that passed the readiness check (the person approved the
-    # HLD they implement); blocking findings left after the revision limit stop the run here.
-    auto: {option: approve, when: "${steps.readiness_verdict.outputs.blocking} == false"}
+    # HLD they implement); blocking findings left after the round limit, or late ones, stop the
+    # run here.
+    auto:
+      option: approve
+      when: ["${steps.readiness_verdict.outputs.blocking} == false", "${steps.readiness_verdict.outputs.late} == false"]
 
   # Targeted edits from the readiness check, the approval gate, or a contract change.
   - id: revise_llds
@@ -449,9 +472,8 @@ nodes:
     execution: lead
     label: Revise the repository LLDs
     instruction: |
-      Make targeted edits to the LLDs at ${steps.lld_scope_init.outputs.lld_paths_csv} (and the test
-      cases at .maestro/runs/${inputs.slug}/test-cases.md when they are affected) for whichever of
-      these applies:
+      Make targeted edits to the LLDs at ${steps.lld_scope_init.outputs.lld_paths_csv} for whichever
+      of these applies (the test cases are updated after the readiness check, not here):
       - human feedback: ${steps.lld_approval.outputs.feedback}
       - blocking readiness findings (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json:
         resolve each one and record it in .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json as
@@ -486,15 +508,16 @@ nodes:
       - {to: readiness_resolution}
 
   # Engine-owned: with blocking readiness findings open, each must be fixed, contested or
-  # escalated; an escalation (or a second contest) goes to the person at LLD approval.
+  # escalated; an escalation (or a second contest) goes to the person at LLD approval, after the
+  # test cases are written so the approval shows them.
   - id: readiness_resolution
     type: script
     label: Findings fixed, contested or escalated?
     run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"]
     max_visits: 10
-    on_exhausted: lld_approval
+    on_exhausted: test_cases
     routes:
-      - {when: "${steps.readiness_resolution.outputs.state} == escalate", to: lld_approval}
+      - {when: "${steps.readiness_resolution.outputs.state} == escalate", to: test_cases}
       - {when: "${steps.readiness_resolution.outputs.state} == incomplete", to: revise_llds}
       - {to: validate_llds}
 

@@ -36,7 +36,8 @@ nodes:
       a test. If the fix needs a design or contract change, do not make it: escalate.
       When the engine checks or the review sent you back, address what they found:
       failing checks "${steps.verify.outputs.failed_checks}" (receipt
-      ${steps.verify.outputs.receipt_path}) and blocking findings (status open or upheld) in
+      ${steps.verify.outputs.receipt_path}; checks marked pre-existing fail on the base commit too
+      and are not yours to fix) and blocking findings (status open or upheld) in
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json: answer each one in
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json as
       {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed, contested
@@ -106,8 +107,15 @@ nodes:
     max_visits: 6
     on_exhausted: fix_gate
     routes:
-      - {when: "${steps.verify.outputs.passed} == true", to: review}
+      - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
       - {to: fix}
+
+  # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
+  - id: review_scope
+    type: script
+    label: Previous review round
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews", --name, code-review, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"]
+    next: review
 
   - id: review
     type: agent
@@ -127,7 +135,10 @@ nodes:
       earlier round, read the fixer's resolutions at
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json: mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the fixer is right or upheld with your
-      reason; keep finding ids stable and give new findings new ids.
+      reason; keep finding ids stable and give new findings new ids. On such a re-review a new
+      blocking finding is only for a problem the latest fix introduced (mark it
+      "introduced_by_revision": true); anything you could have raised earlier goes to the person
+      as late.
     skill: repo-review
     agent: reviewer
     model: opus
@@ -158,20 +169,24 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: fix_gate
     routes:
       - {when: "${steps.review_verdict.outputs.valid} == false", to: review}
-      - {when: "${steps.review_verdict.outputs.blocking} == true", to: fix}
+      - {when: "${steps.review_verdict.outputs.revise} == true", to: fix}
+      # round limit reached with blocking findings open, or late ones: a person decides
+      - {when: "${steps.review_verdict.outputs.blocking} == true", to: fix_gate}
+      - {when: "${steps.review_verdict.outputs.late} == true", to: fix_gate}
       - {to: end}
 
   - id: fix_gate
     type: gate
     label: Bug-fix escalation
     prompt: |
-      The QA bug fix for ${inputs.repo} needs a decision: the fixer escalated, or the engine checks
-      or the review still fail after the automated rounds.
+      The QA bug fix for ${inputs.repo} needs a decision: the fixer escalated, the engine checks
+      or the review still fail after the automated rounds, or a re-review raised a blocking
+      finding late.
       Fix attempt: ${steps.fix.outputs.fix_summary}
       Engine checks: ${steps.verify.outputs.summary}
       Review: ${steps.review.outputs.summary}

@@ -243,6 +243,9 @@ python3 .maestro/engine/maestroctl.py todo --slug add-phone-otp-login
 
 **Run one phase only:** `/maestro my-feature .maestro/workflows/design.yaml`
 
+**See where the time goes:** `/maestro my-feature --debug` (new or resumed run) keeps a timing
+profile at `.maestro/runs/my-feature/profile.md`: work, human and idle time per stage and step.
+
 What each stage of the included pipeline does: [docs/sdlc-pipeline.md](docs/sdlc-pipeline.md).
 
 ## Create your own workflow

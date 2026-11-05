@@ -44,7 +44,7 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · reclaim · rebase · status · todo · brief · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · reclaim · rebase · status · todo · brief · profile · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
@@ -148,7 +148,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`repo_checks.py`** — the `verify` script step: runs a repo's configured setup/build/
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check), plus an engine
-  secret scan of the lines the branch added (fails as `secrets`; values never recorded). The impl loop
+  secret scan of the lines the branch added (fails as `secrets`; values never recorded). A failing
+  check is re-run on the branch's base commit (cached checkout + results under the git-ignored
+  `.maestro/baseline/<repo>/`); failing there too makes it `pre-existing`, which does not fail
+  verification — but a pre-existing `test` failure makes the release verdict `baseline-failing`
+  (`implementation_pool.py`), so autopilot will not release it. The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
   findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
@@ -156,10 +160,23 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
   A resolutions file older than the findings file answers an earlier round and is ignored. The HLD
   architecture review, the LLD readiness check and the code reviews in `impl` / `qa-bugfix` route
-  on it (the code fixer, `fix-loop`, is the author there).
+  on it (the code fixer, `fix-loop`, is the author there). The engine also bounds each loop:
+  `verdict --round ${steps.<review>.visits}` sets `limit_reached` after `reviews.max_rounds`
+  (maestro.config.yaml, default 3), and `--previous` marks a blocking finding first raised on a
+  re-review and not `introduced_by_revision` as `late`; workflows route on `revise` (blocking,
+  valid, under the limit), so a limit or a late finding goes to the person, never another round.
+- **`review_scope.py`** — before each review, `prepare` writes the diff of the reviewed documents
+  since the last round (`<name>.diff`, from a kept copy) and keeps the previous round's findings
+  (`<name>-findings.previous.json`) for `verdict --previous`; a re-review checks the changes, not
+  the whole document again.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
+- **`run_profile.py`** — debug-mode timing (`init --debug`, off by default): every step visit is
+  kept under the ledger's `profile.visits` (resolver `_finish_visit`; serving calls stamp
+  `served_at_ms`), split into queued, work (agents, scripts) and human (gates, interviews) time,
+  plus idle stretches; serving calls rewrite `profile.md`/`profile.json`, `maestroctl profile`
+  prints it. Named `run_profile` so it never shadows the stdlib `profile` module.
 - **`brief.py`** — the run brief inlined into every agent prompt by `render_agent_prompt`, at the
   node's `brief:` level (`defaults.brief`, else `minimal`): `minimal` = feature, run mode, this
   step, documents earlier steps produced; `full` adds stages, gate decisions with feedback and
@@ -194,9 +211,16 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   the scaffold report's commands to maestro.config.yaml without touching existing entries, runs
   each build and test once, stamps and commits each codebase map). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
+- **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
+  `feature-impact` agent right after PRD approval): the repositories the feature changes and
+  whether it changes an interface between them, stored data or infrastructure. `validate` checks
+  every name is a discovered repository; sizing and the LLD scope (`lld_set.py init --choice
+  impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
 - **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
-  (PRD → LLD → test cases → readiness → approval; no HLD or contract) only for ≤5 acceptance
-  criteria, Non-functional requirements None, one repository and no "(to confirm)"; the run input
+  (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
+  `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
+  exactly one repository changed and no interface or infrastructure change (from `--impact`;
+  without one, the workspace must hold one repository) and no "(to confirm)"; the run input
   `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
@@ -303,7 +327,7 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
   `on_exhausted` (default: a synthesized ask-gate). A route taken through a REAL gate
   option bypasses the cap — the human is the loop bound.
 - **Placeholders** are pure text substitution (`${inputs.x}`, `${steps.id.outputs.f}`,
-  `${steps.id.branches.k.outputs.f}`; `${config.path}` reads the project's
+  `${steps.id.branches.k.outputs.f}`, `${steps.id.visits}`; `${config.path}` reads the project's
   maestro.config.yaml — the pack ships none) — no templating engine. `when:` conditions
   support only `==`, `!=`, truthy, `in [a, b]` (`engine/condctl.py`).
 - **Artifacts gate completion**: `complete` refuses to mark an agent step done unless

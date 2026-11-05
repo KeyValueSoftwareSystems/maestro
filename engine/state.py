@@ -122,7 +122,7 @@ def now_ms():
 
 def mark_step_started(entry, **metadata):
     """Record wall-clock timing and stable execution metadata for one visit."""
-    for key in ("finished_at", "duration_ms", "telemetry", "dispatched_at"):
+    for key in ("finished_at", "duration_ms", "telemetry", "dispatched_at", "served_at_ms"):
         entry.pop(key, None)
     entry["started_at"] = now_iso()
     entry["started_at_ms"] = now_ms()

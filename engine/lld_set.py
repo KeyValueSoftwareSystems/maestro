@@ -11,8 +11,11 @@ out of date. Implementation refuses to start on a stale design.
 Commands
 --------
   list     [--root .]                                  discovered repo names
-  init     [--root .] --slug S --choice all|pick [--repos-text "a, b"] [--require "a,b"]
-           write the selection to lld-repos.json; `pick` fails on an unknown name
+  init     [--root .] --slug S --choice all|pick|impact [--repos-text "a, b"] [--require "a,b"]
+           [--impact impact.json]
+           write the selection to lld-repos.json; `pick` fails on an unknown name; `impact` takes
+           the repositories the impact assessment names (every repository when it is missing or
+           invalid) plus the --require ones
   validate [--root .] --slug S                         every selected LLD exists and validates
   approve  [--root .] --slug S [--light true]  record lld/approval.json (PRD, HLD, contract, LLD hashes;
            --light: the light path designs without an HLD)
@@ -27,6 +30,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
+import impact as impactmod  # noqa: E402
 import state as statemod  # noqa: E402
 import validate_lld  # noqa: E402
 
@@ -92,8 +96,13 @@ def cmd_init(args):
     discovered = [name for name, _path in codebase_scan.discover_repos(args.root)]
     if not discovered:
         return _fail(f"no repos discovered under {args.root!r} (codebase/* or the root itself)")
+    required = [r.strip() for r in (args.require or "").split(",") if r.strip()]
     if args.choice == "all":
         repos = discovered
+    elif args.choice == "impact":
+        assessed = impactmod.load(args.root, args.impact)[0] if args.impact else None
+        repos = list(assessed["repos"]) if assessed else list(discovered)
+        repos += [r for r in required if r in discovered and r not in repos]
     else:
         by_lower = {name.lower(): name for name in discovered}
         wanted = [part for part in (args.repos_text or "").replace(",", " ").split() if part]
@@ -103,7 +112,6 @@ def cmd_init(args):
         repos = list(dict.fromkeys(by_lower[name.lower()] for name in wanted))
         if not repos:
             return _fail("--choice pick needs at least one repo name")
-    required = [r.strip() for r in (args.require or "").split(",") if r.strip()]
     dropped = [repo for repo in required if repo in discovered and repo not in repos]
     if dropped:
         # the approved HLD changes infrastructure these repositories own: they ship with the feature
@@ -212,8 +220,9 @@ def main(argv=None):
     p = sub.add_parser("init")
     p.add_argument("--root", default=".")
     p.add_argument("--slug", required=True)
-    p.add_argument("--choice", choices=("all", "pick"), default="all")
+    p.add_argument("--choice", choices=("all", "pick", "impact"), default="all")
     p.add_argument("--repos-text", default="")
+    p.add_argument("--impact", default="", help="the impact assessment, for --choice impact")
     p.add_argument("--require", default="",
                    help="repositories that must be in scope (the HLD's infrastructure owners)")
     p.set_defaults(fn=cmd_init)

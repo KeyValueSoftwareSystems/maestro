@@ -21,10 +21,16 @@ Test-edit guard: with --base-repo, the receipt also lists EXISTING test files th
 modified, renamed or deleted (repo `test_patterns`, or defaults). They are flagged for the
 reviewer to justify, never auto-failed — agents can make tests pass by weakening them.
 
+Baseline: with --base-repo, a check that fails is run once more on the commit the branch started
+from, in an engine-owned checkout under .maestro/baseline/<repo>/ (setup first, when configured).
+If it fails there too, the failure is `pre-existing` — the feature did not cause it — and does not
+fail verification; the receipt records the base commit and its log, and the summary names it.
+Results are cached per base commit and command, so a slow baseline runs once.
+
 Usage: repo_checks.py --root . --repo backend --worktree <path> --out <receipt.json>
                       [--base-repo <main checkout>]
-Last stdout line: {"passed", "failed_checks", "tests_changed", "receipt_path", "receipt_sha256",
-                   "commit", "summary"}
+Last stdout line: {"passed", "failed_checks", "pre_existing_csv", "tests_changed", "receipt_path",
+                   "receipt_sha256", "commit", "summary"}
 Exit: 0 when the checks ran (pass or fail; route on `passed`), 2 when they cannot run.
 """
 
@@ -32,9 +38,11 @@ from __future__ import annotations
 
 import argparse
 import fnmatch
+import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -158,6 +166,66 @@ def _run(command, cwd, timeout, log_path, extra_env=None):
     }
 
 
+def _baseline_dir(root, repo):
+    folder = os.path.join(root, ".maestro", "baseline", repo)
+    os.makedirs(folder, exist_ok=True)
+    ignore = os.path.join(root, ".maestro", "baseline", ".gitignore")
+    if not os.path.exists(ignore):
+        with open(ignore, "w", encoding="utf-8") as fh:
+            fh.write("# engine-owned base-commit checkouts and results; never committed\n*\n")
+    return folder
+
+
+def _baseline_checkout(root, repo, base_repo, commit):
+    """A detached checkout of `commit`, reused across runs; older ones for the repo are removed."""
+    folder = _baseline_dir(root, repo)
+    path = os.path.join(folder, commit[:12])
+    if os.path.isdir(path) and _git_head(path) == commit:
+        return path, False
+    for name in os.listdir(folder):
+        stale = os.path.join(folder, name)
+        if os.path.isdir(stale):
+            subprocess.run(["git", "-C", base_repo, "worktree", "remove", "--force", stale],
+                           capture_output=True, text=True)
+            shutil.rmtree(stale, ignore_errors=True)
+    subprocess.run(["git", "-C", base_repo, "worktree", "prune"], capture_output=True, text=True)
+    proc = subprocess.run(["git", "-C", base_repo, "worktree", "add", "--detach", path, commit],
+                          capture_output=True, text=True)
+    return (path, True) if proc.returncode == 0 else (None, False)
+
+
+def _baseline_result(root, repo, base_repo, base, name, commands, timeout):
+    """How check `name` fares on the base commit: cached {status, exit_code, log}, or None."""
+    folder = _baseline_dir(root, repo)
+    cache_path = os.path.join(folder, f"results-{base[:12]}.json")
+    try:
+        with open(cache_path, encoding="utf-8") as fh:
+            cache = json.load(fh)
+    except (OSError, ValueError):
+        cache = {}
+    key = hashlib.sha256(commands[name].encode("utf-8")).hexdigest()[:16]
+    cached = (cache.get(name) or {})
+    if cached.get("command_sha") == key:
+        return cached
+    checkout, fresh = _baseline_checkout(root, repo, base_repo, base)
+    if checkout is None:
+        return None
+    log_dir = os.path.join(folder, f"logs-{base[:12]}")
+    if "setup" in commands and name != "setup" and (fresh or "setup" not in cache):
+        setup = _run(commands["setup"], checkout, timeout, os.path.join(log_dir, "setup.log"))
+        cache["setup"] = {"command_sha": hashlib.sha256(commands["setup"].encode("utf-8"))
+                          .hexdigest()[:16], "status": setup["status"],
+                          "exit_code": setup["exit_code"]}
+    result = _run(commands[name], checkout, timeout, os.path.join(log_dir, f"{name}.log"))
+    cache[name] = {"command_sha": key, "status": result["status"],
+                   "exit_code": result["exit_code"],
+                   "log": os.path.relpath(os.path.join(log_dir, f"{name}.log"), root)}
+    with open(cache_path, "w", encoding="utf-8") as fh:
+        json.dump(cache, fh, indent=2)
+        fh.write("\n")
+    return cache[name]
+
+
 def run_checks(root, repo, worktree, out, base_repo=None):
     try:
         config = project_config.load(root)
@@ -180,6 +248,10 @@ def run_checks(root, repo, worktree, out, base_repo=None):
     timeout = project_config.repo_timeout(config, repo)
     full_out = out if os.path.isabs(out) else os.path.join(root, out)
     log_dir = os.path.splitext(full_out)[0] + "-logs"
+    full_base = None
+    if base_repo:
+        full_base = base_repo if os.path.isabs(base_repo) else os.path.join(root, base_repo)
+    base = _branch_base(full_worktree, full_base) if full_base else ""
     checks, stopped_by = [], None
     for name in ORDER:
         if name not in commands:
@@ -188,23 +260,28 @@ def run_checks(root, repo, worktree, out, base_repo=None):
             checks.append({"name": name, "command": commands[name], "status": "not-run"})
             continue
         result = _run(commands[name], full_worktree, timeout, os.path.join(log_dir, f"{name}.log"))
-        checks.append({
+        check = {
             "name": name,
             "command": commands[name],
             "log": os.path.relpath(os.path.join(log_dir, f"{name}.log"), root),
             **result,
-        })
-        if result["status"] != "passed" and name in STOP_ON_FAILURE:
+        }
+        if result["status"] != "passed" and base and base != commit:
+            before = _baseline_result(root, repo, full_base, base, name, commands, timeout)
+            if before and before["status"] != "passed":
+                check["status"] = "pre-existing"
+                check["baseline"] = {"commit": base, "exit_code": before["exit_code"],
+                                     "log": before.get("log")}
+        checks.append(check)
+        if check["status"] not in ("passed", "pre-existing") and name in STOP_ON_FAILURE:
             stopped_by = name
 
-    full_base = None
-    if base_repo:
-        full_base = base_repo if os.path.isabs(base_repo) else os.path.join(root, base_repo)
     secrets, secret_note = _secret_scan(full_worktree, full_base)
     if secrets:
         checks.append({"name": "secrets", "command": "engine secret scan of added lines",
                        "status": "failed", "findings": secrets})
-    failed = [c["name"] for c in checks if c["status"] != "passed"]
+    failed = [c["name"] for c in checks if c["status"] not in ("passed", "pre-existing")]
+    pre_existing = [c["name"] for c in checks if c["status"] == "pre-existing"]
     test_changes, guard_note = _test_changes(
         full_worktree, full_base, project_config.repo_test_patterns(config, repo))
     receipt = {
@@ -214,6 +291,7 @@ def run_checks(root, repo, worktree, out, base_repo=None):
         "commit": commit,
         "verified_at": statemod.now_iso(),
         "passed": not failed,
+        "pre_existing": pre_existing,
         "skipped": [name for name in ORDER if name not in commands],
         "checks": checks,
         "test_changes": test_changes,
@@ -224,9 +302,12 @@ def run_checks(root, repo, worktree, out, base_repo=None):
     with open(full_out, "w", encoding="utf-8") as fh:
         json.dump(receipt, fh, indent=2)
         fh.write("\n")
-    ran = [c["name"] for c in checks if c["status"] != "not-run"]
+    ran = [c["name"] for c in checks if c["status"] not in ("not-run", "pre-existing")]
     summary = (f"{repo}: all checks passed ({', '.join(ran)})" if not failed
                else f"{repo}: failed {', '.join(failed)}")
+    if pre_existing:
+        summary += (f"; pre-existing failures, also failing on base {base[:12]}: "
+                    f"{', '.join(pre_existing)}")
     if secrets:
         summary += "; committed secret(s): " + ", ".join(
             f"{f['path']}:{f['line']} ({f['rule']})" for f in secrets[:5])
@@ -236,6 +317,7 @@ def run_checks(root, repo, worktree, out, base_repo=None):
     print(json.dumps({
         "passed": not failed,
         "failed_checks": ",".join(failed),
+        "pre_existing_csv": ",".join(pre_existing),
         "tests_changed": ", ".join(changed[:20]) + (" …" if len(changed) > 20 else ""),
         "receipt_path": os.path.relpath(full_out, root),
         "receipt_sha256": statemod.sha256_file(full_out),
@@ -255,7 +337,8 @@ def main(argv=None):
     parser.add_argument("--base-repo", help="main checkout the branch started from (test-edit guard)")
     args = parser.parse_args(argv)
     if os.environ.get("MAESTRO_SIMULATION") == "1":
-        print(json.dumps({"passed": True, "failed_checks": "", "tests_changed": "",
+        print(json.dumps({"passed": True, "failed_checks": "", "pre_existing_csv": "",
+                          "tests_changed": "",
                           "receipt_path": args.out,
                           "receipt_sha256": "", "commit": "[simulated commit]",
                           "summary": f"{args.repo}: [simulated] checks passed"}))

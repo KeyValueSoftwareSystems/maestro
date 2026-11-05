@@ -177,6 +177,17 @@ def _stub_agent(root, act, slug=None):
                 }, fh, indent=2)
                 fh.write("\n")
             continue
+        if rel.endswith("/impact.json"):
+            # every repository the workspace has; unique per write for the `fresh` check
+            names = [name for name, _path in codebase_scan.discover_repos(root)]
+            with open(full, "w", encoding="utf-8") as fh:
+                json.dump({"schema_version": 1,
+                           "repos": [{"name": name, "change": "simulated change"} for name in names],
+                           "interfaces_change": len(names) > 1, "data_migration": False,
+                           "infrastructure_change": False,
+                           "summary": f"[simulated] {time.time_ns()}"}, fh, indent=2)
+                fh.write("\n")
+            continue
         if not os.path.exists(full):
             if rel.endswith("requirement-questions.json") or rel.endswith("open-questions.json"):
                 parts = rel.split("/")

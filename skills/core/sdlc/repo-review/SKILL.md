@@ -74,7 +74,10 @@ upheld. Write the report outside the product worktree and record the reviewed co
 JSON — the workflow decides from this file, not from your prose:
 `{"schema_version": 1, "findings": [{"id", "severity": "blocking" | "major" | "minor", "area",
 "finding", "evidence", "status": "open" | "upheld" | "withdrawn" | "resolved"}]}`. Keep ids stable
-across rounds; new findings get new ids.
+across rounds; new findings get new ids. A finding new in a re-review carries
+`"introduced_by_revision": true` only when the revision since your last round caused it; when
+your instructions give the changes since that round, review those rather than re-auditing
+unchanged text. Raise everything you can see in the first round.
 
 **Re-review.** When your instructions supply a previous review (a re-review after a fix), read it
 first, with the author's resolutions when your instructions give them, and review only the diff

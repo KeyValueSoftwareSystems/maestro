@@ -12,9 +12,19 @@ The author answers every blocking finding still open or upheld:
   {"schema_version": 1, "resolutions": [{"id": "F1", "resolution": "fixed" | "contested" |
     "escalated", "note": "what changed, or why the finding is wrong, or what a person must decide"}]}
 
-  findings.py verdict --findings F
-      {valid, blocking, blocking_count, summary} — blocking means a blocking finding is open or
-      upheld. An unreadable or malformed file is not valid (the workflow re-runs the reviewer).
+  findings.py verdict --findings F [--previous P] [--round N] [--max-rounds M] [--root .]
+      {valid, blocking, blocking_count, late, late_count, late_csv, round, max_rounds,
+       limit_reached, revise, summary} — blocking means a blocking finding is open or upheld. An unreadable or
+      malformed file is not valid (the workflow re-runs the reviewer).
+      Re-review rounds are bounded here, not in the reviewer's prose:
+        late           with --previous (the findings file as it was before this review), a
+                       blocking finding that is new in this round and not marked
+                       `"introduced_by_revision": true` is late — it was there to find earlier. It
+                       is reported to the person at the gate, never another revision round.
+        limit_reached  --round (this review's visit count, `${steps.<review>.visits}`) has reached
+                       the limit: --max-rounds, else `reviews.max_rounds` in maestro.config.yaml,
+                       else 3. Remaining findings go to the person.
+        revise         route on this: blocking, valid and the limit not reached.
   findings.py resolve --findings F --resolutions R
       {state, fixed_csv, contested_csv, escalated_csv, missing_csv, summary}:
         proceed     every blocking finding is fixed or contested (re-review next), or none is open
@@ -30,10 +40,13 @@ import json
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 SEVERITIES = ("blocking", "major", "minor")
 STATUSES = ("open", "upheld", "withdrawn", "resolved")
 RESOLUTIONS = ("fixed", "contested", "escalated")
 ACTIVE = ("open", "upheld")
+DEFAULT_MAX_ROUNDS = 3
 
 
 def _read(path):
@@ -76,6 +89,8 @@ def load_findings(path):
             problems.append(f"{fid}: severity must be one of {', '.join(SEVERITIES)}")
         if item.get("status", "open") not in STATUSES:
             problems.append(f"{fid}: status must be one of {', '.join(STATUSES)}")
+        if not isinstance(item.get("introduced_by_revision", False), bool):
+            problems.append(f"{fid}: introduced_by_revision must be true or false")
         for field in ("finding", "evidence"):
             if not isinstance(item.get(field), str) or not item[field].strip():
                 problems.append(f"{fid}: {field} is required")
@@ -87,18 +102,69 @@ def blocking(findings):
     return [f for f in findings if f.get("severity") == "blocking" and f["status"] in ACTIVE]
 
 
+def previous_ids(path):
+    """Finding ids an earlier round raised, or None when there was no earlier round."""
+    if not path or not os.path.exists(path):
+        return None
+    doc, error = _read(path)
+    items = doc.get("findings") if isinstance(doc, dict) and not error else None
+    if not isinstance(items, list):
+        return None
+    return {item.get("id") for item in items if isinstance(item, dict)}
+
+
+def max_rounds(root, requested=None):
+    if requested:
+        return requested
+    try:
+        import project_config
+        config = project_config.load(root) or {}
+    except Exception:  # an unreadable config is preflight's to report, not the review's
+        config = {}
+    value = (config.get("reviews") or {}).get("max_rounds") if isinstance(config, dict) else None
+    return value if isinstance(value, int) and not isinstance(value, bool) and value > 0 \
+        else DEFAULT_MAX_ROUNDS
+
+
+def _round(text):
+    try:
+        return max(0, int(str(text).strip() or 0))
+    except ValueError:
+        return 0
+
+
 def cmd_verdict(args):
     findings, problems = load_findings(args.findings)
-    active = blocking(findings)
+    round_no, limit = _round(args.round), max_rounds(args.root, args.max_rounds)
+    # the first review of a stage entry is never late, whatever an earlier pass left behind
+    earlier = previous_ids(args.previous) if round_no != 1 else None
+    active, late = [], []
+    for finding in blocking(findings):
+        if (earlier is not None and finding["id"] not in earlier
+                and finding.get("introduced_by_revision") is not True):
+            late.append(finding)
+        else:
+            active.append(finding)
+    limit_reached = bool(round_no) and round_no >= limit
+    is_blocking = bool(active) or bool(problems)
     if problems:
         summary = "Review findings are malformed: " + "; ".join(problems[:4])
     elif active:
         summary = f"{len(active)} blocking finding(s): " + ", ".join(
             f"{f['id']} ({f.get('area', 'general')})" for f in active[:6])
+        if limit_reached:
+            summary += f" — review round limit reached ({round_no}/{limit}): a person decides"
     else:
         summary = f"No blocking findings ({len(findings)} finding(s) in total)"
-    print(json.dumps({"valid": not problems, "blocking": bool(active) or bool(problems),
-                      "blocking_count": len(active), "summary": summary}))
+    if late:
+        summary += (f"; {len(late)} late blocking finding(s) raised only on re-review, for the "
+                    f"person: " + ", ".join(f["id"] for f in late[:6]))
+    print(json.dumps({"valid": not problems, "blocking": is_blocking,
+                      "blocking_count": len(active), "late": bool(late), "late_count": len(late),
+                      "late_csv": ",".join(f["id"] for f in late), "round": round_no,
+                      "max_rounds": limit, "limit_reached": limit_reached,
+                      "revise": is_blocking and not problems and not limit_reached,
+                      "summary": summary}))
     return 0
 
 
@@ -151,6 +217,10 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("verdict")
     p.add_argument("--findings", required=True)
+    p.add_argument("--previous", help="the findings file as it was before this review round")
+    p.add_argument("--round", default="", help="this review's visit count")
+    p.add_argument("--max-rounds", type=int)
+    p.add_argument("--root", default=".")
     p.set_defaults(fn=cmd_verdict)
     p = sub.add_parser("resolve")
     p.add_argument("--findings", required=True)
