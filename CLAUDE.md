@@ -44,7 +44,7 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · reclaim · rebase · status · todo · brief · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · reclaim · rebase · status · todo · brief · profile · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
@@ -160,6 +160,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
+- **`run_profile.py`** — debug-mode timing (`init --debug`, off by default): every step visit is
+  kept under the ledger's `profile.visits` (resolver `_finish_visit`; serving calls stamp
+  `served_at_ms`), split into queued, work (agents, scripts) and human (gates, interviews) time,
+  plus idle stretches; serving calls rewrite `profile.md`/`profile.json`, `maestroctl profile`
+  prints it. Named `run_profile` so it never shadows the stdlib `profile` module.
 - **`brief.py`** — the run brief inlined into every agent prompt by `render_agent_prompt`, at the
   node's `brief:` level (`defaults.brief`, else `minimal`): `minimal` = feature, run mode, this
   step, documents earlier steps produced; `full` adds stages, gate decisions with feedback and

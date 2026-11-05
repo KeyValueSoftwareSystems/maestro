@@ -6,6 +6,7 @@ The lead agent's whole protocol:
     maestroctl validate <workflow>
     maestroctl preflight                             # maestro.config.yaml vs the repos on disk
     maestroctl init --slug S --workflow <workflow> [--input k=v ...] [--mode human|design|auto]
+                    [--debug]                        # also record a timing profile
     loop:
         maestroctl next --slug S [--serial]          # ONE action as JSON (claims workers)
         # dispatch it, then one of:
@@ -21,7 +22,7 @@ The lead agent's whole protocol:
         maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, todo, brief, reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
+Also: status, todo, brief, profile (a debug run's timing), reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
 rebase, graph, runs, and note.
 `next --peek` re-reads without claiming or running.
 
@@ -49,6 +50,7 @@ import time
 
 import brief as briefmod
 import resolver
+import run_profile
 import state as statemod
 import todo as todomod
 import validate as validatemod
@@ -111,6 +113,8 @@ def cmd_init(args):
                                           force=args.force, mode=args.mode)
         if not created:
             resolver.release_claims(data)  # resume: a previous session's workers are gone
+        if args.debug:
+            data["run"]["debug"] = True  # from here on, every visit is kept for the profile
         # Start or resume: the lead (re)builds its task list from here; `next` then re-sends
         # the list only when it changes.
         todo = todomod.build(resolver.Run(args.slug, args.root, state_data=data))
@@ -124,6 +128,7 @@ def cmd_init(args):
         "cursors": data["run"]["cursors"],
         "status": data["run"]["status"],
         "mode": resolver.run_mode(data),
+        **({"debug": True} if run_profile.enabled(data) else {}),
         "todo": todomod.flat(todo),
     })
     return 0
@@ -177,7 +182,9 @@ def _serve_action(args, peek=False):
             answered = resolver.apply_autopilot(run)
             autopiloted.extend(answered)
             action = resolver.next_action(run, serial=serial, claim=True)
-            if answered or action["action"] in ("run_agent", "run_agents"):
+            debug = run_profile.enabled(run.state)
+            served = run_profile.stamp_served(run.state, _action_steps(action))
+            if answered or served or action["action"] in ("run_agent", "run_agents"):
                 statemod.save(args.slug, run.state, args.root)
             if action["action"] in ("run_agent", "run_agents", "run_lead"):
                 briefmod.write_file(run)  # the run as every dispatched agent sees it
@@ -202,7 +209,17 @@ def _serve_action(args, peek=False):
         action = {**action, "auto_scripts": ran}
     if autopiloted:
         action = {**action, "autopilot": autopiloted}
-    return _with_todo(args, action)
+    action = _with_todo(args, action)
+    if debug:
+        run_profile.write_files(args.slug, statemod.load(args.slug, args.root), args.root)
+    return action
+
+
+def _action_steps(action):
+    """The steps an action hands out (one, or a parallel wave's)."""
+    if action.get("agents"):
+        return [a["step"] for a in action["agents"]]
+    return [action["step"]] if action.get("step") else []
 
 
 def _with_todo(args, action):
@@ -384,6 +401,11 @@ def cmd_brief(args):
     return 0
 
 
+def cmd_profile(args):
+    return run_profile.main(["--slug", args.slug, "--root", args.root]
+                            + (["--json"] if args.json else []))
+
+
 def cmd_status(args):
     data = statemod.load(args.slug, args.root)
     if data is None:
@@ -396,7 +418,8 @@ def cmd_status(args):
     print(f"slug:     {data['slug']}")
     print(f"workflow: {data['workflow']['file']}")
     print(f"status:   {run_info['status']}")
-    print(f"mode:     {run_info.get('mode') or 'human'}")
+    print(f"mode:     {run_info.get('mode') or 'human'}"
+          + (" (debug: profile recorded)" if run_info.get("debug") else ""))
     print(f"active:   {', '.join(run_info.get('cursors') or []) or '-'}")
     print()
     width = max((len(p) for p in data["steps"]), default=10)
@@ -490,6 +513,9 @@ def build_parser():
     p.add_argument("--mode", choices=resolver.RUN_MODES,
                    help="who answers gates: human (default, every gate), design or auto "
                         "(each gate's auto: policy); on a resumed run, switches the mode")
+    p.add_argument("--debug", action="store_true",
+                   help="record every step visit's timing (profile.md in the feature folder); "
+                        "on a resumed run, from now on")
     p.set_defaults(fn=cmd_init)
 
     p = sub.add_parser("next", help="serve the next action as JSON (claims workers, runs "
@@ -607,6 +633,12 @@ def build_parser():
     p.add_argument("--step", help="the step whose brief level to use (default: the whole run, full)")
     p.add_argument("--level", choices=("none", "minimal", "full"))
     p.set_defaults(fn=cmd_brief)
+
+    p = sub.add_parser("profile", help="a debug run's timing profile: work, human and idle "
+                                       "time per stage and step (writes profile.md/.json)")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(fn=cmd_profile)
 
     p = sub.add_parser("status", help="human-readable run status")
     p.add_argument("--slug", required=True)
