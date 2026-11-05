@@ -2,7 +2,8 @@
 # docs under docs/, plus docs/architecture.md (Mermaid) showing how the services connect.
 # Also (optionally) seeds cross-cutting review lessons into the memory store, which the engine
 # consolidates. Run once per workspace (recommended before your first feature): /build-knowledge
-# Re-runnable — refresh in place.
+# Re-runnable — refresh in place. Skips the authoring agent when maps + knowledge provenance
+# are already current (idempotent /maestro-init and /build-knowledge).
 version: 1
 name: build-knowledge
 title: Build the knowledge base
@@ -13,8 +14,23 @@ inputs:
 defaults:
   model: haiku
   agent: analyst
-start: plan_maps
+start: plan_freshness
 nodes:
+  - id: plan_freshness
+    type: script
+    label: Check living-docs + map freshness
+    # Combined knowledge-state + codebase-map gate (no network). refresh_needed false → skip authoring.
+    run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json", --no-fetch]
+    routes:
+      - {when: "${steps.plan_freshness.outputs.refresh_needed} == true", to: plan_maps}
+      - {to: already_fresh}
+
+  - id: already_fresh
+    type: script
+    label: Docs already current — skip authoring
+    run: [python3, -c, "import json; print(json.dumps({'domains_written': 0, 'architecture_path': 'docs/architecture.md', 'summary': 'docs already current; skipped authoring'}))"]
+    next: consolidate
+
   - id: plan_maps
     type: script
     label: Plan codebase-map refresh

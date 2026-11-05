@@ -99,7 +99,23 @@ copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
   # by its frontmatter name, which is the only identity workflows/harness discovery use.
   # So we find every SKILL.md at any depth and flatten each skill dir into $1/. An edited
   # installed skill is kept (engine/install_skills.py); its new version lands as *.upstream.
-  mkdir -p "$1"; kept=0; skipped=0
+  #
+  # Template umbrellas symlink .claude/skills and .cursor/skills → ../skills. Resolve the
+  # destination so Maestro skills land beside workspace-* and the symlink is never replaced.
+  local dst="$1"
+  if [ -L "$dst" ]; then
+    dst="$(cd "$dst" && pwd -P)"
+  elif [ -d "$dst" ]; then
+    dst="$(cd "$dst" && pwd -P)"
+  else
+    # Parent may be a symlink (e.g. .claude → …); create real skills dir only if missing.
+    local parent; parent="$(dirname "$dst")"
+    mkdir -p "$parent"
+    if [ -L "$parent/skills" ] || [ -L "$dst" ]; then
+      dst="$(cd "$(dirname "$dst")" && pwd -P)/$(basename "$dst")"
+    fi
+  fi
+  mkdir -p "$dst"; kept=0; skipped=0
   list="$(mktemp)"
   while IFS= read -r skillmd; do
     d="$(dirname "$skillmd")"
@@ -107,13 +123,13 @@ copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
     else skipped=$((skipped+1)); fi
   done < <(find "$SRC/skills" -name SKILL.md -type f | sort)
   if command -v python3 >/dev/null 2>&1; then
-    python3 "$SRC/engine/install_skills.py" --dst "$1" --host "$2" \
+    python3 "$SRC/engine/install_skills.py" --dst "$dst" --host "$2" \
       --manifest "$DEST/.maestro/skill-manifest.json" --skills-from "$list"
   else
-    while IFS= read -r d; do cp -R "$d" "$1/"; done < "$list"
+    while IFS= read -r d; do cp -R "$d" "$dst/"; done < "$list"
   fi
   rm -f "$list"
-  note "skills -> $1 ($kept selected, $skipped skipped by --stack)"
+  note "skills -> $dst ($kept selected, $skipped skipped by --stack)"
 }
 copy_agents() { # $1 = dst dir — filtered by --stack
   mkdir -p "$1"; kept=0; skipped=0

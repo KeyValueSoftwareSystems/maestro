@@ -195,7 +195,19 @@ def preflight(root="."):
                       f"{CONFIG_FILE} not found at the workspace root; run maestro init or "
                       f"create it (see docs/project-config.md)")]
     discovered = [name for name, _path in codebase_scan.discover_repos(root)]
-    return check(config, discovered)
+    issues = check(config, discovered)
+    # Optional template registry.yaml: warn on clone/registry drift (Task 31).
+    try:
+        import registry as registry_mod
+        result = registry_mod.validate(root, strict=False)
+        if result.get("present"):
+            for msg in result.get("errors") or []:
+                issues.append(Issue("error", "registry-mismatch", msg, "registry.yaml"))
+            for msg in result.get("warnings") or []:
+                issues.append(Issue("warning", "registry-drift", msg, "registry.yaml"))
+    except Exception as exc:  # noqa: BLE001 — preflight must never crash on optional registry
+        issues.append(Issue("warning", "registry-unreadable", str(exc), "registry.yaml"))
+    return issues
 
 
 def summary(issues):
