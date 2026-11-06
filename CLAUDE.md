@@ -228,7 +228,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   without one, the workspace must hold one repository) and no "(to confirm)"; the run input
   `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
-  own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
+  own PRD (a 250+ word document, any office/PDF file or a Jira XML export; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.
 - **`assumptions.py`** — the assumption log: every interview assumption, deferred item and gate
   answered on autopilot, from the decision files and the ledger, rendered to `assumptions.md`

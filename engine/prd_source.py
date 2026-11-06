@@ -5,7 +5,8 @@ or clarify a short request through the interview.
   prd_source.py --requirement <dir> [--prd <dir>/prd.md]
 
 A client document is any text document of at least MIN_WORDS words (Markdown, plain text, HTML)
-or any office/PDF document in the requirement folder. A `prd.md` without Maestro's PRD header
+or any office/PDF document or issue-tracker XML export (e.g. a Jira issue) in the requirement
+folder. A `prd.md` without Maestro's PRD header
 metadata is the client's own file: it is copied once to `prd.original.md` so normalizing never
 loses the original, and the copy is the source.
 
@@ -21,7 +22,7 @@ import sys
 
 MIN_WORDS = 250
 TEXT_EXTS = {".md", ".markdown", ".txt", ".rst", ".html", ".htm"}
-DOC_EXTS = {".pdf", ".docx", ".doc", ".odt", ".rtf", ".pages"}
+DOC_EXTS = {".pdf", ".docx", ".doc", ".odt", ".rtf", ".pages", ".xml"}
 ORIGINAL = "prd.original.md"
 # Maestro-written PRDs carry this header line (see validate_prd.FEATURE_SLUG_RE).
 _MAESTRO_HEADER_RE = re.compile(r"^\*\*Feature slug:\*\*", re.IGNORECASE | re.MULTILINE)
