@@ -138,7 +138,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`implementation_pool.py`** — the implementation queue: the golden workflow implements every
   designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
   supports batches with deferred repos for team workflows. Builds the QA/release manifest only
-  from exact verified worktree commits, with each repo's verify receipt and status attached.
+  from exact verified worktree commits, with each repo's verify receipt and status attached, and
+  whether that exact commit was code-reviewed (`reviews/reviewed.json`, written by `findings.py
+  verdict --commit`); a commit accepted at the escalation gate before review shows
+  `not-reviewed`, and autopilot will not release it.
   `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
   in its worktree) and `record --from-worktree` records the fixed HEAD.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
@@ -152,7 +155,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   check is re-run on the branch's base commit (cached checkout + results under the git-ignored
   `.maestro/baseline/<repo>/`); failing there too makes it `pre-existing`, which does not fail
   verification — but a pre-existing `test` failure makes the release verdict `baseline-failing`
-  (`implementation_pool.py`), so autopilot will not release it. The impl loop
+  (`implementation_pool.py`), so autopilot will not release it. With `--reuse-key` (the
+  escalation gate's visit count), a fix round that committed nothing reuses the receipt as
+  `unchanged`, which the workflow sends to the person instead of another round. The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
   findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
@@ -223,7 +228,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   without one, the workspace must hold one repository) and no "(to confirm)"; the run input
   `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
-  own PRD (a 250+ word document or any office/PDF file; a client `prd.md` is kept as
+  own PRD (a 250+ word document, any office/PDF file or a Jira XML export; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.
 - **`assumptions.py`** — the assumption log: every interview assumption, deferred item and gate
   answered on autopilot, from the decision files and the ledger, rendered to `assumptions.md`
@@ -267,7 +272,8 @@ answers it, and in `auto` each interview whose policy covers it (recommendations
 assumptions; listed in `autopilot`); every other gate still goes to the human, which is where
 autopilot stops. Served worker
 steps are claimed (`dispatched_at` + a `claim` token; `complete --claim` refuses a stale dispatch's
-result), so later calls return only newly ready work (ready workers before gates) or `wait`, which
+result), and so is an engine script while a serving call runs it (another call never runs it
+twice), so later calls return only newly ready work (ready workers before gates) or `wait`, which
 lists workers past their node `timeout` as `stale` for `reclaim`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
 atomic batch without dropping unresolved questions. Interview discussions never run in the lead's

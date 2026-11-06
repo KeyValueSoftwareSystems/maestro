@@ -817,7 +817,8 @@ DEFAULT_AGENT_TIMEOUT = 3600  # seconds a dispatched worker may run before `wait
 
 
 def release_claims(state, paths=None):
-    """Forget which worker steps were handed out (a resumed session re-serves them).
+    """Forget which worker steps were handed out, or which engine scripts a call is running
+    (a resumed session re-serves them).
     paths: only these steps (a reclaim); default every claimed step."""
     released = []
     for path, entry in (state.get("steps") or {}).items():
@@ -835,7 +836,8 @@ def agent_timeout(node):
 
 
 def stale_claims(run, in_flight):
-    """In-flight workers dispatched longer ago than their node's timeout."""
+    """In-flight workers (or running engine scripts) dispatched longer ago than their node's
+    timeout."""
     import datetime
     now = datetime.datetime.now(datetime.timezone.utc)
     stale = []
@@ -850,7 +852,9 @@ def stale_claims(run, in_flight):
         if started.tzinfo is None:
             started = started.replace(tzinfo=datetime.timezone.utc)
         age = (now - started).total_seconds()
-        if age > agent_timeout(node):
+        limit = (agent_timeout(node) if ntype(node) == "agent"
+                 else node.get("timeout") or DEFAULT_SCRIPT_TIMEOUT)
+        if age > limit:
             stale.append({"step": path, "minutes": int(age // 60)})
     return stale
 
@@ -865,8 +869,9 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
     `dispatched_at`) are skipped, newly served worker steps are stamped, and ready workers
     are served BEFORE gates/interviews/lead work so one branch waiting on a human never
     holds back another branch's subagents. When only claimed workers remain, the action is
-    `wait`. The caller must save the state. exclude_claimed=True gives the same view
-    without stamping (read-only).
+    `wait`. A script step stamped by `claim_script` is being run by another engine call: it is
+    skipped too, never served twice. The caller must save the state. exclude_claimed=True gives
+    the same view without stamping (read-only).
     """
     status = run.state["run"].get("status")
     if status == "done":
@@ -882,7 +887,7 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
         return {"action": "failed", "reason": "no active steps (inconsistent state) — reset the run"}
 
     gates, scripts, interviews, lead_agents, worker_agents = [], [], [], [], []
-    in_flight, pending_inputs = [], []
+    in_flight, running, pending_inputs = [], [], []
     for path in cursors:
         frame, node = run.node_at(path)
         entry = statemod.step_entry(run.state, path)
@@ -893,7 +898,10 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
         elif ntype(node) == "gate":
             gates.append(_gate_action(run, frame, node, path))
         elif ntype(node) == "script":
-            scripts.append(_script_action(run, frame, node, path))
+            if (claim or exclude_claimed) and entry.get(CLAIM_KEY):
+                running.append(path)
+            else:
+                scripts.append(_script_action(run, frame, node, path))
         elif ntype(node) == "agent":
             action = _agent_action(run, frame, node, path)
             if action["action"] == "run_lead":
@@ -925,7 +933,7 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
             if len(served) > 1:
                 return {"action": "run_agents", "agents": served}
             return served[0]
-        if not (gates or interviews or lead_agents) and in_flight:
+        if not (gates or interviews or lead_agents) and (in_flight or running):
             action = {
                 "action": "wait",
                 "in_flight": in_flight,
@@ -933,7 +941,11 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
                         "finishes. If these workers are no longer running (e.g. a restarted "
                         "session), run `init` again to re-serve them.",
             }
-            stale = stale_claims(run, in_flight)
+            if running:
+                action["running"] = running
+                action["hint"] += (" Steps in `running` are engine checks another maestroctl "
+                                   "call is running; call `next` again once it returns.")
+            stale = stale_claims(run, in_flight + running)
             if stale:
                 action["stale"] = stale
                 action["hint"] += (" Steps in `stale` have run past their timeout: if a worker "
@@ -951,6 +963,16 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
     if worker_agents:
         return worker_agents[0]
     return {"action": "failed", "reason": "nothing runnable — reset the run"}
+
+
+def claim_script(run, path):
+    """Stamp a script step an engine call is about to run, so no other call runs it too.
+    -> the claim token, which `complete_step(claim=...)` checks."""
+    import secrets
+    entry = statemod.step_entry(run.state, path)
+    entry[CLAIM_KEY] = statemod.now_iso()
+    entry[CLAIM_ID_KEY] = secrets.token_hex(4)
+    return entry[CLAIM_ID_KEY]
 
 
 def _script_action(run, frame, node, path):
@@ -1345,6 +1367,7 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
     entry.pop(CLAIM_ID_KEY, None)
     kind = ntype(node)
     if kind == "script":
+        entry.pop(CLAIM_KEY, None)  # a failed script served again (retry) is not still running
         return _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry)
     if kind != "agent":
         raise RunError(f"complete is only valid for agent/script steps, not {kind}", code=4)
@@ -1410,7 +1433,7 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry
         _advance(run, frame, node, outputs)
     else:
         _register_failure(run, frame, node, path, entry,
-                          reason=f"exit code {exit_code}: {text[:300]}")
+                          reason=f"exit code {exit_code}: {_tail(text, 300)}")
     return entry
 
 
@@ -1860,6 +1883,11 @@ def fail_step(run, path, reason):
     entry.pop("pending_ask", None)
     _register_failure(run, frame, node, path, entry, reason)
     return entry
+
+
+def _tail(text, limit):
+    """The end of a failing script's output: a traceback names its error last."""
+    return text if len(text) <= limit else "…" + text[-limit:]
 
 
 def _register_failure(run, frame, node, path, entry, reason):

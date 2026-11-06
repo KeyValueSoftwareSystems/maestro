@@ -166,7 +166,13 @@ def check(config, discovered):
                                     f"no `{command}` command; that check will be skipped",
                                     f"{where}.commands.{command}"))
     if "environment" in config:
-        _check_strings("environment", config["environment"], ENVIRONMENT_KEYS, "environment", issues)
+        environment = config["environment"]
+        _check_strings("environment", environment, ENVIRONMENT_KEYS, "environment", issues)
+        if isinstance(environment, dict) and environment.get("start") and not environment.get("ready"):
+            issues.append(Issue("warning", "config-missing-command",
+                                "no `ready` command; QA will treat the stack as up as soon as "
+                                "`start` returns — add a health probe (e.g. curl -fsS …/health)",
+                                "environment.ready"))
     if "infrastructure" in config:
         infrastructure = config["infrastructure"]
         _check_strings("infrastructure", infrastructure, {"level"}, "infrastructure", issues)

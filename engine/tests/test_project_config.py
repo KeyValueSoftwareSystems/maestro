@@ -23,7 +23,7 @@ repos:
       security: gosec ./...
       e2e: make e2e
     timeout_s: 600
-environment: {start: docker compose up -d, stop: docker compose down}
+environment: {start: docker compose up -d, ready: curl -fsS localhost:8080/health, stop: docker compose down}
 delivery: {mode: pull-request, base: main}
 custom_value: workflows may read this through config placeholders
 """
@@ -53,6 +53,11 @@ class PreflightTest(unittest.TestCase):
         config = project_config.load(self.root)
         self.assertEqual(project_config.repo_commands(config, "backend")["test"], "go test ./...")
         self.assertEqual(project_config.repo_timeout(config, "backend"), 600)
+
+    def test_an_environment_without_a_ready_probe_is_a_warning(self):
+        self.write(VALID.replace(" ready: curl -fsS localhost:8080/health,", ""))
+        self.assertEqual(self.codes("warning"), [("config-missing-command", "environment.ready")])
+        self.assertEqual(self.codes("error"), [])
 
     def test_missing_file_is_an_error(self):
         self.assertEqual(self.codes("error"), [("config-missing", None)])

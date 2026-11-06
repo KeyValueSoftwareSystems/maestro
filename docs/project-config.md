@@ -37,7 +37,7 @@ repos:                          # one entry per repository Maestro finds
       test: npm test -- --watchAll=false
 environment:                    # optional: bring the stack up for QA
   start: docker compose up -d --build
-  ready: ./scripts/wait-for-health   # optional; QA starts only after it passes
+  ready: ./scripts/wait-for-health   # recommended; QA starts only after it passes (preflight warns without it)
   stop: docker compose down
 infrastructure:                 # optional; overrides the detected level for HLD questions
   level: iac                    # none | containers | iac

@@ -8,6 +8,8 @@ is safe, which commits the living docs describe, and which exact commits a featu
 Commands
 --------
   plan              Fetch current-branch remotes in parallel and write one consolidated plan.
+                    `--fetch-errors note` keeps a failed fetch in the summary without asking the
+                    person again (a later checkpoint, once the first one has asked).
   apply             Verify a plan, then fast-forward only repositories proven safe in it.
   record-knowledge  Stamp the exact repository commits assessed by a knowledge refresh.
   ensure-index-state  Fill docs_sha256/evidence when docs are current but provenance is incomplete.
@@ -484,7 +486,7 @@ def _summary(repos, knowledge, map_stale, lock_drift):
 
 
 def cmd_plan(root, out, lock=None, index_state=DEFAULT_INDEX_STATE, fetch=True,
-             remote_only=False):
+             remote_only=False, on_fetch_error="ask"):
     root = os.path.abspath(root)
     out_abs = _resolve(root, out)
     lock_abs = _resolve(root, lock) if lock else None
@@ -517,8 +519,8 @@ def cmd_plan(root, out, lock=None, index_state=DEFAULT_INDEX_STATE, fetch=True,
         previous = (recorded.get(repo["name"]) or {}).get("commit")
         repo["knowledge_changed_files"] = _changed_files(root, repo, previous)
     remote_attention = any(
-        repo["behind"] or repo["status"] == "diverged" or repo["fetch_error"]
-        or repo["dirty"] for repo in repos
+        repo["behind"] or repo["status"] == "diverged" or repo["dirty"]
+        or (repo["fetch_error"] and on_fetch_error != "note") for repo in repos
     )
     refresh_needed = knowledge["stale"] or bool(map_stale)
     doc = {
@@ -787,6 +789,8 @@ def main(argv=None):
     p.add_argument("--no-fetch", action="store_true")
     p.add_argument("--remote-only", action="store_true",
                    help="ignore knowledge/map freshness (used before initial indexing)")
+    p.add_argument("--fetch-errors", choices=("ask", "note"), default="ask",
+                   help="note: a failed fetch alone does not need the person's attention")
 
     p = sub.add_parser("apply")
     p.add_argument("--root", default=".")
@@ -814,7 +818,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.cmd == "plan":
         return cmd_plan(args.root, args.out, args.lock, args.index_state,
-                        fetch=not args.no_fetch, remote_only=args.remote_only)
+                        fetch=not args.no_fetch, remote_only=args.remote_only,
+                        on_fetch_error=args.fetch_errors)
     if args.cmd == "apply":
         return cmd_apply(args.root, args.plan, args.plan_sha256, args.out)
     if args.cmd == "record-knowledge":

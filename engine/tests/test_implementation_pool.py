@@ -133,7 +133,8 @@ class ImplementationPoolTest(unittest.TestCase):
         queue = pool._read(pool._queue_path("feature-x", self.root))
         self.assertEqual(queue["implementations"], {})
 
-    def _finalize_with_receipt(self, receipt):
+    def _finalize_with_receipt(self, receipt, reviewed=lambda commit: {"commit": commit,
+                                                                       "blocking": False}):
         run("init", "--root", self.root, "--slug", "feature-x")
         run("claim", "--root", self.root, "--slug", "feature-x")
         worktree, branch, commit = self.create_feature_worktree()
@@ -143,6 +144,11 @@ class ImplementationPoolTest(unittest.TestCase):
         os.makedirs(os.path.dirname(path))
         with open(path, "w") as fh:
             json.dump(receipt(commit), fh)
+        if reviewed:
+            review = os.path.join(os.path.dirname(path), "reviews", "reviewed.json")
+            os.makedirs(os.path.dirname(review))
+            with open(review, "w") as fh:
+                json.dump(reviewed(commit), fh)
         code, final = run("finalize", "--root", self.root, "--slug", "feature-x")
         self.assertEqual(code, 0)
         with open(os.path.join(self.root, final["manifest_path"])) as fh:
@@ -187,6 +193,29 @@ class ImplementationPoolTest(unittest.TestCase):
             "checks": [{"name": "build", "status": "passed"}, {"name": "test", "status": "pre-existing"}]})
         self.assertFalse(final["verified_ok"])  # autopilot leaves this release to a person
         self.assertEqual(check["status"], "baseline-failing")
+
+    def _finalize_reviewed(self, reviewed):
+        return self._finalize_with_receipt(
+            lambda commit: {"passed": True, "commit": commit,
+                            "checks": [{"name": "test", "status": "passed"}]}, reviewed)
+
+    def test_a_commit_accepted_before_code_review_needs_a_person(self):
+        final, check = self._finalize_reviewed(None)
+        self.assertFalse(final["verified_ok"])
+        self.assertEqual((check["status"], check["review"]), ("verified", "not-reviewed"))
+        self.assertIn("code review not run on this commit", final["verification_summary"])
+
+    def test_a_fix_never_re_reviewed_is_not_reviewed(self):
+        final, check = self._finalize_reviewed(lambda commit: {"commit": "0" * 40,
+                                                               "blocking": False})
+        self.assertFalse(final["verified_ok"])
+        self.assertEqual(check["review"], "not-reviewed")
+
+    def test_blocking_findings_left_at_the_gate_need_a_person(self):
+        final, check = self._finalize_reviewed(lambda commit: {"commit": commit, "blocking": True})
+        self.assertFalse(final["verified_ok"])
+        self.assertEqual(check["review"], "blocking")
+        self.assertIn("code review left blocking findings", final["verification_summary"])
 
     def test_finalize_rechecks_branch_did_not_move_after_record(self):
         run("init", "--root", self.root, "--slug", "feature-x")

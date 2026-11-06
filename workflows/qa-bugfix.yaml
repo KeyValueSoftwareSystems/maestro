@@ -44,7 +44,9 @@ nodes:
       (with the evidence; never a second time for a finding the reviewer upheld) or escalated.
       Honour any human guidance:
       ${steps.fix_gate.outputs.guidance}
-      Commit the fix on the branch. Do NOT loop — the workflow re-invokes you if needed.
+      Re-run only what proves your fix (the failing test, package or file), never a whole suite:
+      the engine re-runs every check after you. Commit the fix on the branch; a round that commits
+      nothing goes to a person. Do NOT loop — the workflow re-invokes you if needed.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: fix-loop
@@ -103,11 +105,15 @@ nodes:
       - ".maestro/runs/${inputs.slug}/${inputs.repo}/verify.json"
       - --base-repo
       - "${inputs.repo_path}"
+      - --reuse-key
+      - "fix_gate-${steps.fix_gate.visits}"
     timeout: 3600
     max_visits: 6
     on_exhausted: fix_gate
     routes:
       - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
+      # the fix round committed nothing: the same failures stand, so a person decides
+      - {when: "${steps.verify.outputs.unchanged} == true", to: fix_gate}
       - {to: fix}
 
   # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
@@ -124,8 +130,9 @@ nodes:
       Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
       ${inputs.commit} (what QA tested) to ${steps.handoff.outputs.commit}, against the LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.repo}.md, the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and the standards. Build, lint and tests already passed in the engine's run (receipt:
-      ${steps.verify.outputs.receipt_path}). Existing test files this branch changed
+      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and the standards. The engine ran build, lint and tests
+      (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
+      still listed there was accepted by a person. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed} — a weakened, skipped or deleted
       assertion is blocking. Confirm the regression test covers the bug in ${inputs.bug_report}.
       Read the earlier report at .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md
@@ -169,7 +176,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --root, "."]
     max_visits: 8
     on_exhausted: fix_gate
     routes:
@@ -195,7 +202,8 @@ nodes:
       Diagnosis: ${inputs.bug_report}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
-      - {id: accept, label: Keep the current commit and re-run QA, to: end}
+      - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
+      - {id: accept, label: Keep the current commit (no code review of it) and re-run QA, to: end}
       - {id: abandon, label: Abort, to: abort}
 
 outputs:

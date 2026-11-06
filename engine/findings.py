@@ -12,7 +12,8 @@ The author answers every blocking finding still open or upheld:
   {"schema_version": 1, "resolutions": [{"id": "F1", "resolution": "fixed" | "contested" |
     "escalated", "note": "what changed, or why the finding is wrong, or what a person must decide"}]}
 
-  findings.py verdict --findings F [--previous P] [--round N] [--max-rounds M] [--root .]
+  findings.py verdict --findings F [--previous P] [--round N] [--max-rounds M] [--commit C]
+                      [--root .]
       {valid, blocking, blocking_count, late, late_count, late_csv, round, max_rounds,
        limit_reached, revise, summary} — blocking means a blocking finding is open or upheld. An unreadable or
       malformed file is not valid (the workflow re-runs the reviewer).
@@ -25,6 +26,9 @@ The author answers every blocking finding still open or upheld:
                        the limit: --max-rounds, else `reviews.max_rounds` in maestro.config.yaml,
                        else 3. Remaining findings go to the person.
         revise         route on this: blocking, valid and the limit not reached.
+      With --commit (the code commit reviewed), a valid verdict is also written beside the findings
+      as reviewed.json {commit, blocking, summary}: the release reads it to show whether the
+      shipped commit was code-reviewed.
   findings.py resolve --findings F --resolutions R
       {state, fixed_csv, contested_csv, escalated_csv, missing_csv, summary}:
         proceed     every blocking finding is fixed or contested (re-review next), or none is open
@@ -165,6 +169,12 @@ def cmd_verdict(args):
                       "max_rounds": limit, "limit_reached": limit_reached,
                       "revise": is_blocking and not problems and not limit_reached,
                       "summary": summary}))
+    if args.commit and not problems:
+        path = os.path.join(os.path.dirname(os.path.abspath(args.findings)), "reviewed.json")
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"schema_version": 1, "commit": args.commit,
+                       "blocking": bool(active or late), "summary": summary}, fh, indent=2)
+            fh.write("\n")
     return 0
 
 
@@ -220,6 +230,7 @@ def main(argv=None):
     p.add_argument("--previous", help="the findings file as it was before this review round")
     p.add_argument("--round", default="", help="this review's visit count")
     p.add_argument("--max-rounds", type=int)
+    p.add_argument("--commit", help="the code commit reviewed: record it in reviewed.json")
     p.add_argument("--root", default=".")
     p.set_defaults(fn=cmd_verdict)
     p = sub.add_parser("resolve")

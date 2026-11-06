@@ -89,8 +89,10 @@ def cmd_up(args):
             print(f"QA environment {name} failed ({command}): {result['tail'][-800:]}",
                   file=sys.stderr)
             return 1
-    print(json.dumps({"configured": True, "started": True,
-                      "summary": f"QA environment up ({environment['start']})"}))
+    summary = f"QA environment up ({environment['start']})"
+    if not environment.get("ready"):
+        summary += "; no ready check configured, so not confirmed healthy"
+    print(json.dumps({"configured": True, "started": True, "summary": summary}))
     return 0
 
 

@@ -299,7 +299,7 @@ pack.
 
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
 accepts common equivalent headings for its fast path. When that fails, `prd_source.py` decides
-between normalizing the client's own PRD (a 250+ word document or an office/PDF file; a
+between normalizing the client's own PRD (a 250+ word document, an office/PDF file or a Jira XML export; a
 client-authored `prd.md` is copied to `prd.original.md` first) and the Grill interview. The
 normalizer writes the PRD plus a queue of only the gaps; strict validation rejects any remaining
 "(to confirm)" mark. Maestro-authored PRDs use the exact

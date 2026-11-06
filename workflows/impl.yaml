@@ -146,11 +146,15 @@ nodes:
       - ".maestro/runs/${inputs.slug}/${inputs.stack}/verify.json"
       - --base-repo
       - "${inputs.repo_path}"
+      - --reuse-key
+      - "impl_gate-${steps.impl_gate.visits}"
     timeout: 3600
     max_visits: 10
     on_exhausted: impl_gate
     routes:
       - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
+      # the fix round committed nothing: the same failures stand, so a person decides
+      - {when: "${steps.verify.outputs.unchanged} == true", to: impl_gate}
       - {to: fix}
 
   # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
@@ -172,9 +176,10 @@ nodes:
       .maestro/runs/${inputs.slug}/test-cases.md, the standards and the maintained codebase map
       (docs/codebase-map.md in the ${inputs.stack} repo) — use the map to check blast radius, not
       just the diff in isolation. Check every task in the task list is built; look closely at the
-      tasks marked needs_human_gate. Build, lint and tests already
-      passed in the engine's run (receipt: ${steps.verify.outputs.receipt_path}); review the
-      design and code, not whether it compiles. Checks that also fail on the base commit
+      tasks marked needs_human_gate. The engine ran build, lint and tests
+      (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
+      still listed there was accepted by a person. Review the design and code, not whether it
+      compiles. Checks that also fail on the base commit
       (pre-existing, not this branch's doing): ${steps.verify.outputs.pre_existing_csv} — check
       the branch's own new tests by reading them, since that suite cannot prove them. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed}. For each one, state in the report
@@ -230,7 +235,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
     routes:
@@ -260,8 +265,10 @@ nodes:
         needs a person's decision; the note states it). The report is
         ${steps.review.outputs.review_path}.
       Smallest safe fix; never weaken, skip or delete a test. Start from the implement report
-      (${steps.implement.outputs.summary}) instead of rediscovering context. Re-run the failing
-      commands before returning; the engine re-verifies after you. Commit your fix on the branch.
+      (${steps.implement.outputs.summary}) instead of rediscovering context. Before returning,
+      re-run only what proves your fix (the failing test, package or file), never a whole suite or
+      a pre-existing check: the engine re-runs every check after you. Commit your fix on the
+      branch; a round that commits nothing goes to a person, not another round.
       If a hard stop applies (an unapproved migration, a contract or permission change, a
       dependency upgrade, or a fix that would weaken a test), make no change and return escalate
       true. Honour any human guidance: ${steps.impl_gate.outputs.guidance}
@@ -317,7 +324,8 @@ nodes:
       Branch: ${steps.handoff.outputs.branch}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
-      - {id: accept, label: Accept as-is — I'll handle the rest, to: end}
+      - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
+      - {id: accept, label: Accept as-is without a code review of this commit — I'll handle the rest, to: end}
       - {id: abandon, label: Abort this stack, to: abort}
 
 outputs:

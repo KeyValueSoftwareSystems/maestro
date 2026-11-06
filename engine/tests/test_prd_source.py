@@ -48,6 +48,16 @@ class PrdSourceTest(unittest.TestCase):
                          ["brief.pdf", "client-spec.md"])
         self.assertIn("client-spec.md", result["summary"])
 
+    def test_a_jira_xml_export_is_a_source_beside_a_wireframe_pdf(self):
+        self.write("request.md", "Short note.\n")
+        self.write("wireframes.pdf", b"%PDF-1.4 ...", mode="wb")
+        self.write("COF-6965.xml", '<rss><channel><item><title>Transfer tickets</title>'
+                                   '<description>Let a holder transfer a ticket.</description>'
+                                   '</item></channel></rss>\n')
+        result = self.run_source()
+        self.assertEqual([os.path.basename(p) for p in result["sources_csv"].split(",")],
+                         ["COF-6965.xml", "wireframes.pdf"])
+
     def test_client_prd_md_is_kept_as_the_original_once(self):
         self.write("prd.md", LONG)
         result = self.run_source()

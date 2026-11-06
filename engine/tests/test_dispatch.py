@@ -311,6 +311,51 @@ class AutoScriptTest(Base):
         self.assertEqual(action["action"], "ask_gate")
         self.assertIn("boom", self.state()["steps"]["probe"]["reason"])
 
+    def test_a_crashed_engine_script_keeps_its_error_line_and_full_output(self):
+        self.start()
+        with open(os.path.join(self.tmp, ".maestro", "engine", "probe.py"), "w") as fh:
+            fh.write("import sys\nsys.stderr.write('frame line\\n' * 400)\n"
+                     "raise FileNotFoundError('no such dir: .maestro/baseline/x')\n")
+        self.ctl("next", "--slug", "feat")
+        reason = self.state()["steps"]["probe"]["reason"]
+        self.assertIn("FileNotFoundError: no such dir", reason)
+        log = os.path.join(self.tmp, ".maestro", "runs", "feat", "logs", "probe-visit1.log")
+        self.assertIn(os.path.relpath(log, self.tmp), reason)
+        with open(log) as fh:
+            text = fh.read()
+        self.assertEqual(text.count("frame line"), 400)
+        self.assertIn("FileNotFoundError", text)
+
+    def test_a_script_another_call_is_running_is_not_run_twice(self):
+        self.start()
+        with statemod.locked("feat", self.tmp):  # a concurrent call has claimed and is running it
+            run = resolver.Run("feat", self.tmp)
+            token = resolver.claim_script(run, "probe")
+            statemod.save("feat", run.state, self.tmp)
+        _, action = self.ctl("next", "--slug", "feat")
+        self.assertNotIn("auto_scripts", action)
+        self.assertEqual((action["action"], action["running"]), ("wait", ["probe"]))
+        self.assertEqual(self.state()["steps"]["probe"]["status"], "pending")
+        # that call finishes it; the run moves on
+        with statemod.locked("feat", self.tmp):
+            run = resolver.Run("feat", self.tmp)
+            resolver.complete_step(run, "probe", exit_code=0, stdout='{"state": "ready"}',
+                                   claim=token)
+            statemod.save("feat", run.state, self.tmp)
+        _, action = self.ctl("next", "--slug", "feat")
+        self.assertEqual([s["step"] for s in action["auto_scripts"]], ["locker"])
+        self.assertNotIn("dispatched_at", self.state()["steps"]["probe"])
+
+    def test_resume_releases_a_script_claim_left_by_a_killed_call(self):
+        self.start()
+        with statemod.locked("feat", self.tmp):
+            run = resolver.Run("feat", self.tmp)
+            resolver.claim_script(run, "probe")
+            statemod.save("feat", run.state, self.tmp)
+        self.ctl("init", "--slug", "feat", "--workflow", "s.yaml")
+        _, action = self.ctl("next", "--slug", "feat")
+        self.assertEqual([s["step"] for s in action["auto_scripts"]], ["probe", "locker"])
+
     def test_only_pack_scripts_count_as_engine_owned(self):
         root = self.tmp
         self.assertTrue(maestroctl._engine_owned(["python3", ".maestro/engine/probe.py"], root))

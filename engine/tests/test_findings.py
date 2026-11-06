@@ -63,6 +63,17 @@ class FindingsTest(unittest.TestCase):
         os.remove(self.f)
         self.assertFalse(self.verdict()["valid"])
 
+    def test_a_valid_code_review_verdict_records_the_reviewed_commit(self):
+        self.write(self.f, {"schema_version": 1, "findings": [finding("F1")]})
+        self.run_cmd("verdict", "--findings", self.f, "--commit", "abc123")
+        with open(os.path.join(self.dir, "reviewed.json")) as fh:
+            record = json.load(fh)
+        self.assertEqual((record["commit"], record["blocking"]), ("abc123", True))
+        os.remove(os.path.join(self.dir, "reviewed.json"))
+        self.write(self.f, "not json")  # a malformed review records nothing
+        self.run_cmd("verdict", "--findings", self.f, "--commit", "abc123")
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "reviewed.json")))
+
     def test_fix_and_contest_go_to_re_review(self):
         self.write(self.f, {"findings": [finding("F1"), finding("F2"), finding("F3", "minor")]})
         result = self.resolve([{"id": "F1", "resolution": "fixed", "note": "added a queue"},
