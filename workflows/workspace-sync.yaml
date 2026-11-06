@@ -8,6 +8,9 @@ description: Fetch repository upstreams, safely update on approval, refresh stal
 inputs:
   slug: {type: string, required: true}
   checkpoint: {type: string, default: feature-start}
+  # note: a failed fetch alone (offline, no access) does not stop for the person — set by a later
+  # checkpoint, after the first one has already asked
+  fetch_errors: {type: string, default: ask}
 defaults:
   model: haiku
   agent: analyst
@@ -27,6 +30,8 @@ nodes:
       - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-plan.json"
       - --lock
       - ".maestro/runs/${inputs.slug}/workspace-lock.json"
+      - --fetch-errors
+      - "${inputs.fetch_errors}"
     on_fail: abort
     routes:
       - {when: "${steps.plan.outputs.needs_attention} == true", to: sync_gate}

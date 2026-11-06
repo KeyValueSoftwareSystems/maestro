@@ -161,6 +161,17 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertTrue(doc["repos"][0]["dirty"])
         self.assertFalse(doc["repos"][0]["pullable"])
 
+    def test_a_failed_fetch_asks_once_then_is_only_noted(self):
+        git(self.repo, "remote", "set-url", "origin", os.path.join(self.tmp, "no-such-remote"))
+        _, out, doc = self.plan()
+        self.assertTrue(doc["repos"][0]["fetch_error"])
+        self.assertTrue(out["needs_attention"])
+        path = os.path.join(self.tmp, "later-plan.json")
+        code, later = quiet(ws.cmd_plan, self.tmp, path, None, on_fetch_error="note")
+        self.assertEqual(code, 0)
+        self.assertFalse(later["needs_attention"], later["summary"])
+        self.assertIn("fetch failed", later["summary"])
+
     def test_tampered_plan_is_rejected(self):
         plan_path, out, _ = self.plan()
         with open(plan_path, "a") as fh:

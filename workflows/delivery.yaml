@@ -35,7 +35,7 @@ nodes:
     type: subworkflow
     label: Workspace sync (pre-implementation)
     workflow: .maestro/workflows/workspace-sync.yaml
-    inputs: {slug: "${inputs.slug}", checkpoint: pre-implementation}
+    inputs: {slug: "${inputs.slug}", checkpoint: pre-implementation, fetch_errors: note}
     max_visits: 8
     routes:
       # If HEAD moved since the design was grounded, end so the parent regenerates/reapproves
