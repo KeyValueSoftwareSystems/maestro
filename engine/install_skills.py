@@ -72,15 +72,13 @@ def install(skill_dirs, dst_root, host, manifest_path):
         manifest = {}
     recorded = (manifest.get("hosts") or {}).get(host) or {}
     report = {"added": [], "current": [], "updated": [], "kept": [], "replaced": []}
-    # Template workspaces symlink .claude/skills → ../skills (and similarly for
-    # Cursor). Resolve so we install alongside workspace-* skills and never
-    # replace the symlink with a plain directory.
+    # A directory symlink (template `.claude/skills` -> `../skills`) is the
+    # template source tree. Never follow it and never replace it.
     if os.path.islink(dst_root):
-        dst_root = os.path.realpath(dst_root)
-    elif os.path.isdir(dst_root) and not os.path.islink(dst_root):
-        # If the parent skills dir is reached via a symlink host path, realpath
-        # still lands on the shared skills/ tree.
-        dst_root = os.path.realpath(dst_root)
+        raise SystemExit(
+            f"FAIL: {dst_root} is a symlink. Host skill folders must be real "
+            "directories; link each template skill from there into skills/."
+        )
     os.makedirs(dst_root, exist_ok=True)
     for src in skill_dirs:
         name = os.path.basename(os.path.normpath(src))

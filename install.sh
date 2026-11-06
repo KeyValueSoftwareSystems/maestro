@@ -100,22 +100,18 @@ copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
   # So we find every SKILL.md at any depth and flatten each skill dir into $1/. An edited
   # installed skill is kept (engine/install_skills.py); its new version lands as *.upstream.
   #
-  # Template umbrellas symlink .claude/skills and .cursor/skills → ../skills. Resolve the
-  # destination so Maestro skills land beside workspace-* and the symlink is never replaced.
+  # $1 must already be a real directory. Template workspaces link each
+  # workspace-* skill from .claude/skills and .cursor/skills into skills/.
+  # Maestro's copies are written beside those links. A directory symlink is
+  # refused so the installer never writes into skills/.
   local dst="$1"
   if [ -L "$dst" ]; then
-    dst="$(cd "$dst" && pwd -P)"
-  elif [ -d "$dst" ]; then
-    dst="$(cd "$dst" && pwd -P)"
-  else
-    # Parent may be a symlink (e.g. .claude → …); create real skills dir only if missing.
-    local parent; parent="$(dirname "$dst")"
-    mkdir -p "$parent"
-    if [ -L "$parent/skills" ] || [ -L "$dst" ]; then
-      dst="$(cd "$(dirname "$dst")" && pwd -P)/$(basename "$dst")"
-    fi
+    echo "FAIL: $dst is a symlink. Link each template skill from a real directory into skills/." >&2
+    exit 1
   fi
-  mkdir -p "$dst"; kept=0; skipped=0
+  mkdir -p "$(dirname "$dst")"
+  mkdir -p "$dst"
+  kept=0; skipped=0
   list="$(mktemp)"
   while IFS= read -r skillmd; do
     d="$(dirname "$skillmd")"
