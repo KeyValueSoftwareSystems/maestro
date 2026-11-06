@@ -40,7 +40,7 @@ class WorkspaceSyncTest(unittest.TestCase):
             fh.write("v1\n")
         git(self.repo, "add", "app.txt")
         git(self.repo, "commit", "-q", "-m", "initial")
-        subprocess.run(["git", "init", "--bare", "-q", self.remote], check=True)
+        subprocess.run(["git", "init", "--bare", "-q", "-b", "main", self.remote], check=True)
         git(self.repo, "remote", "add", "origin", self.remote)
         git(self.repo, "push", "-q", "-u", "origin", "main")
 

@@ -1064,6 +1064,9 @@ class SdlcE2E(unittest.TestCase):
         # a new product: no repositories, no recorded knowledge of them
         shutil.rmtree(os.path.join(self.tmp, "codebase"))
         shutil.rmtree(os.path.join(self.tmp, ".maestro", "index"), ignore_errors=True)
+        provenance = os.path.join(self.tmp, "docs", "provenance.yaml")
+        if os.path.isfile(provenance):
+            os.remove(provenance)
         Path(self.tmp, "maestro.config.yaml").write_text("version: 1\nrepos: {}\n")
         hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
 
