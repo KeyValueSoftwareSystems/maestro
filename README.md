@@ -184,8 +184,10 @@ You don't need to maintain the docs by hand. Maestro records which commit each d
 re-running `/maestro-init` only re-reads what changed, and each finished feature refreshes the docs
 for the areas it touched.
 
-**3. Tell Maestro how to build and test.** Create `maestro.config.yaml` in the same folder, with
-one entry per repo (in a single-repo setup, the repo is your folder's name):
+**3. Check how Maestro builds and tests.** `/maestro-init` writes `maestro.config.yaml` when
+it is missing. detect-stack only installs skills. A separate project-config step then copies
+repo names from `registry.yaml` (on a template workspace) and fills stack and commands from
+the detect-stack result. An existing command is left alone. Confirm the commands:
 
 ```yaml
 version: 1

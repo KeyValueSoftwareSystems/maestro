@@ -1,6 +1,6 @@
 ---
 name: maestro-init
-description: One-shot onboarding for a repo — detect its tech stack and install the matching skills/agents (detect-stack), then build the living-docs knowledge base (build-knowledge) only when docs are stale. Run once when adopting Maestro in a codebase. Front door for /maestro-init or $maestro-init.
+description: One-shot onboarding for a repo — detect-stack installs matching skills, then the project-config skill writes maestro.config.yaml from that result (registry.yaml names when present), then build the living-docs knowledge base only when docs are stale. Run once when adopting Maestro in a codebase. Front door for /maestro-init or $maestro-init.
 allowed-tools: Read, Grep, Glob, Bash, Write, Task, AskUserQuestion
 tags: [maestro, bootstrap]
 ---
@@ -8,10 +8,12 @@ tags: [maestro, bootstrap]
 # maestro-init — set Maestro up for this codebase
 
 Bootstrap a repository for Maestro in one command: safely align its repositories with their
-current upstreams, install the skills that match the repo's stack, then document the exact
-commits that will be used — **skipping knowledge authoring when docs are already current**.
-Sync facts and provenance come from deterministic engine scripts; the two existing skills
-still own stack detection and knowledge authoring.
+current upstreams, run **detect-stack** (install only — it does not touch
+`maestro.config.yaml`), then run **project-config** to write that file from the detect-stack
+result and from `registry.yaml` when it exists, then document the exact commits that will
+be used — **skipping knowledge authoring when docs are already current**.
+Sync facts and provenance come from deterministic engine scripts; detect-stack, project-config,
+and build-knowledge each own one job.
 
 ## When to use
 The first time you adopt Maestro in a repo (or after a big stack change). Safe to re-run —
@@ -31,49 +33,57 @@ inline. Never parallelize these steps because each consumes the previous step's 
    plan path/hash and `--out .maestro/index/workspace-sync-init-result.json`. It fast-forwards
    only clean, non-diverged current branches; never stash, merge, rebase or update an unsafe
    repo. Do not ask one question per repository.
-2. **Detect stack + install** — load and follow the **`detect-stack`** skill: scan the repo,
-   determine its stack tokens, and run the installer with `--stack <detected>` so only the
-   core SDLC pack + the matching per-stack skills/agents are installed. Capture the detected
-   `stacks` and `installed_count`.
-3. **Docs freshness gate** — before authoring, run a **full** (not `--remote-only`) plan:
+2. **Detect stack + install** — load and follow the **`detect-stack`** skill. It installs
+   matching skills and returns `repos` (`name`, `stacks`, `evidence`). It must not write
+   `maestro.config.yaml`. Capture `stacks`, `installed_count`, and `repos`.
+3. **Project config** — load and follow the **`project-config`** skill with that `repos`
+   result. It writes `maestro.config.yaml` (registry names when `registry.yaml` exists;
+   stack and commands from the detect-stack evidence). It does not scan again and does not
+   read the knowledge base. Capture `created` and `updated`.
+4. **Docs freshness gate** — before authoring, run a **full** (not `--remote-only`) plan:
    `python3 .maestro/engine/workspace_sync.py plan --root . --no-fetch --out .maestro/index/workspace-sync-init-knowledge.json`
    and `python3 .maestro/engine/codebase_scan.py plan --root .`.
    Provenance is `docs/.index-state.yaml` (shared with the template workspace-index skill);
    no separate knowledge-state import step.
-   **Skip** step 4 (build-knowledge) when `refresh_needed=false`, maps are not stale, and
+   **Skip** step 5 (build-knowledge) when `refresh_needed=false`, maps are not stale, and
    `docs/architecture.md` is present — set `domains_written=0` and note “docs already current”.
-   Still run step 5b (`ensure-index-state`) so template-written state gets `docs_sha256`.
-4. **Build the knowledge base (only if stale / missing)** — load and follow the
+   Still run step 6b (`ensure-index-state`) so template-written state gets `docs_sha256`.
+5. **Build the knowledge base (only if stale / missing)** — load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
    write the per-domain technical + functional docs, the architecture diagram, and a
    per-repo `docs/codebase-map.md`. Capture `domains_written` and `architecture_path`.
-5. **Record exact provenance**
-   - **5a (after authoring in step 4):** run
+6. **Record exact provenance**
+   - **6a (after authoring in step 5):** run
      `python3 .maestro/engine/codebase_scan.py record --root .`, then
      `python3 .maestro/engine/workspace_sync.py record-knowledge --root . --evidence <architecture_path>`.
      (The `build-knowledge` workflow already does this when you run it as a workflow.)
-   - **5b (always when docs are current, including skip of step 4):** run
+   - **6b (always when docs are current, including skip of step 5):** run
      `python3 .maestro/engine/workspace_sync.py ensure-index-state --root . --evidence docs/architecture.md`.
      No-op if `docs_sha256` already present; fills it when template indexed first. Do **not** skip
      this on the “docs already current” path — without it, doc-content drift is invisible.
    This makes later `/maestro` or `$maestro` starts a fast fetch + local SHA comparison with
    zero model call when nothing changed.
-6. **Summarize + next step.** Report the stacks installed and whether docs were written or
-   skipped, then tell the user that newly installed skills/agents become active after their
-   host reloads the config, and that they can start a feature with `/maestro <slug>` or
-   `$maestro <slug>`.
+7. **Summarize + next step.** Report the stacks installed, whether docs were written or
+   skipped, and whether the project-config skill created or updated `maestro.config.yaml`.
+   Show each repo's `build` and `test` and ask the user to confirm them before a
+   feature run. Then tell them that newly installed skills/agents
+   become active after their host reloads the config, and that they can start a feature
+   with `/maestro <slug>` or `$maestro <slug>`.
 
 ## Standards
-- Do not re-implement detection or doc-generation here — delegate to the two skills so their
-  behaviour stays in one place. Remote status, safe update and provenance stay engine-owned.
-- If step 2 detects no stack, still finish; report that no per-stack skills were added.
+- Do not re-implement detection, config writing, or doc-generation here — delegate to
+  detect-stack, project-config, and build-knowledge. Remote status, safe update and
+  provenance stay engine-owned.
+- If step 2 detects no stack, still run step 3 and finish; report that no per-stack skills
+  were added.
 - Never run a second full `/workspace-index` “to be safe” when Maestro’s gate says current.
 
 ## Safety
 - Writes are installer output into harness config dirs (`.claude/`, `.cursor/`, `.agents/`), documentation,
-  codebase-map markers, and `docs/.index-state.yaml` provenance. Never edit application
-  code; never touch `.maestro/runs/` state. Repository updates are explicit-user-approved,
-  verified fast-forwards only.
+  codebase-map markers, `docs/.index-state.yaml` provenance, and — only via the
+  project-config skill — `maestro.config.yaml`. Never edit application code; never touch
+  `.maestro/runs/` state.
+  Repository updates are explicit-user-approved, verified fast-forwards only.
 
 ## Output contract
 Return `stacks` (detected stack tokens, comma-separated), `installed_count` (skills + agents

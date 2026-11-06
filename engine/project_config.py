@@ -20,6 +20,8 @@ changes per client — it reads these values.
 sections above are typos and fail.
 
 Usage: project_config.py preflight [--root .]
+       project_config.py init [--root .]     # create maestro.config.yaml if missing
+       project_config.py apply --detected F  # fill stack and commands from detect-stack
 """
 
 from __future__ import annotations
@@ -52,6 +54,11 @@ ENVIRONMENT_KEYS = {"start", "ready", "stop"}
 DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
 DEFAULT_TIMEOUT_S = 900
+# detect-stack vocabulary, used only to keep a stack string in a stable order.
+STACK_ORDER = (
+    "go", "java", "kotlin", "python", "react", "vue", "angular", "node", "rust",
+    "flutter", "android", "db", "terraform", "kubernetes", "docker",
+)
 
 
 class ConfigError(ValueError):
@@ -60,6 +67,94 @@ class ConfigError(ValueError):
 
 def config_path(root="."):
     return os.path.join(root, CONFIG_FILE)
+
+
+def repo_names(root="."):
+    """Names for a new config. registry.yaml wins when Maestro is a template guest;
+    otherwise the git repos discover_repos already found. No stack or command scan."""
+    import registry as registry_mod
+    registry = registry_mod.load(root)
+    if registry and registry.get("repos"):
+        return [entry["name"] for entry in registry["repos"] if entry.get("name")]
+    return [name for name, _path in codebase_scan.discover_repos(root)]
+
+
+def _stack_text(value):
+    if isinstance(value, list):
+        tokens = [str(item).strip() for item in value if str(item).strip()]
+    else:
+        tokens = [item.strip() for item in str(value or "").split(",") if item.strip()]
+    ordered = [token for token in STACK_ORDER if token in tokens]
+    return ", ".join(ordered + [token for token in tokens if token not in ordered])
+
+
+def init(root="."):
+    """Create maestro.config.yaml when it is absent. Never overwrites.
+
+    Copies repository names from registry.yaml when that file exists. Stack and
+    commands are left for the project-config skill (maestro-init only). -> 'wrote' or 'exists'."""
+    path = config_path(root)
+    if os.path.exists(path):
+        return "exists"
+    wf.dump_file(path, {"version": CONFIG_VERSION, "repos": {name: {} for name in repo_names(root)}})
+    return "wrote"
+
+
+def apply_detected(root, detected):
+    """Merge a project-config report into maestro.config.yaml.
+
+    `detected` is {"repos": {name: {"stack", "role", "commands"}}}. Missing file is
+    created. Names come from registry.yaml when present, plus any name in the report.
+    A stack, role, or command that is already set is left alone.
+    -> {"created": bool, "updated": [repo names]}
+    """
+    if not isinstance(detected, dict):
+        raise ConfigError("detected stacks must be a mapping")
+    reported = detected.get("repos") or {}
+    if not isinstance(reported, dict):
+        raise ConfigError("detected repos must be a mapping")
+    path = config_path(root)
+    created = not os.path.exists(path)
+    config = load(root) or {"version": CONFIG_VERSION}
+    if not isinstance(config, dict):
+        raise ConfigError(f"{CONFIG_FILE} must be a mapping of settings")
+    if config.get("version") is None:
+        config["version"] = CONFIG_VERSION
+    repos = config.get("repos") if isinstance(config.get("repos"), dict) else {}
+    names = list(repo_names(root))
+    for name in reported:
+        if name not in names:
+            names.append(name)
+    updated = []
+    for name in names:
+        spec = reported.get(name) if isinstance(reported.get(name), dict) else {}
+        entry = repos.get(name) if isinstance(repos.get(name), dict) else {}
+        changed = name not in repos
+        stack = _stack_text(spec.get("stack"))
+        if stack and not entry.get("stack"):
+            entry["stack"] = stack
+            changed = True
+        role = spec.get("role")
+        if role in REPO_ROLES and not entry.get("role"):
+            entry["role"] = role
+            changed = True
+        commands = dict(entry.get("commands") or {}) if isinstance(entry.get("commands"), dict) else {}
+        incoming = spec.get("commands") or {}
+        if isinstance(incoming, dict):
+            for key, value in incoming.items():
+                if key in COMMANDS and isinstance(value, str) and value.strip() and not str(
+                        commands.get(key) or "").strip():
+                    commands[key] = value.strip()
+                    changed = True
+        if commands:
+            entry["commands"] = commands
+        repos[name] = entry
+        if changed:
+            updated.append(name)
+    config["repos"] = repos
+    if created or updated:
+        wf.dump_file(path, config)
+    return {"created": created, "updated": updated}
 
 
 def load(root="."):
@@ -258,9 +353,30 @@ def summary(issues):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["preflight"])
+    parser.add_argument("command", choices=["preflight", "init", "apply"])
     parser.add_argument("--root", default=".")
+    parser.add_argument("--detected", help="detect-stack JSON report (apply)")
     args = parser.parse_args(argv)
+    if args.command == "init":
+        # `wrote` or `exists` — /maestro-init reports which one happened.
+        print(init(args.root))
+        return 0
+    if args.command == "apply":
+        if not args.detected:
+            print("apply requires --detected <detect-stack.json>", file=sys.stderr)
+            return 2
+        try:
+            with open(args.detected, encoding="utf-8") as fh:
+                detected = json.load(fh)
+        except (OSError, ValueError) as exc:
+            print(f"cannot read detected stacks: {exc}", file=sys.stderr)
+            return 2
+        try:
+            print(json.dumps(apply_detected(args.root, detected)))
+        except ConfigError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        return 0
     issues = preflight(args.root)
     for issue in issues:
         print(str(issue), file=sys.stderr)
