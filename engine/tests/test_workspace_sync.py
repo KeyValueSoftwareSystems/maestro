@@ -40,7 +40,7 @@ class WorkspaceSyncTest(unittest.TestCase):
             fh.write("v1\n")
         git(self.repo, "add", "app.txt")
         git(self.repo, "commit", "-q", "-m", "initial")
-        subprocess.run(["git", "init", "--bare", "-q", self.remote], check=True)
+        subprocess.run(["git", "init", "--bare", "-q", "-b", "main", self.remote], check=True)
         git(self.repo, "remote", "add", "origin", self.remote)
         git(self.repo, "push", "-q", "-u", "origin", "main")
 
@@ -194,6 +194,58 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertEqual(doc["lock_drift_repos"], ["backend"])
         _, second = quiet(ws.cmd_lock, self.tmp, lock_path)
         self.assertTrue(second["head_changed"])
+
+    def test_record_knowledge_writes_shared_index_state_yaml(self):
+        path = os.path.join(self.tmp, "docs", "provenance.yaml")
+        self.assertTrue(os.path.isfile(path))
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("schema_version: 1", text)
+        self.assertIn("docs_sha256:", text)
+        self.assertIn("branch:", text)
+        self.assertIn("path:", text)
+        self.assertIn("name: backend", text)
+        parsed = ws._parse_index_state_yaml(text)
+        self.assertEqual(parsed["schema_version"], 1)
+        self.assertEqual(parsed["repos"][0]["name"], "backend")
+        self.assertEqual(parsed["repos"][0]["path"], "codebase/backend")
+        self.assertEqual(parsed["repos"][0]["branch"], "main")
+        self.assertTrue(parsed["docs_sha256"])
+
+    def test_docs_content_drift_marks_knowledge_stale(self):
+        with open(os.path.join(self.tmp, "docs", "architecture.md"), "a") as fh:
+            fh.write("\nupdated\n")
+        _, out, doc = self.plan()
+        self.assertTrue(out["needs_attention"])
+        self.assertTrue(doc["knowledge"]["stale"])
+        self.assertTrue(doc["knowledge"]["docs_hash_stale"])
+
+    def test_ensure_index_state_fills_missing_docs_hash_without_reauthoring(self):
+        path = os.path.join(self.tmp, "docs", "provenance.yaml")
+        head = git(self.repo, "rev-parse", "HEAD")
+        # Simulate template-only index-state (commits present, no docs_sha256).
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(
+                "schema_version: 1\n"
+                "indexed_at: \"2026-01-01T00:00:00+00:00\"\n"
+                "repos:\n"
+                f"  - name: backend\n"
+                f"    path: codebase/backend\n"
+                f"    branch: main\n"
+                f"    commit: {head}\n"
+                f"    indexed_at: \"2026-01-01T00:00:00+00:00\"\n"
+            )
+        code, out = quiet(ws.cmd_ensure_index_state, self.tmp, self.evidence)
+        self.assertEqual(code, 0)
+        self.assertTrue(out["ensured"])
+        state = ws._read_index_state(path)
+        self.assertTrue(state["docs_sha256"])
+        self.assertEqual(state["evidence"], "evidence.md")
+        # Second call is a no-op.
+        code, out = quiet(ws.cmd_ensure_index_state, self.tmp, self.evidence)
+        self.assertEqual(code, 0)
+        self.assertFalse(out["ensured"])
+        self.assertEqual(out["reason"], "already_complete")
 
 
 if __name__ == "__main__":

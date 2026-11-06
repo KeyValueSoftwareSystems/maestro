@@ -99,7 +99,19 @@ copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
   # by its frontmatter name, which is the only identity workflows/harness discovery use.
   # So we find every SKILL.md at any depth and flatten each skill dir into $1/. An edited
   # installed skill is kept (engine/install_skills.py); its new version lands as *.upstream.
-  mkdir -p "$1"; kept=0; skipped=0
+  #
+  # $1 must already be a real directory. Template workspaces link each
+  # workspace-* skill from .claude/skills and .cursor/skills into skills/.
+  # Maestro's copies are written beside those links. A directory symlink is
+  # refused so the installer never writes into skills/.
+  local dst="$1"
+  if [ -L "$dst" ]; then
+    echo "FAIL: $dst is a symlink. Link each template skill from a real directory into skills/." >&2
+    exit 1
+  fi
+  mkdir -p "$(dirname "$dst")"
+  mkdir -p "$dst"
+  kept=0; skipped=0
   list="$(mktemp)"
   while IFS= read -r skillmd; do
     d="$(dirname "$skillmd")"
@@ -107,13 +119,13 @@ copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
     else skipped=$((skipped+1)); fi
   done < <(find "$SRC/skills" -name SKILL.md -type f | sort)
   if command -v python3 >/dev/null 2>&1; then
-    python3 "$SRC/engine/install_skills.py" --dst "$1" --host "$2" \
+    python3 "$SRC/engine/install_skills.py" --dst "$dst" --host "$2" \
       --manifest "$DEST/.maestro/skill-manifest.json" --skills-from "$list"
   else
-    while IFS= read -r d; do cp -R "$d" "$1/"; done < "$list"
+    while IFS= read -r d; do cp -R "$d" "$dst/"; done < "$list"
   fi
   rm -f "$list"
-  note "skills -> $1 ($kept selected, $skipped skipped by --stack)"
+  note "skills -> $dst ($kept selected, $skipped skipped by --stack)"
 }
 copy_agents() { # $1 = dst dir — filtered by --stack
   mkdir -p "$1"; kept=0; skipped=0
@@ -223,7 +235,8 @@ done
 # repo root clean and avoid colliding with the repo's own engine/ docs/ ui/ dirs:
 #   .maestro/engine  .maestro/ui       — regenerated runtime (gitignore)
 #   .maestro/workflows  .maestro/docs  — committed, customize freely
-#   .maestro/index   .maestro/memory  .maestro/runs/<slug>/ — committed engine provenance/state
+#   .maestro/index   .maestro/memory  .maestro/runs/<slug>/ — sync plans / memory / run state
+#   docs/provenance.yaml — shared living-doc provenance (written by record-knowledge)
 #   .maestro/workflow-manifest.json  — committed: what the last upgrade offered per workflow
 say "Copying runtime into $DEST/.maestro"
 mkdir -p "$DEST/.maestro/workflows" "$DEST/.maestro/engine" "$DEST/.maestro/ui" "$DEST/.maestro/docs"

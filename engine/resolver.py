@@ -1079,7 +1079,16 @@ def _agent_action(run, frame, node, path):
     skill = node.get("skill")
     if skill:
         skill = run.resolve_text(skill, frame)  # e.g. skill: "${inputs.stack}-implement"
-    return {
+    # Template Claude WorktreeCreate hooks map every worktree to a full sandbox.
+    # Maestro impl uses per-repo worktrees — export these so scripts/claude-worktree
+    # bypasses sandbox create (Task 33).
+    env = None
+    if isolate == "worktree":
+        env = {"MAESTRO_REPO_WORKTREE": "1"}
+        repo_path = (resolved_inputs or {}).get("repo_path")
+        if repo_path:
+            env["MAESTRO_REPO_PATH"] = str(repo_path)
+    action = {
         "action": "run_lead" if node.get("execution") == "lead" else "run_agent",
         "step": path,
         "agent_type": run.agent_for(node, frame),
@@ -1090,6 +1099,9 @@ def _agent_action(run, frame, node, path):
         "artifacts": artifacts,
         "prompt": render_agent_prompt(run, frame, node, resolved_inputs, artifacts, isolate, skill),
     }
+    if env:
+        action["env"] = env
+    return action
 
 
 def _interview_sections(run, frame, node):

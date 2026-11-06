@@ -62,6 +62,55 @@ class PreflightTest(unittest.TestCase):
     def test_missing_file_is_an_error(self):
         self.assertEqual(self.codes("error"), [("config-missing", None)])
 
+    def test_init_copies_registry_names_and_does_not_scan_commands(self):
+        repo = os.path.join(self.root, "codebase", "backend")
+        with open(os.path.join(repo, "go.mod"), "w", encoding="utf-8") as fh:
+            fh.write("module example.com/backend\n\ngo 1.22\n")
+        with open(os.path.join(self.root, "registry.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("repos:\n"
+                     "  - name: backend\n    remote: https://example.com/backend.git\n"
+                     "  - name: web\n    remote: https://example.com/web.git\n")
+        self.assertEqual(project_config.init(self.root), "wrote")
+        config = project_config.load(self.root)
+        self.assertEqual(set(config["repos"]), {"backend", "web"})
+        self.assertEqual(config["repos"]["backend"], {})
+        self.assertEqual(project_config.init(self.root), "exists")
+
+    def test_apply_fills_detect_stack_report_without_clobbering(self):
+        self.write("version: 1\nrepos:\n  backend:\n    commands:\n      build: make build\n")
+        result = project_config.apply_detected(self.root, {"repos": {"backend": {
+            "stack": ["db", "go"],
+            "commands": {"build": "go build ./...", "test": "go test ./...", "lint": "golangci-lint run"},
+        }}})
+        config = project_config.load(self.root)
+        entry = config["repos"]["backend"]
+        self.assertEqual(entry["stack"], "go, db")
+        self.assertEqual(entry["commands"]["build"], "make build")
+        self.assertEqual(entry["commands"]["test"], "go test ./...")
+        self.assertEqual(entry["commands"]["lint"], "golangci-lint run")
+        self.assertEqual(result["updated"], ["backend"])
+        self.assertFalse(result["created"])
+
+    def test_apply_includes_registry_names_missing_from_the_report(self):
+        with open(os.path.join(self.root, "registry.yaml"), "w", encoding="utf-8") as fh:
+            fh.write("repos:\n"
+                     "  - name: backend\n    remote: https://example.com/backend.git\n"
+                     "  - name: web\n    remote: https://example.com/web.git\n")
+        project_config.apply_detected(self.root, {"repos": {"backend": {
+            "stack": "go", "role": "app",
+            "commands": {"build": "go build ./...", "test": "go test ./..."},
+        }}})
+        config = project_config.load(self.root)
+        self.assertEqual(config["repos"]["backend"]["stack"], "go")
+        self.assertEqual(config["repos"]["backend"]["role"], "app")
+        self.assertEqual(config["repos"]["web"], {})
+
+    def test_init_writes_empty_repos_when_nothing_is_discovered(self):
+        empty = tempfile.mkdtemp(prefix="maestro-config-empty-")
+        self.addCleanup(shutil.rmtree, empty, ignore_errors=True)
+        self.assertEqual(project_config.init(empty), "wrote")
+        self.assertEqual(project_config.load(empty), {"version": 1, "repos": {}})
+
     def test_unparseable_file_is_an_error(self):
         self.write("version: 1\nrepos: &anchor {}\n")
         self.assertEqual(self.codes("error")[0][0], "config-unreadable")
