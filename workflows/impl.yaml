@@ -176,9 +176,10 @@ nodes:
       .maestro/runs/${inputs.slug}/test-cases.md, the standards and the maintained codebase map
       (docs/codebase-map.md in the ${inputs.stack} repo) — use the map to check blast radius, not
       just the diff in isolation. Check every task in the task list is built; look closely at the
-      tasks marked needs_human_gate. Build, lint and tests already
-      passed in the engine's run (receipt: ${steps.verify.outputs.receipt_path}); review the
-      design and code, not whether it compiles. Checks that also fail on the base commit
+      tasks marked needs_human_gate. The engine ran build, lint and tests
+      (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
+      still listed there was accepted by a person. Review the design and code, not whether it
+      compiles. Checks that also fail on the base commit
       (pre-existing, not this branch's doing): ${steps.verify.outputs.pre_existing_csv} — check
       the branch's own new tests by reading them, since that suite cannot prove them. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed}. For each one, state in the report
@@ -234,7 +235,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
     routes:
@@ -323,7 +324,8 @@ nodes:
       Branch: ${steps.handoff.outputs.branch}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
-      - {id: accept, label: Accept as-is — I'll handle the rest, to: end}
+      - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
+      - {id: accept, label: Accept as-is without a code review of this commit — I'll handle the rest, to: end}
       - {id: abandon, label: Abort this stack, to: abort}
 
 outputs:

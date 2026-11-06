@@ -138,7 +138,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`implementation_pool.py`** — the implementation queue: the golden workflow implements every
   designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
   supports batches with deferred repos for team workflows. Builds the QA/release manifest only
-  from exact verified worktree commits, with each repo's verify receipt and status attached.
+  from exact verified worktree commits, with each repo's verify receipt and status attached, and
+  whether that exact commit was code-reviewed (`reviews/reviewed.json`, written by `findings.py
+  verdict --commit`); a commit accepted at the escalation gate before review shows
+  `not-reviewed`, and autopilot will not release it.
   `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
   in its worktree) and `record --from-worktree` records the fixed HEAD.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo

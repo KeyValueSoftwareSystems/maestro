@@ -50,15 +50,17 @@ def _verification(slug, entry, root):
     fail on the base commit (`pre-existing`) is `baseline-failing`: the engine cannot show the
     feature's tests pass, so autopilot leaves the release to a person. Never blocks: a human may
     have accepted an unverified batch at the implementation gate, and the release gate shows
-    this verdict.
+    this verdict. `review` says whether that commit was code-reviewed (`_review`); autopilot needs
+    both.
     """
     if os.environ.get("MAESTRO_SIMULATION") == "1":
-        return {"status": "simulated", "receipt": None, "test_changes": []}
+        return {"status": "simulated", "receipt": None, "test_changes": [], "review": "simulated"}
+    review = _review(slug, entry, root)
     path = _receipt_path(slug, entry["repo"], root)
     try:
         receipt = _read(path)
     except (OSError, ValueError):
-        return {"status": "missing", "receipt": None, "test_changes": []}
+        return {"status": "missing", "receipt": None, "test_changes": [], "review": review}
     passed = receipt.get("passed") is True
     matches = receipt.get("commit") == entry.get("commit")
     pre_existing = [c["name"] for c in receipt.get("checks") or []
@@ -75,7 +77,22 @@ def _verification(slug, entry, root):
                           if c.get("status") not in ("passed", "pre-existing")],
         "pre_existing": pre_existing,
         "test_changes": receipt.get("test_changes") or [],
+        "review": review,
     }
+
+
+def _review(slug, entry, root):
+    """Whether the shipped commit was code-reviewed: `reviewed`, `blocking` (findings left open),
+    or `not-reviewed` — no review verdict names this commit, e.g. the stack was accepted at the
+    escalation gate before review ran, or a later fix was never re-reviewed."""
+    path = os.path.join(_run_dir(slug, root), entry["repo"], "reviews", "reviewed.json")
+    try:
+        record = _read(path)
+    except (OSError, ValueError):
+        return "not-reviewed"
+    if record.get("commit") != entry.get("commit"):
+        return "not-reviewed"
+    return "blocking" if record.get("blocking") else "reviewed"
 
 
 def _verification_summary(entries):
@@ -89,6 +106,10 @@ def _verification_summary(entries):
             text += f", pre-existing failures on the base commit: {', '.join(check['pre_existing'])}"
         if check.get("test_changes"):
             text += f", {len(check['test_changes'])} existing test file(s) changed"
+        if check.get("review") == "not-reviewed":
+            text += ", code review not run on this commit"
+        elif check.get("review") == "blocking":
+            text += ", code review left blocking findings"
         parts.append(text)
     return "; ".join(parts) or "no repositories"
 
@@ -392,6 +413,8 @@ def cmd_finalize(args):
                       "repo_count": len(entries),
                       "branches_csv": ",".join(e["branch"] for e in entries),
                       "verified_ok": all(e["verification"]["status"] in ("verified", "simulated")
+                                         and e["verification"]["review"] in ("reviewed",
+                                                                             "simulated")
                                          for e in entries),
                       "verification_summary": _verification_summary(entries)}))
     return 0

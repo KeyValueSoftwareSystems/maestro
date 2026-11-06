@@ -130,8 +130,9 @@ nodes:
       Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
       ${inputs.commit} (what QA tested) to ${steps.handoff.outputs.commit}, against the LLD at
       .maestro/runs/${inputs.slug}/lld/${inputs.repo}.md, the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and the standards. Build, lint and tests already passed in the engine's run (receipt:
-      ${steps.verify.outputs.receipt_path}). Existing test files this branch changed
+      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and the standards. The engine ran build, lint and tests
+      (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
+      still listed there was accepted by a person. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed} — a weakened, skipped or deleted
       assertion is blocking. Confirm the regression test covers the bug in ${inputs.bug_report}.
       Read the earlier report at .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md
@@ -175,7 +176,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --root, "."]
     max_visits: 8
     on_exhausted: fix_gate
     routes:
@@ -201,7 +202,8 @@ nodes:
       Diagnosis: ${inputs.bug_report}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
-      - {id: accept, label: Keep the current commit and re-run QA, to: end}
+      - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
+      - {id: accept, label: Keep the current commit (no code review of it) and re-run QA, to: end}
       - {id: abandon, label: Abort, to: abort}
 
 outputs:
