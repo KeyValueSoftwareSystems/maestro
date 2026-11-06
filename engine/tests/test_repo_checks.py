@@ -203,6 +203,24 @@ class RepoChecksTest(unittest.TestCase):
         with open(os.path.join(self.root, ".maestro", "baseline", ".gitignore")) as fh:
             self.assertIn("*", fh.read())
 
+    def test_the_baseline_works_with_a_relative_root_as_the_workflow_passes_it(self):
+        main, worktree = self._repo_with_branch()
+        self.commit_feature(worktree)
+        self.config({"build": "true", "test": "test -f never-there"})
+        proc = subprocess.run(
+            [sys.executable, os.path.abspath(SCRIPT), "--root", ".", "--repo", "backend",
+             "--worktree", "feature", "--out", self.out, "--base-repo", "codebase/backend"],
+            capture_output=True, text=True, cwd=self.root,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        result = json.loads(proc.stdout.strip().splitlines()[-1])
+        self.assertEqual((result["passed"], result["pre_existing_csv"]), (True, "test"))
+        base = subprocess.run(["git", "-C", main, "rev-parse", "HEAD"],
+                              capture_output=True, text=True).stdout.strip()
+        self.assertTrue(os.path.isdir(os.path.join(self.root, ".maestro", "baseline", "backend",
+                                                   base[:12])))
+        self.assertFalse(os.path.exists(os.path.join(main, ".maestro")))  # never inside the repo
+
     def test_a_failure_the_feature_caused_still_fails(self):
         main, worktree = self._repo_with_branch()
         self.commit_feature(worktree)

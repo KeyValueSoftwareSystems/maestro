@@ -227,6 +227,9 @@ def _baseline_result(root, repo, base_repo, base, name, commands, timeout):
 
 
 def run_checks(root, repo, worktree, out, base_repo=None):
+    # Absolute from here on: the baseline checkout is made with `git -C <base repo>`, which would
+    # resolve a relative path inside that repository instead of under the workspace.
+    root = os.path.abspath(root)
     try:
         config = project_config.load(root)
     except project_config.ConfigError as exc:
