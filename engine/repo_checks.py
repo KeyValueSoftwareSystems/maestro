@@ -27,10 +27,16 @@ If it fails there too, the failure is `pre-existing` — the feature did not cau
 fail verification; the receipt records the base commit and its log, and the summary names it.
 Results are cached per base commit and command, so a slow baseline runs once.
 
+Unchanged: with --reuse-key, a receipt at --out for the same key, the same commit, the same
+commands and a worktree clean both then and now is reused instead of running everything again — a fix round that
+committed nothing changes nothing. `unchanged` says so; the workflow sends a failing unchanged
+result to a person rather than another fix round. Pass a key that changes when a person intervenes
+(e.g. the escalation gate's visit count), so a retry after their fix always re-runs.
+
 Usage: repo_checks.py --root . --repo backend --worktree <path> --out <receipt.json>
-                      [--base-repo <main checkout>]
+                      [--base-repo <main checkout>] [--reuse-key <key>]
 Last stdout line: {"passed", "failed_checks", "pre_existing_csv", "tests_changed", "receipt_path",
-                   "receipt_sha256", "commit", "summary"}
+                   "receipt_sha256", "commit", "unchanged", "summary"}
 Exit: 0 when the checks ran (pass or fail; route on `passed`), 2 when they cannot run.
 """
 
@@ -226,7 +232,68 @@ def _baseline_result(root, repo, base_repo, base, name, commands, timeout):
     return cache[name]
 
 
-def run_checks(root, repo, worktree, out, base_repo=None):
+def _reusable(full_out, reuse_key, commit, commands, worktree):
+    """The earlier receipt when nothing that decides its result has changed, else None."""
+    if not reuse_key:
+        return None
+    try:
+        with open(full_out, encoding="utf-8") as fh:
+            receipt = json.load(fh)
+    except (OSError, ValueError):
+        return None
+    ran = {c["name"]: c.get("command") for c in receipt.get("checks") or []
+           if c.get("name") != "secrets"}
+    if (receipt.get("reuse_key") != reuse_key or receipt.get("commit") != commit
+            or ran != {name: commands[name] for name in ORDER if name in commands}):
+        return None
+    # uncommitted files count too: clean when it was verified, and clean now
+    return receipt if receipt.get("worktree_clean") is True and _clean(worktree) else None
+
+
+def _clean(worktree):
+    status = subprocess.run(["git", "-C", worktree, "status", "--porcelain"],
+                            capture_output=True, text=True)
+    return status.returncode == 0 and not status.stdout.strip()
+
+
+def _report(receipt, root, full_out, unchanged=False):
+    checks = receipt["checks"]
+    failed = [c["name"] for c in checks if c["status"] not in ("passed", "pre-existing")]
+    pre_existing = receipt.get("pre_existing") or []
+    secrets = next((c["findings"] for c in checks if c["name"] == "secrets"), [])
+    test_changes = receipt.get("test_changes") or []
+    ran = [c["name"] for c in checks if c["status"] not in ("not-run", "pre-existing")]
+    repo = receipt["repo"]
+    summary = (f"{repo}: all checks passed ({', '.join(ran)})" if not failed
+               else f"{repo}: failed {', '.join(failed)}")
+    if pre_existing:
+        base = next((c["baseline"]["commit"] for c in checks if c.get("baseline")), "")
+        summary += (f"; pre-existing failures, also failing on base {base[:12]}: "
+                    f"{', '.join(pre_existing)}")
+    if secrets:
+        summary += "; committed secret(s): " + ", ".join(
+            f"{f['path']}:{f['line']} ({f['rule']})" for f in secrets[:5])
+    if test_changes:
+        summary += f"; {len(test_changes)} existing test file(s) changed — reviewer must justify"
+    if unchanged:
+        summary = (f"No new commit since the last verify ({receipt['commit'][:12]}); its result "
+                   f"stands — {summary}")
+    changed = [f"{c['path']} ({c['status']})" for c in test_changes]
+    print(json.dumps({
+        "passed": not failed,
+        "failed_checks": ",".join(failed),
+        "pre_existing_csv": ",".join(pre_existing),
+        "tests_changed": ", ".join(changed[:20]) + (" …" if len(changed) > 20 else ""),
+        "receipt_path": os.path.relpath(full_out, root),
+        "receipt_sha256": statemod.sha256_file(full_out),
+        "commit": receipt["commit"],
+        "unchanged": unchanged,
+        "summary": summary,
+    }))
+    return 0
+
+
+def run_checks(root, repo, worktree, out, base_repo=None, reuse_key=""):
     # Absolute from here on: the baseline checkout is made with `git -C <base repo>`, which would
     # resolve a relative path inside that repository instead of under the workspace.
     root = os.path.abspath(root)
@@ -250,6 +317,10 @@ def run_checks(root, repo, worktree, out, base_repo=None):
 
     timeout = project_config.repo_timeout(config, repo)
     full_out = out if os.path.isabs(out) else os.path.join(root, out)
+    earlier = _reusable(full_out, reuse_key, commit, commands, full_worktree)
+    if earlier:
+        return _report(earlier, root, full_out, unchanged=True)
+    clean = _clean(full_worktree)
     log_dir = os.path.splitext(full_out)[0] + "-logs"
     full_base = None
     if base_repo:
@@ -301,33 +372,13 @@ def run_checks(root, repo, worktree, out, base_repo=None):
         "test_guard": guard_note or "ran",
         "secret_scan": secret_note or "ran",
     }
+    if reuse_key:
+        receipt.update(reuse_key=reuse_key, worktree_clean=clean)
     os.makedirs(os.path.dirname(full_out), exist_ok=True)
     with open(full_out, "w", encoding="utf-8") as fh:
         json.dump(receipt, fh, indent=2)
         fh.write("\n")
-    ran = [c["name"] for c in checks if c["status"] not in ("not-run", "pre-existing")]
-    summary = (f"{repo}: all checks passed ({', '.join(ran)})" if not failed
-               else f"{repo}: failed {', '.join(failed)}")
-    if pre_existing:
-        summary += (f"; pre-existing failures, also failing on base {base[:12]}: "
-                    f"{', '.join(pre_existing)}")
-    if secrets:
-        summary += "; committed secret(s): " + ", ".join(
-            f"{f['path']}:{f['line']} ({f['rule']})" for f in secrets[:5])
-    if test_changes:
-        summary += f"; {len(test_changes)} existing test file(s) changed — reviewer must justify"
-    changed = [f"{c['path']} ({c['status']})" for c in test_changes]
-    print(json.dumps({
-        "passed": not failed,
-        "failed_checks": ",".join(failed),
-        "pre_existing_csv": ",".join(pre_existing),
-        "tests_changed": ", ".join(changed[:20]) + (" …" if len(changed) > 20 else ""),
-        "receipt_path": os.path.relpath(full_out, root),
-        "receipt_sha256": statemod.sha256_file(full_out),
-        "commit": commit,
-        "summary": summary,
-    }))
-    return 0
+    return _report(receipt, root, full_out)
 
 
 def main(argv=None):
@@ -338,15 +389,18 @@ def main(argv=None):
     parser.add_argument("--worktree", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--base-repo", help="main checkout the branch started from (test-edit guard)")
+    parser.add_argument("--reuse-key", default="",
+                        help="reuse an unchanged receipt written with the same key")
     args = parser.parse_args(argv)
     if os.environ.get("MAESTRO_SIMULATION") == "1":
         print(json.dumps({"passed": True, "failed_checks": "", "pre_existing_csv": "",
                           "tests_changed": "",
                           "receipt_path": args.out,
-                          "receipt_sha256": "", "commit": "[simulated commit]",
+                          "receipt_sha256": "", "commit": "[simulated commit]", "unchanged": False,
                           "summary": f"{args.repo}: [simulated] checks passed"}))
         return 0
-    return run_checks(args.root, args.repo, args.worktree, args.out, args.base_repo)
+    return run_checks(args.root, args.repo, args.worktree, args.out, args.base_repo,
+                      args.reuse_key)
 
 
 if __name__ == "__main__":

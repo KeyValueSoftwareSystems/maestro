@@ -221,6 +221,43 @@ class RepoChecksTest(unittest.TestCase):
                                                    base[:12])))
         self.assertFalse(os.path.exists(os.path.join(main, ".maestro")))  # never inside the repo
 
+    def run_keyed(self, main, key):
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--root", self.root, "--repo", "backend",
+             "--worktree", self.worktree, "--out", self.out, "--base-repo", main,
+             "--reuse-key", key],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        return json.loads(proc.stdout.strip().splitlines()[-1])
+
+    def test_an_unchanged_commit_reuses_the_receipt_until_a_person_intervenes(self):
+        main, worktree = self._repo_with_branch()
+        self.commit_feature(worktree)
+        counter = os.path.join(self.root, "test-runs")
+        self.config({"build": "true",
+                     "test": f"echo x >> {counter}; test ! -f feature.txt"})
+        first = self.run_keyed(main, "impl_gate-0")
+        self.assertEqual((first["passed"], first["unchanged"]), (False, False))
+        again = self.run_keyed(main, "impl_gate-0")  # the fix round committed nothing
+        self.assertEqual((again["passed"], again["unchanged"]), (False, True))
+        self.assertIn("No new commit since the last verify", again["summary"])
+        self.assertEqual(again["failed_checks"], "test")
+        after_gate = self.run_keyed(main, "impl_gate-1")  # a person chose another round
+        self.assertFalse(after_gate["unchanged"])
+        with open(os.path.join(worktree, "feature.txt"), "w") as fh:
+            fh.write("edited, not committed\n")
+        self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # dirty: re-run
+        subprocess.run(["git", "-C", worktree, "checkout", "-q", "--", "feature.txt"], check=True)
+        # clean now, but it was verified dirty: the fix changed files without a commit — re-run
+        self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])
+        self.commit_feature(worktree, rel="other.txt")
+        self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # new commit
+        self.config({"build": "true", "test": f"echo x >> {counter}; true"})
+        self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # command changed
+        with open(counter) as fh:  # branch runs only (the base run is cached once)
+            self.assertEqual(fh.read().count("x"), 7)
+
     def test_a_failure_the_feature_caused_still_fails(self):
         main, worktree = self._repo_with_branch()
         self.commit_feature(worktree)

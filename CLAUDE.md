@@ -152,7 +152,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   check is re-run on the branch's base commit (cached checkout + results under the git-ignored
   `.maestro/baseline/<repo>/`); failing there too makes it `pre-existing`, which does not fail
   verification — but a pre-existing `test` failure makes the release verdict `baseline-failing`
-  (`implementation_pool.py`), so autopilot will not release it. The impl loop
+  (`implementation_pool.py`), so autopilot will not release it. With `--reuse-key` (the
+  escalation gate's visit count), a fix round that committed nothing reuses the receipt as
+  `unchanged`, which the workflow sends to the person instead of another round. The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
   findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's

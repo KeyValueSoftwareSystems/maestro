@@ -44,7 +44,9 @@ nodes:
       (with the evidence; never a second time for a finding the reviewer upheld) or escalated.
       Honour any human guidance:
       ${steps.fix_gate.outputs.guidance}
-      Commit the fix on the branch. Do NOT loop — the workflow re-invokes you if needed.
+      Re-run only what proves your fix (the failing test, package or file), never a whole suite:
+      the engine re-runs every check after you. Commit the fix on the branch; a round that commits
+      nothing goes to a person. Do NOT loop — the workflow re-invokes you if needed.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: fix-loop
@@ -103,11 +105,15 @@ nodes:
       - ".maestro/runs/${inputs.slug}/${inputs.repo}/verify.json"
       - --base-repo
       - "${inputs.repo_path}"
+      - --reuse-key
+      - "fix_gate-${steps.fix_gate.visits}"
     timeout: 3600
     max_visits: 6
     on_exhausted: fix_gate
     routes:
       - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
+      # the fix round committed nothing: the same failures stand, so a person decides
+      - {when: "${steps.verify.outputs.unchanged} == true", to: fix_gate}
       - {to: fix}
 
   # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.

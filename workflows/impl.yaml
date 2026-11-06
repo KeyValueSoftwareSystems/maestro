@@ -146,11 +146,15 @@ nodes:
       - ".maestro/runs/${inputs.slug}/${inputs.stack}/verify.json"
       - --base-repo
       - "${inputs.repo_path}"
+      - --reuse-key
+      - "impl_gate-${steps.impl_gate.visits}"
     timeout: 3600
     max_visits: 10
     on_exhausted: impl_gate
     routes:
       - {when: "${steps.verify.outputs.passed} == true", to: review_scope}
+      # the fix round committed nothing: the same failures stand, so a person decides
+      - {when: "${steps.verify.outputs.unchanged} == true", to: impl_gate}
       - {to: fix}
 
   # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
@@ -260,8 +264,10 @@ nodes:
         needs a person's decision; the note states it). The report is
         ${steps.review.outputs.review_path}.
       Smallest safe fix; never weaken, skip or delete a test. Start from the implement report
-      (${steps.implement.outputs.summary}) instead of rediscovering context. Re-run the failing
-      commands before returning; the engine re-verifies after you. Commit your fix on the branch.
+      (${steps.implement.outputs.summary}) instead of rediscovering context. Before returning,
+      re-run only what proves your fix (the failing test, package or file), never a whole suite or
+      a pre-existing check: the engine re-runs every check after you. Commit your fix on the
+      branch; a round that commits nothing goes to a person, not another round.
       If a hard stop applies (an unapproved migration, a contract or permission change, a
       dependency upgrade, or a fix that would weaken a test), make no change and return escalate
       true. Honour any human guidance: ${steps.impl_gate.outputs.guidance}
