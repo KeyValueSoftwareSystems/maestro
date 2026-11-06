@@ -1398,7 +1398,7 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry
         _advance(run, frame, node, outputs)
     else:
         _register_failure(run, frame, node, path, entry,
-                          reason=f"exit code {exit_code}: {text[:300]}")
+                          reason=f"exit code {exit_code}: {_tail(text, 300)}")
     return entry
 
 
@@ -1848,6 +1848,11 @@ def fail_step(run, path, reason):
     entry.pop("pending_ask", None)
     _register_failure(run, frame, node, path, entry, reason)
     return entry
+
+
+def _tail(text, limit):
+    """The end of a failing script's output: a traceback names its error last."""
+    return text if len(text) <= limit else "…" + text[-limit:]
 
 
 def _register_failure(run, frame, node, path, entry, reason):

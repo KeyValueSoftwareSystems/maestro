@@ -44,6 +44,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -150,7 +151,9 @@ def _engine_owned(argv, root):
     return script.startswith(engine_dir + os.sep) and script.endswith(".py")
 
 
-def _run_engine_script(action, root):
+def _run_engine_script(action, root, log_path=None):
+    """-> (exit code, stdout). A failing script's full output is kept at `log_path`; when it
+    printed nothing on stdout, its stderr's tail (where a traceback names the error) stands in."""
     argv = [sys.executable, *action["argv"][1:]]
     timeout = action.get("timeout") or resolver.DEFAULT_SCRIPT_TIMEOUT
     try:
@@ -160,9 +163,23 @@ def _run_engine_script(action, root):
     except OSError as exc:
         return 127, str(exc)
     out = proc.stdout
-    if proc.returncode != 0 and not out.strip():
-        out = proc.stderr[-2000:]
+    if proc.returncode != 0:
+        kept = ""
+        if log_path:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "w", encoding="utf-8") as fh:
+                fh.write(f"$ {' '.join(action['argv'])}\nexit code {proc.returncode}\n"
+                         f"--- stdout\n{proc.stdout}\n--- stderr\n{proc.stderr}")
+            kept = f"\n[full output: {os.path.relpath(log_path, root)}]"
+        if not out.strip():
+            out = proc.stderr.rstrip()[-2000:] + kept
     return proc.returncode, out
+
+
+def _script_log(args, step, visits):
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "_", step).strip("_")
+    return os.path.join(statemod.feature_dir(args.slug, args.root), "logs",
+                        f"{safe}-visit{visits or 1}.log")
 
 
 def _serve_action(args, peek=False):
@@ -193,7 +210,7 @@ def _serve_action(args, peek=False):
                 and _engine_owned(action["argv"], args.root)):
             break
         started = time.monotonic()
-        code, out = _run_engine_script(action, args.root)
+        code, out = _run_engine_script(action, args.root, _script_log(args, action["step"], visits))
         with statemod.locked(args.slug, args.root):
             run = resolver.Run(args.slug, args.root)
             entry = run.state["steps"].get(action["step"]) or {}

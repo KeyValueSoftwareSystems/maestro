@@ -311,6 +311,21 @@ class AutoScriptTest(Base):
         self.assertEqual(action["action"], "ask_gate")
         self.assertIn("boom", self.state()["steps"]["probe"]["reason"])
 
+    def test_a_crashed_engine_script_keeps_its_error_line_and_full_output(self):
+        self.start()
+        with open(os.path.join(self.tmp, ".maestro", "engine", "probe.py"), "w") as fh:
+            fh.write("import sys\nsys.stderr.write('frame line\\n' * 400)\n"
+                     "raise FileNotFoundError('no such dir: .maestro/baseline/x')\n")
+        self.ctl("next", "--slug", "feat")
+        reason = self.state()["steps"]["probe"]["reason"]
+        self.assertIn("FileNotFoundError: no such dir", reason)
+        log = os.path.join(self.tmp, ".maestro", "runs", "feat", "logs", "probe-visit1.log")
+        self.assertIn(os.path.relpath(log, self.tmp), reason)
+        with open(log) as fh:
+            text = fh.read()
+        self.assertEqual(text.count("frame line"), 400)
+        self.assertIn("FileNotFoundError", text)
+
     def test_only_pack_scripts_count_as_engine_owned(self):
         root = self.tmp
         self.assertTrue(maestroctl._engine_owned(["python3", ".maestro/engine/probe.py"], root))
