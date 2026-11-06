@@ -240,7 +240,7 @@ done
 #   .maestro/engine  .maestro/ui       — regenerated runtime (gitignore)
 #   .maestro/workflows  .maestro/docs  — committed, customize freely
 #   .maestro/index   .maestro/memory  .maestro/runs/<slug>/ — sync plans / memory / run state
-#   docs/.index-state.yaml — shared living-doc provenance (written by record-knowledge)
+#   docs/provenance.yaml — shared living-doc provenance (written by record-knowledge)
 #   .maestro/workflow-manifest.json  — committed: what the last upgrade offered per workflow
 say "Copying runtime into $DEST/.maestro"
 mkdir -p "$DEST/.maestro/workflows" "$DEST/.maestro/engine" "$DEST/.maestro/ui" "$DEST/.maestro/docs"

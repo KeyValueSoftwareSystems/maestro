@@ -46,13 +46,11 @@ docs/
   domains + `architecture.md` after a feature. Both are LLM-judgement skills — swap them
   freely; the *structure* is fixed here and in their workflow node instructions, not baked
   into engine code.
-- **`docs/.index-state.yaml`** is the shared provenance record (Maestro + template
+- **`docs/provenance.yaml`** is the shared provenance record (Maestro + template
   workspace-index): the exact commit and branch of every repository these docs were last
   assessed against, plus hashes of the docs and refresh evidence. `/maestro` compares it after
   a parallel upstream fetch. Matching SHAs mean zero knowledge-model work; drift opens one
   consolidated sync gate and refreshes only affected domains/files after explicit approval.
-  (Older workspaces may still have `.maestro/index/knowledge-state.json`; the engine reads it
-  as a fallback until the next `record-knowledge` writes the YAML.)
 
 ## Surface 2 — the corroborated lessons (`.maestro/memory/`)
 

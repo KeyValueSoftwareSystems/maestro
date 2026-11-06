@@ -196,7 +196,7 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertTrue(second["head_changed"])
 
     def test_record_knowledge_writes_shared_index_state_yaml(self):
-        path = os.path.join(self.tmp, "docs", ".index-state.yaml")
+        path = os.path.join(self.tmp, "docs", "provenance.yaml")
         self.assertTrue(os.path.isfile(path))
         with open(path, encoding="utf-8") as fh:
             text = fh.read()
@@ -220,27 +220,8 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertTrue(doc["knowledge"]["stale"])
         self.assertTrue(doc["knowledge"]["docs_hash_stale"])
 
-    def test_legacy_knowledge_state_json_still_read(self):
-        yaml_path = os.path.join(self.tmp, "docs", ".index-state.yaml")
-        os.remove(yaml_path)
-        legacy = os.path.join(self.tmp, ".maestro", "index", "knowledge-state.json")
-        os.makedirs(os.path.dirname(legacy), exist_ok=True)
-        head = git(self.repo, "rev-parse", "HEAD")
-        with open(legacy, "w", encoding="utf-8") as fh:
-            json.dump({
-                "schema_version": 1,
-                "updated_at": "2026-01-01T00:00:00+00:00",
-                "repos": [{"name": "backend", "path": "codebase/backend", "commit": head}],
-                "docs_sha256": ws._docs_hash(self.tmp),
-                "evidence": "evidence.md",
-                "evidence_sha256": "abc",
-            }, fh)
-        _, out, doc = self.plan()
-        self.assertFalse(doc["knowledge"]["stale"])
-        self.assertFalse(out["needs_attention"])
-
     def test_ensure_index_state_fills_missing_docs_hash_without_reauthoring(self):
-        path = os.path.join(self.tmp, "docs", ".index-state.yaml")
+        path = os.path.join(self.tmp, "docs", "provenance.yaml")
         head = git(self.repo, "rev-parse", "HEAD")
         # Simulate template-only index-state (commits present, no docs_sha256).
         with open(path, "w", encoding="utf-8") as fh:

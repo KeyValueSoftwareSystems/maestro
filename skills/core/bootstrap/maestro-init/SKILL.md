@@ -43,7 +43,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
 4. **Docs freshness gate** — before authoring, run a **full** (not `--remote-only`) plan:
    `python3 .maestro/engine/workspace_sync.py plan --root . --no-fetch --out .maestro/index/workspace-sync-init-knowledge.json`
    and `python3 .maestro/engine/codebase_scan.py plan --root .`.
-   Provenance is `docs/.index-state.yaml` (shared with the template workspace-index skill);
+   Provenance is `docs/provenance.yaml` (shared with the template workspace-index skill);
    no separate knowledge-state import step.
    **Skip** step 5 (build-knowledge) when `refresh_needed=false`, maps are not stale, and
    `docs/architecture.md` is present — set `domains_written=0` and note “docs already current”.
@@ -80,7 +80,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
 
 ## Safety
 - Writes are installer output into harness config dirs (`.claude/`, `.cursor/`, `.agents/`), documentation,
-  codebase-map markers, `docs/.index-state.yaml` provenance, and — only via the
+  codebase-map markers, `docs/provenance.yaml`, and — only via the
   project-config skill — `maestro.config.yaml`. Never edit application code; never touch
   `.maestro/runs/` state.
   Repository updates are explicit-user-approved, verified fast-forwards only.

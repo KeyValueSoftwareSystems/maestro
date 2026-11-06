@@ -237,7 +237,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   (inputs or earlier outputs), e.g. workspace sync's "keep current commits; refresh stale docs".
   Does no work, never fails.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
-  fast-forward-only apply, living-doc commit provenance (`docs/.index-state.yaml`), and per-feature
+  fast-forward-only apply, living-doc commit provenance (`docs/provenance.yaml`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
 - **`install_workflows.py`** — `install.sh`'s workflow upgrader: per file, add / replace an
   byte-identical stock copy (strict hash, CRLF-normalised, against `.maestro/workflow-manifest.json`

@@ -31,9 +31,7 @@ import codebase_scan
 
 SCHEMA_VERSION = 1
 # Shared provenance file used by Maestro and the template workspace-index skill.
-DEFAULT_INDEX_STATE = "docs/.index-state.yaml"
-# Pre-unification path; still read when the YAML is absent so existing workspaces stay current.
-LEGACY_KNOWLEDGE_STATE = ".maestro/index/knowledge-state.json"
+DEFAULT_INDEX_STATE = "docs/provenance.yaml"
 MANAGED_DIRTY_PREFIXES = (
     ".maestro/runs/",
     ".maestro/memory/",
@@ -106,7 +104,7 @@ def _yaml_scalar(value):
 
 
 def _atomic_index_state(path, doc):
-    """Write docs/.index-state.yaml without depending on PyYAML."""
+    """Write docs/provenance.yaml without depending on PyYAML."""
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     lines = [
         "# Auto-generated index provenance (Maestro + workspace-index). Do not edit manually.",
@@ -366,20 +364,9 @@ def _repo_commits(repos):
 
 
 def _load_index_state(root, state_path):
-    """Load shared index provenance; fall back to legacy knowledge-state.json once."""
+    """Load docs/provenance.yaml without writing it."""
     state_abs = _resolve(root, state_path)
-    state = _read_index_state(state_abs)
-    if state is not None:
-        return state, state_abs
-    legacy_abs = _resolve(root, LEGACY_KNOWLEDGE_STATE)
-    if os.path.abspath(legacy_abs) != os.path.abspath(state_abs):
-        legacy = _read_index_state(legacy_abs)
-        if legacy is not None:
-            # Normalize legacy JSON field name for callers that expect indexed_at.
-            if "indexed_at" not in legacy and legacy.get("updated_at"):
-                legacy["indexed_at"] = legacy["updated_at"]
-            return legacy, legacy_abs
-    return None, state_abs
+    return _read_index_state(state_abs), state_abs
 
 
 def _knowledge_status(root, repos, state_path):
@@ -696,8 +683,6 @@ def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE):
     print(json.dumps({
         "index_state_path": _rel(state_abs, root),
         "index_state_sha256": _sha256(state_abs),
-        "knowledge_state_path": _rel(state_abs, root),  # back-compat alias
-        "knowledge_state_sha256": _sha256(state_abs),
         "recorded_repos_csv": ",".join(e["name"] for e in repos),
         "ensured": True,
     }))
@@ -783,9 +768,9 @@ def main(argv=None):
     p.add_argument("--root", default=".")
     p.add_argument("--out", required=True)
     p.add_argument("--lock")
-    p.add_argument("--index-state", "--knowledge-state", default=DEFAULT_INDEX_STATE,
+    p.add_argument("--index-state", default=DEFAULT_INDEX_STATE,
                    dest="index_state",
-                   help="shared docs/.index-state.yaml provenance path")
+                   help="shared docs/provenance.yaml path")
     p.add_argument("--no-fetch", action="store_true")
     p.add_argument("--remote-only", action="store_true",
                    help="ignore knowledge/map freshness (used before initial indexing)")
@@ -801,13 +786,13 @@ def main(argv=None):
     p = sub.add_parser("record-knowledge")
     p.add_argument("--root", default=".")
     p.add_argument("--evidence", required=True)
-    p.add_argument("--index-state", "--knowledge-state", default=DEFAULT_INDEX_STATE,
+    p.add_argument("--index-state", default=DEFAULT_INDEX_STATE,
                    dest="index_state")
 
     p = sub.add_parser("ensure-index-state")
     p.add_argument("--root", default=".")
     p.add_argument("--evidence", default="docs/architecture.md")
-    p.add_argument("--index-state", "--knowledge-state", default=DEFAULT_INDEX_STATE,
+    p.add_argument("--index-state", default=DEFAULT_INDEX_STATE,
                    dest="index_state")
 
     p = sub.add_parser("lock")

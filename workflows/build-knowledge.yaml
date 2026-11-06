@@ -19,7 +19,7 @@ nodes:
   - id: plan_freshness
     type: script
     label: Check living-docs + map freshness
-    # Combined docs/.index-state.yaml + codebase-map gate (no network). refresh_needed false → skip authoring.
+    # Combined docs/provenance.yaml + codebase-map gate (no network). refresh_needed false → skip authoring.
     run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json", --no-fetch]
     routes:
       - {when: "${steps.plan_freshness.outputs.refresh_needed} == true", to: plan_maps}
