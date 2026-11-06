@@ -224,7 +224,7 @@ def preflight(root="."):
                       f"create it (see docs/project-config.md)")]
     discovered = [name for name, _path in codebase_scan.discover_repos(root)]
     issues = check(config, discovered)
-    # Optional template registry.yaml: warn on clone/registry drift (Task 31).
+    # Optional template registry.yaml: warn on clone/registry drift.
     try:
         import registry as registry_mod
         result = registry_mod.validate(root, strict=False)
