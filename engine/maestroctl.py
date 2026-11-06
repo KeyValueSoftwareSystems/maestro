@@ -206,19 +206,23 @@ def _serve_action(args, peek=False):
             if action["action"] in ("run_agent", "run_agents", "run_lead"):
                 briefmod.write_file(run)  # the run as every dispatched agent sees it
             visits = (run.state["steps"].get(action.get("step") or "") or {}).get("visits")
-        if not (auto and action["action"] == "run_script"
-                and _engine_owned(action["argv"], args.root)):
-            break
+            if not (auto and action["action"] == "run_script"
+                    and _engine_owned(action["argv"], args.root)):
+                break
+            # claimed under the lock: a concurrent call (another worker's `complete`) skips it
+            token = resolver.claim_script(run, action["step"])
+            statemod.save(args.slug, run.state, args.root)
         started = time.monotonic()
         code, out = _run_engine_script(action, args.root, _script_log(args, action["step"], visits))
         with statemod.locked(args.slug, args.root):
             run = resolver.Run(args.slug, args.root)
             entry = run.state["steps"].get(action["step"]) or {}
             if (action["step"] not in (run.state["run"].get("cursors") or [])
-                    or entry.get("visits") != visits):
-                continue  # superseded while it ran (e.g. a concurrent reset) — re-serve
+                    or entry.get("visits") != visits
+                    or entry.get(resolver.CLAIM_ID_KEY) != token):
+                continue  # superseded while it ran (a concurrent reset or reclaim) — re-serve
             resolver.complete_step(run, action["step"], exit_code=code, stdout=out,
-                                   telemetry={"executor": "engine"})
+                                   telemetry={"executor": "engine"}, claim=token)
             statemod.save(args.slug, run.state, args.root)
         ran.append({"step": action["step"], "exit_code": code,
                     "seconds": round(time.monotonic() - started, 1)})

@@ -267,7 +267,8 @@ answers it, and in `auto` each interview whose policy covers it (recommendations
 assumptions; listed in `autopilot`); every other gate still goes to the human, which is where
 autopilot stops. Served worker
 steps are claimed (`dispatched_at` + a `claim` token; `complete --claim` refuses a stale dispatch's
-result), so later calls return only newly ready work (ready workers before gates) or `wait`, which
+result), and so is an engine script while a serving call runs it (another call never runs it
+twice), so later calls return only newly ready work (ready workers before gates) or `wait`, which
 lists workers past their node `timeout` as `stale` for `reclaim`; `init` on resume releases claims, `next --peek` re-reads. `run_lead`
 is the explicit, bounded exception to worker dispatch; interview actions record one answer or an
 atomic batch without dropping unresolved questions. Interview discussions never run in the lead's

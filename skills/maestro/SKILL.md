@@ -351,7 +351,8 @@ the complete batch is durably recorded.
 Every unfinished step is a worker already in flight; there is nothing new to dispatch.
 Keep waiting for those workers and record each as it finishes. If they are not actually
 running (the session restarted and lost them), run `init` again — it releases the claims
-and the next call re-serves them.
+and the next call re-serves them. Steps under `running` are engine checks another of your
+maestroctl calls is still running (never twice): call `next` again once that call returns.
 
 A step listed under `stale` has run past its timeout. If its worker is still making progress,
 keep waiting; if it is stuck or gone, run `maestroctl reclaim --slug <slug> --step <step>` and
