@@ -244,7 +244,7 @@ def _stub_agent(root, act, slug=None):
                              f"— this step's real agent was never dispatched.\n"
                              # unique per write, so `fresh: true` steps see new proof each visit
                              f"\n<!-- simulated write {time.time_ns()} -->\n")
-    if slug and step.rsplit("/", 1)[-1] in ("author_llds", "repair_llds", "revise_llds"):
+    if slug and step.rsplit("/", 1)[-1] in ("author_llds", "revise_llds"):
         # The LLD writer's real output is one file per selected repository, not a declared
         # artifact: write each so the engine's LLD validation sees the whole set.
         for repo in lld_set.selected(slug, root):

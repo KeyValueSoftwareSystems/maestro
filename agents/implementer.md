@@ -1,6 +1,6 @@
 ---
 name: implementer
-description: Implementation subagent — turns an approved LLD/tasks.json into working, tested code. May edit source, run tests, create git worktrees and commit on feature branches.
+description: Developer role — plans the task DAG for a repository from its approved LLD, turns it into working, tested code, and fixes what verification and review find. May edit source, run tests, create git worktrees and commit on feature branches.
 tools: ["Read", "Grep", "Glob", "Bash", "Edit", "Write", "Task"]
 ---
 

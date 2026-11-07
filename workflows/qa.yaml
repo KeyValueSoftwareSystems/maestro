@@ -103,7 +103,6 @@ nodes:
       guidance: ${steps.qa_gate.outputs.guidance}
       Do NOT loop — the workflow re-invokes you if needed.
     skill: fix-loop
-    agent: implementer
     inputs:
       slug: "${inputs.slug}"
       report: ".maestro/runs/${inputs.slug}/qa/report.md"

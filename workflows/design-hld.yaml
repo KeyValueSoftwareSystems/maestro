@@ -1,6 +1,8 @@
 # Design child: detect workspace infrastructure -> clarify-first architecture interview (infrastructure
 # questions only as relevant to that profile) -> one HLD write -> conditional post-check
-# -> deterministic lint -> architecture review by a fresh reviewer -> human approval. The review
+# -> architecture review by a fresh reviewer -> human approval. The architect role owns three jobs
+# (the question queue, the HLD itself, and answering review findings); the reviewer role reviews.
+# The engine checks every job on hand-off and sends a failed check back to the same job. The review
 # runs here, before anything is built on the HLD: a wrong architecture call costs one document
 # edit now instead of a redo of the contract, LLDs and code. Entered by design.yaml after PRD
 # approval.
@@ -15,7 +17,7 @@ inputs:
   greenfield: {type: string, default: "false", description: "true when the workspace has no code yet (greenfield.py check)"}
 defaults:
   model: opus
-  agent: planner
+  agent: architect
   max_visits: 10
 start: infra_profile
 nodes:
@@ -82,9 +84,8 @@ nodes:
       document, the code or the docs already settle a point, record it under `settled`
       ({topic, title, decision, source: "<path>[#section|:line]"}) instead of asking.
       Validate before completing.
-      If validator_feedback names defects (anything other than "Question queue is valid"), the
-      previous queue failed validation: fix only those defects in the existing file and validate
-      again — do not rebuild the queue or re-read sources.
+      If the engine's check failed, fix only the defects it names in the existing file and
+      validate again — do not rebuild the queue or re-read sources.
       Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
       logged assumption and this is the only round, so give every question a grounded
       recommendation from the evidence and put every material gap in this one queue.
@@ -96,21 +97,14 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
       validator: ".maestro/engine/validate_prd_questions.py"
       revision_feedback: "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"
-      validator_feedback: "${steps.validate_hld_questions.outputs.issues_summary}"
       codebase_lessons: "${memory.knowledge.codebase}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
+    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
     max_visits: 8
     on_exhausted: hld_clarity_limit
-    next: validate_hld_questions
-
-  - id: validate_hld_questions
-    type: script
-    label: Validate architecture question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
-      - {when: "${steps.validate_hld_questions.outputs.valid} == false", to: prepare_hld_questions}
-      - {when: "${steps.validate_hld_questions.outputs.state} == clear", to: author_hld}
+      - {when: "${steps.prepare_hld_questions.outputs.state} == clear", to: write_hld}
       - {to: hld_interview}
 
   - id: hld_interview
@@ -132,7 +126,7 @@ nodes:
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
     auto: {modes: [auto]}
     routes:
-      - {when: "${run.mode} == auto", to: author_hld}
+      - {when: "${run.mode} == auto", to: write_hld}
       - {to: prepare_hld_questions}
 
   - id: hld_clarity_limit
@@ -146,13 +140,29 @@ nodes:
       - {id: more, label: Continue with focused questions, to: prepare_hld_questions}
       - {id: reject, label: Abort the run, to: abort}
 
-  - id: author_hld
+  # Architect role: the only HLD writer. A revision is a targeted edit; only feedback that needs
+  # a new architecture decision goes back through the clarification loop ('rethink' is the full
+  # pass). Its checks validate the post-check queue, then the HLD.
+  - id: write_hld
     type: agent
     execution: lead
-    label: Author HLD once
+    label: Architect — write the HLD
     instruction: |
-      Write the final high-level design from the approved requirement, maintained codebase maps,
-      relevant source details, and confirmed architecture decisions at
+      HLD approval choice (empty before the first approval): ${steps.hld_approval.outputs.choice}.
+
+      When the choice is revise, apply this feedback to .maestro/runs/${inputs.slug}/hld.md as a
+      targeted edit: ${steps.hld_approval.outputs.feedback}
+      Change only the sections the feedback affects, plus any a decision recorded after the HLD
+      was last written affects (a clarification round may have added one); keep every other
+      section and confirmed decision unchanged. Read only the HLD, the confirmed decisions at
+      .maestro/runs/${inputs.slug}/hld-context.json, and source the change itself depends on — do
+      not re-run clarification, survey the codebase, or rewrite the HLD. Keep
+      open-questions.json consistent with the edit. If the feedback needs a new architecture
+      decision the confirmed decisions cannot settle, do not guess: leave the HLD unchanged and
+      return needs_clarification true.
+
+      Otherwise, write the final high-level design from the approved requirement, maintained
+      codebase maps, relevant source details, and confirmed architecture decisions at
       .maestro/runs/${inputs.slug}/hld-context.json. Honour review feedback without mentioning the
       review: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
 
@@ -186,9 +196,10 @@ nodes:
       post-check before completing, repairing deterministic defects inside this same call.
 
       If the HLD already exists from an earlier pass, update it in place: change only the sections
-      whose decisions changed. If post_check_feedback names defects (anything other than "Question
-      queue is valid"), only the post-check file failed validation: fix just that file and leave
-      the HLD untouched.
+      whose decisions changed. If the engine's check failed, fix only the file and defects it
+      names and leave everything else untouched.
+
+      Return needs_clarification false unless a revision needs a new decision.
     skill: hld-writing
     inputs:
       feature: "${inputs.feature}"
@@ -199,27 +210,25 @@ nodes:
       open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
       post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
       hld_validator: ".maestro/engine/validate_hld.py"
+      approval_choice: "${steps.hld_approval.outputs.choice}"
+      revision_feedback: "${steps.hld_approval.outputs.feedback}"
       question_validator: ".maestro/engine/validate_prd_questions.py"
-      post_check_feedback: "${steps.validate_hld_post_questions.outputs.issues_summary}"
       infra_profile: "${steps.infra_profile.outputs.profile_path}"
       infra_level: "${steps.infra_profile.outputs.level}"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
-    outputs: [hld_summary]
+    outputs: [hld_summary, needs_clarification]
     artifact:
       - ".maestro/runs/${inputs.slug}/hld.md"
       - ".maestro/runs/${inputs.slug}/open-questions.json"
       - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
-    max_visits: 4
-    next: validate_hld_post_questions
-
-  - id: validate_hld_post_questions
-    type: script
-    label: Validate HLD post-check
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
+    check:
+      - {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
+      - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
+    max_visits: 6
     routes:
-      - {when: "${steps.validate_hld_post_questions.outputs.valid} == false", to: author_hld}
-      - {when: "${steps.validate_hld_post_questions.outputs.state} == ask", to: hld_post_interview}
+      - {when: "${steps.write_hld.outputs.needs_clarification} == true", to: prepare_hld_questions}
+      - {when: "${steps.write_hld.outputs.state} == ask", to: hld_post_interview}
       - {to: validate_hld}
 
   - id: hld_post_interview
@@ -238,44 +247,19 @@ nodes:
         codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     auto: {modes: [auto]}
-    next: author_hld
+    next: write_hld
 
+  # Engine-owned: every writer already passed this check; it runs once more where their paths
+  # meet to record the HLD facts the stage reports (interfaces, infrastructure, new repositories).
   - id: validate_hld
     type: script
-    label: Validate HLD structure and readability
+    label: Record HLD facts
     run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]
     max_visits: 12
     on_exhausted: abort
     routes:
       - {when: "${steps.validate_hld.outputs.valid} == true", to: sync_decisions}
-      - {to: repair_hld}
-
-  - id: repair_hld
-    type: agent
-    label: Repair HLD validation defects
-    brief: none
-    model: haiku
-    instruction: |
-      Repair only these deterministic HLD defects: ${steps.validate_hld.outputs.issues_summary}
-      Preserve every confirmed architecture decision and do not rewrite unrelated sections. Run
-      the supplied validators before completing. This is a narrow fallback repair.
-    skill: hld-writing
-    inputs:
-      slug: "${inputs.slug}"
-      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
-      post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
-      hld_validator: ".maestro/engine/validate_hld.py"
-      question_validator: ".maestro/engine/validate_prd_questions.py"
-      validator_feedback: "${steps.validate_hld.outputs.issues_summary}"
-    outputs: [hld_summary]
-    artifact:
-      - ".maestro/runs/${inputs.slug}/hld.md"
-      - ".maestro/runs/${inputs.slug}/open-questions.json"
-      - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
-    max_visits: 6
-    next: validate_hld
+      - {to: write_hld}
 
   # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
   # stages never re-ask a decided topic and the approval shows every decision.
@@ -408,6 +392,7 @@ nodes:
     artifact:
       - ".maestro/runs/${inputs.slug}/hld.md"
       - ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
+    check: {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
     max_visits: 3
     on_exhausted: hld_approval
     routes:
@@ -431,7 +416,7 @@ nodes:
     type: gate
     label: HLD approval
     prompt: |
-      HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.author_hld.outputs.hld_summary}
+      HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.write_hld.outputs.hld_summary}
       Architecture review: ${steps.arch_review.outputs.summary}
       Blocking findings (engine): ${steps.review_verdict.outputs.summary}
       Escalated by the author: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
@@ -441,7 +426,7 @@ nodes:
       Review the document and the review, then choose.
     options:
       - {id: approve, label: Approve — write the detailed designs, to: end}
-      - {id: revise, label: Request changes — targeted edit of this HLD, to: revise_hld, input: feedback}
+      - {id: revise, label: Request changes — targeted edit of this HLD, to: write_hld, input: feedback}
       - {id: rethink, label: Re-clarify the architecture and regenerate, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
     # Autopilot approves only an HLD the fresh architecture review cleared; blocking findings left
@@ -451,39 +436,8 @@ nodes:
       modes: [auto]
       when: ["${steps.review_verdict.outputs.blocking} == false", "${steps.review_verdict.outputs.late} == false"]
 
-  # Fast revision: a targeted HLD edit, then re-validation. Only feedback that needs a new
-  # architecture decision goes back through the clarification loop; 'rethink' is the full pass.
-  - id: revise_hld
-    type: agent
-    execution: lead
-    label: Apply HLD review feedback
-    instruction: |
-      Apply this review feedback to .maestro/runs/${inputs.slug}/hld.md as a targeted edit:
-      ${steps.hld_approval.outputs.feedback}
-      Change only the sections the feedback affects; keep every other section and confirmed
-      decision unchanged. Read only the HLD, the confirmed decisions at
-      .maestro/runs/${inputs.slug}/hld-context.json, and source the change itself depends on — do
-      not re-run clarification, survey the codebase, or rewrite the HLD. Keep
-      open-questions.json consistent with the edit. If the feedback needs a new architecture
-      decision the confirmed decisions cannot settle, do not guess: leave the HLD unchanged and
-      return needs_clarification true; otherwise return false.
-    skill: hld-writing
-    inputs:
-      slug: "${inputs.slug}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
-      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
-      hld_validator: ".maestro/engine/validate_hld.py"
-      revision_feedback: "${steps.hld_approval.outputs.feedback}"
-    outputs: [hld_summary, needs_clarification]
-    artifact: ".maestro/runs/${inputs.slug}/hld.md"
-    max_visits: 10
-    routes:
-      - {when: "${steps.revise_hld.outputs.needs_clarification} == true", to: prepare_hld_questions}
-      - {to: validate_hld}
-
 outputs:
-  hld_summary: "${steps.author_hld.outputs.hld_summary}"
+  hld_summary: "${steps.write_hld.outputs.hld_summary}"
   interfaces_changed: "${steps.validate_hld.outputs.interfaces_changed}"
   infra_changed: "${steps.validate_hld.outputs.infra_changed}"
   infra_repos_csv: "${steps.validate_hld.outputs.infra_repos_csv}"

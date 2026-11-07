@@ -1,6 +1,6 @@
 ---
 name: maestro-init
-description: One-shot onboarding for a repo — detect its tech stack and install the matching skills/agents (detect-stack), then build the living-docs knowledge base (build-knowledge). Run once when adopting Maestro in a codebase. Front door for /maestro-init or $maestro-init.
+description: One-shot onboarding for a repo — detect its tech stack and install the matching skills (detect-stack), then build the living-docs knowledge base (build-knowledge). Run once when adopting Maestro in a codebase. Front door for /maestro-init or $maestro-init.
 allowed-tools: Read, Grep, Glob, Bash, Write, Task, AskUserQuestion
 tags: [maestro, bootstrap]
 ---
@@ -31,7 +31,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
    repo. Do not ask one question per repository.
 2. **Detect stack + install** — load and follow the **`detect-stack`** skill: scan the repo,
    determine its stack tokens, and run the installer with `--stack <detected>` so only the
-   core SDLC pack + the matching per-stack skills/agents are installed. Capture the detected
+   core SDLC pack + the matching per-stack skills are installed. Capture the detected
    `stacks` and `installed_count`.
 3. **Build the knowledge base** — load and follow the **`build-knowledge`** skill: read the
    code and write the per-domain technical + functional docs, the architecture diagram, and a
@@ -44,7 +44,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
    This makes later `/maestro` or `$maestro` starts a fast fetch + local SHA comparison with zero model call
    when nothing changed.
 5. **Summarize + next step.** Report the stacks installed and the docs written, then tell the
-   user that newly installed skills/agents become active after their host reloads the config,
+   user that newly installed skills become active after their host reloads the config,
    and that they can start a feature with `/maestro <slug>` or `$maestro <slug>`.
 
 ## Standards

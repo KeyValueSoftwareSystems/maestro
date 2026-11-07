@@ -100,6 +100,14 @@ class InstallTest(unittest.TestCase):
             self.assertTrue(os.path.isfile(os.path.join(
                 tmp, ".maestro", "engine", "maestroctl.py"
             )))
+            # every host gets the role definitions the engine names in each prompt
+            self.assertTrue(os.path.isfile(os.path.join(tmp, ".maestro", "agents", "product.md")))
+            # no per-stack agents: a stack's review checklist is a skill, filtered by --stack
+            self.assertFalse(any(name.endswith("-reviewer.md") for name in os.listdir(
+                os.path.join(tmp, ".maestro", "agents"))))
+            self.assertTrue(os.path.isfile(os.path.join(
+                tmp, ".agents", "skills", "react-review", "SKILL.md")))
+            self.assertFalse(os.path.exists(os.path.join(tmp, ".agents", "skills", "go-review")))
             self.assertIn("$maestro-init", result.stdout)
             self.assertIn("$maestro my-feature", result.stdout)
 
@@ -118,6 +126,18 @@ class InstallTest(unittest.TestCase):
             )))
             self.assertIn("Claude Code / Cursor: run", result.stdout)
             self.assertIn("Codex: open the repo", result.stdout)
+
+    def test_upgrade_removes_retired_stack_agents_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            agents = os.path.join(tmp, ".claude", "agents")
+            os.makedirs(agents)
+            for name in ("go-reviewer.md", "my-own-agent.md"):
+                with open(os.path.join(agents, name), "w", encoding="utf-8") as fh:
+                    fh.write("---\nname: x\n---\n")
+            self.install(tmp, "claude-code")
+            self.assertFalse(os.path.exists(os.path.join(agents, "go-reviewer.md")))
+            self.assertTrue(os.path.exists(os.path.join(agents, "my-own-agent.md")))
+            self.assertTrue(os.path.exists(os.path.join(agents, "reviewer.md")))
 
     def test_upgrade_removes_only_retired_brainstorm_skill(self):
         with tempfile.TemporaryDirectory() as tmp:

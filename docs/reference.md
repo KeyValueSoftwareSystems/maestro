@@ -50,7 +50,7 @@ can't authenticate — clone it and run `./install.sh` from the checkout.)*
 The one-liner above installs the core pack. To finish setting the repo up, open your host and
 run **`/maestro-init`** (Claude Code/Cursor) or **`$maestro-init`** (Codex) once. It:
 
-1. **detects your stack** (`detect-stack`) and re-runs the installer with the matching `--stack …`, so only the core pack + the per-stack skills/agents your code actually uses get installed;
+1. **detects your stack** (`detect-stack`) and re-runs the installer with the matching `--stack …`, so only the core pack + the per-stack skills your code actually uses get installed;
 2. **builds the living-docs knowledge base** (`build-knowledge`) — per-domain technical + functional docs and an architecture diagram under `docs/`, plus a per-repo **`docs/codebase-map.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
 
 The codebase map is **commit-tracked and incremental**: the engine (`codebase_scan.py`) records the git commit each `docs/codebase-map.md` reflects, so re-running (and the post-feature refresh in the archive phase) only re-examines the diff since that commit — not the whole repo. In an umbrella workspace each repo keeps its own map, committed and pushed in that repo.
@@ -60,7 +60,7 @@ The codebase map is **commit-tracked and incremental**: the engine (`codebase_sc
 $maestro-init                 # the same operation in Codex
 ```
 
-It's idempotent — safe to re-run after a stack change (it refreshes, never duplicates). Newly installed skills/agents become active once your host reloads its config; then start a feature with `/maestro <slug>` or `$maestro <slug>`.
+It's idempotent — safe to re-run after a stack change (it refreshes, never duplicates). Newly installed skills become active once your host reloads its config; then start a feature with `/maestro <slug>` or `$maestro <slug>`.
 
 **Prefer to pick stacks by hand?** The pack ships per-stack reference skills + reviewers (Go, Java/Spring, Kotlin, Python/Django, React, Vue, Angular, Node, Rust, Flutter, Android, DB, Terraform, Kubernetes/Helm, Docker…); install only what your repo uses instead of running `/maestro-init`:
 
@@ -208,8 +208,8 @@ After install, in your project repo:
   skills/     one SKILL.md per SDLC step + maestro (the lead agent) + bootstrap
               (detect-stack, maestro-init, build-knowledge, retrospect)
               + per-stack reference packs tagged stack:<x>
-  agents/     core subagents (planner, implementer, reviewer, qa, analyst, general, discussant)
-              + per-stack reviewers tagged stack:<x>
+  agents/     core roles (product, architect, implementer, reviewer, qa, analyst, general,
+              discussant; planner = the architect's older name)
   commands/   /maestro, /maestro-init and /maestro-discuss slash-command shims (steps are invoked as skills)
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/

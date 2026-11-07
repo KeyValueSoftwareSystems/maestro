@@ -28,13 +28,12 @@ nodes:
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one). Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
-      .maestro/engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
+      .maestro/engine/schemas/tasks.schema.json). If the engine's check failed, fix what it
       reported. If the LLD needs work it does not plan (a change in another repository, or an
       unplanned migration, permission change or dependency), plan what it does plan and return
       escalate true with the gap in escalation. Honour any human guidance:
       ${steps.stop_gate.outputs.guidance}
     skill: repo-tasks
-    agent: planner
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
@@ -43,19 +42,12 @@ nodes:
       guidance: "${steps.stop_gate.outputs.guidance}"
     outputs: [task_count, slice_count, escalate, escalation]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
+    check: {run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"]}
     max_visits: 3
     on_exhausted: abort
     routes:
       - {when: "${steps.tasks.outputs.escalate} == true", to: stop_gate}
-      - {to: validate_tasks}
-
-  - id: validate_tasks
-    type: script
-    label: Validate task DAG
-    run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"]
-    max_visits: 3
-    on_fail: tasks
-    next: implement
+      - {to: implement}
 
   - id: implement
     type: agent
@@ -102,7 +94,7 @@ nodes:
       design does not describe.
       Task planning: ${steps.tasks.outputs.escalation}
       Implementation: ${steps.implement.outputs.escalation}
-      Continue with your guidance (it reaches the planner and the implementer), or stop. A change
+      Continue with your guidance (it reaches the task plan and the implementation), or stop. A change
       to the design itself goes back through design: abort here and revise the LLD.
     options:
       - {id: continue, label: Continue with my guidance, to: tasks, input: guidance}

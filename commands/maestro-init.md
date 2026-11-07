@@ -1,5 +1,5 @@
 ---
-description: Onboard a repo — detect its stack, install matching skills/agents, build the knowledge base
+description: Onboard a repo — detect its stack, install matching skills, build the knowledge base
 argument-hint: "[claude-code|cursor ...]"
 ---
 

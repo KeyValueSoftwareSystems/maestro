@@ -20,7 +20,7 @@
 # codex and hermes share .agents/skills (the Agent Skills project folder both read).
 #
 # Stack filter (optional):
-#   --stack go,react   install core SDLC skills/agents + ONLY those tagged stack:go /
+#   --stack go,react   install core SDLC skills and roles + ONLY skills tagged stack:go /
 #                      stack:react. Repeatable and comma-separated. `--stack all` (or no
 #                      flag) installs everything. Items with no `stack:` tag are CORE and
 #                      always installed. /maestro-init passes this automatically after
@@ -115,6 +115,20 @@ copy_skills() { # $1 = dst dir, $2 = host name — filtered by --stack
   rm -f "$list"
   note "skills -> $1 ($kept selected, $skipped skipped by --stack)"
 }
+remove_retired_agents() { # $1 = installed agents dir
+  # Named migrations only, as for skills. The per-stack reviewer agents became the
+  # `<stack>-review` checklist skills: a stack is knowledge for the one `reviewer` role, not a
+  # role of its own (and their "MUST BE USED" descriptions took over unrelated sessions).
+  for retired in database-reviewer django-reviewer fastapi-reviewer flutter-reviewer \
+      go-reviewer java-reviewer kotlin-reviewer python-reviewer react-reviewer rust-reviewer \
+      typescript-reviewer vue-reviewer type-design-analyzer; do
+    target="$1/$retired.md"
+    if [ -f "$target" ]; then
+      rm -f -- "$target"
+      note "removed retired agent -> $target"
+    fi
+  done
+}
 copy_agents() { # $1 = dst dir — filtered by --stack
   mkdir -p "$1"; kept=0; skipped=0
   for f in "$SRC"/agents/*.md; do
@@ -196,6 +210,7 @@ for agent in $AGENTS; do
       remove_retired_skills "$DEST/.claude/skills"
       copy_tree commands "$DEST/.claude/commands"
       copy_agents        "$DEST/.claude/agents"
+      remove_retired_agents "$DEST/.claude/agents"
       ;;
     cursor)
       say "Installing skills + commands for Cursor${STACKS:+ (stacks: $STACKS)}"
@@ -221,7 +236,7 @@ done
 # ---------------------------------------------------------------- 2. runtime files
 # Everything Maestro ships lives under a single .maestro/ parent to keep the consumer
 # repo root clean and avoid colliding with the repo's own engine/ docs/ ui/ dirs:
-#   .maestro/engine  .maestro/ui       — regenerated runtime (gitignore)
+#   .maestro/engine  .maestro/ui  .maestro/agents — regenerated runtime (gitignore)
 #   .maestro/workflows  .maestro/docs  — committed, customize freely
 #   .maestro/index   .maestro/memory  .maestro/runs/<slug>/ — committed engine provenance/state
 #   .maestro/workflow-manifest.json  — committed: what the last upgrade offered per workflow
@@ -236,6 +251,10 @@ else
   echo "  python3 not found — workflows NOT installed/upgraded (the engine needs python3)" >&2
 fi
 cp "$SRC/ui/builder.html" "$DEST/.maestro/ui/builder.html" && note ".maestro/ui/builder.html (visual workflow builder)"
+# The role definitions for every host: the engine names each step's role at the top of its
+# prompt from these, so the role holds for the lead's own steps and on Codex, Hermes and Cursor.
+copy_agents "$DEST/.maestro/agents"
+remove_retired_agents "$DEST/.maestro/agents"
 cp "$SRC/docs/workflow-spec.md" "$DEST/.maestro/docs/workflow-spec.md" 2>/dev/null && note ".maestro/docs/workflow-spec.md"
 # The repo-local dev wrapper + a copy of this installer, so `./maestro ui` and
 # `./maestro install` work without re-fetching. The wrapper never writes run state.

@@ -231,7 +231,8 @@ worker. If one is missing, report all missing names and stop with no partial wav
 ### `run_lead`
 
 This action deliberately avoids a subagent. Preflight and load the served skill, then execute
-the served `prompt` yourself. Obey its read/write boundary exactly; do not expand it into a
+the served `prompt` yourself, acting as the role its first line names (`Role: ...`) for this job
+only. Obey its read/write boundary exactly; do not expand it into a
 whole-repository scan. The action's `model` is ignored because work runs in the current lead
 session. Return only its requested compact JSON fields and record them with `complete`, just
 like a worker action. If it requires an artifact, write only the served artifact path. On a

@@ -43,8 +43,8 @@ _TOP_KEYS = {"version", "name", "title", "description", "inputs", "defaults", "s
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
     "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
-              "inputs", "outputs", "artifact", "fresh", "brief", "timeout", "retries", "isolate",
-              "ui"} | _ROUTING_KEYS,
+              "inputs", "outputs", "artifact", "fresh", "brief", "timeout", "retries", "check",
+              "isolate", "ui"} | _ROUTING_KEYS,
     "interview": {"id", "type", "label", "skill", "context", "sections",
                   "questions_artifact", "batch_size", "presentation", "discuss", "artifact", "auto",
                   "ui", "next",
@@ -246,6 +246,25 @@ def _validate_node(node, ids, declared_inputs, where):
             err("bad-type", "agent timeout must be a positive whole number of seconds")
         if node.get("brief", "minimal") not in ("none", "minimal", "full"):
             err("bad-type", "agent brief must be 'none', 'minimal' or 'full'")
+        check = node.get("check")
+        checks = check if isinstance(check, list) else [check]
+        if check is not None and not checks:
+            err("bad-type", "agent check list must not be empty")
+        for item in checks if check is not None else []:
+            if not isinstance(item, dict):
+                err("bad-type", "agent check must be a map with `run`, or a list of them")
+            else:
+                for key in item:
+                    if key not in ("run", "attempts", "timeout"):
+                        err("unknown-key", f"agent check has unknown key {key!r}")
+                run = item.get("run")
+                if not (isinstance(run, list) and run and all(isinstance(a, str) for a in run)):
+                    err("missing-key", "agent check needs `run`: a non-empty list of strings")
+                for key in ("attempts", "timeout"):
+                    value = item.get(key)
+                    if value is not None and (not isinstance(value, int) or isinstance(value, bool)
+                                              or value < 1):
+                        err("bad-type", f"agent check {key} must be a positive whole number")
     elif ntype == "interview":
         sections = node.get("sections")
         questions_artifact = node.get("questions_artifact")
