@@ -350,6 +350,29 @@ class LeadInterviewTest(Sim):
         self.assertEqual(ctx.exception.code, 4)
         self.assertIn("expected section 'users'", str(ctx.exception))
 
+    def test_a_follow_up_of_an_earlier_stage_decision_is_served(self):
+        # the question step's check accepts a follow-up of a decision recorded in the feature's
+        # decision log (an earlier stage); serving the interview must accept it too, or the run
+        # is stuck at every `next`
+        self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
+        run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "decision-log.json"), "w") as fh:
+            json.dump({"entries": [{"id": "inner-spaces", "topic": "inner-spaces",
+                                    "stage": "PRD", "decision": "Collapse to one space"}]}, fh)
+        with open(os.path.join(run_dir, "questions-1.json"), "w") as fh:
+            json.dump({"schema_version": 2, "questions": [{
+                "id": "unicode-spaces", "title": "Unicode spaces", "topic": "inner-spaces",
+                "follow_up_of": "inner-spaces",
+                "question": "Do non-breaking spaces count as spaces?",
+                "why": "This decides which characters collapse.",
+                "proposal": "Yes: every Unicode whitespace character.",
+                "must_resolve": ["which characters count"]}],
+                "audit": {"unresolved": ["unicode-spaces"], "contradictions": []}}, fh)
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual([q["section"] for q in action["questions"]], ["unicode-spaces"])
+
     def test_dynamic_questions_append_cumulative_decisions(self):
         self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
         run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")

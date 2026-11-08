@@ -1159,8 +1159,12 @@ def _interview_sections(run, frame, node):
             decisions_rel if os.path.isabs(decisions_rel)
             else os.path.join(run.root, decisions_rel)
         )
+        # the feature's decision log sits beside the stage's decisions: a question may follow up
+        # an earlier stage's decision, which the question step's check accepted against that log
+        log_full = os.path.join(os.path.dirname(decisions_full), "decision-log.json")
         errors, _warnings, document = prdqmod.validate(
             questions_full, decisions_path=decisions_full,
+            log_path=log_full if os.path.isfile(log_full) else None,
         )
         if errors:
             raise RunError(

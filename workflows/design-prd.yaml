@@ -80,8 +80,8 @@ nodes:
       First restate the requested feature outcome as feature_goal, in at most two short
       sentences. Preserve the user's scope and wording; use the project context, feature seed,
       requirement files and references only; add no capability or technical design. Keep the
-      goal from an earlier round unless revision feedback changes it:
-      ${steps.prd_approval.outputs.feedback}
+      goal from an earlier round unless revision feedback (the `revision_feedback` input)
+      changes it.
 
       Then build the next feature-specific Grill question queue at
       .maestro/runs/${inputs.slug}/prd-questions.json. Use the project context and feature goal,

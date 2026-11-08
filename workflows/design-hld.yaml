@@ -54,7 +54,7 @@ nodes:
       infrastructure, deployment or scaling-topology questions; stay within the application
       architecture. Level containers: ask only the runtime and configuration questions this
       feature changes (a new service or process, ports, config and secrets, resource limits).
-      Level iac: read the infrastructure repositories (${steps.infra_profile.outputs.iac_repos_csv})
+      Level iac: read the infrastructure repositories (the `iac_repos` input)
       and ask every material infrastructure decision this feature changes or depends on —
       scaling (instances, autoscaling triggers), data-store capacity and topology, queues and
       topics, caching, networking and ingress, config and secrets, environments and rollout,
@@ -100,6 +100,7 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
       validator: ".maestro/engine/validate_prd_questions.py"
       revision_feedback: "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"
+      iac_repos: "${steps.infra_profile.outputs.iac_repos_csv}"
       codebase_lessons: "${memory.knowledge.codebase}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"

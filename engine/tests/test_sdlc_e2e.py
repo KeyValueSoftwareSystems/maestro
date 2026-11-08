@@ -984,7 +984,8 @@ class SdlcE2E(unittest.TestCase):
         prepare = self.prompts["design/hld/prepare_hld_questions"][0]
         self.assertIn("Infrastructure level iac", prepare)
         self.assertIn("Infrastructure as code in backend (terraform)", prepare)
-        self.assertIn("read the infrastructure repositories (backend)", prepare)
+        self.assertIn("read the infrastructure repositories (the `iac_repos` input)", prepare)
+        self.assertIn("- iac_repos: backend", prepare)
         self.assertRegex(self.prompts["design/hld/write_hld"][0], r"--infra-level\s+iac")
         self.assertIn("Infrastructure level iac", self.prompts["design/hld/arch_review"][0])
         outputs = statemod.load("demo", self.tmp)["steps"]["design/hld/validate_hld"]["outputs"]
