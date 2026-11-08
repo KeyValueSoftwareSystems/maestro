@@ -148,7 +148,8 @@ outputs:
   design_path: "${steps.sizing.outputs.path}"
   hld_summary: "${steps.hld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
-  hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-  contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+  # empty when the stage did not run (the light path writes no HLD or contract)
+  hld_path: "${steps.hld.outputs.hld_path}"
+  contract_path: "${steps.contract.outputs.contract_path}"
   test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
   repos_csv: "${steps.lld.outputs.repos_csv}"

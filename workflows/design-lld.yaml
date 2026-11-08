@@ -123,6 +123,9 @@ nodes:
       Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
       logged assumption and this is the only round, so give every question a grounded
       recommendation from the evidence and put every material gap in this one queue.
+      Because each recommendation then becomes the decision, never recommend behaviour the
+      approved PRD and HLD do not describe (a new error, validation rule, input type or edge
+      case): when a question is about behaviour beyond them, recommend leaving it out.
     skill: lld-interview
     inputs:
       slug: "${inputs.slug}"

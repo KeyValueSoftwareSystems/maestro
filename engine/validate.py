@@ -438,8 +438,9 @@ def _validate_node(node, ids, declared_inputs, where):
     ):
         issues.append(Issue("error", "bad-max-visits", f"max_visits must be a positive integer", w))
 
-    # static placeholder checks over every string in the node
-    for text in _strings(node):
+    # static placeholder checks over every string in the node; a parallel node's branch steps
+    # were checked above against their own branch's ids, not this scope's
+    for text in _strings({k: v for k, v in node.items() if k != "branches"}):
         for m in _PLACEHOLDER_RE.finditer(text):
             ref = m.group(1).strip()
             parts = ref.split(".")

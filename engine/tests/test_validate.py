@@ -115,6 +115,17 @@ class MemoryPlaceholderTest(unittest.TestCase):
         self.assertTrue(any(i.code == "bad-placeholder" for i in issues))
 
 
+class BranchScopeTest(unittest.TestCase):
+    def test_branch_steps_resolve_against_their_own_branch(self):
+        doc = {"version": 1, "nodes": [{"id": "fan", "type": "parallel", "branches": [
+            {"id": "a", "start": "claim", "steps": [
+                {"id": "claim", "type": "script", "run": ["true"], "next": "work"},
+                {"id": "work", "instruction": "Use ${steps.claim.outputs.repo}.", "next": "end"},
+            ]}], "next": "end"}]}
+        issues = validate.validate_doc(doc)
+        self.assertEqual([str(i) for i in issues if i.code == "bad-placeholder"], [])
+
+
 class AgentCheckValidationTest(unittest.TestCase):
     def _codes(self, check):
         doc = {"version": 1, "nodes": [

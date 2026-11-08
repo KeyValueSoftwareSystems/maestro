@@ -160,7 +160,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`repo_checks.py`** — the `verify` script step: runs a repo's configured setup/build/
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
   writes a receipt (commit, command, exit code, duration, log hash per check), plus an engine
-  secret scan of the lines the branch added (fails as `secrets`; values never recorded). A failing
+  secret scan of the lines the branch added (fails as `secrets`; values never recorded) and a
+  scan of the files it added for build or tool output (`__pycache__`, `*.pyc`, `node_modules`, …;
+  fails as `build-output`). Its summary names the checks the project never configured. A failing
   check is re-run on the branch's base commit (cached checkout + results under the git-ignored
   `.maestro/baseline/<repo>/`); failing there too makes it `pre-existing`, which does not fail
   verification — but a pre-existing `test` failure makes the release verdict `baseline-failing`

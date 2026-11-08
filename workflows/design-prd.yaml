@@ -132,6 +132,9 @@ nodes:
       Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
       logged assumption and this is the only round, so give every question a grounded
       recommendation from the evidence and put every material gap in this one queue.
+      Because each recommendation then becomes the decision, never recommend behaviour, a limit
+      or edge-case handling the requirement does not ask for: when a question is about behaviour
+      beyond the request, recommend leaving it out and recording it as a non-goal.
     skill: prd-interview
     inputs:
       slug: "${inputs.slug}"

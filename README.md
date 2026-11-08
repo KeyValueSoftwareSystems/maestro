@@ -62,7 +62,7 @@ Before the first feature, tell Maestro how to build and test your code
 - **A knowledge base of all your repos.** Architecture, technical and functional docs, and a
   codebase map per repo. Every design step reads them, and each feature refreshes the parts it
   changed.
-- **Results you can trust.** Maestro runs your build, lint, tests and a secret scan itself, and
+- **Results you can trust.** Maestro runs your build, lint, tests, a secret scan and a check for committed build output itself, and
   checks that every requirement has a passing test before it asks you to release.
 - **You stay in charge, or go hands-off.** Maestro stops at approval points ("gates") instead of
   guessing. On autopilot it approves only what its own checks pass.

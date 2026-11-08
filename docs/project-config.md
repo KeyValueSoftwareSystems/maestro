@@ -73,7 +73,11 @@ Results land in `.maestro/runs/<slug>/delivery.json`. `branch` (the default) pus
 The verify step runs these commands in each implementation worktree and writes a receipt. It
 also scans the lines the branch added for committed credentials (cloud keys, private keys,
 provider tokens) and fails as `secrets` when it finds one, recording the file and line but never
-the value. It
+the value. It fails as `build-output` when the branch adds build or tool output no repository
+commits on purpose (`__pycache__/`, `*.pyc`, `node_modules/`, `.pytest_cache/`, `.DS_Store`,
+`*.class`, …); `dist/` and `build/` are not on that list, since some projects commit them. Its
+summary names the checks the project left unconfigured (for example "not configured: lint,
+security"), so a pass is never read as a full check. It
 also lists existing test files the branch modified, renamed or deleted (matched by
 `test_patterns`); the code reviewer must justify each one. New test files are not listed.
 

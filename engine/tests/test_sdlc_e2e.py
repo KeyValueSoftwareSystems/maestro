@@ -1049,6 +1049,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertTrue(approval["light"])
         self.assertIsNone(approval["hld_sha256"])
         self.assertIsNotNone(approval["prd_sha256"])
+        # the run reports no HLD or contract it never wrote
+        self.assertEqual((action["outputs"]["hld"], action["outputs"]["contract"]), (None, None))
         # the approved design is still checked for staleness before delivery
         self.assertIn("delivery/design_check", steps)
 
