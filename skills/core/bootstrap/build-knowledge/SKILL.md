@@ -18,6 +18,12 @@ Your instruction names the docs root to write under and the code surface to read
 `docs/`).
 Standalone with no paths given? Write to `docs/` and tell the user.
 
+## Format
+Every file follows **[docs-format.md](docs-format.md)**: the one living-docs format shared with
+the template's `workspace-index`. It fixes each file's title, the architecture sections and
+200-line cap, the Domains table, and the codebase-map shape. The steps below say what to
+write; the format file says how it must look.
+
 ## Method
 1. **Survey the code.** Per repo: entry points, build/test/run commands, directory layout,
    house style, dependencies, datastores. Read each repo's `AGENTS.md`, `CLAUDE.md`, or
@@ -32,21 +38,11 @@ Standalone with no paths given? Write to `docs/` and tell the user.
      rules, the primary user/actor flows, and notable edge cases.
      The sections `## Rules that must never break` and `## If you change… also check`, when a
      page has them, belong to the team: keep them word for word, with every `INV-…`/`CS-…` id.
-4. **Write `docs/architecture.md`** — the whole-system view:
-   - One or more **Mermaid** diagrams (```mermaid fenced blocks) showing every service/
-     component as a node and every connection as an edge.
-   - **How the services connect** — for each edge: the protocol (REST / gRPC / GraphQL /
-     event/queue / shared DB), direction, sync vs async, what data flows, and how calls are
-     authenticated between services. Call out the datastores each service owns.
-   Example shape (derive the real one from the code):
-   ```mermaid
-   graph LR
-     FE[Web frontend] -->|REST/JSON| BE[Backend API]
-     BE -->|SQL| DB[(Postgres)]
-     BE -->|gRPC| PAY[Payments svc]
-     BE -->|publish| Q[[order-events]]
-     WORKER[Order worker] -->|subscribe| Q
-   ```
+4. **Write `docs/architecture.md`** — the whole-system index, in the sections docs-format.md
+   lists: System, Topology (Mermaid: every service/component a node, every connection an
+   edge), Services, How services connect (per edge: protocol, direction, sync vs async, the
+   data that flows, inter-service auth; the datastores each service owns), Domains (a row per
+   domain linking both its files) and Cross-cutting conventions. At most 200 lines.
 5. **Seed cross-cutting review lessons (optional).** For recurring standards/pitfalls that
    belong to the corroborated-lesson store (not domain docs), also write an authoritative
    drop to the memory incoming path named in your instruction, as JSON:
@@ -76,6 +72,7 @@ Each map is git-tracked in its own repo.
 ## Standards
 - Document what the code **actually does today**, not aspirations. A wrong doc is worse than
   a missing one.
+- Follow docs-format.md exactly.
 - Keep Mermaid node/edge labels short; the diagram must render. Prefer a couple of focused
   diagrams (service topology, and a data-flow per critical path) over one unreadable graph.
 - Re-run = refresh: update existing domain files in place; add files for new domains; keep
