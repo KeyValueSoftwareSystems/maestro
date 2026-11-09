@@ -12,7 +12,7 @@ inputs:
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
 defaults:
   model: opus
-  agent: planner
+  agent: product
   max_visits: 10
 start: assert_requirement
 nodes:

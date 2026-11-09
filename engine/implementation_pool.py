@@ -77,6 +77,8 @@ def _verification(slug, entry, root):
                           if c.get("status") not in ("passed", "pre-existing")],
         "pre_existing": pre_existing,
         "test_changes": receipt.get("test_changes") or [],
+        # checks the project never configured: the release must not read "verified" as "fully"
+        "not_configured": [name for name in receipt.get("skipped") or [] if name != "setup"],
         "review": review,
     }
 
@@ -104,6 +106,8 @@ def _verification_summary(entries):
             text += f" ({', '.join(check['failed_checks'])})"
         if check.get("pre_existing"):
             text += f", pre-existing failures on the base commit: {', '.join(check['pre_existing'])}"
+        if check.get("not_configured"):
+            text += f", not configured: {', '.join(check['not_configured'])}"
         if check.get("test_changes"):
             text += f", {len(check['test_changes'])} existing test file(s) changed"
         if check.get("review") == "not-reviewed":

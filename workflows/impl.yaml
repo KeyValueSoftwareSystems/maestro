@@ -28,13 +28,12 @@ nodes:
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one). Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
-      .maestro/engine/schemas/tasks.schema.json). If a previous validation failed, fix what it
+      .maestro/engine/schemas/tasks.schema.json). If the engine's check failed, fix what it
       reported. If the LLD needs work it does not plan (a change in another repository, or an
       unplanned migration, permission change or dependency), plan what it does plan and return
-      escalate true with the gap in escalation. Honour any human guidance:
-      ${steps.stop_gate.outputs.guidance}
+      escalate true with the gap in escalation. Honour the person's guidance (the `guidance`
+      input) when there is any.
     skill: repo-tasks
-    agent: planner
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
@@ -43,19 +42,12 @@ nodes:
       guidance: "${steps.stop_gate.outputs.guidance}"
     outputs: [task_count, slice_count, escalate, escalation]
     artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
+    check: {run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"]}
     max_visits: 3
     on_exhausted: abort
     routes:
       - {when: "${steps.tasks.outputs.escalate} == true", to: stop_gate}
-      - {to: validate_tasks}
-
-  - id: validate_tasks
-    type: script
-    label: Validate task DAG
-    run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"]
-    max_visits: 3
-    on_fail: tasks
-    next: implement
+      - {to: implement}
 
   - id: implement
     type: agent
@@ -74,7 +66,7 @@ nodes:
       designed. When the work needs something they do not describe (an unplanned migration,
       permission change, payment logic, production config, secret or dependency upgrade, or a
       design decision that looks wrong), stop and return escalate true with the reason in
-      escalation. Honour any human guidance: ${steps.stop_gate.outputs.guidance}
+      escalation. Honour the person's guidance (the `guidance` input) when there is any.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
     skill: repo-implement
@@ -102,7 +94,7 @@ nodes:
       design does not describe.
       Task planning: ${steps.tasks.outputs.escalation}
       Implementation: ${steps.implement.outputs.escalation}
-      Continue with your guidance (it reaches the planner and the implementer), or stop. A change
+      Continue with your guidance (it reaches the task plan and the implementation), or stop. A change
       to the design itself goes back through design: abort here and revise the LLD.
     options:
       - {id: continue, label: Continue with my guidance, to: tasks, input: guidance}
@@ -179,16 +171,16 @@ nodes:
       tasks marked needs_human_gate. The engine ran build, lint and tests
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
       still listed there was accepted by a person. Review the design and code, not whether it
-      compiles. Checks that also fail on the base commit
-      (pre-existing, not this branch's doing): ${steps.verify.outputs.pre_existing_csv} — check
-      the branch's own new tests by reading them, since that suite cannot prove them. Existing test files this branch changed
-      (engine-detected): ${steps.verify.outputs.tests_changed}. For each one, state in the report
+      compiles. When the `pre_existing_checks` input names checks that also fail on the base
+      commit (not this branch's doing), check the branch's own new tests by reading them, since
+      that suite cannot prove them. Existing test files this branch changed are in the
+      `tests_changed` input (engine-detected). For each one, state in the report
       whether the change follows the approved design; a weakened, skipped or deleted assertion
       without that basis is blocking. Findings need file:line evidence; severity blocking only
       for must-fix issues. Record the reviewed commit at the top of the report.
       Write every finding to .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json as
       well as the report (the engine decides from that file). If it exists from an earlier round,
-      this is a re-review after a fix (${steps.fix.outputs.fix_summary}): read it, the report and
+      this is a re-review after a fix (the `fix_summary` input says what changed): read it, the report and
       the author's resolutions at
       .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json first; review only the
       diff from the commit the report records to this commit; mark a fixed finding resolved; for a
@@ -218,6 +210,7 @@ nodes:
       findings_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"
       fix_summary: "${steps.fix.outputs.fix_summary}"
+      pre_existing_checks: "${steps.verify.outputs.pre_existing_csv}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
       stack_skills: "${inputs.stack_skills}"
     outputs: [review_path, blocking, summary]
@@ -252,10 +245,9 @@ nodes:
     instruction: |
       One fix attempt on branch ${steps.handoff.outputs.branch} in exact worktree
       ${steps.handoff.outputs.worktree}. Address what sent you here:
-      - failing engine checks "${steps.verify.outputs.failed_checks}" — read the receipt at
+      - failing engine checks (the `failed_checks` input) — read the receipt at
         ${steps.verify.outputs.receipt_path} and the logs it names. Checks marked pre-existing
-        (${steps.verify.outputs.pre_existing_csv}) fail on the base commit too: they are not
-        yours to fix;
+        (the `pre_existing_checks` input) fail on the base commit too: they are not yours to fix;
       - blocking review findings (status open or upheld) in
         .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json, when that file exists:
         answer each one in .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json as
@@ -271,7 +263,7 @@ nodes:
       branch; a round that commits nothing goes to a person, not another round.
       If a hard stop applies (an unapproved migration, a contract or permission change, a
       dependency upgrade, or a fix that would weaken a test), make no change and return escalate
-      true. Honour any human guidance: ${steps.impl_gate.outputs.guidance}
+      true. Honour the person's guidance (the `guidance` input) when there is any.
       Do NOT loop — the workflow re-invokes you if needed.
       Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
       follow its conventions; when none is listed, follow the repository's own conventions.
@@ -286,6 +278,8 @@ nodes:
       review_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
       findings_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"
+      failed_checks: "${steps.verify.outputs.failed_checks}"
+      pre_existing_checks: "${steps.verify.outputs.pre_existing_csv}"
       implement_summary: "${steps.implement.outputs.summary}"
       guidance: "${steps.impl_gate.outputs.guidance}"
       stack_skills: "${inputs.stack_skills}"

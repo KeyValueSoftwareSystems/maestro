@@ -2,8 +2,8 @@
 # HLD lists are created, scaffolded to a passing build and test, added to maestro.config.yaml and
 # pinned, before the contract and LLDs are written against them.
 #
-#   create (engine) -> scaffold (agent) -> configure + prove build/test (engine) -> record knowledge
-#   -> pin (engine)
+#   create (engine) -> scaffold (agent; engine check: configure + prove build/test)
+#   -> record knowledge -> pin (engine)
 version: 1
 name: scaffold
 title: Scaffold new repositories
@@ -34,29 +34,19 @@ nodes:
       infrastructure definitions when it names a platform, and docs/codebase-map.md. Write no
       feature behaviour. Commit each skeleton on its default branch. Write the report with each
       repository's stack and commands to .maestro/runs/${inputs.slug}/scaffold.json.
-      If the engine's check failed (${steps.configure.outputs.summary}), fix exactly that.
+      If the engine's check failed, fix exactly what it reports.
     skill: repo-scaffold
     inputs:
       slug: "${inputs.slug}"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       repos: "${steps.create.outputs.repos_csv}"
       report_path: ".maestro/runs/${inputs.slug}/scaffold.json"
-      check_feedback: "${steps.configure.outputs.summary}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/scaffold.json"
+    # Engine-owned: the commands go into maestro.config.yaml and must actually pass once.
+    check: {run: [python3, .maestro/engine/greenfield.py, configure, --root, ".", --scaffold, ".maestro/runs/${inputs.slug}/scaffold.json"], timeout: 1800, attempts: 4}
     max_visits: 3
-    next: configure
-
-  # Engine-owned: the commands go into maestro.config.yaml and must actually pass once.
-  - id: configure
-    type: script
-    label: Configure and prove build and test
-    run: [python3, .maestro/engine/greenfield.py, configure, --root, ".", --scaffold, ".maestro/runs/${inputs.slug}/scaffold.json"]
-    timeout: 1800
-    max_visits: 4
-    routes:
-      - {when: "${steps.configure.outputs.valid} == true", to: record_knowledge}
-      - {to: scaffold}
+    next: record_knowledge
 
   # The scaffold wrote each repository's codebase map: record that knowledge as current at the
   # scaffold commits, so the next workspace check does not ask to refresh it.
@@ -78,4 +68,4 @@ nodes:
 
 outputs:
   repos_csv: "${steps.create.outputs.repos_csv}"
-  summary: "${steps.configure.outputs.summary}"
+  summary: "${steps.scaffold.outputs.summary}"

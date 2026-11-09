@@ -1,6 +1,6 @@
 ---
 name: detect-stack
-description: Scan the codebase to detect its technology stack(s), then install only the matching stack-tagged skills and agents (plus the always-installed core SDLC pack) by running the installer with a --stack filter. Does not write maestro.config.yaml. Front door for /detect-stack.
+description: Scan the codebase to detect its technology stack(s), then install only the matching stack-tagged skills (plus the always-installed core SDLC pack) by running the installer with a --stack filter. Front door for /detect-stack.
 allowed-tools: Read, Grep, Glob, Bash
 tags: [maestro, bootstrap, install]
 ---
@@ -8,7 +8,7 @@ tags: [maestro, bootstrap, install]
 # detect-stack — detect the repo's stack and install the matching skills
 
 Read the repository, decide which technology **stacks** it uses, then install the
-per-stack skills + agents tagged for exactly those stacks. Core SDLC skills (anything
+per-stack skills tagged for exactly those stacks. Core SDLC skills (anything
 with no `stack:` tag) install regardless. This is a one-time (re-runnable) bootstrap.
 
 ## Inputs
@@ -17,10 +17,11 @@ inputs — you discover everything from the files on disk. If your instruction n
 targets (`claude-code`, `cursor`, `codex`, `hermes`), use them; otherwise infer them (below).
 
 ## Stack vocabulary
-Emit only these tokens (they match the `stack:` tags on the skills/agents):
+Emit only these tokens (they match the `stack:` tags on the skills):
 
-`go` · `java` · `kotlin` · `python` · `react` · `vue` · `angular` · `node` · `rust` ·
-`flutter` · `android` · `db` · `terraform` · `kubernetes` · `docker`
+`go` · `java` · `kotlin` · `python` · `django` · `fastapi` · `pytorch` · `react` · `vue` ·
+`angular` · `node` · `rust` · `flutter` · `android` · `db` · `terraform` · `kubernetes` ·
+`docker`
 
 ## Detection method
 1. **Scan for manifests and sources** (breadth-first; ignore `node_modules`, `vendor`,
@@ -31,7 +32,10 @@ Emit only these tokens (they match the `stack:` tags on the skills/agents):
    | `go.mod`, `*.go` | `go` |
    | `pom.xml`, `build.gradle`(.kts), `*.java` (Spring Boot / Quarkus deps still ⇒ java) | `java` |
    | `*.kt`, `*.kts`, Kotlin Gradle plugin | `kotlin` |
-   | `requirements.txt`, `pyproject.toml`, `setup.py`, `Pipfile`, `*.py` (Django/FastAPI deps ⇒ still python) | `python` |
+   | `requirements.txt`, `pyproject.toml`, `setup.py`, `Pipfile`, `*.py` | `python` |
+   | a `django` dependency, or `manage.py` with Django settings (plus `python`) | `django` |
+   | a `fastapi` dependency (plus `python`) | `fastapi` |
+   | a `torch` dependency (plus `python`) | `pytorch` |
    | `package.json` with `react`/`next` | `react` |
    | `package.json` with `vue`/`nuxt` | `vue` |
    | `package.json` with `@angular/core` | `angular` |

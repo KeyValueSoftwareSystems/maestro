@@ -13,6 +13,7 @@ Path ids: top-level node `author_hld`; inside subworkflow node `design` →
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import re
@@ -599,6 +600,8 @@ def _reset_step(run, frame, node_id):
         return
     visits = entry.get("visits", 0)
     run.state["steps"][path] = {"status": "pending", "attempts": 0, "visits": visits, "outputs": {}}
+    if entry.get("check_rounds"):
+        run.state["steps"][path]["check_rounds"] = entry["check_rounds"]
     # wipe nested state (subworkflow children / branch steps)
     for key in list(run.state["steps"]):
         if key.startswith(path + "/") or key.startswith(path + "["):
@@ -793,7 +796,9 @@ def _cancel_branches(run, parent, node, keep=None):
                 _drop_cursor(run, cursor)
 
 
-def _apply_on_fail(run, frame, node, reason):
+def _apply_on_fail(run, frame, node, reason, unchecked=False):
+    """unchecked: the step's output never passed its engine check, so the synthesized gate
+    offers no "skip" — moving on would carry unproven output forward."""
     path = frame.path(node["id"])
     entry = statemod.step_entry(run.state, path)
     target = node.get("on_fail", "ask")
@@ -801,7 +806,8 @@ def _apply_on_fail(run, frame, node, reason):
     if target == "abort":
         _frame_abort(run, frame, reason)
     elif target == "ask":
-        entry["pending_ask"] = {"kind": "fail", "reason": reason}
+        entry["pending_ask"] = {"kind": "fail", "reason": reason,
+                                **({"unchecked": True} if unchecked else {})}
         _add_cursor(run, path)
     else:
         _enter(run, frame, target)
@@ -814,6 +820,11 @@ CLAIM_KEY = "dispatched_at"
 # a step that was re-served (a resumed or reclaimed run) can never overwrite the newer one's.
 CLAIM_ID_KEY = "claim_id"
 DEFAULT_AGENT_TIMEOUT = 3600  # seconds a dispatched worker may run before `wait` calls it stale
+# An agent with a `check:` that handed off waits here (holding its outputs) while the engine runs
+# the check; a failed check leaves its report for the agent's next hand-off.
+CHECKING_KEY = "checking"
+DEFAULT_CHECK_ATTEMPTS = 3
+CHECK_REPORT_LIMIT = 1500
 
 
 def release_claims(state, paths=None):
@@ -852,8 +863,12 @@ def stale_claims(run, in_flight):
         if started.tzinfo is None:
             started = started.replace(tzinfo=datetime.timezone.utc)
         age = (now - started).total_seconds()
-        limit = (agent_timeout(node) if ntype(node) == "agent"
-                 else node.get("timeout") or DEFAULT_SCRIPT_TIMEOUT)
+        if ntype(node) == "agent" and entry.get(CHECKING_KEY) and node_checks(node):
+            limit = _current_check(node, entry).get("timeout") or DEFAULT_SCRIPT_TIMEOUT
+        elif ntype(node) == "agent":
+            limit = agent_timeout(node)
+        else:
+            limit = node.get("timeout") or DEFAULT_SCRIPT_TIMEOUT
         if age > limit:
             stale.append({"step": path, "minutes": int(age // 60)})
     return stale
@@ -902,6 +917,12 @@ def next_action(run, serial=False, claim=False, exclude_claimed=False):
                 running.append(path)
             else:
                 scripts.append(_script_action(run, frame, node, path))
+        elif ntype(node) == "agent" and entry.get(CHECKING_KEY) and node_checks(node):
+            # the agent handed off; its engine check runs like a script step
+            if (claim or exclude_claimed) and entry.get(CLAIM_KEY):
+                running.append(path)
+            else:
+                scripts.append(_check_action(run, frame, node, path))
         elif ntype(node) == "agent":
             action = _agent_action(run, frame, node, path)
             if action["action"] == "run_lead":
@@ -987,6 +1008,36 @@ def _script_action(run, frame, node, path):
     }
 
 
+def node_checks(node):
+    """An agent's `check:` as a list (one map or a list of maps, run in order)."""
+    check = node.get("check")
+    if not check:
+        return []
+    return check if isinstance(check, list) else [check]
+
+
+def _check_position(node, entry):
+    """The 1-based position of the check now running (CHECKING_KEY), clamped to the list so a
+    workflow rebased to fewer checks mid-run never indexes past it."""
+    return max(1, min(int(entry[CHECKING_KEY]), len(node_checks(node))))
+
+
+def _current_check(node, entry):
+    """The check now running for this hand-off."""
+    return node_checks(node)[_check_position(node, entry) - 1]
+
+
+def _check_action(run, frame, node, path):
+    check = _current_check(node, statemod.step_entry(run.state, path))
+    return {
+        "action": "run_script",
+        "step": path,
+        "argv": [run.resolve_text(a, frame, missing_ok=True) for a in check["run"]],
+        "timeout": check.get("timeout", DEFAULT_SCRIPT_TIMEOUT),
+        "check": True,
+    }
+
+
 def _gate_action(run, frame, node, path):
     options = [
         {"id": o["id"], "label": o["label"], **({"input": o["input"]} if o.get("input") else {})}
@@ -1051,6 +1102,9 @@ def _synth_gate_action(run, path, node, entry):
             {"id": "abort", "label": "Abort the run"},
         ]
         prompt = f"Step `{path}` failed: {ask.get('reason', 'unknown error')}. How should we proceed?"
+        if ask.get("unchecked"):
+            options = [o for o in options if o["id"] != "skip"]
+            prompt += " Its output never passed the engine's check, so it cannot be skipped."
     elif ask["kind"] == "exhausted":
         options = [
             {"id": "continue", "label": "Run it once more anyway"},
@@ -1117,8 +1171,12 @@ def _interview_sections(run, frame, node):
             decisions_rel if os.path.isabs(decisions_rel)
             else os.path.join(run.root, decisions_rel)
         )
+        # the feature's decision log sits beside the stage's decisions: a question may follow up
+        # an earlier stage's decision, which the question step's check accepted against that log
+        log_full = os.path.join(os.path.dirname(decisions_full), "decision-log.json")
         errors, _warnings, document = prdqmod.validate(
             questions_full, decisions_path=decisions_full,
+            log_path=log_full if os.path.isfile(log_full) else None,
         )
         if errors:
             raise RunError(
@@ -1263,13 +1321,38 @@ def _artifact_hashes(run, frame, node):
     return hashes
 
 
+# Where a role's definition may be found: the Claude Code install, the runtime copy every host
+# gets (install.sh), then a pack checkout.
+ROLE_DIRS = (os.path.join(".claude", "agents"), os.path.join(".maestro", "agents"), "agents")
+
+
+@functools.lru_cache(maxsize=64)
+def role_line(root, role):
+    """`Role: <name> — <description>` for the step's role, so every host sees it: a Claude Code
+    worker also gets the role as its subagent type, but the lead (run_lead) and hosts without
+    role definitions only get the prompt. None for the role-less `general`."""
+    if not role or role == "general":
+        return None
+    for rel in ROLE_DIRS:
+        path = os.path.join(root, rel, f"{role}.md")
+        try:
+            with open(path, encoding="utf-8") as fh:
+                for line in fh:
+                    if line.startswith("description:"):
+                        return f"Role: `{role}` — {line.split(':', 1)[1].strip()}"
+        except OSError:
+            continue
+    return f"Role: `{role}`."
+
+
 def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None):
     try:
         import brief as briefmod  # lazy: brief -> todo -> resolver
     except ImportError:
         from . import brief as briefmod
     instruction = run.resolve_text(node["instruction"], frame, missing_ok=True)
-    lines = [instruction.strip(), ""]
+    role = role_line(run.root, run.agent_for(node, frame))
+    lines = ([role, ""] if role else []) + [instruction.strip(), ""]
     if inputs:
         lines.append("Inputs:")
         for key, value in inputs.items():
@@ -1332,6 +1415,13 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
         lines.append("You MUST create the following file(s), non-empty, before returning:")
         for a in artifacts:
             lines.append(f"- {a}")
+    report = (run.state["steps"].get(frame.path(node["id"])) or {}).get("check_report")
+    if node.get("check") and report:
+        lines.append("")
+        lines.append(
+            "Your previous hand-off failed the engine's check. Fix every issue below in your "
+            "output, then hand off again; the check runs again before anything moves on:")
+        lines.append(report)
     lines.append("")
     fields = node.get("outputs") or []
     if fields:
@@ -1369,6 +1459,11 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
     if kind == "script":
         entry.pop(CLAIM_KEY, None)  # a failed script served again (retry) is not still running
         return _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry)
+    if kind == "agent" and entry.get(CHECKING_KEY) and node_checks(node):
+        entry.pop(CLAIM_KEY, None)
+        return _complete_check(run, frame, node, path, entry, exit_code, stdout, telemetry)
+    entry.pop(CHECKING_KEY, None)  # a rebase removed this step's checks while one was due
+    entry.pop("check_outputs", None)
     if kind != "agent":
         raise RunError(f"complete is only valid for agent/script steps, not {kind}", code=4)
 
@@ -1404,6 +1499,14 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
     arts = _artifact_list(run, frame, node)
     if arts:
         entry["artifact"] = arts
+    if node_checks(node):
+        # proof is the engine's check, not the agent's word: run it before routing
+        entry[CHECKING_KEY] = 1
+        entry["check_outputs"] = {}
+        entry.pop(CLAIM_KEY, None)
+        if telemetry:
+            entry["agent_telemetry"] = _add_telemetry(entry.get("agent_telemetry"), telemetry)
+        return entry
     entry["status"] = "done"
     entry["attempts"] = 0
     _finish_visit(run, path, entry, telemetry)
@@ -1411,9 +1514,8 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
     return entry
 
 
-def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry=None):
-    if exit_code is None:
-        raise RunError("script completion requires --exit-code", code=4)
+def _script_outputs(exit_code, stdout):
+    """A script's routable outputs: its exit code plus the scalars of its last-line JSON."""
     outputs = {"exit_code": exit_code}
     text = (stdout or "").strip()
     if text:
@@ -1425,6 +1527,80 @@ def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry
                 })
         except (ValueError, IndexError):
             pass
+    return outputs, text
+
+
+def _add_telemetry(total, telemetry):
+    """The agent's host metrics over every hand-off of a visit: numbers add up (tokens spent on
+    a fix count), other values keep the latest."""
+    total = dict(total or {})
+    for key, value in telemetry.items():
+        if isinstance(value, (int, float)) and not isinstance(value, bool) \
+                and isinstance(total.get(key), (int, float)) and not isinstance(total[key], bool):
+            total[key] += value
+        elif isinstance(value, (str, int, float, bool)):
+            total[key] = value
+    return total
+
+
+def _check_passed(exit_code, outputs):
+    """Exit code 0, and the check did not report `"valid": false` (the validators' `--report`
+    mode always exits 0 and says so in `valid`)."""
+    return exit_code == 0 and condctl.norm(outputs.get("valid", True)) != "false"
+
+
+def _complete_check(run, frame, node, path, entry, exit_code, stdout, telemetry=None):
+    if exit_code is None:
+        raise RunError("check completion requires --exit-code", code=4)
+    checks = node_checks(node)
+    position = _check_position(node, entry)
+    entry.pop(CHECKING_KEY)
+    outputs, text = _script_outputs(exit_code, stdout)
+    # the step's timing covers agent and checks; its host metrics are the agent's, not the
+    # engine's (the check's own telemetry only says the engine ran it)
+    telemetry = entry.get("agent_telemetry")
+    check_outputs = {**(entry.pop("check_outputs", None) or {}), **outputs}
+    if _check_passed(exit_code, outputs) and position < len(checks):
+        entry[CHECKING_KEY] = position + 1  # the next check in the list runs before routing
+        entry["check_outputs"] = check_outputs
+        return entry
+    if _check_passed(exit_code, outputs):
+        entry.pop("check_failures", None)
+        entry.pop("check_report", None)
+        # what the engine measured wins over what the agent claimed (e.g. a validated repos_csv)
+        entry["outputs"] = {**(entry.get("outputs") or {}), **check_outputs}
+        entry["status"] = "done"
+        entry["attempts"] = 0
+        entry.pop("agent_telemetry", None)
+        _finish_visit(run, path, entry, telemetry)
+        _advance(run, frame, node, entry["outputs"])
+        return entry
+    # a step that ends on a failed check reports what the engine found, never the agent's claim
+    entry["outputs"] = {**(entry.get("outputs") or {}), **check_outputs}
+    entry["check_failures"] = entry.get("check_failures", 0) + 1
+    entry["check_rounds"] = entry.get("check_rounds", 0) + 1  # whole run, kept across resets: evals
+    summary = outputs.get("issues_summary")
+    report = summary if isinstance(summary, str) and summary else text or f"exit code {exit_code}"
+    command = " ".join(checks[position - 1]["run"][:2])
+    entry["check_report"] = f"[{command}] " + _tail(report, CHECK_REPORT_LIMIT)
+    attempts = max(c.get("attempts", DEFAULT_CHECK_ATTEMPTS) for c in checks)
+    if entry["check_failures"] < attempts:
+        entry["status"] = "pending"  # stays in cursors: the same agent is served again
+        return entry
+    reason = f"check failed on {entry['check_failures']} hand-off(s): {_tail(report, 300)}"
+    entry["reason"] = reason
+    entry["status"] = "failed"
+    entry.pop("check_failures")  # the next visit (or a retry) gets a fresh budget
+    entry.pop("agent_telemetry", None)
+    _finish_visit(run, path, entry, telemetry)
+    _apply_on_fail(run, frame, node, reason, unchecked=True)
+    return entry
+
+
+def _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry=None):
+    if exit_code is None:
+        raise RunError("script completion requires --exit-code", code=4)
+    outputs, text = _script_outputs(exit_code, stdout)
     entry["outputs"] = outputs
     if exit_code == 0:
         entry["status"] = "done"
@@ -2072,6 +2248,9 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
         if option_id == "retry":
             entry.pop("pending_ask", None)
             entry["attempts"] = 0
+            entry.pop("check_failures", None)  # keeps check_report: the retry still sees it
+            entry.pop(CHECKING_KEY, None)
+            entry.pop("check_outputs", None)
             if ntype(node) in ("subworkflow", "parallel"):
                 # container nodes re-run from scratch: wipe nested state and re-enter
                 _drop_cursor(run, path)
@@ -2087,6 +2266,9 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
                 entry["status"] = "pending"
                 statemod.mark_step_started(entry)
         elif option_id == "skip":
+            if ask.get("unchecked"):
+                raise RunError(f"cannot skip {path!r}: its output never passed the engine's check "
+                               f"(retry/abort)", code=4)
             entry.pop("pending_ask", None)
             entry["status"] = "skipped"
             target = _default_target(node)

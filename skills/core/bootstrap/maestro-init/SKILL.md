@@ -65,8 +65,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
    zero model call when nothing changed.
 7. **Summarize + next step.** Report the stacks installed, whether docs were written or
    skipped, and whether the project-config skill created or updated `maestro.config.yaml`.
-   Show each repo's `build` and `test` and ask the user to confirm them before a
-   feature run. Then tell them that newly installed skills/agents
+   Then tell them that newly installed skills/agents
    become active after their host reloads the config, and that they can start a feature
    with `/maestro <slug>` or `$maestro <slug>`.
 

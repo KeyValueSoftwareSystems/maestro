@@ -29,21 +29,16 @@ def canned_agent_outputs(step, action):
     node = step.rsplit("/", 1)[-1]
     table = {
         "project_context": {"project_context": "A test product with backend and frontend repositories."},
-        "feature_goal": {"feature_goal": "Deliver the demo feature for test users."},
-        "prepare_prd_questions": {"summary": "Prepared the next focused product questions"},
-        "author_prd": {"summary": "PRD written from confirmed context"},
-        "normalize_prd": {"summary": "Client PRD normalized; 1 gap open"},
-        "repair_prd": {"summary": "PRD repaired to match the contract"},
-        "revise_prd": {"summary": "Applied review feedback", "needs_clarification": False},
+        "prepare_prd": {"feature_goal": "Deliver the demo feature for test users.",
+                        "summary": "Prepared the next focused product questions"},
+        "write_prd": {"summary": "PRD written from confirmed context", "needs_clarification": False},
+        "normalize_prd": {"summary": "Client PRD restructured; 1 fact to confirm"},
         "impact": {"impact_summary": "backend and frontend change", "repos_csv": "backend,frontend"},
         "prepare_hld_questions": {"summary": "Prepared architecture questions"},
-        "author_hld": {"hld_summary": "3 services, 2 new tables"},
-        "repair_hld": {"hld_summary": "Repaired the HLD"},
-        "revise_hld": {"hld_summary": "Applied review feedback", "needs_clarification": False},
+        "write_hld": {"hld_summary": "3 services, 2 new tables", "needs_clarification": False},
         "prepare_lld_questions": {"summary": "Prepared repository design questions"},
         "author_llds": {"summary": "LLDs written", "contract_change_needed": False,
                         "contract_change": "None"},
-        "repair_llds": {"summary": "LLDs repaired"},
         "revise_llds": {"summary": "LLDs revised", "contract_change_needed": False,
                         "contract_change": "None", "needs_clarification": False},
         "contract": {"contract_summary": "5 endpoints"},
@@ -393,7 +388,8 @@ class SdlcE2E(unittest.TestCase):
                 batch = [action]
             for act in batch:
                 step = act["step"]
-                trace.append((act["action"], step))
+                # an agent's engine check runs under the agent's step: trace it apart
+                trace.append((act["action"], step + "#check" if act.get("check") else step))
                 if "prompt" in act:
                     self.prompts.setdefault(step, []).append(act["prompt"])
                 run = resolver.Run("demo", self.tmp)
@@ -401,7 +397,7 @@ class SdlcE2E(unittest.TestCase):
                     for rel in act.get("artifacts", []):
                         self.write_agent_artifact(rel, step)
                     node = step.rsplit("/", 1)[-1]
-                    if node in ("author_llds", "repair_llds", "revise_llds"):
+                    if node in ("author_llds", "revise_llds"):
                         self.write_llds()
                     override = overrides.get(node)
                     outputs = (
@@ -415,6 +411,7 @@ class SdlcE2E(unittest.TestCase):
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
+                            or any(a.endswith("validate_tasks.py") for a in act.get("argv", []))
                             or any(a.endswith("validate_prd.py") or a.endswith("validate_prd_questions.py")
                                    or a.endswith("validate_hld.py")
                                    for a in act.get("argv", []))
@@ -515,8 +512,8 @@ class SdlcE2E(unittest.TestCase):
         # the lead confirms context, grills one material edge, and writes once before HLD
         self.assertIn("design/intake/project_context", steps)
         self.assertIn("design/prd/prd_interview", steps)
-        self.assertIn("design/prd/author_prd", steps)
-        self.assertLess(steps.index("design/prd/author_prd"), steps.index("design/hld/author_hld"))
+        self.assertIn("design/prd/write_prd", steps)
+        self.assertLess(steps.index("design/prd/write_prd"), steps.index("design/hld/write_hld"))
         # one LLD run: one interview, one write, a readiness check and one human approval,
         # all before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
@@ -535,7 +532,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertIsNotNone(approval["contract_sha256"])  # the HLD lists an interface
         # the architecture is reviewed before HLD approval; the contract precedes the LLDs;
         # the readiness check follows the LLDs, then the test cases; delivery checks staleness first
-        order = ["design/hld/author_hld", "design/hld/arch_review", "design/contract/contract",
+        order = ["design/hld/write_hld", "design/hld/arch_review", "design/contract/contract",
                  "design/lld/author_llds", "design/lld/readiness_review",
                  "design/lld/test_cases", "design/lld/record_approval",
                  "delivery/design_check", impl_steps[0]]
@@ -574,9 +571,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         self.assertIn("design/prd/check_existing_prd", steps)
-        self.assertNotIn("design/prd/prepare_prd_questions", steps)
+        self.assertNotIn("design/prd/prepare_prd", steps)
         self.assertNotIn("design/prd/prd_interview", steps)
-        self.assertNotIn("design/prd/author_prd", steps)
+        self.assertNotIn("design/prd/write_prd", steps)
 
     def write_client_prd(self):
         path = os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement", "client-spec.md")
@@ -591,13 +588,17 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         prd = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/prd/")]
-        # the client's document is restructured once; its one open gap is asked, then the
-        # writer folds the answer in — no interview from scratch
-        self.assertEqual(prd[:5], ["feature_goal", "check_existing_prd", "prd_source",
-                                   "normalize_prd", "validate_normalized"])
+        # a worker restructures the client's document once; the product role asks only its
+        # open gap from the structured PRD, then writes it — no interview from scratch
+        self.assertEqual(prd[:6], ["check_existing_prd", "prd_source", "normalize_prd",
+                                   "normalize_prd#check", "prepare_prd", "prepare_prd#check"])
         self.assertEqual(steps.count("design/prd/normalize_prd"), 1)
+        self.assertIn("Requirement source: normalize", self.prompts["design/prd/prepare_prd"][0])
+        self.assertIn("When the requirement source is normalize (normalize)",
+                      self.prompts["design/prd/write_prd"][0])
+        self.assertEqual(steps.count("design/prd/write_prd"), 1)
         self.assertEqual(steps.count("design/prd/prd_interview"), 1)
-        self.assertLess(steps.index("design/prd/prd_interview"), steps.index("design/prd/author_prd"))
+        self.assertLess(steps.index("design/prd/prd_interview"), steps.index("design/prd/write_prd"))
         self.assertTrue(os.path.isfile(os.path.join(
             self.tmp, ".maestro", "runs", "demo", "requirement", "client-spec.md")))
 
@@ -608,7 +609,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         self.assertIn(("auto_interview", "design/prd/prd_interview"), trace)
-        self.assertNotIn("design/prd/prepare_prd_questions", steps)
+        self.assertEqual(steps.count("design/prd/prepare_prd"), 1)  # one round, no re-ask
         self.assertIn(("auto_gate", "design/prd/prd_approval"), trace)
 
     def test_release_sent_back_to_design_reimplements_every_repo(self):
@@ -648,11 +649,12 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # PRD authored twice (revision forces the interview path despite a valid old file).
-        self.assertEqual(steps.count("design/prd/author_prd"), 2)
+        # PRD written twice (rescope re-runs the product role's prepare job despite a valid old
+        # file); the second write is a full update, not a targeted revision
+        self.assertEqual(steps.count("design/prd/write_prd"), 2)
         self.assertEqual(steps.count("design/prd/prd_interview"), 1)
-        self.assertEqual(steps.count("design/hld/author_hld"), 1)
-        self.assertNotIn("design/prd/revise_prd", steps)
+        self.assertEqual(steps.count("design/hld/write_hld"), 1)
+        self.assertIn("PRD approval choice (empty before the first approval): rescope", self.prompts["design/prd/write_prd"][1])
 
     def _design_gates(self, prd, hld):
         return {
@@ -664,18 +666,22 @@ class SdlcE2E(unittest.TestCase):
         }
 
     def test_prd_revise_is_a_targeted_edit(self):
-        """Revise edits the PRD in place and re-validates — no goal confirm, interview, or rewrite."""
+        """Revise edits the PRD in place under the engine's check — no goal confirm, interview,
+        or rewrite."""
         self.prep_tasks_json()
         action, trace = self.drive(self._design_gates(
             [("revise", "rename the role"), ("revise", "tighten AC-02"), ("approve", None)],
             [("approve", None)]))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/prd/revise_prd"), 2)
-        self.assertEqual(steps.count("design/prd/author_prd"), 1)
-        self.assertEqual(steps.count("design/prd/feature_goal"), 1)
-        self.assertEqual(steps.count("design/prd/prepare_prd_questions"), 2)  # initial loop only
-        self.assertEqual(steps.count("design/prd/validate_prd"), 3)
+        # one writer: the first write, then two targeted revisions, each checked
+        self.assertEqual(steps.count("design/prd/write_prd"), 3)
+        self.assertEqual(steps.count("design/prd/write_prd#check"), 3)
+        self.assertEqual(steps.count("design/prd/prepare_prd"), 2)  # initial loop only
+        revisions = self.prompts["design/prd/write_prd"][1:]
+        self.assertIn("PRD approval choice (empty before the first approval): revise", revisions[0])
+        self.assertIn("rename the role", revisions[0])
+        self.assertIn("tighten AC-02", revisions[1])
 
     def test_hld_revise_is_a_targeted_edit(self):
         self.prep_tasks_json()
@@ -683,23 +689,28 @@ class SdlcE2E(unittest.TestCase):
             [("approve", None)], [("revise", "name the cache owner"), ("approve", None)]))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/hld/revise_hld"), 1)
-        self.assertEqual(steps.count("design/hld/author_hld"), 1)
+        self.assertEqual(steps.count("design/hld/write_hld"), 2)
+        self.assertIn("HLD approval choice (empty before the first approval): revise", self.prompts["design/hld/write_hld"][1])
         self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 2)
         self.assertEqual(steps.count("design/hld/validate_hld"), 2)
 
     def test_hld_revise_needing_a_decision_falls_back_to_clarification(self):
         self.prep_tasks_json()
+        writes = []
+
+        def write_hld():
+            # the revision (second write) needs a decision the confirmed ones cannot settle
+            writes.append(1)
+            return {"hld_summary": "needs a decision" if len(writes) == 2 else "written",
+                    "needs_clarification": len(writes) == 2}
         action, trace = self.drive(
             self._design_gates([("approve", None)],
                                [("revise", "support offline mode"), ("approve", None)]),
-            agent_overrides={"revise_hld": {"hld_summary": "needs a decision",
-                                            "needs_clarification": True}})
+            agent_overrides={"write_hld": write_hld})
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/hld/revise_hld"), 1)
         self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 3)
-        self.assertEqual(steps.count("design/hld/author_hld"), 2)
+        self.assertEqual(steps.count("design/hld/write_hld"), 3)
 
     def test_hld_rethink_runs_the_full_clarification_pass(self):
         self.prep_tasks_json()
@@ -707,8 +718,8 @@ class SdlcE2E(unittest.TestCase):
             [("approve", None)], [("rethink", "split the service"), ("approve", None)]))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertNotIn("design/hld/revise_hld", steps)
-        self.assertEqual(steps.count("design/hld/author_hld"), 2)
+        self.assertEqual(steps.count("design/hld/write_hld"), 2)
+        self.assertIn("HLD approval choice (empty before the first approval): rethink", self.prompts["design/hld/write_hld"][1])
 
     def _qa_gates(self, qa_gate):
         return {
@@ -816,10 +827,11 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         hld = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/hld/")]
         start = hld.index("arch_review")
-        self.assertEqual(hld[start:start + 10], ["arch_review", "review_verdict",
-                                                 "revise_from_review", "review_resolution",
-                                                 "validate_hld", "sync_decisions", "arch_scope",
-                                                 "arch_review", "review_verdict", "hld_approval"])
+        self.assertEqual(hld[start:start + 11], ["arch_review", "review_verdict",
+                                                 "revise_from_review", "revise_from_review#check",
+                                                 "review_resolution", "validate_hld",
+                                                 "sync_decisions", "arch_scope", "arch_review",
+                                                 "review_verdict", "hld_approval"])
         self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
 
     def test_design_mode_asks_only_for_prd_and_hld_approval(self):
@@ -853,7 +865,8 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         for stage in ("prd", "hld", "lld"):
             self.assertIn(("auto_interview", f"design/{stage}/{stage}_interview"), trace)
-            self.assertEqual(steps.count(f"design/{stage}/prepare_{stage}_questions"), 1)
+            prepare = "prepare_prd" if stage == "prd" else f"prepare_{stage}_questions"
+            self.assertEqual(steps.count(f"design/{stage}/{prepare}"), 1)
         prd_context = json.loads(Path(self.tmp, ".maestro/runs/demo/prd-context.json").read_text())
         decision = prd_context["decisions"][0]
         self.assertEqual((decision["source"], decision["by"]), ("assumption", "autopilot"))
@@ -884,7 +897,7 @@ class SdlcE2E(unittest.TestCase):
         # the catalog is written once the LLDs pass the readiness check
         self.assertLess(steps.index("design/lld/readiness_review"),
                         steps.index("design/lld/test_cases"))
-        self.assertLess(steps.index("design/lld/trace_test_cases"),
+        self.assertLess(steps.index("design/lld/test_cases#check"),
                         steps.index("design/lld/lld_approval"))
         self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/review_pack"))
         trace_md = Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text()
@@ -899,9 +912,9 @@ class SdlcE2E(unittest.TestCase):
         def test_cases():
             # the first catalog traces a criterion the PRD lacks; the rewrite fixes it
             calls.append(1)
-            if len(calls) == 2:  # sent back with the engine's exact finding
-                feedback = statemod.load("demo", self.tmp)["steps"][
-                    "design/lld/trace_test_cases"]["outputs"]["issues_summary"]
+            if len(calls) == 2:  # sent back with the engine's exact finding in its prompt
+                feedback = self.prompts["design/lld/test_cases"][-1]
+                self.assertIn("failed the engine's check", feedback)
                 self.assertIn("criteria the PRD does not have: AC-07", feedback)
                 self.assertIn("no test case traces AC-01", feedback)
             catalog.write_text("### TC-demo-001 — wrong\n\n- **Traces:** AC-07\n"
@@ -912,8 +925,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("test_cases")
-        self.assertEqual(lld[start:start + 5], ["test_cases", "trace_test_cases", "test_cases",
-                                                "trace_test_cases", "lld_approval"])
+        self.assertEqual(lld[start:start + 5], ["test_cases", "test_cases#check", "test_cases",
+                                                "test_cases#check", "lld_approval"])
         self.assertEqual(len(calls), 2)
 
     def test_auto_mode_stops_at_release_when_a_criterion_fails_qa(self):
@@ -956,23 +969,24 @@ class SdlcE2E(unittest.TestCase):
         self.add_terraform_to_backend()
         hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
 
-        def author_hld():
+        def write_hld():
             # the writer adds the section the engine now requires for an iac workspace
-            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/author_hld")
+            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/write_hld")
             text = hld.read_text()
             if "## Infrastructure and operations" not in text:
                 hld.write_text(text.replace("## Key decisions", "## Infrastructure and operations"
                                             "\n\n- `backend`: new SQS queue `exports` with a "
                                             "dead-letter queue (14-day retention).\n\n"
                                             "## Key decisions"))
-            return {"hld_summary": "export worker on a queue"}
-        action, _trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"author_hld": author_hld})
+            return {"hld_summary": "export worker on a queue", "needs_clarification": False}
+        action, _trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"write_hld": write_hld})
         self.assertEqual(action["action"], "done", action)
         prepare = self.prompts["design/hld/prepare_hld_questions"][0]
         self.assertIn("Infrastructure level iac", prepare)
         self.assertIn("Infrastructure as code in backend (terraform)", prepare)
-        self.assertIn("read the infrastructure repositories (backend)", prepare)
-        self.assertRegex(self.prompts["design/hld/author_hld"][0], r"--infra-level\s+iac")
+        self.assertIn("read the infrastructure repositories (the `iac_repos` input)", prepare)
+        self.assertIn("- iac_repos: backend", prepare)
+        self.assertRegex(self.prompts["design/hld/write_hld"][0], r"--infra-level\s+iac")
         self.assertIn("Infrastructure level iac", self.prompts["design/hld/arch_review"][0])
         outputs = statemod.load("demo", self.tmp)["steps"]["design/hld/validate_hld"]["outputs"]
         self.assertEqual((outputs["valid"], outputs["infra_changed"]), (True, True))
@@ -1036,6 +1050,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertTrue(approval["light"])
         self.assertIsNone(approval["hld_sha256"])
         self.assertIsNotNone(approval["prd_sha256"])
+        # the run reports no HLD or contract it never wrote
+        self.assertEqual((action["outputs"]["hld"], action["outputs"]["contract"]), (None, None))
         # the approved design is still checked for staleness before delivery
         self.assertIn("delivery/design_check", steps)
 
@@ -1070,15 +1086,15 @@ class SdlcE2E(unittest.TestCase):
         Path(self.tmp, "maestro.config.yaml").write_text("version: 1\nrepos: {}\n")
         hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
 
-        def author_hld():
-            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/author_hld")
+        def write_hld():
+            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/write_hld")
             text = hld.read_text()
             if "## Repositories" not in text:
                 hld.write_text(text.replace("## Proposed design", "## Repositories\n\n"
                                             "- `backend` (python): owns the demo state.\n"
                                             "- `frontend` (python): shows it.\n\n"
                                             "## Proposed design"))
-            return {"hld_summary": "two new repositories"}
+            return {"hld_summary": "two new repositories", "needs_clarification": False}
 
         def scaffold():
             report = {"repos": {}}
@@ -1095,12 +1111,13 @@ class SdlcE2E(unittest.TestCase):
             Path(self.tmp, ".maestro/runs/demo/scaffold.json").write_text(json.dumps(report))
             return {"summary": "backend and frontend scaffolded"}
         action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={
-            "author_hld": author_hld, "scaffold": scaffold})
+            "write_hld": write_hld, "scaffold": scaffold})
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
         self.assertIn("Greenfield: true", self.prompts["design/hld/prepare_hld_questions"][0])
         order = ["design/hld/hld_approval", "design/scaffold/create", "design/scaffold/scaffold",
-                 "design/scaffold/configure", "design/scaffold/pin", "design/lld/lld_scope_init"]
+                 "design/scaffold/scaffold#check", "design/scaffold/pin",
+                 "design/lld/lld_scope_init"]
         self.assertEqual([steps.index(s) for s in order], sorted(steps.index(s) for s in order))
         config = Path(self.tmp, "maestro.config.yaml").read_text()
         self.assertIn("backend", config)
@@ -1124,7 +1141,7 @@ class SdlcE2E(unittest.TestCase):
                                                  "validate_llds", "sync_decisions",
                                                  "readiness_scope", "readiness_review",
                                                  "readiness_verdict",
-                                                 "test_cases", "trace_test_cases", "lld_approval"])
+                                                 "test_cases", "test_cases#check", "lld_approval"])
         self.assertEqual(lld.count("test_cases"), 1)
 
     def test_readiness_rounds_stop_at_the_limit_and_the_person_decides(self):
@@ -1141,7 +1158,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(lld.count("readiness_review"), 3)
         self.assertEqual(lld.count("revise_llds"), 2)
         self.assertEqual(lld[lld.index("test_cases"):][:3],
-                         ["test_cases", "trace_test_cases", "lld_approval"])
+                         ["test_cases", "test_cases#check", "lld_approval"])
         verdict = statemod.load("demo", self.tmp)["steps"]["design/lld/readiness_verdict"]["outputs"]
         self.assertEqual((verdict["limit_reached"], verdict["blocking"]), (True, True))
         self.assertIn(("ask_gate", "design/lld/lld_approval"), trace)
@@ -1179,7 +1196,7 @@ class SdlcE2E(unittest.TestCase):
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("author_llds")
         # the post-check is validated first, so a gap it records is never skipped
-        self.assertEqual(lld[start:start + 6], ["author_llds", "validate_lld_post_questions",
+        self.assertEqual(lld[start:start + 6], ["author_llds", "author_llds#check",
                                                 "contract_change", "revise_llds",
                                                 "readiness_resolution", "validate_llds"])
         approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
@@ -1425,7 +1442,7 @@ class SdlcE2E(unittest.TestCase):
         start = steps.index("stop_gate")
         # the gate, then its guidance input, then a fresh plan
         self.assertEqual(steps[start:start + 4], ["stop_gate", "stop_gate", "tasks",
-                                                  "validate_tasks"])
+                                                  "tasks#check"])
         gate = next(p[0] for st, p in self.prompts.items() if st.endswith("/impl/stop_gate"))
         self.assertIn("unplanned orders.tax column", gate)
         replanned = [p for st, ps in self.prompts.items() if st.endswith("/impl/tasks") for p in ps]
@@ -1445,11 +1462,11 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         self.assertEqual(steps.count("design/hld/hld_interview"), 1)
-        self.assertEqual(steps.count("design/hld/author_hld"), 1)
-        self.assertIn("design/hld/validate_hld_post_questions", steps)
+        self.assertEqual(steps.count("design/hld/write_hld"), 1)
+        # the author's two checks (post-check, then the HLD), then the facts are recorded
+        self.assertEqual(steps.count("design/hld/write_hld#check"), 2)
         self.assertIn("design/hld/validate_hld", steps)
         self.assertNotIn("design/hld/hld_post_interview", steps)
-        self.assertNotIn("design/hld/repair_hld", steps)
 
     def test_prd_interview_path_when_requirement_empty(self):
         """An empty requirement uses lead-only clarification and a durable interview."""
@@ -1472,9 +1489,9 @@ class SdlcE2E(unittest.TestCase):
                 for rel in action.get("artifacts", []):
                     self.write_agent_artifact(rel, step)
                 node = step.rsplit("/", 1)[-1]
-                if node == "author_hld":
+                if node == "write_hld":
                     reached_hld = True
-                    outputs = {"hld_summary": "ok"}
+                    outputs = {"hld_summary": "ok", "needs_clarification": False}
                 else:
                     outputs = canned_agent_outputs(step, action)
                 resolver.complete_step(run, step, outputs=outputs)
@@ -1506,11 +1523,11 @@ class SdlcE2E(unittest.TestCase):
             if reached_hld:
                 break
         else:
-            self.fail("PRD interview path did not reach author_hld")
+            self.fail("PRD interview path did not reach write_hld")
 
-        self.assertTrue(reached_hld, "never reached author_hld")
+        self.assertTrue(reached_hld, "never reached write_hld")
         self.assertIn("project_context", seen)
-        self.assertIn("author_prd", seen)
+        self.assertIn("write_prd", seen)
         self.assertEqual(len(interview_sections), 1)
         context_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "prd-context.json")
         with open(context_path) as fh:
