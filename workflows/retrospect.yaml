@@ -50,7 +50,9 @@ nodes:
          since the map was last recorded — update ONLY those areas (new/changed flows,
          execution modes, APIs, conventions); a repo reported `current` is unchanged, skip it.
          Do NOT touch the `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps
-         it next.
+         it next. Keep every file in the shared living-docs format (docs-format.md in the
+         build-knowledge skill): new domains get both files, a Domains-table row and the exact
+         titles; docs/architecture.md stays within 200 lines.
       2. Write a STRUCTURED lessons drop to .maestro/memory/incoming/${inputs.slug}.json as
          JSON: {"slug": "${inputs.slug}", "lessons": [{"domain": "<role>",
          "key": "<stable-kebab-key>", "text": "<one actionable sentence>"}, ...]}. Draw the
