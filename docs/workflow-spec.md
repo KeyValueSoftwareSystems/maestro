@@ -431,7 +431,10 @@ over the whole set, functional test cases, a readiness check, and one approval g
 
 After LLD approval, delivery implements every repository in the approved design.
 `implementation_pool.py init --choice all --fresh` starts each pass afresh, so a release sent back
-to design rebuilds every repository against the new design. A team workflow that wants batches
+to design rebuilds every repository against the new design. `worktrees.py prepare` then creates
+each repository's worktree once per feature (its own `git worktree add`, or `worktree.create` from
+maestro.config.yaml), and `claim` hands it to the implementer with its branch; a later pass reuses
+it. A team workflow that wants batches
 can use `--choice pick`, which keeps unselected repositories as deferred work.
 
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested

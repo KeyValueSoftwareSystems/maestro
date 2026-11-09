@@ -12,6 +12,8 @@ inputs:
   slug: {type: string, required: true}
   stack: {type: string, required: true, description: selected repository name}
   repo_path: {type: string, required: true, description: path to the selected git repository}
+  worktree: {type: string, default: "", description: the feature worktree the engine created for this repository (empty - the implementer creates one)}
+  branch: {type: string, default: "feature/${inputs.slug}-${inputs.stack}", description: the feature branch checked out in that worktree}
   feature: {type: string, default: "${inputs.slug}"}
   stack_skills: {type: string, default: "", description: installed stack skills for this repository (stack_skills.py)}
 defaults:
@@ -76,7 +78,8 @@ nodes:
       stack: "${inputs.stack}"
       tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
       repo_path: "${inputs.repo_path}"
-      branch: "feature/${inputs.slug}-${inputs.stack}"
+      worktree: "${inputs.worktree}"
+      branch: "${inputs.branch}"
       guidance: "${steps.stop_gate.outputs.guidance}"
       stack_skills: "${inputs.stack_skills}"
     outputs: [branch, worktree, commit, summary, tests_passed, escalate, escalation]

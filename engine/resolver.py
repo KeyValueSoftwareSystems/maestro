@@ -1133,16 +1133,7 @@ def _agent_action(run, frame, node, path):
     skill = node.get("skill")
     if skill:
         skill = run.resolve_text(skill, frame)  # e.g. skill: "${inputs.stack}-implement"
-    # Template Claude WorktreeCreate hooks map every worktree to a full sandbox.
-    # Maestro impl uses per-repo worktrees — export these so scripts/claude-worktree
-    # bypasses sandbox create (Task 33).
-    env = None
-    if isolate == "worktree":
-        env = {"MAESTRO_REPO_WORKTREE": "1"}
-        repo_path = (resolved_inputs or {}).get("repo_path")
-        if repo_path:
-            env["MAESTRO_REPO_PATH"] = str(repo_path)
-    action = {
+    return {
         "action": "run_lead" if node.get("execution") == "lead" else "run_agent",
         "step": path,
         "agent_type": run.agent_for(node, frame),
@@ -1153,9 +1144,6 @@ def _agent_action(run, frame, node, path):
         "artifacts": artifacts,
         "prompt": render_agent_prompt(run, frame, node, resolved_inputs, artifacts, isolate, skill),
     }
-    if env:
-        action["env"] = env
-    return action
 
 
 def _interview_sections(run, frame, node):
@@ -1400,16 +1388,31 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
         repo_path = (inputs or {}).get("repo_path")
         git_prefix = f"git -C {shlex.quote(str(repo_path))}" if repo_path else "git"
         location = (f" for the repository at `{repo_path}`" if repo_path else "")
-        lines.append(
-            f"ISOLATION IS MANDATORY. Before you edit ANY file, create and enter a git "
-            f"worktree{location} on branch `{branch}`: run `{git_prefix} worktree add -b {branch} "
-            f"<new-dir> HEAD` (or `{git_prefix} worktree add <new-dir> {branch}` if the branch "
-            f"exists) and do all of your work from inside <new-dir>. Verify with `git rev-parse "
-            f"--show-toplevel` that you are NOT in the main working tree before editing. If a "
-            f"worktree cannot be created (e.g. the repo has no commits), STOP and report the "
-            f"failure — do NOT fall back to editing the main working tree, because a parallel "
-            f"step may be writing there. Commit your work on `{branch}` inside the worktree."
-        )
+        worktree = str((inputs or {}).get("worktree") or "").strip()
+        if worktree:
+            # The engine already created this feature's worktree (worktrees.py prepare).
+            wt = shlex.quote(worktree)
+            lines.append(
+                f"ISOLATION IS MANDATORY. The engine created this feature's worktree{location}: "
+                f"`{worktree}` on branch `{branch}`. Do every edit, test and commit inside it. Do "
+                f"not create another feature worktree and never edit the repository's main "
+                f"checkout. Before editing, check that `git -C {wt} rev-parse --show-toplevel` is "
+                f"that directory and `git -C {wt} branch --show-current` is `{branch}`; if either "
+                f"differs, STOP and report the failure. Commit your work on `{branch}` and report "
+                f"that worktree and branch."
+            )
+        else:
+            lines.append(
+                f"ISOLATION IS MANDATORY. Before you edit ANY file, create and enter a git "
+                f"worktree{location} on branch `{branch}`: run `{git_prefix} worktree add -b "
+                f"{branch} <new-dir> HEAD` (or `{git_prefix} worktree add <new-dir> {branch}` if "
+                f"the branch exists) and do all of your work from inside <new-dir>. Verify with "
+                f"`git rev-parse --show-toplevel` that you are NOT in the main working tree before "
+                f"editing. If a worktree cannot be created (e.g. the repo has no commits), STOP and "
+                f"report the failure — do NOT fall back to editing the main working tree, because "
+                f"a parallel step may be writing there. Commit your work on `{branch}` inside the "
+                f"worktree."
+            )
     if artifacts:
         lines.append("")
         lines.append("You MUST create the following file(s), non-empty, before returning:")

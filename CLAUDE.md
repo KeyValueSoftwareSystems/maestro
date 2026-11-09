@@ -153,6 +153,13 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `not-reviewed`, and autopilot will not release it.
   `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
   in its worktree) and `record --from-worktree` records the fixed HEAD.
+- **`worktrees.py`** — the feature's implementation worktrees, made by the engine before any agent
+  writes code: `prepare` runs `worktree.create` from maestro.config.yaml once per feature (e.g. the
+  workspace template's sandbox command) and finds each repo at `worktree.path`, or adds its own at
+  `.maestro/worktrees/<slug>/<repo>`; it uses only worktrees this run created (record:
+  `worktrees.json`), new ones must be clean and at the feature lock's commit. `claim` hands each
+  repo its worktree + branch. `remove` (archive, never fails) removes only what Maestro created —
+  a configured sandbox only once delivery pushed its branches.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
   repos, missing `build`/`test` commands (errors) and missing `lint`/`security`/`e2e` (warnings). Engine

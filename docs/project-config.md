@@ -52,6 +52,11 @@ delivery:                       # optional; what happens after release approval
   mode: branch                  # branch (report the verified branches) | pull-request
   base: main                    # pull-request base (default: the remote's default branch)
   remote: origin                # where branches are pushed (default origin)
+worktree:                       # optional; how each feature's worktrees are made (default: below)
+  create: ./scripts/sandbox create {slug} -y   # once per feature, from the workspace root
+  path: sandbox/{slug}/codebase/{repo}         # where create leaves each repository
+  branch: sandbox/{slug}                       # optional; the branch create checks out
+  remove: ./scripts/sandbox rm {slug} -y       # optional; run after delivery
 ```
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
@@ -72,6 +77,24 @@ the GitHub CLI (`gh`, installed and logged in), or reuses the open one. The body
 repository's verification result, the acceptance-criteria trace, the assumptions summary, links
 to the sibling pull requests and the review pack. A release approved on autopilot opens drafts.
 Results land in `.maestro/runs/<slug>/delivery.json`. `branch` (the default) pushes nothing.
+
+The engine creates each feature's worktrees before any agent writes code, once per feature
+(`engine/worktrees.py`). Without a `worktree` section it runs `git worktree add` itself: one
+worktree per selected repository at `.maestro/worktrees/<slug>/<repo>` (ignored by git), on
+branch `feature/<slug>-<repo>`. With one, it runs `create` instead (for example the workspace
+template's sandbox command; `/maestro-init` fills this section from that script's documented
+usage) and finds each repository at `path`. `{slug}` and `{root}` in the commands are replaced
+(shell-quoted) and `MAESTRO_SLUG` / `MAESTRO_ROOT` are exported; `path` and `branch` take `{slug}`
+and `{repo}`. Point `environment.start` at the same sandbox (for example
+`./scripts/infra up "$MAESTRO_SLUG"`) and QA builds the code Maestro wrote.
+
+Maestro uses only worktrees it created. A path that already exists and is not in the run's
+record (`.maestro/runs/<slug>/worktrees.json`) is refused, as is a new worktree that is not clean
+or does not start at the commit the feature's workspace lock pinned. A resumed run or a later
+delivery pass reuses its own. After delivery, the engine removes what it created: its own
+worktrees with `git worktree remove` (the branches stay), a configured sandbox with `remove` only
+when the delivery pushed every branch (`delivery.mode: pull-request`) — the remove command may
+delete them. A worktree with uncommitted changes is always kept.
 
 The verify step runs these commands in each implementation worktree and writes a receipt. It
 also scans the lines the branch added for committed credentials (cloud keys, private keys,
@@ -109,7 +132,8 @@ python3 .maestro/engine/maestroctl.py preflight
 | File missing or unreadable | error |
 | A repository has no entry under `repos` | error |
 | A repository has no `build` or `test` command | error |
-| Unknown key inside `repos`, `commands`, `environment`, `design`, `reviews` or `delivery` (a typo) | error |
+| Unknown key inside `repos`, `commands`, `environment`, `design`, `reviews`, `delivery` or `worktree` (a typo) | error |
+| `worktree.create` without `worktree.path` (or the reverse), a `path` without `{slug}` and `{repo}` or outside the workspace, an unknown placeholder | error |
 | No `lint`, `security` or `e2e` command | warning — that check is skipped |
 | A configured repository is not in the workspace | warning |
 

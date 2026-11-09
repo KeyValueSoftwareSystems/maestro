@@ -4,9 +4,10 @@
 Design chooses repos in lld-repos.json. `init` selects the repos to implement: the golden workflow
 takes every designed repo afresh (`--choice all --fresh`); `--choice pick` keeps the batching a
 team workflow may want, leaving unselected repos as deferred work. Fixed workflow slots claim the
-selected repos, run the generic implementation subworkflow, then record the exact checked-out
-branch, worktree and commit. `finalize` fails unless every selected repo has a verified entry,
-and attaches each repo's engine verification receipt to the QA/release manifest.
+selected repos (each with the worktree and branch `worktrees.py prepare` created for it), run the
+generic implementation subworkflow, then record the exact checked-out branch, worktree and commit.
+`finalize` fails unless every selected repo has a verified entry, and attaches each repo's engine
+verification receipt to the QA/release manifest.
 
 When QA finds a product bug, `bugfix-init` queues the implemented repos it names and
 `bugfix-claim` hands each one out with its recorded branch, worktree and commit; the fix commits
@@ -23,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import stack_skills  # noqa: E402
 import state as statemod  # noqa: E402
+import worktrees  # noqa: E402
 
 
 def _run_dir(slug, root):
@@ -261,7 +263,8 @@ def cmd_claim(args):
             return _fail(f"implementation queue is unavailable: {exc}")
         remaining = doc.get("remaining") or []
         if not remaining:
-            print(json.dumps({"repo": "", "repo_path": "", "done": True}))
+            print(json.dumps({"repo": "", "repo_path": "", "worktree": "", "branch": "",
+                              "done": True}))
             return 0
         repo = remaining.pop(0)
         doc["remaining"] = remaining
@@ -271,7 +274,10 @@ def cmd_claim(args):
     if not path:
         return _fail(f"claimed repo {repo!r} is no longer discoverable")
     stacks, skills = stack_skills.for_repo(args.root, repo)
+    # the worktree the engine created for this repo (worktrees.py prepare); empty without one
+    worktree, branch = worktrees.for_repo(args.root, args.slug, repo)
     print(json.dumps({"repo": repo, "repo_path": os.path.relpath(path, args.root),
+                      "worktree": worktree, "branch": branch,
                       "done": False, "stacks_csv": ",".join(stacks),
                       "stack_skills_csv": ",".join(skills)}))
     return 0
