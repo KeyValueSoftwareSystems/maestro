@@ -1,6 +1,6 @@
 ---
 name: project-config
-description: Write maestro.config.yaml from a detect-stack result. Repo names come from registry.yaml when that file exists. Does not scan the codebase and does not install skills. Called by /maestro-init after detect-stack
+description: Write maestro.config.yaml from a detect-stack result. Repo names come from registry.yaml when that file exists; a workspace sandbox script's documented commands become the worktree settings. Does not scan the codebase and does not install skills. Called by /maestro-init after detect-stack
 allowed-tools: Bash
 tags: [maestro, bootstrap]
 ---
@@ -41,7 +41,16 @@ no detect-stack `repos` result, stop and run detect-stack first — do not detec
    A Makefile target wins over the language default for that command. Add `lint`,
    `typecheck`, `security`, or `e2e` only when the cited evidence names that script or
    target. `role: infra` when the only tokens are `terraform` and/or `kubernetes`.
-3. **Write the report and apply it.**
+3. **Worktrees, only when the workspace has a sandbox command.** When the workspace root has a
+   script that creates a per-feature workspace of worktrees (e.g. `scripts/sandbox`), read its
+   usage (`--help`, or the script's header comment) and add a `worktree` section to the report:
+   `create` (the command that makes one feature's worktrees for every repository, non-interactive,
+   with `{slug}` for the feature name), `path` (where it leaves each repository, with `{slug}` and
+   `{repo}`), `branch` (the branch it checks out, when the usage states one) and `remove` (the
+   command that deletes that feature's worktrees). Copy what the script documents; never guess a
+   flag it does not show. No such script, or its usage is unclear: leave `worktree` out — Maestro
+   then creates its own worktrees.
+4. **Write the report and apply it.**
 
 ```bash
 python3 .maestro/engine/project_config.py apply --root . --detected .maestro/index/detected-stacks.json
@@ -50,16 +59,21 @@ python3 .maestro/engine/project_config.py apply --root . --detected .maestro/ind
 The JSON shape is:
 
 ```json
-{"repos": {"backend": {"stack": "go, db", "commands": {"build": "go build ./...", "test": "go test ./..."}}}}
+{"repos": {"backend": {"stack": "go, db", "commands": {"build": "go build ./...", "test": "go test ./..."}}},
+ "worktree": {"create": "./scripts/sandbox create {slug} -y", "path": "sandbox/{slug}/codebase/{repo}",
+              "branch": "sandbox/{slug}", "remove": "./scripts/sandbox rm {slug} -y"}}
 ```
 
 `apply` creates `maestro.config.yaml` when it is missing, copies registry names onto it,
-and fills empty `stack` / `commands`. A value already in the file is left unchanged.
+and fills empty `stack` / `commands`. A value already in the file is left unchanged; `worktree`
+is added only when the file has none. Show the person any `worktree` section it added — it
+decides where every feature's code is written.
 
 ## Safety
-- The only write is `.maestro/index/detected-stacks.json` and `maestro.config.yaml`.
+- The only write is `.maestro/index/detected-stacks.json` and `maestro.config.yaml`. Read a
+  sandbox script's usage; never run its create or remove commands here.
 - Never edit application code. Never touch `.maestro/runs/` state.
 
 ## Output contract
 Return `created` (whether the config file was new), `updated` (repo names whose empty
-fields were filled), and `summary` (one line).
+fields were filled), and `summary` (one line, naming the worktree commands when added).

@@ -145,7 +145,7 @@ The workhorse. `execution: worker` (default) spawns a subagent; `execution: lead
 served prompt in the current session without spawning one.
 
 ```yaml
-- id: author_hld
+- id: write_hld
   type: agent
   instruction: |            # REQUIRED — what this step must do, in plain language.
     Write the high-level design from the approved PRD and accepted architecture decisions.
@@ -153,6 +153,7 @@ served prompt in the current session without spawning one.
   skill: hld-writing        # optional pin: agent loads the installed skill by name
                             # (BY NAME, not a path — could be yours or a 3rd-party pack).
                             # Omit for "auto": harness skill-discovery picks the best match.
+  agent: architect          # the role doing the job (agents/<role>.md); defaults.agent, else general
   execution: lead           # keep the clarified architecture context in the main session
   inputs:                   # optional map, passed verbatim into the subagent prompt
     feature: "${inputs.feature}"
@@ -167,7 +168,12 @@ served prompt in the current session without spawning one.
                             # this visit started — a re-review cannot complete on last
                             # round's report. Omit where an unchanged file is a valid result.
   retries: 1                # re-dispatches on failure before on_fail applies (default 1)
-  next: validate_hld_post_questions
+  check:                    # optional: the engine checks the output on hand-off (below)
+    - {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/${inputs.slug}/hld-post-questions.json", --report]}
+    - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/${inputs.slug}/hld.md", --report]}
+  routes:                   # routes may read the checks' outputs (here: the post-check's state)
+    - {when: "${steps.write_hld.outputs.state} == ask", to: hld_post_interview}
+    - {to: arch_review}
 ```
 
 The node owns *what/where/when* — `instruction`, `inputs`, `artifact`, `outputs`, ordering —
@@ -180,6 +186,28 @@ Use `execution: lead` only for small, context-continuous work such as confirming
 a PRD. The action prompt remains the authority: it should name a narrow read/write boundary.
 Pinned skills are resolved only from the active repository's `.agents/skills/`,
 `.claude/skills/`, or `.cursor/skills/` trees; a lead must never search the wider filesystem.
+
+**Roles.** `agent:` names the role that does the job (`product`, `architect`, `implementer`,
+`reviewer`, `qa`, `analyst`; `planner` remains as the architect's older name). A Claude Code worker
+runs as that subagent type. The engine also opens every rendered prompt with
+``Role: `<role>` — <description>`` (the description from `.claude/agents/<role>.md` or the pack's
+`agents/<role>.md`, else the name alone), so the lead running an `execution: lead` job and hosts
+without role definitions get the same role. `general` adds no role line.
+
+**Handoff checks.** `check:` is one `{run, attempts?, timeout?}` map or a list of them. When the
+agent completes (artifacts and outputs accepted), the step does not route yet: the engine serves
+each check in order as a `run_script` action under the agent's own step path (`"check": true`;
+engine helpers run inside the serving call like any engine script). A check passes on exit code 0
+unless its last-line JSON says `"valid": false` — the convention of every shipped validator's
+`--report` mode. When all pass, their JSON fields join the step's outputs, winning over a field
+of the same name the agent returned (what the engine measured beats what the agent claimed), and
+the step routes. When one fails, the same agent is served again with the check's
+`issues_summary` (or its output's tail) appended to its prompt, and the list starts over on the
+next hand-off. After `attempts` failed hand-offs (default 3; for a list, the largest any check sets) the step fails with that report and
+`on_fail` applies; its outputs then hold the failing check's fields. Use a check where the
+agent that wrote an output is the one who should fix it; keep a separate `script` node where the
+result is a decision with several outcomes (a review verdict) or where several writers' paths
+meet.
 
 **Run brief.** `brief: none | minimal | full` (or `defaults.brief`; default `minimal`) adds an
 engine-built "Run brief" to the prompt: the feature, run mode, this step and the documents earlier
@@ -242,7 +270,7 @@ raised unprompted as a `user-raised` decision under a fresh `raised-N` id. Compl
     - {id: users, title: Users and jobs, proposal: "${steps.proposals.outputs.users}"}
     - {id: scope, title: Functional scope, prompt: "What behavior is in scope?"}
   artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
-  next: author_prd
+  next: write_prd
 ```
 
 For feature-specific follow-ups, a preceding agent writes a JSON queue containing
@@ -289,7 +317,7 @@ the loop at one round, route on the mode:
 ```yaml
   auto: {modes: [auto]}
   routes:
-    - {when: "${run.mode} == auto", to: author_prd}
+    - {when: "${run.mode} == auto", to: write_prd}
     - {to: prepare_prd_questions}
 ```
 
@@ -300,9 +328,10 @@ pack.
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
 accepts common equivalent headings for its fast path. When that fails, `prd_source.py` decides
 between normalizing the client's own PRD (a 250+ word document, an office/PDF file or a Jira XML export; a
-client-authored `prd.md` is copied to `prd.original.md` first) and the Grill interview. The
-normalizer writes the PRD plus a queue of only the gaps; strict validation rejects any remaining
-"(to confirm)" mark. Maestro-authored PRDs use the exact
+client-authored `prd.md` is copied to `prd.original.md` first) and the Grill interview. A
+worker restructures it into the PRD (checked in compatible mode, so "(to confirm)" marks may stay),
+the product role's prepare job asks only the gaps it leaves, and strict validation of the final
+write rejects any remaining "(to confirm)" mark. Maestro-authored PRDs use the exact
 12-heading contract (including Non-functional requirements: measurable bullets, or an explicit
 None) and are validated in strict mode before approval. Traceability IDs appear
 only as sequential `AC-01`, `AC-02`, … bullets under Acceptance criteria. Generated PRDs begin
@@ -319,10 +348,10 @@ the run mode's autopilot policy (below) answers one without a person.
 ```yaml
 - id: hld_approval
   type: gate
-  prompt: "HLD ready: ${steps.author_hld.outputs.hld_summary}. Approve?"
+  prompt: "HLD ready: ${steps.write_hld.outputs.hld_summary}. Approve?"
   options:
     - {id: approve, label: "Approve — write the repository LLDs", to: end}
-    - {id: revise,  label: "Targeted edit", to: revise_hld, input: feedback}
+    - {id: revise,  label: "Targeted edit", to: write_hld, input: feedback}
     - {id: rethink, label: "Re-clarify and regenerate", to: prepare_hld_questions, input: feedback}
     - {id: reject,  label: "Reject — abort", to: abort}
 ```
@@ -361,9 +390,11 @@ JSON object, its fields become the step's outputs and are routable. Validators c
         "--open-questions", ".maestro/${inputs.slug}/open-questions.json"]
   timeout: 60               # seconds, optional (default 300)
   routes:
-    - {when: "${steps.validate_hld.outputs.valid} == false", to: repair_hld}
+    - {when: "${steps.validate_hld.outputs.valid} == false", to: write_hld}
     - {to: hld_approval}
 ```
+
+A validator that only sends its writer back on failure is simpler as that agent's `check:`.
 
 ### `parallel`
 
@@ -400,7 +431,10 @@ over the whole set, functional test cases, a readiness check, and one approval g
 
 After LLD approval, delivery implements every repository in the approved design.
 `implementation_pool.py init --choice all --fresh` starts each pass afresh, so a release sent back
-to design rebuilds every repository against the new design. A team workflow that wants batches
+to design rebuilds every repository against the new design. `worktrees.py prepare` then creates
+each repository's worktree once per feature (its own `git worktree add`, or `worktree.create` from
+maestro.config.yaml), and `claim` hands it to the implementer with its branch; a later pass reuses
+it. A team workflow that wants batches
 can use `--choice pick`, which keeps unselected repositories as deferred work.
 
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
@@ -411,7 +445,7 @@ as one wave; elsewhere (`next --serial`) branches run one at a time.
 ### `subworkflow`
 
 Runs another workflow file inline. The child's `outputs:` map becomes the step's outputs; child
-steps are namespaced in state (`design/hld/author_hld`). Maximum nesting depth: 4.
+steps are namespaced in state (`design/hld/write_hld`). Maximum nesting depth: 4.
 
 A child cannot route into its parent: it ends (`end`) with outputs the parent routes on, or
 aborts (`abort` marks the subworkflow step failed and applies its `on_fail`). It reads its own
@@ -512,6 +546,7 @@ loop:
     wait       → only claimed workers remain in flight → record them as they finish
     run_lead   → execute the bounded prompt in the current session → complete --outputs '<json>'
     run_script → execute argv → complete --exit-code N --stdout '...'
+                 (`"check": true` marks an agent's handoff check; it completes the same way)
                  (engine helpers never reach the lead: every serving call runs
                  `python3 .maestro/engine/*.py` steps itself and lists them in `auto_scripts`;
                  in design/auto mode it also records the gates and interviews their `auto:`

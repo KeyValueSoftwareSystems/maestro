@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Design-phase subagent — writes HLDs, LLDs, API contracts and test-case catalogs from requirements. Read-heavy, writes design artifacts only, never edits product code.
+description: Older name for the architect role, kept so workflows that name `planner` keep working; new workflows name `architect`. Writes design artifacts only, never edits product code.
 tools: ["Read", "Grep", "Glob", "Bash", "Write"]
 ---
 

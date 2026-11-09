@@ -165,6 +165,15 @@ class ImplementationPoolTest(unittest.TestCase):
         self.assertIn("mobile-app verified, 1 existing test file(s) changed",
                       final["verification_summary"])
 
+    def test_summary_names_checks_the_project_never_configured(self):
+        final, check = self._finalize_with_receipt(lambda commit: {
+            "passed": True, "commit": commit, "skipped": ["setup", "lint", "security"],
+            "checks": [{"name": "test", "status": "passed"}]})
+        self.assertTrue(final["verified_ok"])
+        self.assertEqual(check["not_configured"], ["lint", "security"])
+        self.assertIn("mobile-app verified, not configured: lint, security",
+                      final["verification_summary"])
+
     def test_receipt_for_another_commit_is_stale(self):
         final, check = self._finalize_with_receipt(lambda commit: {
             "passed": True, "commit": "0" * 40, "checks": []})

@@ -12,7 +12,7 @@ inputs:
   feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
 defaults:
   model: opus
-  agent: planner
+  agent: architect
   max_visits: 10
 start: contract
 nodes:

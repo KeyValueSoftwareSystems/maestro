@@ -177,6 +177,33 @@
         }
       ]
     },
+    "agentCheck": {
+      "type": "object",
+      "description": "Engine-run handoff check: after the agent completes, the engine runs `run`; it passes on exit code 0 unless its last-line JSON says \"valid\": false. A list runs in order and stops at the first failure. A failed check re-serves the same agent with the report, up to `attempts` hand-offs, then on_fail applies. The checks' outputs join the step's outputs and win over a field of the same name the agent returned.",
+      "required": [
+        "run"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "run": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "hand-offs the agent gets before a failing check goes to on_fail (default 3)"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "seconds the check may run (default: the script default)"
+        }
+      }
+    },
     "agentNode": {
       "type": "object",
       "required": [
@@ -262,6 +289,20 @@
         "retries": {
           "type": "integer",
           "minimum": 0
+        },
+        "check": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/agentCheck"
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/agentCheck"
+              }
+            }
+          ]
         },
         "isolate": {
           "enum": [

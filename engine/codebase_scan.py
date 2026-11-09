@@ -69,6 +69,14 @@ def _is_git_repo(path):
     return rc == 0
 
 
+def _is_linked_worktree(path):
+    """A `git worktree add` checkout of another repository: its git-dir sits under the main
+    repository's common dir. A submodule (also a `.git` file) has git-dir == common dir."""
+    rc, out = _git(path, "rev-parse", "--path-format=absolute", "--git-dir", "--git-common-dir")
+    lines = out.splitlines()
+    return rc == 0 and len(lines) == 2 and os.path.realpath(lines[0]) != os.path.realpath(lines[1])
+
+
 def _head(repo):
     rc, out = _git(repo, "rev-parse", "HEAD")
     return out if rc == 0 and out else None
@@ -77,7 +85,8 @@ def _head(repo):
 def discover_repos(root):
     """The repos this workspace maps, as [(name, abspath)] sorted by name.
 
-    Umbrella layout: every immediate child of <root>/codebase/ that is a git repo.
+    Umbrella layout: every immediate child of <root>/codebase/ that is a git repo — but not a
+    linked worktree an agent created there, which is a checkout of a repo already listed.
     Single-repo layout: <root> itself. If codebase/ exists but holds no git repos,
     fall back to <root> when it is a git repo."""
     root = os.path.abspath(root)
@@ -86,7 +95,7 @@ def discover_repos(root):
     if os.path.isdir(codebase):
         for name in sorted(os.listdir(codebase)):
             path = os.path.join(codebase, name)
-            if os.path.isdir(path) and _is_git_repo(path):
+            if os.path.isdir(path) and _is_git_repo(path) and not _is_linked_worktree(path):
                 repos.append((name, path))
     if not repos and _is_git_repo(root):
         repos.append((os.path.basename(root) or "repo", root))

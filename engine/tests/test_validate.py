@@ -115,6 +115,36 @@ class MemoryPlaceholderTest(unittest.TestCase):
         self.assertTrue(any(i.code == "bad-placeholder" for i in issues))
 
 
+class BranchScopeTest(unittest.TestCase):
+    def test_branch_steps_resolve_against_their_own_branch(self):
+        doc = {"version": 1, "nodes": [{"id": "fan", "type": "parallel", "branches": [
+            {"id": "a", "start": "claim", "steps": [
+                {"id": "claim", "type": "script", "run": ["true"], "next": "work"},
+                {"id": "work", "instruction": "Use ${steps.claim.outputs.repo}.", "next": "end"},
+            ]}], "next": "end"}]}
+        issues = validate.validate_doc(doc)
+        self.assertEqual([str(i) for i in issues if i.code == "bad-placeholder"], [])
+
+
+class AgentCheckValidationTest(unittest.TestCase):
+    def _codes(self, check):
+        doc = {"version": 1, "nodes": [
+            {"id": "write", "instruction": "Write.", "check": check, "next": "end"}]}
+        return [i.code for i in validate.validate_doc(doc) if i.level == "error"]
+
+    def test_valid_check(self):
+        self.assertEqual(self._codes({"run": ["python3", "x.py"], "attempts": 2, "timeout": 30}), [])
+
+    def test_check_needs_run(self):
+        self.assertIn("missing-key", self._codes({"attempts": 2}))
+        self.assertIn("missing-key", self._codes({"run": []}))
+
+    def test_check_rejects_unknown_keys_and_bad_numbers(self):
+        self.assertIn("unknown-key", self._codes({"run": ["x"], "pass": "valid"}))
+        self.assertIn("bad-type", self._codes({"run": ["x"], "attempts": 0}))
+        self.assertIn("bad-type", self._codes("python3 x.py"))
+
+
 class InterviewValidationTest(unittest.TestCase):
     def _doc(self, sections=None, artifact=".maestro/runs/x/context.json",
              questions_artifact=None, batch_size=None, presentation=None):

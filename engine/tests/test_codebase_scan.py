@@ -188,6 +188,21 @@ class UmbrellaRepos(unittest.TestCase):
         repos = dict(cs.discover_repos(self.tmp))
         self.assertEqual(set(repos), {"backend", "frontend"})
 
+    def test_a_worktree_inside_codebase_is_not_another_repo(self):
+        # an implementer's `git worktree add codebase/backend-wt` is a checkout of backend
+        backend = os.path.join(self.tmp, "codebase", "backend")
+        git(backend, "worktree", "add", "-q", "-b", "feature",
+            os.path.join(self.tmp, "codebase", "backend-wt"))
+        # a submodule-style checkout (its .git is a file too) still counts as a repository
+        sub = os.path.join(self.tmp, "codebase", "lib")
+        init_repo(sub)
+        commit(sub, "x.txt", "lib", "init")
+        os.rename(os.path.join(sub, ".git"), os.path.join(self.tmp, "lib.git"))
+        with open(os.path.join(sub, ".git"), "w") as fh:
+            fh.write(f"gitdir: {os.path.join(self.tmp, 'lib.git')}\n")
+        repos = dict(cs.discover_repos(self.tmp))
+        self.assertEqual(set(repos), {"backend", "frontend", "lib"})
+
     def test_record_stamps_each_repo_independently(self):
         for name in ("backend", "frontend"):
             write_map(os.path.join(self.tmp, "codebase", name))
