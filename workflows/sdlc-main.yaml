@@ -75,8 +75,8 @@ nodes:
     next: end
 
 outputs:
-  hld: ".maestro/runs/${inputs.slug}/hld.md"
-  contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
+  hld: "${steps.design.outputs.hld_path}"
+  contract: "${steps.design.outputs.contract_path}"
   review_pack: "${steps.delivery.outputs.pack_path}"
   implementation_manifest: "${steps.delivery.outputs.manifest_path}"
   delivery: "${steps.archive.outputs.delivery}"

@@ -47,6 +47,10 @@ wrong while running** — because both are where a future run can do better from
      the map was last recorded; update ONLY those areas (new/changed flows, execution modes,
      APIs, conventions). A repo reported `current` is unchanged — skip it. Do NOT touch the
      `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps it after you write.
+   Keep every file in the shared living-docs format
+   ([docs-format.md](../build-knowledge/docs-format.md)): a new domain gets both files with
+   their exact titles and a row in the architecture Domains table, and `docs/architecture.md`
+   stays within 200 lines.
    Create files that don't exist yet; edit existing ones in place (never duplicate). Skip a
    surface only when the feature genuinely did not affect it — but wherever it did, ADD the
    content, don't just tweak.

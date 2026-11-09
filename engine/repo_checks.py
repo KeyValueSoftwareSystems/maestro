@@ -17,6 +17,12 @@ credentials (cloud keys, private keys, provider tokens). A hit fails verificatio
 `secrets` check; the receipt records the file, line and rule — never the value. Placeholder values
 containing EXAMPLE are ignored.
 
+Build-output scan: with --base-repo the engine also lists the files the branch ADDED that are
+build or tool output no repository should commit (`__pycache__/`, `*.pyc`, `node_modules/`,
+`.pytest_cache/`, `.DS_Store`, `*.class`, …). Any fails verification as the `build-output` check,
+so the fix loop removes them (and ignores them) before review. Ambiguous names such as `dist/`
+or `build/` are not on the list: some repositories commit those on purpose.
+
 Test-edit guard: with --base-repo, the receipt also lists EXISTING test files the branch
 modified, renamed or deleted (repo `test_patterns`, or defaults). They are flagged for the
 reviewer to justify, never auto-failed — agents can make tests pass by weakening them.
@@ -242,12 +248,42 @@ def _reusable(full_out, reuse_key, commit, commands, worktree):
     except (OSError, ValueError):
         return None
     ran = {c["name"]: c.get("command") for c in receipt.get("checks") or []
-           if c.get("name") != "secrets"}
+           if c.get("name") not in ("secrets", "build-output")}
     if (receipt.get("reuse_key") != reuse_key or receipt.get("commit") != commit
             or ran != {name: commands[name] for name in ORDER if name in commands}):
         return None
     # uncommitted files count too: clean when it was verified, and clean now
     return receipt if receipt.get("worktree_clean") is True and _clean(worktree) else None
+
+
+# Build or tool output no repository commits on purpose: a directory anywhere in the path, or a
+# file name pattern. Deliberately narrow (no dist/, build/, target/), so it never fails a branch
+# for an output a project chose to commit.
+BUILD_OUTPUT_DIRS = {"__pycache__", "node_modules", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+                     ".tox", ".gradle", ".next"}
+BUILD_OUTPUT_FILES = (".pyc", ".pyo", ".class")
+BUILD_OUTPUT_NAMES = {".DS_Store", "Thumbs.db"}
+
+
+def _is_build_output(path):
+    parts = path.split("/")
+    name = parts[-1]
+    return (any(part in BUILD_OUTPUT_DIRS for part in parts[:-1])
+            or name.endswith(BUILD_OUTPUT_FILES) or name in BUILD_OUTPUT_NAMES)
+
+
+def _build_output_scan(worktree, base_repo):
+    """Build or tool output among the files the branch added. -> (paths, note)."""
+    if not base_repo:
+        return [], "no base repository given"
+    base = _branch_base(worktree, base_repo)
+    if not base:
+        return [], "cannot find the commit this branch started from"
+    proc = subprocess.run(["git", "-C", worktree, "diff", "--name-only", "--diff-filter=A",
+                           "--no-renames", base], capture_output=True, text=True, errors="replace")
+    if proc.returncode:
+        return [], "git diff failed"
+    return [path for path in proc.stdout.splitlines() if _is_build_output(path)], None
 
 
 def _clean(worktree):
@@ -261,11 +297,16 @@ def _report(receipt, root, full_out, unchanged=False):
     failed = [c["name"] for c in checks if c["status"] not in ("passed", "pre-existing")]
     pre_existing = receipt.get("pre_existing") or []
     secrets = next((c["findings"] for c in checks if c["name"] == "secrets"), [])
+    build_output = next((c["paths"] for c in checks if c["name"] == "build-output"), [])
     test_changes = receipt.get("test_changes") or []
     ran = [c["name"] for c in checks if c["status"] not in ("not-run", "pre-existing")]
     repo = receipt["repo"]
     summary = (f"{repo}: all checks passed ({', '.join(ran)})" if not failed
                else f"{repo}: failed {', '.join(failed)}")
+    # say what never ran, so "passed" is never read as "fully checked"
+    unconfigured = [name for name in receipt.get("skipped") or [] if name != "setup"]
+    if unconfigured:
+        summary += f"; not configured: {', '.join(unconfigured)}"
     if pre_existing:
         base = next((c["baseline"]["commit"] for c in checks if c.get("baseline")), "")
         summary += (f"; pre-existing failures, also failing on base {base[:12]}: "
@@ -273,6 +314,9 @@ def _report(receipt, root, full_out, unchanged=False):
     if secrets:
         summary += "; committed secret(s): " + ", ".join(
             f"{f['path']}:{f['line']} ({f['rule']})" for f in secrets[:5])
+    if build_output:
+        summary += (f"; committed build output — remove it and ignore it: "
+                    f"{', '.join(build_output[:5])}" + (" …" if len(build_output) > 5 else ""))
     if test_changes:
         summary += f"; {len(test_changes)} existing test file(s) changed — reviewer must justify"
     if unchanged:
@@ -354,6 +398,10 @@ def run_checks(root, repo, worktree, out, base_repo=None, reuse_key=""):
     if secrets:
         checks.append({"name": "secrets", "command": "engine secret scan of added lines",
                        "status": "failed", "findings": secrets})
+    build_output, _build_note = _build_output_scan(full_worktree, full_base)
+    if build_output:
+        checks.append({"name": "build-output", "command": "engine scan of added files",
+                       "status": "failed", "paths": build_output})
     failed = [c["name"] for c in checks if c["status"] not in ("passed", "pre-existing")]
     pre_existing = [c["name"] for c in checks if c["status"] == "pre-existing"]
     test_changes, guard_note = _test_changes(

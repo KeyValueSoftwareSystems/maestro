@@ -20,7 +20,7 @@ inputs:
   path: {type: string, default: auto, description: "design path: auto (sized after the PRD), full or light"}
 defaults:
   model: opus
-  agent: planner
+  agent: architect
   max_visits: 10
 start: intake
 nodes:
@@ -68,28 +68,22 @@ nodes:
       between repositories, stored data (a migration) or infrastructure, and whether it is a minor
       or a major change. Use each repository's
       codebase map and only the source needed to place a change; do not design. Write the
-      assessment to .maestro/runs/${inputs.slug}/impact.json. Engine check:
-      ${steps.impact_check.outputs.issues_summary}
+      assessment to .maestro/runs/${inputs.slug}/impact.json.
     skill: feature-impact
     inputs:
       slug: "${inputs.slug}"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
       impact_path: ".maestro/runs/${inputs.slug}/impact.json"
-      validator_feedback: "${steps.impact_check.outputs.issues_summary}"
     outputs: [impact_summary, repos_csv]
     artifact: ".maestro/runs/${inputs.slug}/impact.json"
     fresh: true
+    # repos_csv downstream is the engine's validated list, not the agent's claim
+    check: {run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]}
     max_visits: 3
     on_exhausted: sizing
-    next: impact_check
-
-  - id: impact_check
-    type: script
-    label: Impact assessment valid?
-    run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]
-    routes:
-      - {when: "${steps.impact_check.outputs.valid} == false", to: impact}
-      - {to: sizing}
+    # the assessment only narrows the LLD scope: one that never validates is skipped
+    on_fail: sizing
+    next: sizing
 
   # Engine-owned: a feature the impact assessment calls minor skips the HLD and contract
   # (PRD -> LLD -> readiness -> test cases -> approval); major, the full path. Without a valid
@@ -148,7 +142,7 @@ nodes:
       feedback: "${inputs.feedback}"
       light: "${steps.sizing.outputs.path}"
       required_repos: "${steps.hld.outputs.infra_repos_csv}"
-      impact_repos: "${steps.impact_check.outputs.repos_csv}"
+      impact_repos: "${steps.impact.outputs.repos_csv}"
     on_fail: abort
     next: end
 
@@ -156,7 +150,8 @@ outputs:
   design_path: "${steps.sizing.outputs.path}"
   hld_summary: "${steps.hld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
-  hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-  contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+  # empty when the stage did not run (the light path writes no HLD or contract)
+  hld_path: "${steps.hld.outputs.hld_path}"
+  contract_path: "${steps.contract.outputs.contract_path}"
   test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
   repos_csv: "${steps.lld.outputs.repos_csv}"

@@ -50,6 +50,17 @@ nodes:
     label: Initialize implementation repo pool
     run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}", --choice, all, --fresh]
     on_fail: abort
+    next: worktrees
+
+  # The engine creates each selected repository's worktree once, before any agent writes code:
+  # maestro.config.yaml `worktree.create` (e.g. the workspace template's sandbox command) or its
+  # own `git worktree add`. A later pass reuses them; a path this run did not create is refused.
+  - id: worktrees
+    type: script
+    label: Create the feature's worktrees
+    run: [python3, .maestro/engine/worktrees.py, prepare, --root, ., --slug, "${inputs.slug}"]
+    timeout: 900
+    on_fail: ask
     next: implement
 
   - id: implement
@@ -75,6 +86,8 @@ nodes:
               slug: "${inputs.slug}"
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
+              worktree: "${steps.claim.outputs.worktree}"
+              branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
@@ -100,6 +113,8 @@ nodes:
               slug: "${inputs.slug}"
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
+              worktree: "${steps.claim.outputs.worktree}"
+              branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
@@ -125,6 +140,8 @@ nodes:
               slug: "${inputs.slug}"
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
+              worktree: "${steps.claim.outputs.worktree}"
+              branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record
@@ -150,6 +167,8 @@ nodes:
               slug: "${inputs.slug}"
               stack: "${steps.claim.outputs.repo}"
               repo_path: "${steps.claim.outputs.repo_path}"
+              worktree: "${steps.claim.outputs.worktree}"
+              branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.stack_skills_csv}"
             next: record

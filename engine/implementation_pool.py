@@ -4,9 +4,10 @@
 Design chooses repos in lld-repos.json. `init` selects the repos to implement: the golden workflow
 takes every designed repo afresh (`--choice all --fresh`); `--choice pick` keeps the batching a
 team workflow may want, leaving unselected repos as deferred work. Fixed workflow slots claim the
-selected repos, run the generic implementation subworkflow, then record the exact checked-out
-branch, worktree and commit. `finalize` fails unless every selected repo has a verified entry,
-and attaches each repo's engine verification receipt to the QA/release manifest.
+selected repos (each with the worktree and branch `worktrees.py prepare` created for it), run the
+generic implementation subworkflow, then record the exact checked-out branch, worktree and commit.
+`finalize` fails unless every selected repo has a verified entry, and attaches each repo's engine
+verification receipt to the QA/release manifest.
 
 When QA finds a product bug, `bugfix-init` queues the implemented repos it names and
 `bugfix-claim` hands each one out with its recorded branch, worktree and commit; the fix commits
@@ -23,6 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import stack_skills  # noqa: E402
 import state as statemod  # noqa: E402
+import worktrees  # noqa: E402
 
 
 def _run_dir(slug, root):
@@ -77,6 +79,8 @@ def _verification(slug, entry, root):
                           if c.get("status") not in ("passed", "pre-existing")],
         "pre_existing": pre_existing,
         "test_changes": receipt.get("test_changes") or [],
+        # checks the project never configured: the release must not read "verified" as "fully"
+        "not_configured": [name for name in receipt.get("skipped") or [] if name != "setup"],
         "review": review,
     }
 
@@ -104,6 +108,8 @@ def _verification_summary(entries):
             text += f" ({', '.join(check['failed_checks'])})"
         if check.get("pre_existing"):
             text += f", pre-existing failures on the base commit: {', '.join(check['pre_existing'])}"
+        if check.get("not_configured"):
+            text += f", not configured: {', '.join(check['not_configured'])}"
         if check.get("test_changes"):
             text += f", {len(check['test_changes'])} existing test file(s) changed"
         if check.get("review") == "not-reviewed":
@@ -257,7 +263,8 @@ def cmd_claim(args):
             return _fail(f"implementation queue is unavailable: {exc}")
         remaining = doc.get("remaining") or []
         if not remaining:
-            print(json.dumps({"repo": "", "repo_path": "", "done": True}))
+            print(json.dumps({"repo": "", "repo_path": "", "worktree": "", "branch": "",
+                              "done": True}))
             return 0
         repo = remaining.pop(0)
         doc["remaining"] = remaining
@@ -267,7 +274,10 @@ def cmd_claim(args):
     if not path:
         return _fail(f"claimed repo {repo!r} is no longer discoverable")
     stacks, skills = stack_skills.for_repo(args.root, repo)
+    # the worktree the engine created for this repo (worktrees.py prepare); empty without one
+    worktree, branch = worktrees.for_repo(args.root, args.slug, repo)
     print(json.dumps({"repo": repo, "repo_path": os.path.relpath(path, args.root),
+                      "worktree": worktree, "branch": branch,
                       "done": False, "stacks_csv": ",".join(stacks),
                       "stack_skills_csv": ",".join(skills)}))
     return 0

@@ -36,7 +36,8 @@ python3 engine/eval_score.py summary --reports reports/*.json --baseline evals/b
 `score` is deterministic: run status, design path, infrastructure level, questions asked and
 rounds per stage, acceptance criteria, whether the PRD and HLD pass their validators, engine
 verification per repository, the acceptance-criteria trace, design drift, fix rounds, gates a
-person answered, wall time — each checked against the case's `expect:`. The judge is a fresh
+person answered, wall time — each checked against the case's `expect:`. `check_rounds` (hand-offs
+a job made before its engine check passed) is reported alongside, not checked. The judge is a fresh
 subagent that reads the run's documents, code and `rubric.md` and writes
 `{"scores": {"<criterion>": 1-5}, "notes": "..."}`; its average must reach `expect.judge_min`.
 

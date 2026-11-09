@@ -116,8 +116,8 @@ nodes:
     model: sonnet
     instruction: |
       Refresh only the living knowledge affected by the fetched/current commit changes.
-      Read ${steps.plan.outputs.plan_path} for per-repo provenance and changed files, and
-      ${steps.apply.outputs.result_path} for repositories actually fast-forwarded.
+      Read ${steps.plan.outputs.plan_path} for per-repo provenance and changed files, and, when
+      the sync fast-forwarded repositories, the apply result (the `apply_result` input).
 
       For every stale repo, update its docs/codebase-map.md only where the changed files alter
       modules, flows, execution modes, APIs or conventions. Do not touch its engine-owned
@@ -134,6 +134,7 @@ nodes:
       slug: "${inputs.slug}"
       checkpoint: "${inputs.checkpoint}"
       plan_path: "${steps.plan.outputs.plan_path}"
+      apply_result: "${steps.apply.outputs.result_path}"
       updated_repos: "${steps.apply.outputs.updated_repos_csv}"
     outputs: [domains_written, architecture_path, summary]
     artifact:

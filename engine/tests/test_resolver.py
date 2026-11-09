@@ -350,6 +350,29 @@ class LeadInterviewTest(Sim):
         self.assertEqual(ctx.exception.code, 4)
         self.assertIn("expected section 'users'", str(ctx.exception))
 
+    def test_a_follow_up_of_an_earlier_stage_decision_is_served(self):
+        # the question step's check accepts a follow-up of a decision recorded in the feature's
+        # decision log (an earlier stage); serving the interview must accept it too, or the run
+        # is stuck at every `next`
+        self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
+        run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
+        os.makedirs(run_dir, exist_ok=True)
+        with open(os.path.join(run_dir, "decision-log.json"), "w") as fh:
+            json.dump({"entries": [{"id": "inner-spaces", "topic": "inner-spaces",
+                                    "stage": "PRD", "decision": "Collapse to one space"}]}, fh)
+        with open(os.path.join(run_dir, "questions-1.json"), "w") as fh:
+            json.dump({"schema_version": 2, "questions": [{
+                "id": "unicode-spaces", "title": "Unicode spaces", "topic": "inner-spaces",
+                "follow_up_of": "inner-spaces",
+                "question": "Do non-breaking spaces count as spaces?",
+                "why": "This decides which characters collapse.",
+                "proposal": "Yes: every Unicode whitespace character.",
+                "must_resolve": ["which characters count"]}],
+                "audit": {"unresolved": ["unicode-spaces"], "contradictions": []}}, fh)
+        action = self.nxt()
+        self.assertEqual(action["action"], "ask_interview_batch")
+        self.assertEqual([q["section"] for q in action["questions"]], ["unicode-spaces"])
+
     def test_dynamic_questions_append_cumulative_decisions(self):
         self.start(self.write_wf("dynamic.yaml", DYNAMIC_INTERVIEW_WF))
         run_dir = os.path.join(self.tmp, ".maestro", "runs", "feat")
@@ -853,6 +876,205 @@ class ScriptTest(Sim):
         self.assertEqual((action["action"], action["step"]), ("run_script", "probe"))  # retry 1
         action = self.complete("probe", exit_code=2, stdout="err")
         self.assertEqual((action["action"], action["step"]), ("run_script", "cleanup"))  # on_fail
+
+
+CHECK_WF = """\
+version: 1
+nodes:
+  - id: write
+    instruction: Write the doc.
+    outputs: [summary]
+    artifact: doc.md
+    check:
+      run: [python3, .maestro/engine/validate_doc.py, doc.md, --report]
+      attempts: 2
+    routes:
+      - {when: "${steps.write.outputs.state} == clear", to: end}
+      - {to: ask}
+  - id: ask
+    type: gate
+    prompt: Questions remain.
+    options:
+      - {id: done, label: Done, to: end}
+"""
+
+
+class AgentCheckTest(Sim):
+    def setUp(self):
+        super().setUp()
+        self.start(self.write_wf("w.yaml", CHECK_WF))
+        self.touch("doc.md")
+
+    def test_pass_merges_check_outputs_and_routes_on_them(self):
+        action = self.complete("write", outputs={"summary": "s"})
+        self.assertEqual((action["action"], action["step"]), ("run_script", "write"))
+        self.assertTrue(action["check"])
+        self.assertEqual(action["argv"][1], ".maestro/engine/validate_doc.py")
+        action = self.complete("write", exit_code=0,
+                               stdout='{"valid": true, "state": "clear", "summary": "check"}')
+        self.assertEqual(action["action"], "done")
+        outputs = self.state()["steps"]["write"]["outputs"]
+        self.assertEqual(outputs["summary"], "check")  # the engine's measurement wins
+        self.assertEqual(outputs["state"], "clear")
+
+    def test_failed_check_reserves_the_agent_with_its_report(self):
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0,
+                               stdout='{"valid": false, "issues_summary": "AC-02 has no metric"}')
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))
+        self.assertIn("failed the engine's check", action["prompt"])
+        self.assertIn("AC-02 has no metric", action["prompt"])
+        self.complete("write", outputs={"summary": "s2"})
+        action = self.complete("write", exit_code=0, stdout='{"valid": true, "state": "ask"}')
+        self.assertEqual((action["action"], action["step"]), ("ask_gate", "ask"))
+        entry = self.state()["steps"]["write"]
+        self.assertNotIn("check_report", entry)
+        self.assertNotIn("check_failures", entry)
+        self.assertEqual(entry["check_rounds"], 1)  # the eval metric survives the pass
+
+    def test_nonzero_exit_fails_the_check(self):
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=1, stdout="Traceback: boom")
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))
+        self.assertIn("Traceback: boom", action["prompt"])
+
+    def test_attempts_exhausted_go_to_on_fail_and_retry_keeps_the_report(self):
+        bad = '{"valid": false, "issues_summary": "missing Scope"}'
+        self.complete("write", outputs={"summary": "s"})
+        self.complete("write", exit_code=0, stdout=bad)
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0, stdout=bad)
+        self.assertEqual(action["action"], "ask_gate")
+        self.assertEqual(action["synthesized"], "fail")
+        self.assertIn("missing Scope", action["prompt"])
+        # unproven output never moves forward: no skip, and recording one is refused
+        self.assertEqual([o["id"] for o in action["options"]], ["retry", "abort"])
+        with self.assertRaises(resolver.RunError):
+            self.gate("write", "skip")
+        action = self.gate("write", "retry")
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))
+        self.assertIn("missing Scope", action["prompt"])
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0, stdout=bad)
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))  # fresh count
+
+    def test_agent_telemetry_survives_the_check_and_adds_up_across_hand_offs(self):
+        run = self.run_obj()
+        resolver.complete_step(run, "write", outputs={"summary": "s"},
+                               telemetry={"tokens": 100, "host": "claude"})
+        resolver.complete_step(run, "write", exit_code=0, stdout='{"valid": false}',
+                               telemetry={"executor": "engine"})
+        resolver.complete_step(run, "write", outputs={"summary": "s"}, telemetry={"tokens": 40})
+        resolver.complete_step(run, "write", exit_code=0, stdout='{"valid": true}',
+                               telemetry={"executor": "engine"})
+        entry = run.state["steps"]["write"]
+        self.assertEqual(entry["telemetry"], {"tokens": 140, "host": "claude"})
+        self.assertNotIn("agent_telemetry", entry)
+
+    def test_a_rebase_that_drops_the_checks_mid_check_reserves_the_agent(self):
+        self.complete("write", outputs={"summary": "s"})
+        with open(os.path.join(self.tmp, "workflows", "w.yaml")) as fh:
+            text = fh.read()
+        start = text.index("    check:")
+        end = text.index("    routes:")
+        self.write_wf("w.yaml", text[:start] + text[end:])
+        run = self.run_obj()
+        resolver.rebase(run)
+        statemod.save("feat", run.state, self.tmp)
+        action = self.nxt()
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))
+        action = self.complete("write", outputs={"summary": "s"})
+        self.assertEqual((action["action"], action["step"]), ("ask_gate", "ask"))
+
+    def test_check_rounds_survive_a_re_entry_reset(self):
+        self.complete("write", outputs={"summary": "s"})
+        self.complete("write", exit_code=0, stdout='{"valid": false}')
+        self.complete("write", outputs={"summary": "s"})
+        self.complete("write", exit_code=0, stdout='{"valid": true, "state": "ask"}')
+        run = self.run_obj()
+        frame, _node = run.node_at("write")
+        resolver._reset_step(run, frame, "write")
+        self.assertEqual(run.state["steps"]["write"]["check_rounds"], 1)
+
+    def test_check_completion_needs_an_exit_code(self):
+        self.complete("write", outputs={"summary": "s"})
+        with self.assertRaises(resolver.RunError):
+            self.complete("write", outputs={"summary": "again"})
+
+    def test_claimed_check_is_running_not_served_twice(self):
+        self.complete("write", outputs={"summary": "s"})
+        run = self.run_obj()
+        resolver.claim_script(run, "write")
+        action = resolver.next_action(run, claim=True)
+        self.assertEqual(action["action"], "wait")
+        self.assertEqual(action["running"], ["write"])
+
+
+class RoleLineTest(Sim):
+    def test_prompt_names_the_role_from_its_definition(self):
+        os.makedirs(os.path.join(self.tmp, ".claude", "agents"))
+        with open(os.path.join(self.tmp, ".claude", "agents", "product.md"), "w") as fh:
+            fh.write("---\nname: product\ndescription: Product role — writes the PRD.\n---\n")
+        self.start(self.write_wf("w.yaml", "version: 1\ndefaults: {agent: product}\nnodes:\n"
+                                           "  - id: write\n    instruction: Write the PRD.\n"))
+        prompt = self.nxt()["prompt"]
+        self.assertTrue(prompt.startswith("Role: `product` — Product role — writes the PRD."))
+
+    def test_runtime_copy_serves_hosts_without_claude_agents(self):
+        os.makedirs(os.path.join(self.tmp, ".maestro", "agents"))
+        with open(os.path.join(self.tmp, ".maestro", "agents", "architect.md"), "w") as fh:
+            fh.write("---\nname: architect\ndescription: Architect role.\n---\n")
+        self.assertEqual(resolver.role_line(self.tmp, "architect"),
+                         "Role: `architect` — Architect role.")
+
+    def test_unknown_role_is_named_and_general_adds_nothing(self):
+        self.assertEqual(resolver.role_line(self.tmp, "designer"), "Role: `designer`.")
+        self.assertIsNone(resolver.role_line(self.tmp, "general"))
+
+
+CHECK_LIST_WF = """\
+version: 1
+nodes:
+  - id: write
+    instruction: Write both files.
+    outputs: [summary]
+    check:
+      - {run: [python3, .maestro/engine/validate_questions.py, --report]}
+      - {run: [python3, .maestro/engine/validate_doc.py, --report]}
+    routes:
+      - {when: "${steps.write.outputs.state} == clear", to: end}
+      - {to: ask}
+  - id: ask
+    type: gate
+    prompt: Questions remain.
+    options:
+      - {id: done, label: Done, to: end}
+"""
+
+
+class AgentCheckListTest(Sim):
+    def test_checks_run_in_order_and_outputs_accumulate(self):
+        self.start(self.write_wf("w.yaml", CHECK_LIST_WF))
+        self.complete("write", outputs={"summary": "s"})
+        action = self.nxt()
+        self.assertEqual(action["argv"][1], ".maestro/engine/validate_questions.py")
+        action = self.complete("write", exit_code=0, stdout='{"valid": true, "state": "clear"}')
+        self.assertEqual(action["argv"][1], ".maestro/engine/validate_doc.py")
+        action = self.complete("write", exit_code=0, stdout='{"valid": true, "error_count": 0}')
+        self.assertEqual(action["action"], "done")
+        outputs = self.state()["steps"]["write"]["outputs"]
+        self.assertEqual((outputs["state"], outputs["error_count"]), ("clear", 0))
+
+    def test_a_later_check_failing_reserves_the_agent_and_restarts_the_list(self):
+        self.start(self.write_wf("w.yaml", CHECK_LIST_WF))
+        self.complete("write", outputs={"summary": "s"})
+        self.complete("write", exit_code=0, stdout='{"valid": true, "state": "clear"}')
+        action = self.complete("write", exit_code=0,
+                               stdout='{"valid": false, "issues_summary": "no Scope"}')
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))
+        self.assertIn("validate_doc.py] no Scope", action["prompt"])
+        self.complete("write", outputs={"summary": "s"})
+        self.assertEqual(self.nxt()["argv"][1], ".maestro/engine/validate_questions.py")
 
 
 VISITS_WF = """\

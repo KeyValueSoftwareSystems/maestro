@@ -3,6 +3,10 @@
 #
 #   scope -> interview -> write LLDs -> validate -> readiness check -> test cases (AC trace) -> approval
 #
+# Roles: the architect prepares the questions, writes the LLDs and revises them (person feedback,
+# readiness findings, contract changes and LLD check defects alike); the reviewer runs the
+# readiness check; QA writes the test cases. The engine checks each job on hand-off.
+#
 # The test cases are written once the LLDs pass the readiness check, not on every revision round:
 # the engine's AC trace checks their coverage, and the person reviews them at approval.
 # One file per repository (lld/<repo>.md) keeps each implementation agent's context to its own
@@ -24,7 +28,7 @@ inputs:
   impact_repos: {type: string, default: "", description: repositories the impact assessment says the feature changes}
 defaults:
   model: opus
-  agent: planner
+  agent: architect
   max_visits: 10
 start: lld_scope_serve
 nodes:
@@ -114,12 +118,14 @@ nodes:
       `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
       document, the code or the docs already settle a point, record it under `settled`
       ({topic, title, decision, source: "<path>[#section|:line]"}) instead of asking.
-      If validator_feedback names defects (anything other than "Question queue is valid"), the
-      previous queue failed validation: fix only those defects in the existing file and validate
-      again — do not rebuild the queue or re-read sources.
+      If the engine's check failed, fix only the defects it names in the existing file and
+      validate again — do not rebuild the queue or re-read sources.
       Run mode: ${run.mode}. In auto mode nobody answers: every recommendation is adopted as a
       logged assumption and this is the only round, so give every question a grounded
       recommendation from the evidence and put every material gap in this one queue.
+      Because each recommendation then becomes the decision, never recommend behaviour the
+      approved PRD and HLD do not describe (a new error, validation rule, input type or edge
+      case): when a question is about behaviour beyond them, recommend leaving it out.
     skill: lld-interview
     inputs:
       slug: "${inputs.slug}"
@@ -130,20 +136,13 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
       revision_feedback: "${steps.lld_approval.outputs.feedback} ${inputs.feedback}"
       validator: ".maestro/engine/validate_prd_questions.py"
-      validator_feedback: "${steps.validate_lld_questions.outputs.issues_summary}"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
+    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
     max_visits: 8
     on_exhausted: lld_clarity_limit
-    next: validate_lld_questions
-
-  - id: validate_lld_questions
-    type: script
-    label: Validate repository question queue
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
-      - {when: "${steps.validate_lld_questions.outputs.valid} == false", to: prepare_lld_questions}
-      - {when: "${steps.validate_lld_questions.outputs.state} == clear", to: author_llds}
+      - {when: "${steps.prepare_lld_questions.outputs.state} == clear", to: author_llds}
       - {to: lld_interview}
 
   - id: lld_interview
@@ -207,9 +206,8 @@ nodes:
       guess. Run the validators and repair deterministic defects inside this same call.
 
       If the LLDs already exist from an earlier pass, update them in place: change only the sections
-      whose decisions changed. If post_check_feedback names defects (anything other than "Question
-      queue is valid"), only the post-check file failed validation: fix just that file and leave
-      the LLDs untouched.
+      whose decisions changed. If the engine's check failed, only the post-check file failed
+      validation: fix just that file and leave the LLDs untouched.
     skill: lld-writing
     inputs:
       slug: "${inputs.slug}"
@@ -221,20 +219,15 @@ nodes:
       post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
-      post_check_feedback: "${steps.validate_lld_post_questions.outputs.issues_summary}"
       lessons: "${memory.knowledge.repo-design}"
     outputs: [summary, contract_change_needed, contract_change]
     artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    # The post-check only: an LLD waiting on a contract change cannot pass the LLD validator until
+    # that change lands, so LLD validity is checked where every writer's path meets (validate_llds).
+    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
     max_visits: 4
-    next: validate_lld_post_questions
-
-  - id: validate_lld_post_questions
-    type: script
-    label: Validate repository LLD post-check
-    run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]
     routes:
-      - {when: "${steps.validate_lld_post_questions.outputs.valid} == false", to: author_llds}
-      - {when: "${steps.validate_lld_post_questions.outputs.state} == ask", to: lld_post_interview}
+      - {when: "${steps.author_llds.outputs.state} == ask", to: lld_post_interview}
       # a contract change is applied only after the post-check is clean, so no gap is skipped
       - {when: "${steps.author_llds.outputs.contract_change_needed} == true", to: contract_change}
       - {to: validate_llds}
@@ -290,29 +283,7 @@ nodes:
     on_exhausted: abort
     routes:
       - {when: "${steps.validate_llds.outputs.valid} == true", to: sync_decisions}
-      - {to: repair_llds}
-
-  - id: repair_llds
-    type: agent
-    label: Repair LLD validation defects
-    brief: none
-    model: haiku
-    instruction: |
-      Repair only these deterministic LLD defects: ${steps.validate_llds.outputs.issues_summary}
-      The LLDs are at ${steps.lld_scope_init.outputs.lld_paths_csv}. Bring only the named
-      structural defects to the nine-section format; preserve every confirmed design decision
-      and unrelated content. Run the LLD validator before completing. This is a narrow fallback,
-      not another design pass.
-    skill: lld-writing
-    inputs:
-      slug: "${inputs.slug}"
-      lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
-      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
-      lld_validator: ".maestro/engine/validate_lld.py"
-      validator_feedback: "${steps.validate_llds.outputs.issues_summary}"
-    outputs: [summary]
-    max_visits: 6
-    next: validate_llds
+      - {to: revise_llds}
 
   - id: test_cases
     type: agent
@@ -326,8 +297,8 @@ nodes:
       Start each case with a heading whose first word is its ID (`### TC-${inputs.slug}-001 — title`)
       and name in its body every PRD criterion it verifies exactly as the PRD writes it (AC-01).
       Every AC in .maestro/runs/${inputs.slug}/requirement/prd.md needs at least one case; trace no
-      criterion the PRD does not have. The engine checks this after you. Trace check:
-      ${steps.trace_test_cases.outputs.issues_summary}
+      criterion the PRD does not have. The engine checks this after you.
+    agent: qa
     skill: functional-testcases
     inputs:
       slug: "${inputs.slug}"
@@ -336,19 +307,11 @@ nodes:
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
-      trace_feedback: "${steps.trace_test_cases.outputs.issues_summary}"
     outputs: [test_cases_path, case_count]
     artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
-    next: trace_test_cases
-
-  # Every PRD acceptance criterion is traced by a test case, and no case traces one the PRD lacks.
-  - id: trace_test_cases
-    type: script
-    label: Every acceptance criterion has a test case?
-    run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]
-    routes:
-      - {when: "${steps.trace_test_cases.outputs.valid} == true", to: lld_approval}
-      - {to: test_cases}
+    # Every PRD acceptance criterion is traced by a test case, and no case traces one the PRD lacks.
+    check: {run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]}
+    next: lld_approval
 
   # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
   # stages never re-ask a decided topic and the approval shows every decision.
@@ -482,7 +445,9 @@ nodes:
         evidence; never a second time for a finding the reviewer upheld) or escalated (it needs a
         person's decision; the note states it);
       - the contract changed (${steps.contract_change.outputs.contract_summary}): bring every LLD
-        that implements or calls the changed operation in line with it.
+        that implements or calls the changed operation in line with it;
+      - the engine's LLD check (${steps.validate_llds.outputs.issues_summary}): when it names
+        defects, fix exactly those, bringing only the named structure to the nine-section format.
       Change only the sections affected; keep every confirmed decision. A finding that would
       overturn a decision the person confirmed is never fixed silently: contest it, citing the
       decision, when the decision still meets the requirements; otherwise escalate it so the person
@@ -500,6 +465,7 @@ nodes:
       revision_feedback: "${steps.lld_approval.outputs.feedback}"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
+      validator_feedback: "${steps.validate_llds.outputs.issues_summary}"
     outputs: [summary, contract_change_needed, contract_change, needs_clarification]
     max_visits: 10
     routes:

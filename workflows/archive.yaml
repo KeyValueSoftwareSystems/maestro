@@ -1,6 +1,6 @@
 # Post-release phase (invoked by sdlc-main.yaml after release approval): deliver the verified
 # branches, then harvest lessons into memory.
-#   deliver (branch report, or push + pull requests per maestro.config.yaml) -> harvest
+#   deliver (branch report, or push + pull requests per maestro.config.yaml) -> harvest -> cleanup
 # Nothing is merged here: a person merges the pull requests (or the reported branches).
 version: 1
 name: archive
@@ -49,8 +49,18 @@ nodes:
     label: Harvest lessons into memory
     workflow: .maestro/workflows/retrospect.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
+    next: cleanup
+
+  # Engine-owned and never fails the run: removes only the worktrees Maestro created, and keeps
+  # any with uncommitted changes, or a configured sandbox whose branches were not pushed.
+  - id: cleanup
+    type: script
+    label: Remove the worktrees Maestro created
+    run: [python3, .maestro/engine/worktrees.py, remove, --root, ., --slug, "${inputs.slug}"]
+    timeout: 900
     next: end
 
 outputs:
   delivery: "${steps.deliver.outputs.summary}"
   pull_requests: "${steps.deliver.outputs.pr_urls_csv}"
+  worktrees: "${steps.cleanup.outputs.summary}"
