@@ -46,6 +46,9 @@ docs/
   domains + `architecture.md` after a feature. Both are LLM-judgement skills — swap them
   freely; the *structure* is fixed here and in their workflow node instructions, not baked
   into engine code.
+- **One format, one writer.** Every file follows
+  `skills/core/bootstrap/build-knowledge/docs-format.md` (titles, architecture sections, a
+  200-line cap, a Domains table linking both files of every domain, the codebase-map shape).
 - **`docs/provenance.yaml`** is the shared provenance record (Maestro + template
   workspace-index): the exact commit and branch of every repository these docs were last
   assessed against, plus hashes of the docs and refresh evidence. `/maestro` compares it after

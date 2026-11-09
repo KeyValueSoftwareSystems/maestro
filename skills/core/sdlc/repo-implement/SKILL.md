@@ -13,13 +13,16 @@ scope; the design is decided — implement it, do not redesign it.
 ## Isolate first
 
 The workflow supplies `repo_path`, `branch`, the LLD, contract, and a validated task DAG.
-Before editing, create the feature worktree from that repository specifically:
+When it also supplies a `worktree`, that is the feature worktree: check it is on `branch`, work
+only there and never create another. Otherwise, before editing, create the feature worktree from
+that repository specifically:
 
 `git -C <repo_path> worktree add -b <branch> <new-dir> HEAD`
 
-If the branch exists, attach it instead. Verify the new directory is a registered worktree
+If the branch exists, attach it instead. Verify the directory is a registered worktree
 and do every edit, test, merge, and commit inside it. Never edit the umbrella checkout or
-fall back to the repository's main worktree. If a worktree cannot be created, stop and report.
+fall back to the repository's main worktree. If a worktree cannot be created or the supplied one
+is not on `branch`, stop and report.
 
 ## Before editing
 

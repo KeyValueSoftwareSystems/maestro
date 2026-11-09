@@ -22,6 +22,23 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
    → [approve] → branches or pull requests (per config) → harvest lessons
 ```
 
+**Roles.** Each step is done by a role, and the workflow fixes the order in which work passes
+between them; no model chooses who goes next.
+
+| Role | Jobs in the shipped pipeline |
+|---|---|
+| `product` | intake context; prepare the feature goal and product questions; write and revise the PRD |
+| `architect` | impact assessment; HLD questions, the HLD and its revisions, answers to the architecture review; the contract; LLD questions, the LLDs and their revisions |
+| `reviewer` | architecture review, LLD readiness, code review, design drift |
+| `implementer` (developer) | the task plan, the code, fixes from verification and review; scaffolds new repositories |
+| `qa` | the functional test cases; the automated QA run and test-harness fixes |
+| `analyst` | knowledge refresh, the review pack, the retrospective |
+
+You answer the interviews and decide every approval in between. The engine checks each job's
+output when it hands off (`check:`) and sends a failed check back to the same job with its report.
+The step's role is named at the top of its prompt, so it holds on every host, also for the jobs the
+lead runs in its own session to keep the interview context.
+
 **You define the workflow; you bring the skills.** The engine is the product. A workflow is a YAML file describing what runs in what order; each agent step names a *skill* (a reusable prompt) — yours, ours, or a third party's (Obra, Superpowers, …). The workflow owns *where* artifacts land and *when* each step runs; the skill owns only *how* to do its one job, so any skill can be swapped without touching the graph.
 
 ## Running a feature in detail
@@ -61,15 +78,15 @@ On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. D
   are accepted because PRDs have no universal format;
 - **the client's own PRD in another shape** (a document of 250+ words, or any PDF/Word/ODT/RTF
   file) → a worker agent rewrites it into the PRD structure, keeping the client's facts and
-  wording and adding nothing, and lists only the material facts it leaves open. Only those are
-  asked (in `auto` mode, adopted as assumptions), then the writer fills them in. A client file
+  wording and adding nothing; the product role then lists only the material facts it leaves open.
+  Only those are asked (in `auto` mode, adopted as assumptions), then the writer fills them in. A client file
   named `prd.md` is kept as `prd.original.md` first; source files are never edited. A PRD still
   marked "(to confirm)" fails validation;
 - **a short request or nothing** → it summarizes the project context and feature goal without stopping,
   then collects every feature-specific decision and relevant edge case for the current round
   through native question popups. The context and goal summaries are shown at PRD approval, where
   you correct them if needed;
-- **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, repetition, sentence length, sequential `AC-xx` acceptance criteria, and that Non-functional requirements lists measurable targets (volume, response time, availability, retention…) or says None explicitly. The architecture review later checks the HLD meets each target. It does not impose a word-count ceiling. IDs are not used elsewhere. Only validation defects trigger one bounded repair.
+- **after clarity** → the lead writes the PRD once in plain, skimmable English with a feature title and compact status metadata. A deterministic validator checks the document header, required headings, repetition, sentence length, sequential `AC-xx` acceptance criteria, and that Non-functional requirements lists measurable targets (volume, response time, availability, retention…) or says None explicitly. The architecture review later checks the HLD meets each target. It does not impose a word-count ceiling. IDs are not used elsewhere. The engine runs the validator when the writer hands off; a defect sends the PRD back to that same writer with the validator's report, a bounded number of times.
 
 The PRD stage never scans application source, and spawns a subagent only to normalize a client
 PRD, so a long document stays out of the lead's context. It reads only repository

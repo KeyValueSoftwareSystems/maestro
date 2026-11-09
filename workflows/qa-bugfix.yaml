@@ -35,15 +35,14 @@ nodes:
       regression test that fails before the fix and passes after it. Never weaken, skip or delete
       a test. If the fix needs a design or contract change, do not make it: escalate.
       When the engine checks or the review sent you back, address what they found:
-      failing checks "${steps.verify.outputs.failed_checks}" (receipt
+      failing checks (the `failed_checks` input; receipt
       ${steps.verify.outputs.receipt_path}; checks marked pre-existing fail on the base commit too
       and are not yours to fix) and blocking findings (status open or upheld) in
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json: answer each one in
       .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json as
       {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed, contested
       (with the evidence; never a second time for a finding the reviewer upheld) or escalated.
-      Honour any human guidance:
-      ${steps.fix_gate.outputs.guidance}
+      Honour the person's guidance (the `guidance` input) when there is any.
       Re-run only what proves your fix (the failing test, package or file), never a whole suite:
       the engine re-runs every check after you. Commit the fix on the branch; a round that commits
       nothing goes to a person. Do NOT loop — the workflow re-invokes you if needed.
@@ -61,6 +60,7 @@ nodes:
       review_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
       findings_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json"
+      failed_checks: "${steps.verify.outputs.failed_checks}"
       guidance: "${steps.fix_gate.outputs.guidance}"
       stack_skills: "${inputs.stack_skills}"
     outputs: [fix_summary, checks_passed, escalate]

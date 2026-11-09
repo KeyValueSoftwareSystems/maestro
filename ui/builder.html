@@ -329,8 +329,6 @@ body.has-server #menu-folder { display: none; }
 .run-card .rc-top { display: flex; align-items: center; gap: 7px; }
 .run-card .rc-slug { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-card .rc-file { color: var(--muted); font-size: 11px; margin-top: 3px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-card .rc-bar { height: 5px; border-radius: 4px; background: var(--panel3); margin-top: 9px; overflow: hidden; }
-.run-card .rc-bar > i { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
 .run-card .rc-meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
 .rbadge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px;
   border-radius: 999px; margin-left: auto; flex: none; }
@@ -479,8 +477,9 @@ body.has-server #menu-folder { display: none; }
     <div class="pal-item n-parallel" draggable="true" data-preset="parallel"><span class="ico">⋔</span><span><div class="nm">Parallel</div><div class="ds">fork &amp; join</div></span></div>
     <div class="pal-item n-subworkflow" draggable="true" data-preset="subworkflow"><span class="ico">⧉</span><span><div class="nm">Subworkflow</div><div class="ds">nested flow</div></span></div>
     <div class="pal-h">Presets</div>
-    <div class="pal-item n-agent" draggable="true" data-preset="planner"><span class="ico letter">P</span><span><div class="nm">Planner</div><div class="ds">designs &amp; plans</div></span></div>
-    <div class="pal-item n-agent" draggable="true" data-preset="implementer"><span class="ico letter">I</span><span><div class="nm">Implementer</div><div class="ds">writes the code</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="product"><span class="ico letter">P</span><span><div class="nm">Product</div><div class="ds">writes the PRD</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="architect"><span class="ico letter">A</span><span><div class="nm">Architect</div><div class="ds">designs the change</div></span></div>
+    <div class="pal-item n-agent" draggable="true" data-preset="implementer"><span class="ico letter">D</span><span><div class="nm">Developer</div><div class="ds">plans &amp; writes the code</div></span></div>
     <div class="pal-item n-agent" draggable="true" data-preset="reviewer"><span class="ico letter">R</span><span><div class="nm">Reviewer</div><div class="ds">reviews changes</div></span></div>
     <div class="pal-item n-agent" draggable="true" data-preset="qa"><span class="ico letter">Q</span><span><div class="nm">QA</div><div class="ds">tests the feature</div></span></div>
     <div class="hint">Drag a node onto the canvas to add it. Drag from a node's ⚪ port to another node to connect — arrows may point <b>back</b> to earlier steps to create loops.</div>
@@ -773,6 +772,33 @@ body.has-server #menu-folder { display: none; }
         }
       ]
     },
+    "agentCheck": {
+      "type": "object",
+      "description": "Engine-run handoff check: after the agent completes, the engine runs `run`; it passes on exit code 0 unless its last-line JSON says \"valid\": false. A list runs in order and stops at the first failure. A failed check re-serves the same agent with the report, up to `attempts` hand-offs, then on_fail applies. The checks' outputs join the step's outputs and win over a field of the same name the agent returned.",
+      "required": [
+        "run"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "run": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "attempts": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "hand-offs the agent gets before a failing check goes to on_fail (default 3)"
+        },
+        "timeout": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "seconds the check may run (default: the script default)"
+        }
+      }
+    },
     "agentNode": {
       "type": "object",
       "required": [
@@ -858,6 +884,20 @@ body.has-server #menu-folder { display: none; }
         "retries": {
           "type": "integer",
           "minimum": 0
+        },
+        "check": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/agentCheck"
+            },
+            {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "$ref": "#/definitions/agentCheck"
+              }
+            }
+          ]
         },
         "isolate": {
           "enum": [
@@ -1369,7 +1409,7 @@ const ICONS = { agent: "✦", gate: "◈", interview: "?", script: "$", parallel
 const SKILL_CATALOG = ["prd-interview","prd-writing","hld-interview","hld-writing","lld-interview","lld-writing",
   "api-contract","functional-testcases","architecture-review","repo-tasks","repo-implement","repo-review",
   "fix-loop","qa-automation","human-review-pack","design-correction-fold","build-knowledge","retrospect"];
-const AGENT_CATALOG = ["planner","implementer","reviewer","qa","analyst","general"];
+const AGENT_CATALOG = ["product","architect","implementer","reviewer","qa","analyst","general","planner"];
 const MODEL_CATALOG = ["haiku","sonnet","opus"];
 const YAML_DUMP_OPTS = { lineWidth: -1, noRefs: true, noCompatMode: true };
 
@@ -1664,6 +1704,8 @@ function nodeEl(n, issues) {
     if (n.model) chips.push(`<span class="chip">${esc(n.model)}</span>`);
     if (n.agent) chips.push(`<span class="chip">${esc(n.agent)}</span>`);
     if (n.artifact) chips.push(`<span class="chip" title="artifact">📄</span>`);
+    const checks = n.check ? [].concat(n.check) : [];
+    if (checks.length) chips.push(`<span class="chip" title="The engine checks this step's output on hand-off: ${esc(checks.map(c => (c.run || []).slice(0, 2).join(" ")).join("; "))}">✓ check${checks.length > 1 ? " ×" + checks.length : ""}</span>`);
   } else if (n.type === "gate") {
     const k = (n.options || []).length; sub += ` · ${k} option${k === 1 ? "" : "s"}`;
   } else if (n.type === "interview") {
@@ -2302,8 +2344,10 @@ function fitView() {
 /* ---------------- palette dnd ---------------- */
 const PRESETS = {
   agent: { type: "agent", instruction: "" },
-  planner: { type: "agent", agent: "planner", skill: "plan", label: "Plan",
-    instruction: "Write the plan/design for this feature from the requirement.", outputs: ["summary"] },
+  product: { type: "agent", agent: "product", skill: "prd-writing", label: "Write the PRD",
+    instruction: "Write the PRD for this feature from the requirement and the confirmed decisions.", outputs: ["summary"] },
+  architect: { type: "agent", agent: "architect", skill: "hld-writing", label: "Design",
+    instruction: "Write the design for this feature from the approved requirement.", outputs: ["summary"] },
   implementer: { type: "agent", agent: "implementer", label: "Implement",
     instruction: "Implement the approved design, with tests. Report results honestly.", outputs: ["summary", "tests_passed"] },
   reviewer: { type: "agent", agent: "reviewer", label: "Review",
@@ -2445,7 +2489,7 @@ function exportYaml() {
   return jsyaml.dump(clean, YAML_DUMP_OPTS);
 }
 const NODE_KEY_ORDER = ["id", "label", "type", "instruction", "skill", "agent", "model", "inputs", "outputs",
-  "artifact", "retries", "isolate", "prompt", "options", "auto", "run", "timeout", "workflow", "join",
+  "artifact", "check", "retries", "isolate", "prompt", "options", "auto", "run", "timeout", "workflow", "join",
   "on_branch_fail", "branches", "max_visits", "on_exhausted", "on_fail", "next", "routes", "ui"];
 const TOP_KEY_ORDER = ["version", "name", "title", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"];
 function orderKeys(obj, order) {
@@ -3049,11 +3093,10 @@ boot();
     if (st.some(s => s === "done" || s === "skipped")) return "running";  // partially done
     return "pending";
   }
-  function counts(state) {
-    const steps = (state && state.steps) || {};
-    const all = Object.values(steps);
-    const done = all.filter(s => s.status === "done" || s.status === "skipped").length;
-    return { done, total: all.length };
+  // Steps done so far. No total: a step enters the ledger only when the run first reaches it,
+  // so "done / steps in the ledger" grows as the run goes (15/15, then 15/45).
+  function doneCount(steps) {
+    return steps.filter(s => s.status === "done" || s.status === "skipped").length;
   }
   function overall(state) {
     const s = (state.run && state.run.status) || "running";
@@ -3160,16 +3203,14 @@ boot();
     }
     el.innerHTML = "";
     for (const r of runs) {
-      const c = counts(r.state), ov = overall(r.state);
-      const pct = c.total ? Math.round(100 * c.done / c.total) : 0;
+      const done = doneCount(Object.values((r.state && r.state.steps) || {})), ov = overall(r.state);
       const card = document.createElement("div");
       card.className = "run-card" + (r.slug === selected ? " sel" : "");
       card.innerHTML =
         '<div class="rc-top"><span class="rc-slug">' + esc(r.slug) + '</span>' +
         '<span class="rbadge ' + ov + '">' + ov + '</span></div>' +
         '<div class="rc-file">' + esc((r.state.workflow && r.state.workflow.file) || "?") + '</div>' +
-        '<div class="rc-bar"><i style="width:' + pct + '%"></i></div>' +
-        '<div class="rc-meta">' + c.done + ' / ' + c.total + ' steps' +
+        '<div class="rc-meta">' + done + ' steps done' +
         ((r.repoHandle || r.server) ? '' : ' · table only (load folder for graph)') + '</div>';
       card.onclick = () => { if (selected !== r.slug) drill = []; selected = r.slug; renderList(); renderSelected(); };
       el.appendChild(card);
@@ -3292,8 +3333,8 @@ boot();
       const isContainer = type === "parallel" || type === "subworkflow";
       let cnt = "";
       if (isContainer && keys.length) {
-        const d = keys.filter(k => under[k].status === "done" || under[k].status === "skipped").length;
-        cnt = '<span class="rn-count">' + d + '/' + keys.length + '</span>';
+        const d = doneCount(keys.filter(k => k !== key).map(k => under[k]));
+        if (d) cnt = '<span class="rn-count">' + d + ' done</span>';
       } else if (keys.length && under[key]) {
         const v = under[key].visits || 0;
         if (v > 1) cnt = '<span class="rn-count">×' + v + '</span>';

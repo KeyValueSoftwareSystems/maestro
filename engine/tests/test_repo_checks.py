@@ -175,6 +175,32 @@ class RepoChecksTest(unittest.TestCase):
         self.assertNotIn(token, receipt_text)
         self.assertEqual(self.receipt()["secret_scan"], "ran")
 
+    def test_committed_build_output_fails_verification(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"})
+        for rel in ("pkg/__pycache__/app.cpython-314.pyc", "lib/Main.class", ".DS_Store",
+                    "dist/bundle.js", "src/build.py"):
+            os.makedirs(os.path.dirname(os.path.join(worktree, rel)) or worktree, exist_ok=True)
+            with open(os.path.join(worktree, rel), "w") as fh:
+                fh.write("x\n")
+        subprocess.run(["git", "-C", worktree, "add", "-f", "."], check=True)
+        subprocess.run(["git", "-C", worktree, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-qm", "with build output"], check=True)
+        result = self.run_guarded(main)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failed_checks"], "build-output")
+        self.assertIn("committed build output", result["summary"])
+        check = next(c for c in self.receipt()["checks"] if c["name"] == "build-output")
+        # dist/ and a file merely named build are not build output: some projects commit them
+        self.assertEqual(sorted(check["paths"]),
+                         [".DS_Store", "lib/Main.class", "pkg/__pycache__/app.cpython-314.pyc"])
+
+    def test_summary_names_the_checks_that_were_not_configured(self):
+        self.config({"build": "true", "test": "true"})
+        _proc, result = self.run_checks()
+        self.assertTrue(result["passed"])
+        self.assertIn("not configured: typecheck, lint, security", result["summary"])
+
     def commit_feature(self, worktree, rel="feature.txt", text="new\n"):
         with open(os.path.join(worktree, rel), "w") as fh:
             fh.write(text)

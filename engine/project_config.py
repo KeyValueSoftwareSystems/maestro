@@ -14,6 +14,11 @@ changes per client — it reads these values.
         timeout_s: 900
     environment: {start: docker compose up -d, stop: docker compose down}
     delivery: {mode: branch, base: main}
+    worktree:                        # optional: how each feature's worktrees are made
+      create: ./scripts/sandbox create {slug} -y
+      path: sandbox/{slug}/codebase/{repo}
+      branch: sandbox/{slug}
+      remove: ./scripts/sandbox rm {slug} -y
 
 `preflight` checks the file against the repos on disk. Unknown TOP-LEVEL keys are allowed
 (workflows may read their own values through `${config.<path>}`); unknown keys inside the
@@ -29,6 +34,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -53,6 +59,10 @@ DEFAULT_TEST_PATTERNS = (
 ENVIRONMENT_KEYS = {"start", "ready", "stop"}
 DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
+WORKTREE_KEYS = {"create", "path", "branch", "remove"}
+# Placeholders each worktree setting may use (worktrees.py fills them). `${VAR}` is shell, not ours.
+WORKTREE_PLACEHOLDERS = {"create": {"slug", "root"}, "remove": {"slug", "root"},
+                         "path": {"slug", "repo"}, "branch": {"slug", "repo"}}
 DEFAULT_TIMEOUT_S = 900
 # detect-stack vocabulary, used only to keep a stack string in a stable order.
 STACK_ORDER = (
@@ -103,10 +113,11 @@ def init(root="."):
 def apply_detected(root, detected):
     """Merge a project-config report into maestro.config.yaml.
 
-    `detected` is {"repos": {name: {"stack", "role", "commands"}}}. Missing file is
-    created. Names come from registry.yaml when present, plus any name in the report.
-    A stack, role, or command that is already set is left alone.
-    -> {"created": bool, "updated": [repo names]}
+    `detected` is {"repos": {name: {"stack", "role", "commands"}}, "worktree": {...}?}. Missing
+    file is created. Names come from registry.yaml when present, plus any name in the report.
+    A stack, role, or command that is already set is left alone; `worktree` is added only when
+    the file has none.
+    -> {"created": bool, "updated": [repo names], "worktree_added": bool}
     """
     if not isinstance(detected, dict):
         raise ConfigError("detected stacks must be a mapping")
@@ -152,9 +163,23 @@ def apply_detected(root, detected):
         if changed:
             updated.append(name)
     config["repos"] = repos
-    if created or updated:
+    worktree = _detected_worktree(detected.get("worktree"))
+    worktree_added = bool(worktree) and not config.get("worktree")
+    if worktree_added:
+        config["worktree"] = worktree
+    if created or updated or worktree_added:
         wf.dump_file(path, config)
-    return {"created": created, "updated": updated}
+    return {"created": created, "updated": updated, "worktree_added": worktree_added}
+
+
+def _detected_worktree(value):
+    """A reported `worktree` section, kept only when create and path are both given; an existing
+    section in the file is never touched (whole section or nothing)."""
+    if not isinstance(value, dict):
+        return None
+    section = {key: str(value[key]).strip() for key in ("create", "path", "branch", "remove")
+               if isinstance(value.get(key), str) and value[key].strip()}
+    return section if section.get("create") and section.get("path") else None
 
 
 def load(root="."):
@@ -304,12 +329,46 @@ def check(config, discovered):
                     issues.append(Issue("error", "config-shape",
                                         "must be a positive whole number of review rounds",
                                         "reviews.max_rounds"))
+    if "worktree" in config:
+        issues.extend(_check_worktree(config["worktree"]))
     if "delivery" in config:
         delivery = config["delivery"]
         _check_strings("delivery", delivery, DELIVERY_KEYS, "delivery", issues)
         if isinstance(delivery, dict) and delivery.get("mode") not in (None, *DELIVERY_MODES):
             issues.append(Issue("error", "config-shape",
                                 f"must be one of: {', '.join(DELIVERY_MODES)}", "delivery.mode"))
+    return issues
+
+
+def _check_worktree(section):
+    """`worktree`: create + path together; path per feature and repo, inside the workspace."""
+    issues = []
+    _check_strings("worktree", section, WORKTREE_KEYS, "worktree", issues)
+    if not isinstance(section, dict) or issues:
+        return issues
+    values = {key: str(section.get(key) or "").strip() for key in WORKTREE_KEYS}
+    for key in ("create", "path"):
+        if not values[key]:
+            issues.append(Issue("error", "config-missing-command",
+                                "`worktree.create` and `worktree.path` go together: Maestro runs "
+                                "create, then finds each repository at path", f"worktree.{key}"))
+    for key, value in values.items():
+        unknown = sorted(set(re.findall(r"(?<!\$)\{(\w+)\}", value)) - WORKTREE_PLACEHOLDERS[key])
+        if unknown:
+            issues.append(Issue("error", "config-shape",
+                                f"unknown placeholder(s) {', '.join('{' + u + '}' for u in unknown)} "
+                                f"(allowed: {', '.join('{' + a + '}' for a in sorted(WORKTREE_PLACEHOLDERS[key]))})",
+                                f"worktree.{key}"))
+    path = values["path"]
+    if path:
+        if "{slug}" not in path or "{repo}" not in path:
+            issues.append(Issue("error", "config-shape",
+                                "must contain {slug} and {repo}: one worktree per feature and "
+                                "repository", "worktree.path"))
+        if os.path.isabs(path) or ".." in path.replace("\\", "/").split("/"):
+            issues.append(Issue("error", "config-shape",
+                                "must be a path inside the workspace (relative, no ..)",
+                                "worktree.path"))
     return issues
 
 

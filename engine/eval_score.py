@@ -93,6 +93,8 @@ def metrics(root, slug):
         "drift_blocking": _outputs(state, "delivery/drift_verdict").get("blocking"),
         "fix_rounds": sum(entry.get("visits", 0) for path, entry in steps.items()
                           if path.endswith(FIX_SUFFIXES)),
+        # hand-offs a job made before its engine check passed (a writer fixing its own output)
+        "check_rounds": sum(entry.get("check_rounds", 0) for entry in steps.values()),
         "person_gates": sum(1 for g in gates if not g.get("auto") and not g.get("synthesized")),
         "autopilot_gates": sum(1 for g in gates if g.get("auto")),
         "minutes": _minutes(state),
