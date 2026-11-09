@@ -48,6 +48,7 @@ class InstallTest(unittest.TestCase):
                 json.dump(manifest, fh)
 
             result = self.install(tmp, "claude-code", "--stack", "react")
+            self.assertFalse(os.path.exists(os.path.join(tmp, "maestro.config.yaml")))
             with open(edited, encoding="utf-8") as fh:
                 self.assertIn("Our house rule", fh.read())          # the edit survives
             self.assertTrue(os.path.isfile(edited + ".upstream"))   # the new version beside it

@@ -60,6 +60,10 @@ case "$cmd" in
     exec python3 "$MAESTRO_HOME/engine/ui_server.py" \
       --root "$PWD" --builder "$builder" "$@"
     ;;
+  init)
+    # Create maestro.config.yaml when it is missing. Never overwrites an existing file.
+    exec python3 "$MAESTRO_HOME/engine/project_config.py" init --root "$PWD"
+    ;;
   install)
     # install.sh lives beside the wrapper at the repo root (consumer) or beside engine/
     # (pack repo) — check MAESTRO_HOME, then its parent, then the wrapper's own dir.
@@ -94,6 +98,7 @@ case "$cmd" in
   Design workflows visually: ./maestro ui   (serves the builder, auto-loads your runs;
                              --port to change the port) — or open .maestro/ui/builder.html directly.
   Re-install / add a host:   ./maestro install [claude-code|cursor|codex|hermes]
+  Project config:            ./maestro init   (writes maestro.config.yaml if missing; never overwrites)
   Lint one by hand:          python3 .maestro/engine/maestroctl.py validate <file>
 
   Version control — recommended .gitignore for a consumer repo:

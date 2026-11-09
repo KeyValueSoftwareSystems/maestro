@@ -71,6 +71,9 @@ Emit only these tokens (they match the `stack:` tags on the skills):
    core SDLC skills; `--stack` only gates the per-stack ones.
 3. **Report** what installed (the installer prints `N installed, M skipped by --stack`).
 
+Do not write `maestro.config.yaml`. `/maestro-init` passes your per-repo result to the
+**project-config** skill, which owns that file.
+
 ## Standards
 - Detect what the repo **actually uses today** — never install a stack you can't evidence.
 - Re-runnable: re-running re-detects and re-installs; it overwrites the installed copies,
@@ -80,12 +83,14 @@ Emit only these tokens (they match the `stack:` tags on the skills):
 
 ## Safety
 - Read-only against application code. The only thing you run is the installer, which writes
-  ONLY into harness config dirs (`.claude/`, `.cursor/`, `.agents/`) — never application code, never
-  `.maestro/` run state.
+  ONLY into harness config dirs (`.claude/`, `.cursor/`, `.agents/`) — never application code,
+  never `maestro.config.yaml`, never `.maestro/runs/` state.
 - If no stack is detected, install just the core pack (`--stack` with no tokens installs
   everything; to install core-only, pass a token that matches nothing is wrong — instead
   report "no stack detected" and let the human choose).
 
 ## Output contract
 Return `stacks` (the detected stack tokens, comma-separated), `installed_count` (skills +
-agents installed), and `summary` (one line naming the stacks and harness targets).
+agents installed), `repos` (one entry per repo: `name`, `stacks` for that repo, and the
+`evidence` files you already cited), and `summary` (one line naming the stacks and harness
+targets). Do not write those fields to `maestro.config.yaml`.

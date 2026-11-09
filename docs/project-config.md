@@ -2,7 +2,10 @@
 
 One file at the workspace root records how this project is built, tested and delivered.
 Engine steps read it, so verification runs the project's real commands instead of an agent's
-guess. `maestro init` writes it; edit it by hand whenever a command changes. The golden
+guess. `/maestro-init` writes it through the project-config skill: repo names come from
+`registry.yaml` when that file exists, and stack and commands come from the detect-stack
+result. Running detect-stack alone does not write this file. Edit it by hand whenever a
+command changes. The golden
 workflow never changes per project — it reads these values.
 
 ```yaml

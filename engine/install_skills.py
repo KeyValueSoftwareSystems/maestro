@@ -72,6 +72,13 @@ def install(skill_dirs, dst_root, host, manifest_path):
         manifest = {}
     recorded = (manifest.get("hosts") or {}).get(host) or {}
     report = {"added": [], "current": [], "updated": [], "kept": [], "replaced": []}
+    # A directory symlink (template `.claude/skills` -> `../skills`) is the
+    # template source tree. Never follow it and never replace it.
+    if os.path.islink(dst_root):
+        raise SystemExit(
+            f"FAIL: {dst_root} is a symlink. Host skill folders must be real "
+            "directories; link each template skill from there into skills/."
+        )
     os.makedirs(dst_root, exist_ok=True)
     for src in skill_dirs:
         name = os.path.basename(os.path.normpath(src))
