@@ -4,12 +4,13 @@
   sizing.py [--root .] --prd <prd.md> [--impact <impact.json>] [--path auto|full|light]
 
 The light path skips the HLD and the contract: the PRD goes straight to the repository LLD,
-readiness check, test cases and approval. `auto` (the default) takes it only when every rule holds —
+readiness check, test cases and approval. `auto` (the default) takes it when the impact
+assessment (impact.py) classifies the feature `minor`, and the full path for `major`. Without a
+valid assessment (a new product skips it, or it never validated) it falls back to the rules, all
+of which must hold —
   - at most `design.light_max_criteria` acceptance criteria (maestro.config.yaml, default 5),
   - Non-functional requirements says None (no targets to design for),
-  - the feature changes exactly one repository and no interface between repositories or
-    infrastructure — from the impact assessment (impact.py) when one is given, else the
-    workspace must hold exactly one repository,
+  - the workspace holds exactly one repository,
   - nothing in the PRD is still marked "(to confirm)".
 `full` and `light` force a path (a person's choice at run start). Prints one JSON line
 {path, reasons, summary}; always exits 0.
@@ -42,24 +43,11 @@ def max_criteria(root):
         else MAX_CRITERIA
 
 
-def _scope_blockers(root, impact_path):
-    if not impact_path:
-        repos = codebase_scan.discover_repos(root)
-        if len(repos) != 1:
-            return [f"{len(repos)} repositories in the workspace (light needs exactly one)"]
-        return []
-    impact, issues = impactmod.load(root, impact_path)
-    if impact is None:
-        return ["no valid impact assessment (" + "; ".join(issues[:2]) + ")"]
-    blockers = []
-    if len(impact["repos"]) != 1:
-        blockers.append(f"changes {len(impact['repos'])} repositories "
-                        f"({', '.join(impact['repos'])}; light needs exactly one)")
-    if impact["interfaces_change"]:
-        blockers.append("changes an interface between repositories")
-    if impact["infrastructure_change"]:
-        blockers.append("changes infrastructure")
-    return blockers
+def _scope_blockers(root):
+    repos = codebase_scan.discover_repos(root)
+    if len(repos) != 1:
+        return [f"{len(repos)} repositories in the workspace (light needs exactly one)"]
+    return []
 
 
 def size(root, prd_path, requested="auto", impact_path=None):
@@ -71,6 +59,12 @@ def size(root, prd_path, requested="auto", impact_path=None):
         text = ""
     if requested in ("full", "light"):
         return requested, [f"path {requested} requested at run start"]
+    if impact_path:
+        impact = impactmod.load(root, impact_path)[0]
+        if impact:
+            note = impact["summary"] or ", ".join(impact["repos"])
+            return ("light" if impact["size"] == "minor" else "full",
+                    [f"impact assessment classifies it as {impact['size']}: {note}"])
     criteria = ac_trace.prd_criteria(full)
     nfr = validate_prd._sections(text).get("non functional requirements", "").strip()
     limit = max_criteria(root)
@@ -79,7 +73,7 @@ def size(root, prd_path, requested="auto", impact_path=None):
         blockers.append(f"{len(criteria)} acceptance criteria (light allows {limit})")
     if not re.match(r"^none\b", nfr, re.IGNORECASE):
         blockers.append("non-functional targets to design for")
-    blockers += _scope_blockers(root, impact_path)
+    blockers += _scope_blockers(root)
     if validate_prd.TO_CONFIRM_RE.search(text):
         blockers.append("PRD still has (to confirm) marks")
     if blockers:

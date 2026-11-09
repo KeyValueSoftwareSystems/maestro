@@ -218,10 +218,12 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
   `feature-impact` agent right after PRD approval): the repositories the feature changes and
-  whether it changes an interface between them, stored data or infrastructure. `validate` checks
-  every name is a discovered repository; sizing and the LLD scope (`lld_set.py init --choice
+  whether it changes an interface between them, stored data or infrastructure, and a `size` of
+  `minor` or `major`. `validate` checks every name is a discovered repository and the size; sizing and the LLD scope (`lld_set.py init --choice
   impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
-- **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
+- **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
+  `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
+  without one: `auto` takes the light path
   (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
   `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
   exactly one repository changed and no interface or infrastructure change (from `--impact`;

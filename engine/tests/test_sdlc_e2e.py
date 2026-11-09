@@ -198,7 +198,7 @@ class SdlcE2E(unittest.TestCase):
                     {"name": "backend", "change": "owns the decision"},
                     {"name": "frontend", "change": "renders it"}],
                     "interfaces_change": True, "data_migration": False,
-                    "infrastructure_change": False,
+                    "infrastructure_change": False, "size": "major",
                     "summary": f"two repositories {next(_ARTIFACT_WRITES)}"}, fh)
             return
         if os.path.exists(full):

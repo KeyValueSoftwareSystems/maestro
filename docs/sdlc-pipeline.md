@@ -208,12 +208,12 @@ repositories exactly as on existing code.
 
 After PRD approval an impact assessment (skill `feature-impact`) names the repositories the
 feature changes and whether it changes an interface between them, stored data or infrastructure;
-the engine checks every name is a repository the workspace has. The engine then sizes the
-feature from that, not from how many repositories the workspace holds. A small change — at most
-five acceptance criteria (`design.light_max_criteria` in maestro.config.yaml), no non-functional
-targets, exactly one repository changed, no interface or infrastructure change, nothing left
-"(to confirm)" — skips the HLD and the API contract: PRD → repository LLD (which carries the ownership, failure
-and rollout notes an HLD would) → readiness check → test cases → approval → delivery. Everything
+the engine checks every name is a repository the workspace has. The assessment also classifies
+the feature `minor` or `major`, and the engine follows it: a `minor` feature skips the HLD and the API contract: PRD → repository LLD (which carries the
+ownership, failure and rollout notes an HLD would) → readiness check → test cases → approval →
+delivery. Without a valid assessment (a new product skips it) the engine falls back to rules — at
+most five acceptance criteria (`design.light_max_criteria` in maestro.config.yaml), no
+non-functional targets, one repository, nothing left "(to confirm)". Everything
 else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
 (`init --input path=light`). The approval binds the PRD's hash, so a PRD edited after approval is
 still caught before delivery.

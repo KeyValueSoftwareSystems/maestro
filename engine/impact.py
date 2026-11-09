@@ -7,9 +7,10 @@ An agent reads the approved PRD and the codebase maps and writes impact.json:
    "interfaces_change": true,     # a call or event between repositories is added or changed
    "data_migration": false,       # stored data changes shape
    "infrastructure_change": false,
+   "size": "minor",              # minor | major: a small self-contained change takes the light design path
    "summary": "one line"}
-Every repository must be one the workspace has (codebase/* or the root itself). Sizing decides
-full or light design from it, and the LLD scope defaults to these repositories.
+Every repository must be one the workspace has (codebase/* or the root itself). Sizing takes the
+light path for `minor` and the full path for `major`, and the LLD scope defaults to these repositories.
 
   impact.py validate --root . --impact <impact.json>
 Prints one JSON line {valid, repos_csv, count, interfaces_change, data_migration,
@@ -24,6 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 
 FLAGS = ("interfaces_change", "data_migration", "infrastructure_change")
+SIZES = ("minor", "major")
 
 
 def load(root, path):
@@ -61,16 +63,19 @@ def load(root, path):
     for flag in FLAGS:
         if not isinstance(doc.get(flag), bool):
             issues.append(f"{flag} must be true or false")
+    size = str(doc.get("size") or "").strip().lower()
+    if size not in SIZES:
+        issues.append("size must be minor or major")
     if issues:
         return None, issues
-    return {"repos": repos, **{flag: doc[flag] for flag in FLAGS},
+    return {"repos": repos, "size": size, **{flag: doc[flag] for flag in FLAGS},
             "summary": str(doc.get("summary") or "").strip()}, []
 
 
 def validate(root, path):
     impact, issues = load(root, path)
     if impact is None:
-        return {"valid": False, "repos_csv": "", "count": 0,
+        return {"valid": False, "repos_csv": "", "count": 0, "size": "",
                 **{flag: False for flag in FLAGS},
                 "issues_summary": " | ".join(issues[:8]),
                 "summary": "Impact assessment is not valid"}
@@ -78,11 +83,11 @@ def validate(root, path):
                                           ("data_migration", "a data migration"),
                                           ("infrastructure_change", "infrastructure"))
                if impact[flag]]
-    summary = (f"Changes {len(impact['repos'])} repositor{'y' if len(impact['repos']) == 1 else 'ies'}"
+    summary = (f"{impact['size'].capitalize()} change to {len(impact['repos'])} repositor{'y' if len(impact['repos']) == 1 else 'ies'}"
                f" ({', '.join(impact['repos'])})"
                + (f"; also {', '.join(changes)}" if changes else ""))
     return {"valid": True, "repos_csv": ",".join(impact["repos"]), "count": len(impact["repos"]),
-            **{flag: impact[flag] for flag in FLAGS},
+            "size": impact["size"], **{flag: impact[flag] for flag in FLAGS},
             "issues_summary": "Impact assessment is valid", "summary": summary}
 
 

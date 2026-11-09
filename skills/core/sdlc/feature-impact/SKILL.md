@@ -27,7 +27,13 @@ and write the assessment to a path you choose (and tell the user where).
 3. **Flag what crosses a boundary**: an added or changed call or event between repositories, a
    change to stored data's shape (a migration), or an infrastructure change (new queue, bucket,
    service, environment variable owned by an infrastructure repository).
-4. **When unsure, include** the repository and say why in its line; a missed repository costs more
+4. **Classify the size.** `minor`: a small, self-contained change a single repository's design can
+   carry, with no real design decision left open (a label, a field, a validation, a small
+   endpoint). `major`: anything that needs an architecture decision or a cross-repository design
+   (a new service or integration, a changed interface, a migration, new infrastructure, several
+   repositories changing together). A `minor` feature skips the high-level design, so when unsure
+   say `major`.
+5. **When unsure, include** the repository and say why in its line; a missed repository costs more
    than one extra design.
 
 ## Standards
@@ -44,6 +50,7 @@ and write the assessment to a path you choose (and tell the user where).
  "interfaces_change": true,
  "data_migration": true,
  "infrastructure_change": false,
+ "size": "major",
  "summary": "one line"}
 ```
 
@@ -53,5 +60,5 @@ Read-only. Write only the impact assessment.
 
 ## Output contract
 
-Return `impact_summary` (one line: the repositories and any boundary change) and `repos_csv`
+Return `impact_summary` (one line: the size, the repositories and any boundary change) and `repos_csv`
 (the repository names, comma-separated).
