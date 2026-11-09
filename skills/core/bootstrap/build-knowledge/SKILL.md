@@ -30,6 +30,8 @@ Standalone with no paths given? Write to `docs/` and tell the user.
      build/test commands specific to it.
    - `docs/functional/<domain>.md` — the functional view: what the domain does, the business
      rules, the primary user/actor flows, and notable edge cases.
+     The sections `## Rules that must never break` and `## If you change… also check`, when a
+     page has them, belong to the team: keep them word for word, with every `INV-…`/`CS-…` id.
 4. **Write `docs/architecture.md`** — the whole-system view:
    - One or more **Mermaid** diagrams (```mermaid fenced blocks) showing every service/
      component as a node and every connection as an edge.

@@ -46,6 +46,12 @@ differs, report a blocking integrity finding instead of reviewing another checko
   assertions check behavior. Inspect every change to an existing test: when your instructions
   list changed test files, say for each whether the approved design justifies it. A weakened,
   skipped or deleted assertion without that basis is a blocker.
+- **Domain rules** (only when the workspace has them: a `## Rules that must never break`
+  section in `docs/functional/<domain>.md`, or `docs/impact/side-effects.yaml`) — the diff
+  breaks no `INV-…` rule; a moved or renamed enforcing line keeps its `INV-…` comment; for each
+  change scenario whose `when_changing` files or symbols the diff touches, the places it lists
+  under `also_impacts` still hold. A mismatch report your instructions name lists names the code
+  no longer matches: one this branch caused is blocking. No rules in the workspace: skip this.
 
 ## Findings
 
