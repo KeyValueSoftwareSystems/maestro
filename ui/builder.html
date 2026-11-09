@@ -329,8 +329,6 @@ body.has-server #menu-folder { display: none; }
 .run-card .rc-top { display: flex; align-items: center; gap: 7px; }
 .run-card .rc-slug { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-card .rc-file { color: var(--muted); font-size: 11px; margin-top: 3px; font-family: var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.run-card .rc-bar { height: 5px; border-radius: 4px; background: var(--panel3); margin-top: 9px; overflow: hidden; }
-.run-card .rc-bar > i { display: block; height: 100%; background: var(--ok); border-radius: 4px; }
 .run-card .rc-meta { color: var(--muted); font-size: 11px; margin-top: 6px; }
 .rbadge { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 2px 8px;
   border-radius: 999px; margin-left: auto; flex: none; }
@@ -3095,11 +3093,10 @@ boot();
     if (st.some(s => s === "done" || s === "skipped")) return "running";  // partially done
     return "pending";
   }
-  function counts(state) {
-    const steps = (state && state.steps) || {};
-    const all = Object.values(steps);
-    const done = all.filter(s => s.status === "done" || s.status === "skipped").length;
-    return { done, total: all.length };
+  // Steps done so far. No total: a step enters the ledger only when the run first reaches it,
+  // so "done / steps in the ledger" grows as the run goes (15/15, then 15/45).
+  function doneCount(steps) {
+    return steps.filter(s => s.status === "done" || s.status === "skipped").length;
   }
   function overall(state) {
     const s = (state.run && state.run.status) || "running";
@@ -3206,16 +3203,14 @@ boot();
     }
     el.innerHTML = "";
     for (const r of runs) {
-      const c = counts(r.state), ov = overall(r.state);
-      const pct = c.total ? Math.round(100 * c.done / c.total) : 0;
+      const done = doneCount(Object.values((r.state && r.state.steps) || {})), ov = overall(r.state);
       const card = document.createElement("div");
       card.className = "run-card" + (r.slug === selected ? " sel" : "");
       card.innerHTML =
         '<div class="rc-top"><span class="rc-slug">' + esc(r.slug) + '</span>' +
         '<span class="rbadge ' + ov + '">' + ov + '</span></div>' +
         '<div class="rc-file">' + esc((r.state.workflow && r.state.workflow.file) || "?") + '</div>' +
-        '<div class="rc-bar"><i style="width:' + pct + '%"></i></div>' +
-        '<div class="rc-meta">' + c.done + ' / ' + c.total + ' steps' +
+        '<div class="rc-meta">' + done + ' steps done' +
         ((r.repoHandle || r.server) ? '' : ' · table only (load folder for graph)') + '</div>';
       card.onclick = () => { if (selected !== r.slug) drill = []; selected = r.slug; renderList(); renderSelected(); };
       el.appendChild(card);
@@ -3338,8 +3333,8 @@ boot();
       const isContainer = type === "parallel" || type === "subworkflow";
       let cnt = "";
       if (isContainer && keys.length) {
-        const d = keys.filter(k => under[k].status === "done" || under[k].status === "skipped").length;
-        cnt = '<span class="rn-count">' + d + '/' + keys.length + '</span>';
+        const d = doneCount(keys.filter(k => k !== key).map(k => under[k]));
+        if (d) cnt = '<span class="rn-count">' + d + ' done</span>';
       } else if (keys.length && under[key]) {
         const v = under[key].visits || 0;
         if (v > 1) cnt = '<span class="rn-count">×' + v + '</span>';
