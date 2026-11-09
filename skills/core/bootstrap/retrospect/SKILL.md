@@ -39,6 +39,10 @@ wrong while running** — because both are where a future run can do better from
      a new domain; otherwise update it (new or changed modules, schemas, APIs, storage, jobs).
    - **Functional** (`docs/functional/<domain>.md`) — likewise: create for a new domain, else
      update (new or changed behaviour, business rules, flows, edge cases).
+     The sections `## Rules that must never break` and `## If you change… also check`, when a
+     page has them, belong to the team: keep them word for word, with every `INV-…`/`CS-…` id.
+     If the feature showed a rule or a "change X, also check Y" the docs lack, propose it in your
+     summary for the team to add; do not add or renumber ids yourself.
    - **Architectural** (`docs/architecture.md`) — whenever the feature added or changed a
      service, component, connection, or data flow: add the new node(s)/edge(s) to the Mermaid
      diagram(s) and the matching entry in the "How services connect" section.

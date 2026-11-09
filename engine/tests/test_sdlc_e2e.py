@@ -1330,11 +1330,12 @@ class SdlcE2E(unittest.TestCase):
                     if s.startswith(f"delivery/implement[{slot}]/impl/")]
 
         # slot_1 claims backend (repos are claimed in name order); slot_2 claims frontend
-        self.assertEqual(slot_steps("slot_1")[-8:], ["verify", "fix", "review_resolution", "handoff",
-                                                      "verify", "review_scope", "review",
-                                                      "review_verdict"])
-        self.assertEqual(slot_steps("slot_2")[-4:], ["verify", "review_scope", "review",
-                                                      "review_verdict"])
+        # domain_rules (optional, never blocks) runs after every passing verify
+        self.assertEqual(slot_steps("slot_1")[-9:], ["verify", "fix", "review_resolution", "handoff",
+                                                      "verify", "domain_rules", "review_scope",
+                                                      "review", "review_verdict"])
+        self.assertEqual(slot_steps("slot_2")[-5:], ["verify", "domain_rules", "review_scope",
+                                                      "review", "review_verdict"])
         receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "backend",
                                   "verify.json").read_text())
         self.assertTrue(receipt["passed"])
@@ -1373,9 +1374,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = self.impl_steps(trace, "fix")
         start = steps.index("review_verdict")
-        self.assertEqual(steps[start:start + 8], ["review_verdict", "fix", "review_resolution",
-                                                  "handoff", "verify", "review_scope", "review",
-                                                  "review_verdict"])
+        self.assertEqual(steps[start:start + 9], ["review_verdict", "fix", "review_resolution",
+                                                  "handoff", "verify", "domain_rules",
+                                                  "review_scope", "review", "review_verdict"])
 
     def test_escalated_review_finding_goes_to_a_person(self):
         self.prep_tasks_json()
