@@ -287,7 +287,7 @@ nodes:
       accurate, and correct the context or goal here if either is wrong; design/technical concerns
       are handled later at the HLD/LLD.
     options:
-      - {id: approve, label: Approve — author the HLD, to: end}
+      - {id: approve, label: Approve — continue the design, to: end}
       - {id: revise, label: Request changes — targeted edit of this PRD, to: write_prd, input: feedback}
       - {id: rescope, label: Correct the feature goal and regenerate, to: prepare_prd, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
