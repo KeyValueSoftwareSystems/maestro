@@ -57,13 +57,13 @@ class SizingTest(unittest.TestCase):
         self.repo("api")
         self.assertIn("2 repositories", self.size(prd())["reasons"])
 
-    def impact(self, repos, interfaces=False, infrastructure=False):
+    def impact(self, repos, interfaces=False, infrastructure=False, size=None):
         path = os.path.join(self.root, f"impact-{len(os.listdir(self.root))}.json")
         with open(path, "w") as fh:
             json.dump({"schema_version": 1,
                        "repos": [{"name": name, "change": "changes"} for name in repos],
                        "interfaces_change": interfaces, "data_migration": False,
-                       "infrastructure_change": infrastructure}, fh)
+                       "infrastructure_change": infrastructure, **({"size": size} if size else {})}, fh)
         return path
 
     def size_with(self, impact_path, text=None):
@@ -74,28 +74,30 @@ class SizingTest(unittest.TestCase):
             sizing.main(["--root", self.root, "--prd", "prd.md", "--impact", impact_path])
         return json.loads(out.getvalue())
 
-    def test_the_impact_assessment_not_the_workspace_decides_the_scope(self):
-        for name in ("api", "worker", "admin"):
+    def test_the_impact_classification_decides_the_path(self):
+        for name in ("api", "worker"):
             self.repo(name)
-        self.assertEqual(self.size_with(self.impact(["web"]))["path"], "light")
-        cases = [
-            (self.impact(["web", "api"]), "changes 2 repositories (web, api"),
-            (self.impact(["web"], interfaces=True), "interface between repositories"),
-            (self.impact(["web"], infrastructure=True), "changes infrastructure"),
-            (self.impact(["mobile"]), "no valid impact assessment"),
-            (os.path.join(self.root, "missing.json"), "no valid impact assessment"),
-        ]
-        for path, reason in cases:
-            with self.subTest(reason=reason):
-                result = self.size_with(path)
-                self.assertEqual(result["path"], "full")
-                self.assertIn(reason, result["reasons"])
+        self.assertEqual(self.size_with(self.impact(["web"], size="minor"))["path"], "light")
+        # authoritative: even more criteria than the fallback allows, or an interface change
+        self.assertEqual(self.size_with(self.impact(["web", "api"], interfaces=True, size="minor"),
+                                        prd(criteria=9))["path"], "light")
+        result = self.size_with(self.impact(["web"], size="major"))
+        self.assertEqual(result["path"], "full")
+        self.assertIn("classifies it as major", result["reasons"])
+
+    def test_without_a_valid_assessment_the_rules_decide(self):
+        for path in (self.impact(["web"]), self.impact(["mobile"], size="minor"),
+                     os.path.join(self.root, "missing.json")):
+            with self.subTest(path=path):
+                self.assertEqual(self.size_with(path)["path"], "light")  # one repository, 2 criteria
+        self.repo("api")
+        self.assertEqual(self.size_with(self.impact(["web"]))["path"], "full")
 
     def test_the_criteria_limit_is_a_config_value(self):
         with open(os.path.join(self.root, "maestro.config.yaml"), "w") as fh:
             fh.write("version: 1\nrepos: {}\ndesign:\n  light_max_criteria: 8\n")
-        self.assertEqual(self.size_with(self.impact(["web"]), prd(criteria=8))["path"], "light")
-        result = self.size_with(self.impact(["web"]), prd(criteria=9))
+        self.assertEqual(self.size(prd(criteria=8))["path"], "light")
+        result = self.size(prd(criteria=9))
         self.assertIn("9 acceptance criteria (light allows 8)", result["reasons"])
 
     def test_a_person_can_force_either_path(self):

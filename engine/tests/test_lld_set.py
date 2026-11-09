@@ -182,7 +182,8 @@ class LldSetTest(unittest.TestCase):
     def test_impact_scope_takes_the_assessed_repos_plus_infrastructure_owners(self):
         self.write("impact.json", json.dumps({
             "schema_version": 1, "repos": [{"name": "web", "change": "new screen"}],
-            "interfaces_change": False, "data_migration": False, "infrastructure_change": False}))
+            "interfaces_change": False, "data_migration": False, "infrastructure_change": False,
+            "size": "minor"}))
         impact = os.path.join(self.run_dir, "impact.json")
         code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "impact",
                            "--impact", impact)

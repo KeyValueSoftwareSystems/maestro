@@ -54,8 +54,9 @@ nodes:
       - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: sizing}
       - {to: impact}
 
-  # Which repositories the feature changes, and whether it crosses a boundary between them. The
-  # agent judges; the engine checks the names and decides the design path and the LLD scope.
+  # Which repositories the feature changes, whether it crosses a boundary between them, and whether
+  # it is a minor or a major change. The agent judges; the engine checks the names and the size, and
+  # takes the light design path for minor and the LLD scope from the repositories.
   - id: impact
     type: agent
     label: Impact assessment
@@ -64,7 +65,8 @@ nodes:
     instruction: |
       Assess which repositories the approved PRD at
       .maestro/runs/${inputs.slug}/requirement/prd.md changes, and whether it changes an interface
-      between repositories, stored data (a migration) or infrastructure. Use each repository's
+      between repositories, stored data (a migration) or infrastructure, and whether it is a minor
+      or a major change. Use each repository's
       codebase map and only the source needed to place a change; do not design. Write the
       assessment to .maestro/runs/${inputs.slug}/impact.json. Engine check:
       ${steps.impact_check.outputs.issues_summary}
@@ -89,9 +91,9 @@ nodes:
       - {when: "${steps.impact_check.outputs.valid} == false", to: impact}
       - {to: sizing}
 
-  # Engine-owned: a small change to one repository, with no interface, infrastructure or
-  # non-functional targets, skips the HLD and contract (PRD -> LLD -> readiness -> test cases ->
-  # approval); everything else, the full path.
+  # Engine-owned: a feature the impact assessment calls minor skips the HLD and contract
+  # (PRD -> LLD -> readiness -> test cases -> approval); major, the full path. Without a valid
+  # assessment the engine falls back to its rules (few criteria, no non-functional targets, one repo).
   - id: sizing
     type: script
     label: Full or light design?

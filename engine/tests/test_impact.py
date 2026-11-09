@@ -28,7 +28,7 @@ class ImpactTest(unittest.TestCase):
 
     def doc(self, repos, **flags):
         return {"schema_version": 1, "repos": repos, "interfaces_change": True,
-                "data_migration": False, "infrastructure_change": False, **flags}
+                "data_migration": False, "infrastructure_change": False, "size": "major", **flags}
 
     def test_valid_assessment_names_repos_and_boundaries(self):
         result = self.check(self.doc([{"name": "Backend", "change": "store transfers"},
@@ -36,6 +36,14 @@ class ImpactTest(unittest.TestCase):
         self.assertTrue(result["valid"])
         self.assertEqual((result["repos_csv"], result["count"]), ("backend,web", 2))
         self.assertIn("interfaces between repositories", result["summary"])
+
+    def test_size_must_be_minor_or_major(self):
+        ok = self.check(self.doc([{"name": "web", "change": "x"}], size="Minor"))
+        self.assertEqual((ok["valid"], ok["size"]), (True, "minor"))
+        for bad in ("", "huge", None):
+            result = self.check(self.doc([{"name": "web", "change": "x"}], size=bad))
+            self.assertFalse(result["valid"])
+            self.assertIn("size must be minor or major", result["issues_summary"])
 
     def test_unknown_repo_missing_change_or_flag_is_invalid(self):
         cases = [
