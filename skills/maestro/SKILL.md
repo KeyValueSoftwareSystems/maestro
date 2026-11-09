@@ -165,11 +165,6 @@ missing skill, suggest `./maestro install codex`, `./maestro install claude-code
 
 Use ONE worker:
 
-- If the action includes an `env` map (e.g. `MAESTRO_REPO_WORKTREE=1` for
-  `isolate: worktree`), export those variables in the lead shell **before**
-  spawning the worker so host WorktreeCreate hooks (template
-  `scripts/claude-worktree`) create a per-repo worktree under `.maestro/worktrees/`
-  instead of a full multi-repo sandbox.
 - **Claude Code (Task tool available):** `Task(subagent_type=<agent_type>,
   model=<model>, prompt=<prompt>)` — all three come straight from the action. Use the
   prompt EXACTLY as served; do not rewrite it.
