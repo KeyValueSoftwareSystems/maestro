@@ -40,8 +40,9 @@ inline. Never parallelize these steps because each consumes the previous step's 
 3. **Project config** — load and follow the **`project-config`** skill with that `repos`
    result. It writes `maestro.config.yaml` (registry names when `registry.yaml` exists;
    stack and commands from the detect-stack evidence; the `worktree` commands from a workspace
-   sandbox script when there is one). It does not scan again and does not read the knowledge
-   base. Capture `created` and `updated`, and show the person any worktree commands it set.
+   sandbox script and the `environment` commands from a workspace infra script when there is
+   one). It does not scan again and does not read the knowledge base. Capture `created` and
+   `updated`, and show the person any worktree or environment commands it set.
 4. **Docs freshness gate** — before authoring, run a **full** (not `--remote-only`) plan:
    `python3 .maestro/engine/workspace_sync.py plan --root . --no-fetch --out .maestro/index/workspace-sync-init-knowledge.json`
    and `python3 .maestro/engine/codebase_scan.py plan --root .`.

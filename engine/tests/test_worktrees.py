@@ -256,6 +256,19 @@ class WorktreeConfigTest(unittest.TestCase):
         self.assertEqual(project_config.load(root)["worktree"]["create"],
                          "./scripts/sandbox create {slug} -y")
 
+    def test_apply_adds_a_reported_environment_only_with_start_and_stop_and_only_once(self):
+        root = tempfile.mkdtemp(prefix="env-config-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        report = {"repos": {}, "environment": {"start": './scripts/infra up "$MAESTRO_SLUG"'}}
+        self.assertFalse(project_config.apply_detected(root, report)["environment_added"])
+        report["environment"]["stop"] = './scripts/infra down "$MAESTRO_SLUG"'
+        self.assertTrue(project_config.apply_detected(root, report)["environment_added"])
+        report["environment"]["start"] = "something else"
+        self.assertFalse(project_config.apply_detected(root, report)["environment_added"])
+        self.assertEqual(project_config.load(root)["environment"],
+                         {"start": './scripts/infra up "$MAESTRO_SLUG"',
+                          "stop": './scripts/infra down "$MAESTRO_SLUG"'})
+
 
 class WorktreePromptTest(unittest.TestCase):
     WF = """\

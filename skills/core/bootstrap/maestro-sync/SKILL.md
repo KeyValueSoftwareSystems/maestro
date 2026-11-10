@@ -50,8 +50,8 @@ Run these **in order**, in this session. Each step consumes the previous step's 
    add no token beyond that set.
 4. **Project config.** Load and follow the **`project-config`** skill with the config targets'
    detect-stack `repos` result only. Its `apply` fills empty `stack` / `commands` and never
-   overwrites a value already set. Do not report a `worktree` section; the existing one covers
-   new repos.
+   overwrites a value already set. Do not report a `worktree` or `environment` section; the
+   existing ones cover new repos.
 5. **Write the new repos' docs** with **`build-knowledge`**. Skip when there are no docs targets.
    When `docs/architecture.md` does not exist, the workspace has never been documented: run
    build-knowledge for the whole workspace exactly as `/maestro-init` does (its steps 5–6) and
