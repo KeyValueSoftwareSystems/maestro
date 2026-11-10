@@ -638,7 +638,10 @@ def _provenance_fields_complete(state):
     )
 
 
-def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE):
+def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE, only=None):
+    """Record which commits the living docs describe. `only` (repo names) records just those
+    repos — the rest keep the commits recorded before, so a repo whose docs were not refreshed
+    stays stale instead of being marked current."""
     root = os.path.abspath(root)
     evidence_abs = _resolve(root, evidence)
     architecture = os.path.join(root, "docs", "architecture.md")
@@ -656,8 +659,23 @@ def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE):
             print(f"FAIL: docs/{surface}/ has no non-empty Markdown domain docs", file=sys.stderr)
             return 1
     now = _now()
+    discovered = codebase_scan.discover_repos(root)
+    previous = {}
+    if only is not None:
+        unknown = sorted(set(only) - {name for name, _path in discovered})
+        if unknown:
+            print(f"FAIL: not a discovered repo: {', '.join(unknown)}", file=sys.stderr)
+            return 1
+        state, _ = _load_index_state(root, state_path)
+        if isinstance(state, dict):
+            previous = {e["name"]: e for e in state.get("repos") or []
+                        if isinstance(e, dict) and e.get("name")}
     repos = []
-    for name, path in codebase_scan.discover_repos(root):
+    for name, path in discovered:
+        if only is not None and name not in only:
+            if name in previous:
+                repos.append(previous[name])
+            continue
         head = codebase_scan._head(path)
         if not head:
             print(f"FAIL: {name}: cannot resolve HEAD", file=sys.stderr)
@@ -788,6 +806,8 @@ def main(argv=None):
     p.add_argument("--evidence", required=True)
     p.add_argument("--index-state", default=DEFAULT_INDEX_STATE,
                    dest="index_state")
+    p.add_argument("--repos", help="comma-separated: record only these repos (others keep "
+                   "their recorded commits)")
 
     p = sub.add_parser("ensure-index-state")
     p.add_argument("--root", default=".")
@@ -808,7 +828,8 @@ def main(argv=None):
     if args.cmd == "apply":
         return cmd_apply(args.root, args.plan, args.plan_sha256, args.out)
     if args.cmd == "record-knowledge":
-        return cmd_record_knowledge(args.root, args.evidence, args.index_state)
+        only = [n.strip() for n in args.repos.split(",") if n.strip()] if args.repos else None
+        return cmd_record_knowledge(args.root, args.evidence, args.index_state, only)
     if args.cmd == "ensure-index-state":
         return cmd_ensure_index_state(args.root, args.evidence, args.index_state)
     return cmd_lock(args.root, args.out, args.result)

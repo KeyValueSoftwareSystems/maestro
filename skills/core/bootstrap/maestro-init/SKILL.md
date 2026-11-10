@@ -16,7 +16,8 @@ Sync facts and provenance come from deterministic engine scripts; detect-stack, 
 and build-knowledge each own one job.
 
 ## When to use
-The first time you adopt Maestro in a repo (or after a big stack change). Safe to re-run —
+The first time you adopt Maestro in a repo (or after a big stack change). For a repository
+added later, use **`/maestro-sync`** instead — it handles only the new ones. Safe to re-run —
 both underlying skills are idempotent (refresh, don't duplicate). On a template umbrella
 that already ran `/workspace-index`, this should usually install stacks and skip docs.
 

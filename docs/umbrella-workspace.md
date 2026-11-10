@@ -70,6 +70,13 @@ my-project/                 ← umbrella repo (git init once; run Maestro here)
   each repo. Keeping the maps per repo is why they stay accurate as each service evolves
   independently.
 
+- **Adding a repository later.** Clone it into `codebase/` (in the template:
+  `./scripts/repository add <url>` then `refresh`), then run `/maestro-sync` (`$maestro-sync` on
+  Codex). It sets up only the new repo: its `maestro.config.yaml` entry, stack skills and
+  build/test commands, then writes its docs with `build-knowledge` (codebase map, domain pages,
+  and its node and connections in `docs/architecture.md`). Feature runs already in progress keep the repos they
+  started with.
+
 - **Git prerequisite still applies per child repo.** The per-stack implement steps run in isolated
   `git worktree`s, so each service repo you touch must be an initialised git repo with at least one
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so

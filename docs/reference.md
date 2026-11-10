@@ -62,6 +62,8 @@ $maestro-init                 # the same operation in Codex
 
 It's idempotent — safe to re-run after a stack change (it refreshes, never duplicates). Newly installed skills become active once your host reloads its config; then start a feature with `/maestro <slug>` or `$maestro <slug>`.
 
+**Added a repository later?** Run **`/maestro-sync`** (or `$maestro-sync`) instead of `/maestro-init`. It is only for a newly added repository: it adds that repo's `maestro.config.yaml` entry, detects its stack, fills its build/test commands, installs matching stack skills, and writes its docs with `build-knowledge` — its `docs/codebase-map.md`, new or extended domain pages, and its node, connections and domains in `docs/architecture.md`. Existing entries are never changed or removed, and other repos' docs are only touched where a shared page gains the new repo; a repo already out of date stays flagged for `/build-knowledge`. `./maestro sync` adds just the config entry, without a model (`--dry-run` to preview). Details: [project-config.md](project-config.md#adding-a-repository).
+
 **Prefer to pick stacks by hand?** The pack ships per-stack reference skills + reviewers (Go, Java/Spring, Kotlin, Python/Django, React, Vue, Angular, Node, Rust, Flutter, Android, DB, Terraform, Kubernetes/Helm, Docker…); install only what your repo uses instead of running `/maestro-init`:
 
 ```bash
@@ -92,7 +94,7 @@ The UI server answers only requests addressed to `127.0.0.1` or `localhost` on i
 only from the builder page it served (a per-session token), so another web page you have open
 cannot read your repository or write a workflow file through it.
 
-`./maestro ui` and `./maestro install` are dev tooling only — the wrapper never drives a run or writes `.maestro/**/state.yaml` (that stays the Maestro skill + engine's job).
+`./maestro ui`, `./maestro install`, `./maestro init` and `./maestro sync` are dev tooling only — the wrapper never drives a run or writes `.maestro/**/state.yaml` (that stays the Maestro skill + engine's job).
 
 ## Engine commands
 
@@ -207,11 +209,11 @@ After install, in your project repo:
 ```
 .claude/  (or .cursor/ — set by the installer for those hosts)
   skills/     one SKILL.md per SDLC step + maestro (the lead agent) + bootstrap
-              (detect-stack, maestro-init, build-knowledge, retrospect)
+              (detect-stack, maestro-init, maestro-sync, build-knowledge, retrospect)
               + per-stack reference packs tagged stack:<x>
   agents/     core roles (product, architect, implementer, reviewer, qa, analyst, general,
               discussant; planner = the architect's older name)
-  commands/   /maestro, /maestro-init and /maestro-discuss slash-command shims (steps are invoked as skills)
+  commands/   /maestro, /maestro-init, /maestro-sync and /maestro-discuss slash-command shims (steps are invoked as skills)
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record

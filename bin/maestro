@@ -2,13 +2,15 @@
 # =============================================================================
 # maestro — repo-local dev wrapper for the Maestro pack
 # =============================================================================
-# Two subcommands, both dev tooling. This wrapper NEVER drives a run or writes run
+# Dev tooling only. This wrapper NEVER drives a run or writes run
 # state (.maestro/**/state.yaml) — the Maestro skill + engine remain the sole
 # execution path and the only state writer.
 #
 #   maestro ui [--port N] [--no-open]   serve the visual builder from THIS repo:
 #                                       auto-loads .maestro/workflows and .maestro/runs
 #   maestro install [claude-code|cursor|codex|hermes …]   (re)install the pack into this repo
+#   maestro sync [--dry-run]            after adding a repo: add its maestro.config.yaml entry;
+#                                       /maestro-sync then fills it in
 #   maestro help | version
 #
 # install.sh drops this at your repo root as ./maestro. Run it as `./maestro ui`.
@@ -46,7 +48,7 @@ else
 fi
 
 usage() {
-  sed -n '5,14p' "$0" | sed 's/^# \{0,1\}//'
+  sed -n '5,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 cmd="${1:-help}"
@@ -63,6 +65,12 @@ case "$cmd" in
   init)
     # Create maestro.config.yaml when it is missing. Never overwrites an existing file.
     exec python3 "$MAESTRO_HOME/engine/project_config.py" init --root "$PWD"
+    ;;
+  sync)
+    # Config entries for new repos only (no scan, no model). Comments in the file survive.
+    python3 "$MAESTRO_HOME/engine/project_config.py" sync --root "$PWD" "$@" || exit $?
+    echo "Next: run /maestro-sync (\$maestro-sync on Codex) to detect the new repos' stacks," >&2
+    echo "fill their build/test commands and write their docs." >&2
     ;;
   install)
     # install.sh lives beside the wrapper at the repo root (consumer) or beside engine/
@@ -99,6 +107,8 @@ case "$cmd" in
                              --port to change the port) — or open .maestro/ui/builder.html directly.
   Re-install / add a host:   ./maestro install [claude-code|cursor|codex|hermes]
   Project config:            ./maestro init   (writes maestro.config.yaml if missing; never overwrites)
+  Added a repo:              /maestro-sync    (or ./maestro sync for the config entry alone;
+                             --dry-run only reports)
   Lint one by hand:          python3 .maestro/engine/maestroctl.py validate <file>
 
   Version control — recommended .gitignore for a consumer repo:

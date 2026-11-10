@@ -183,5 +183,131 @@ class PreflightTest(unittest.TestCase):
         self.assertTrue(json.loads(proc.stdout)["ok"])
 
 
+SYNC_CONFIG = """\
+# Team config — keep this comment.
+version: 1
+repos:
+  backend:   # the Go API
+    stack: go
+    commands:
+      build: make build
+      test: go test ./...
+
+  legacy:
+    commands: {build: make, test: make test}
+
+delivery: {mode: branch}
+"""
+
+
+class SyncTest(unittest.TestCase):
+    def setUp(self):
+        self.root = tempfile.mkdtemp(prefix="maestro-sync-")
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+
+    def repo(self, name):
+        path = os.path.join(self.root, "codebase", name)
+        os.makedirs(path)
+        subprocess.run(["git", "init", "-q", path], check=True)
+
+    def write(self, name, text):
+        with open(os.path.join(self.root, name), "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def text(self):
+        with open(project_config.config_path(self.root), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_a_new_clone_is_added_and_comments_survive(self):
+        self.repo("backend")
+        self.repo("billing")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        result = project_config.sync(self.root)
+        self.assertEqual(result["added"], ["billing"])
+        self.assertEqual(result["needs_commands"], ["billing"])
+        text = self.text()
+        self.assertIn("# Team config — keep this comment.", text)
+        self.assertIn("backend:   # the Go API", text)
+        self.assertIn("  billing: {}\n\ndelivery:", text)
+        config = project_config.load(self.root)
+        self.assertEqual(config["repos"]["billing"], {})
+        self.assertEqual(config["repos"]["backend"]["commands"]["test"], "go test ./...")
+        self.assertEqual(config["delivery"], {"mode": "branch"})
+
+    def test_second_run_changes_nothing(self):
+        self.repo("backend")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        project_config.sync(self.root)
+        before = self.text()
+        result = project_config.sync(self.root)
+        self.assertFalse(result["changed"])
+        self.assertEqual(self.text(), before)
+
+    def test_registered_but_not_cloned_is_reported_not_added(self):
+        self.repo("backend")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        self.write("registry.yaml", "repos:\n  - name: backend\n    remote: git@x:backend.git\n"
+                   "  - name: legacy\n    remote: git@x:legacy.git\n"
+                   "  - name: payments\n    remote: git@x:payments.git\n")
+        result = project_config.sync(self.root)
+        self.assertEqual(result["missing_clones"], ["legacy", "payments"])
+        self.assertEqual(result["added"], [])
+        self.assertFalse(result["changed"])
+
+    def test_an_entry_for_a_repo_no_longer_on_disk_is_left_alone(self):
+        self.repo("backend")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        result = project_config.sync(self.root)
+        self.assertFalse(result["changed"])
+        self.assertEqual(self.text(), SYNC_CONFIG)
+
+    def test_an_unregistered_clone_is_configured_and_reported(self):
+        self.repo("backend")
+        self.repo("scratch")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        self.write("registry.yaml", "repos:\n  - name: backend\n    remote: git@x:backend.git\n")
+        result = project_config.sync(self.root)
+        self.assertEqual(result["added"], ["scratch"])
+        self.assertEqual(result["unregistered"], ["scratch"])
+
+    def test_dry_run_writes_nothing(self):
+        self.repo("backend")
+        self.repo("billing")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        result = project_config.sync(self.root, dry_run=True)
+        self.assertEqual(result["added"], ["billing"])
+        self.assertEqual(self.text(), SYNC_CONFIG)
+
+    def test_missing_file_is_created_and_flow_repos_fall_back_to_a_rewrite(self):
+        self.repo("backend")
+        result = project_config.sync(self.root)
+        self.assertTrue(result["created"])
+        self.assertEqual(project_config.load(self.root)["repos"], {"backend": {}})
+        self.write("maestro.config.yaml", "version: 1\nrepos: {}\n")
+        self.assertEqual(project_config.sync(self.root)["added"], ["backend"])
+        self.assertEqual(project_config.load(self.root)["repos"], {"backend": {}})
+
+    def test_a_synced_repo_passes_preflight_once_commands_are_filled(self):
+        self.repo("backend")
+        self.repo("billing")
+        self.write("maestro.config.yaml", SYNC_CONFIG)
+        project_config.sync(self.root)
+        codes = [i.code for i in project_config.preflight(self.root) if i.level == "error"]
+        self.assertNotIn("config-missing-repo", codes)
+        self.assertIn("config-missing-command", codes)
+        project_config.apply_detected(self.root, {"repos": {"billing": {
+            "stack": "python", "commands": {"build": "python -m compileall -q .", "test": "pytest"}}}})
+        self.assertEqual([i for i in project_config.preflight(self.root) if i.level == "error"], [])
+
+    def test_cli(self):
+        self.repo("backend")
+        script = os.path.join(HERE, "..", "project_config.py")
+        proc = subprocess.run([sys.executable, script, "sync", "--root", self.root, "--dry-run"],
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout)["added"], ["backend"])
+        self.assertFalse(os.path.exists(project_config.config_path(self.root)))
+
+
 if __name__ == "__main__":
     unittest.main()

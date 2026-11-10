@@ -21,7 +21,7 @@ runtime. It ships:
   slash commands (`/prd-writing`, `/repo-implement`, …) or Maestro invokes them via subagents.
   Skills are portable: they must NOT hardcode artifact paths or their position in a
   pipeline — that lives in the workflow node. Two kinds live here beyond the SDLC steps:
-  **bootstrap skills** (`detect-stack`, `maestro-init`, `build-knowledge`, `retrospect`) and
+  **bootstrap skills** (`detect-stack`, `maestro-init`, `maestro-sync`, `build-knowledge`, `retrospect`) and
   **per-stack reference skills** (`golang-patterns`, `react-testing`, `springboot-security`,
   `go-review`, …) — the "how" style guides and review checklists. See the stack-tag note below.
   **Source layout** — the `skills/` tree is organized into category folders (`skills/maestro`
@@ -74,8 +74,9 @@ runtime. It ships:
   (probes `/api/health`; then loads runs/workflows over HTTP — see the branch points guarded
   by `window.MAESTRO_SERVER`). `ui/embed.py` refreshes its embedded schema + lint-rule blocks.
 - **`bin/maestro`** — a repo-local dev wrapper `install.sh` drops at the consumer repo root
-  as `./maestro`. Exactly two subcommands: `maestro ui` (serve the builder via
-  `engine/ui_server.py`) and `maestro install` (proxy to `install.sh`). It is dev tooling
+  as `./maestro`. Subcommands: `maestro ui` (serve the builder via
+  `engine/ui_server.py`), `maestro install` (proxy to `install.sh`), `maestro init` and
+  `maestro sync` (`project_config.py init` / `sync`: config entries only). It is dev tooling
   only — it NEVER drives a run or writes run state; the Maestro skill + engine stay the
   sole execution path and only state writer.
 - **`install.sh`** — the installer. There is deliberately NO **execution** CLI and NO config

@@ -121,6 +121,28 @@ stage's gate instead of another revision round. A re-review sees only the change
 round, and a blocking finding first raised on a re-review that the revision did not introduce is
 shown to the person as "late" rather than starting another round.
 
+## Adding a repository
+
+`/maestro-sync` (`$maestro-sync` on Codex) is for one moment: a new repository was added to
+the workspace (cloned into `codebase/`, usually registered in `registry.yaml` first). The
+engine step (`project_config.py sync`, or `./maestro sync` on its own) adds an empty entry for
+each repository on disk that has none; the skill then fills only those entries' stack and
+commands and writes the new repositories' docs with `build-knowledge` (each one's
+`docs/codebase-map.md`, its domain pages, and its place in `docs/architecture.md`). The
+engine step reports:
+
+| Report | Meaning |
+|---|---|
+| `added` | on disk, had no entry; entry added |
+| `needs_commands` | no `build` or `test` yet; filled from detect-stack evidence, else by hand |
+| `missing_clones` | registered but not cloned; added once it is cloned |
+| `unregistered` | cloned but not in `registry.yaml`; added anyway, register it |
+
+It only adds: existing entries are never changed or removed (remove a repository's entry by
+hand; preflight warns about one that is no longer in the workspace). The edit keeps the file's
+comments and layout, and `--dry-run` reports without writing. A feature already running keeps
+the repositories its workspace lock pinned.
+
 ## Check it
 
 ```bash

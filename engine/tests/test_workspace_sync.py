@@ -212,6 +212,40 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertEqual(parsed["repos"][0]["branch"], "main")
         self.assertTrue(parsed["docs_sha256"])
 
+    def test_record_knowledge_for_named_repos_keeps_the_others_recorded_commit(self):
+        path = os.path.join(self.tmp, "docs", "provenance.yaml")
+        old_backend = git(self.repo, "rev-parse", "HEAD")
+        with open(os.path.join(self.repo, "app.txt"), "w") as fh:
+            fh.write("v2\n")
+        git(self.repo, "commit", "-qam", "backend moved; its docs were not refreshed")
+        billing = os.path.join(self.tmp, "codebase", "billing")
+        os.makedirs(billing)
+        git(billing, "init", "-q", "-b", "main")
+        git(billing, "config", "user.email", "test@example.com")
+        git(billing, "config", "user.name", "Test")
+        with open(os.path.join(billing, "x.txt"), "w") as fh:
+            fh.write("billing\n")
+        git(billing, "add", "x.txt")
+        git(billing, "commit", "-q", "-m", "initial")
+
+        code, out = quiet(ws.cmd_record_knowledge, self.tmp, self.evidence, only=["billing"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out["recorded_repos_csv"], "backend,billing")
+        with open(path, encoding="utf-8") as fh:
+            recorded = {e["name"]: e["commit"]
+                        for e in ws._parse_index_state_yaml(fh.read())["repos"]}
+        self.assertEqual(recorded["backend"], old_backend)
+        self.assertEqual(recorded["billing"], git(billing, "rev-parse", "HEAD"))
+        repos = [{"name": n, "path": f"codebase/{n}", "head_commit": git(r, "rev-parse", "HEAD")}
+                 for n, r in (("backend", self.repo), ("billing", billing))]
+        status, _ = ws._knowledge_status(self.tmp, repos, ws.DEFAULT_INDEX_STATE)
+        self.assertEqual(status["stale_repos"], ["backend"])
+
+    def test_record_knowledge_refuses_an_unknown_repo_name(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(ws.cmd_record_knowledge(self.tmp, self.evidence, only=["nope"]), 1)
+
     def test_docs_content_drift_marks_knowledge_stale(self):
         with open(os.path.join(self.tmp, "docs", "architecture.md"), "a") as fh:
             fh.write("\nupdated\n")

@@ -220,6 +220,30 @@ class UmbrellaRepos(unittest.TestCase):
         self.assertEqual([r["name"] for r in result["recorded"]], ["backend"])
         self.assertEqual([s["name"] for s in result["skipped"]], ["frontend"])
 
+    def test_snapshot_for_named_repos_records_only_those(self):
+        # backend's map is stale (never recorded) but only frontend is being documented
+        backend = os.path.join(self.tmp, "codebase", "backend")
+        frontend = os.path.join(self.tmp, "codebase", "frontend")
+        write_map(backend)
+        snapshot = os.path.join(self.tmp, ".maestro", "index", "snap.json")
+        snap = quiet(cs.cmd_snapshot, self.tmp, cs.DEFAULT_MAP_REL, snapshot, ["frontend"])
+        self.assertEqual(snap["stale_count"], 1)
+        # frontend's map not written yet: recording must refuse
+        self.assertEqual(cs.cmd_record(self.tmp, cs.DEFAULT_MAP_REL, snapshot,
+                                       snap["snapshot_sha256"]), 1)
+        write_map(frontend)
+        result = quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL, snapshot,
+                       snap["snapshot_sha256"])
+        self.assertEqual([r["name"] for r in result["recorded"]], ["frontend"])
+        self.assertIsNone(cs.read_marker(os.path.join(backend, cs.DEFAULT_MAP_REL)))
+        self.assertEqual(quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAP_REL)["stale_repos"],
+                         ["backend"])
+
+    def test_snapshot_refuses_an_unknown_repo_name(self):
+        out = os.path.join(self.tmp, "snap.json")
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(cs.cmd_snapshot(self.tmp, cs.DEFAULT_MAP_REL, out, ["nope"]), 1)
+
     def test_stale_flags_only_the_drifted_repo(self):
         # both repos mapped + recorded -> nothing stale
         for name in ("backend", "frontend"):

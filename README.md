@@ -152,7 +152,7 @@ Each service repo stays independent; this is **not** a monorepo. Full walkthroug
 ├── memory/           lessons learned across features
 └── engine/  ui/      Maestro's program and the visual builder (replaced on upgrade)
 .claude/  .cursor/  or  .agents/     the AI skills (replaced on upgrade)
-maestro               helper: ./maestro ui (builder) · ./maestro install (upgrade)
+maestro               helper: ./maestro ui (builder) · ./maestro install (upgrade) · ./maestro sync (new repo)
 ```
 
 Commit `maestro.config.yaml`, `.maestro/workflows/`, `.maestro/runs/`, `.maestro/memory/`,
@@ -202,6 +202,12 @@ repos:
 Maestro runs these commands itself to check every change, so a run can't finish without them.
 Check the file with `python3 .maestro/engine/maestroctl.py preflight`. All the options:
 [docs/project-config.md](docs/project-config.md).
+
+**Added a repository later?** Run `/maestro-sync` (`$maestro-sync` on Codex). It adds the new
+repo to `maestro.config.yaml`, detects only its stack, fills its commands, installs matching
+stack skills, and writes its docs with build-knowledge: its codebase map, its domain pages
+and its place in `docs/architecture.md`. Existing entries and other repos' docs are left alone.
+`./maestro sync` does just the config entries, without a model.
 
 ## Start your first feature
 

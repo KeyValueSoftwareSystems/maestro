@@ -220,11 +220,20 @@ def cmd_plan(root, map_rel):
     return 0
 
 
-def cmd_snapshot(root, map_rel, out):
-    """Capture the stale maps' HEADs and prose hashes before an agent refresh."""
+def cmd_snapshot(root, map_rel, out, only=None):
+    """Capture the stale maps' HEADs and prose hashes before an agent refresh. `only` (repo
+    names) limits it to those repos, so a later `record --snapshot` stamps only them."""
     root = os.path.abspath(root)
     stale = []
-    for name, repo in discover_repos(root):
+    discovered = discover_repos(root)
+    if only is not None:
+        unknown = sorted(set(only) - {name for name, _repo in discovered})
+        if unknown:
+            print(f"FAIL: not a discovered repo: {', '.join(unknown)}", file=sys.stderr)
+            return 1
+    for name, repo in discovered:
+        if only is not None and name not in only:
+            continue
         map_abs = os.path.join(repo, map_rel)
         head = _head(repo)
         prev = read_marker(map_abs) if os.path.exists(map_abs) else None
@@ -348,11 +357,13 @@ def main(argv=None):
     p.add_argument("--root", default=".")
     p.add_argument("--map-rel", default=DEFAULT_MAP_REL)
     p.add_argument("--out", required=True)
+    p.add_argument("--repos", help="comma-separated: snapshot only these repos")
     args = parser.parse_args(argv)
     if args.cmd == "plan":
         return cmd_plan(args.root, args.map_rel)
     if args.cmd == "snapshot":
-        return cmd_snapshot(args.root, args.map_rel, args.out)
+        only = [n.strip() for n in args.repos.split(",") if n.strip()] if args.repos else None
+        return cmd_snapshot(args.root, args.map_rel, args.out, only)
     return cmd_record(args.root, args.map_rel, args.snapshot, args.snapshot_sha256)
 
 
