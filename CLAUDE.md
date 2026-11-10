@@ -237,10 +237,22 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
   `feature-impact` agent right after PRD approval): the repositories the feature changes and
-  whether it changes an interface between them, stored data or infrastructure. `validate` checks
-  every name is a discovered repository; sizing and the LLD scope (`lld_set.py init --choice
-  impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
-- **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
+  whether it changes an interface between them, stored data or infrastructure, and a `size` of
+  `minor` or `major`; schema 2 also lists every domain, table, job, queue, endpoint (with its
+  consumers), `INV` rule and `CS` scenario it touches, each with a reason and evidence. `validate`
+  checks every name is a discovered repository, the size, and that rules/scenarios/domains exist in
+  the living docs (`living_docs.py`); with `--prd` it adds every change scenario whose `when_changing` the PRD names
+  (`match_scenarios`/`merge`: the scenario, its rules and `also_impacts` items). Sizing and the LLD
+  scope (`lld_set.py init --choice impact`, the scope gate's autopilot answer) read it. Skipped on
+  greenfield.
+- **`impact_trace.py`** — the impact trace: `check --stage hld|lld` requires every impacted item
+  to be named in the HLD (a `write_hld`/`revise_from_review` check) or the LLDs (`lld_impact_trace`
+  node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
+  because …"; gaps go back to the writer. Writes `impact-trace.md`, which the HLD and LLD approval
+  gates show first. No assessment = valid.
+- **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
+  `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
+  without one: `auto` takes the light path
   (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
   `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
   exactly one repository changed and no interface or infrastructure change (from `--impact`;

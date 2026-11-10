@@ -219,6 +219,11 @@ nodes:
       post-check. Keep it empty unless synthesis reveals a genuinely new blocking decision; never
       guess. Run the validators and repair deterministic defects inside this same call.
 
+      Deal with every item in the impact assessment at .maestro/runs/${inputs.slug}/impact.json
+      (domains, tables, jobs, queues, endpoints and their consumers, INV rules, CS scenarios) in
+      the LLD of the repository that owns it, or write "<item>: no change needed, because …".
+      The engine checks this across the LLDs and sends any gap back.
+
       If the LLDs already exist from an earlier pass, update them in place: change only the sections
       whose decisions changed. If the engine's check failed, only the post-check file failed
       validation: fix just that file and leave the LLDs untouched.
@@ -228,6 +233,7 @@ nodes:
       feature: "${inputs.feature}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
       post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
@@ -297,7 +303,19 @@ nodes:
     max_visits: 12
     on_exhausted: abort
     routes:
-      - {when: "${steps.validate_llds.outputs.valid} == true", to: sync_decisions}
+      - {when: "${steps.validate_llds.outputs.valid} == true", to: lld_impact_trace}
+      - {to: revise_llds}
+
+  # Engine-owned: every item the impact assessment lists is dealt with in some LLD (or marked "no
+  # change needed, because …"). It first adds the change scenarios the LLDs' planned files trigger.
+  - id: lld_impact_trace
+    type: script
+    label: Every impacted item dealt with?
+    run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --docs, "${steps.lld_scope_init.outputs.lld_paths_csv}", --stage, lld, --match, --out, ".maestro/runs/${inputs.slug}/impact-trace.md"]
+    max_visits: 12
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.lld_impact_trace.outputs.valid} == true", to: sync_decisions}
       - {to: revise_llds}
 
   - id: test_cases
@@ -423,6 +441,7 @@ nodes:
     type: gate
     label: Repository LLD approval
     prompt: |
+      Impact report (read this first): .maestro/runs/${inputs.slug}/impact-trace.md — ${steps.lld_impact_trace.outputs.issues_summary}
       Repository LLDs ready: ${steps.lld_scope_init.outputs.lld_paths_csv}
       Test cases: .maestro/runs/${inputs.slug}/test-cases.md
       Readiness check: ${steps.readiness_review.outputs.summary}
@@ -462,7 +481,10 @@ nodes:
       - the contract changed (${steps.contract_change.outputs.contract_summary}): bring every LLD
         that implements or calls the changed operation in line with it;
       - the engine's LLD check (${steps.validate_llds.outputs.issues_summary}): when it names
-        defects, fix exactly those, bringing only the named structure to the nine-section format.
+        defects, fix exactly those, bringing only the named structure to the nine-section format;
+      - the engine's impact trace (${steps.lld_impact_trace.outputs.issues_summary}): when it names
+        items no LLD deals with, cover each in the LLD of the repository that owns it, or write
+        "<item>: no change needed, because …".
       Change only the sections affected; keep every confirmed decision. A finding that would
       overturn a decision the person confirmed is never fixed silently: contest it, citing the
       decision, when the decision still meets the requirements; otherwise escalate it so the person
@@ -481,6 +503,7 @@ nodes:
       findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
       validator_feedback: "${steps.validate_llds.outputs.issues_summary}"
+      impact_trace_feedback: "${steps.lld_impact_trace.outputs.issues_summary}"
     outputs: [summary, contract_change_needed, contract_change, needs_clarification]
     max_visits: 10
     routes:

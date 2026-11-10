@@ -13,6 +13,8 @@ model may never edit.
 | `living_docs.py` (engine) | Restores any change a writer step makes to them (R9); checks them against the code |
 | `/maestro-init` | Checks them when present; when absent, asks once whether to create the starter file |
 | `feature-impact` | Follows the scenarios a feature triggers into every repository they reach; lists their ids in `impact.json` (`scenarios`) |
+| `impact.py validate --prd` (engine) | Adds every scenario whose `when_changing` the PRD names, with its rules and `also_impacts` items, so the match never rests on the agent |
+| `impact_trace.py` (engine) | The HLD, then the LLDs, must deal with every listed invariant, scenario and item, or say "no change needed, because …"; gaps go back to the writer |
 | `impl` → `domain_rules` (engine) | Checks the feature's worktree still matches every name they rely on; never blocks, reports to the reviewer |
 | `repo-review` | A mismatch the branch caused, or a broken invariant, is a blocking finding |
 

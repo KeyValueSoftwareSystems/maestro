@@ -54,8 +54,9 @@ nodes:
       - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: sizing}
       - {to: impact}
 
-  # Which repositories the feature changes, and whether it crosses a boundary between them. The
-  # agent judges; the engine checks the names and decides the design path and the LLD scope.
+  # Which repositories the feature changes, whether it crosses a boundary between them, and whether
+  # it is a minor or a major change. The agent judges; the engine checks the names and the size, and
+  # takes the light design path for minor and the LLD scope from the repositories.
   - id: impact
     type: agent
     label: Impact assessment
@@ -64,28 +65,36 @@ nodes:
     instruction: |
       Assess which repositories the approved PRD at
       .maestro/runs/${inputs.slug}/requirement/prd.md changes, and whether it changes an interface
-      between repositories, stored data (a migration) or infrastructure. Use each repository's
-      codebase map and only the source needed to place a change; do not design. Write the
-      assessment to .maestro/runs/${inputs.slug}/impact.json.
+      between repositories, stored data (a migration) or infrastructure, and whether it is a minor
+      or a major change. Then list everything it touches (schema_version 2): domains, tables,
+      jobs, queues, endpoints with the screens and clients that call them, the INV rules at risk and
+      the CS change scenarios it triggers, each with a one-line reason and a pointer to its
+      evidence. Every later design must deal with each item, so a missed one is missed work. Use
+      each repository's codebase map, the domain pages and change scenarios when present, and only
+      the source needed to place a change; do not design. Write the assessment to
+      .maestro/runs/${inputs.slug}/impact.json.
     skill: feature-impact
     inputs:
       slug: "${inputs.slug}"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
       impact_path: ".maestro/runs/${inputs.slug}/impact.json"
+      domain_pages: "docs/functional/"
+      change_scenarios: "docs/impact/side-effects.yaml"
     outputs: [impact_summary, repos_csv]
     artifact: ".maestro/runs/${inputs.slug}/impact.json"
     fresh: true
-    # repos_csv downstream is the engine's validated list, not the agent's claim
-    check: {run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]}
+    # repos_csv downstream is the engine's validated list, not the agent's claim; the engine also
+    # adds every change scenario the PRD triggers, so a rule-driven match never rests on the agent
+    check: {run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md"]}
     max_visits: 3
     on_exhausted: sizing
     # the assessment only narrows the LLD scope: one that never validates is skipped
     on_fail: sizing
     next: sizing
 
-  # Engine-owned: a small change to one repository, with no interface, infrastructure or
-  # non-functional targets, skips the HLD and contract (PRD -> LLD -> readiness -> test cases ->
-  # approval); everything else, the full path.
+  # Engine-owned: a feature the impact assessment calls minor skips the HLD and contract
+  # (PRD -> LLD -> readiness -> test cases -> approval); major, the full path. Without a valid
+  # assessment the engine falls back to its rules (few criteria, no non-functional targets, one repo).
   - id: sizing
     type: script
     label: Full or light design?

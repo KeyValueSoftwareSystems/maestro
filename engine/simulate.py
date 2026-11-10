@@ -185,6 +185,7 @@ def _stub_agent(root, act, slug=None):
                 json.dump({"schema_version": 1,
                            "repos": [{"name": name, "change": "simulated change"} for name in names],
                            "interfaces_change": len(names) > 1, "data_migration": False,
+                           "size": "minor" if len(names) == 1 else "major",
                            "infrastructure_change": False,
                            "summary": f"[simulated] {time.time_ns()}"}, fh, indent=2)
                 fh.write("\n")

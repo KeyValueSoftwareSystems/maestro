@@ -29,6 +29,11 @@ the post-check, never in the design body. The confirmed `kind: direction` decisi
 user agreed to; the HLD must not depart from it. Where a decision records a chosen or rejected
 alternative, Key decisions names the alternative and why it lost.
 
+When your instructions name an impact assessment, deal with every item it lists (domains, tables,
+jobs, queues, endpoints and their consumers, `INV-` rules, `CS-` scenarios): name each, exactly as
+the assessment spells it, where the design handles it, or write "`<item>`: no change needed,
+because …". An item left out is work nobody planned.
+
 ## Required HLD shape
 
 Start with one concise level-1 title containing `HLD`, the workflow-supplied feature slug, and

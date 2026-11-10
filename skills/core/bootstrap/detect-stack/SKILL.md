@@ -1,6 +1,6 @@
 ---
 name: detect-stack
-description: Scan the codebase to detect its technology stack(s), then install only the matching stack-tagged skills (plus the always-installed core SDLC pack) by running the installer with a --stack filter. Front door for /detect-stack.
+description: Scan the codebase to detect its technology stack(s), then install only the matching stack-tagged skills (plus the always-installed core SDLC pack) by running the installer with a --stack filter. Does not write maestro.config.yaml. Front door for /detect-stack.
 allowed-tools: Read, Grep, Glob, Bash
 tags: [maestro, bootstrap, install]
 ---

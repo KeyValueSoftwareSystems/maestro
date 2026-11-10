@@ -45,7 +45,7 @@ environment:                    # optional: bring the stack up for QA
 infrastructure:                 # optional; overrides the detected level for HLD questions
   level: iac                    # none | containers | iac
 design:                         # optional
-  light_max_criteria: 5         # most acceptance criteria a light (no HLD) design may have (default 5)
+  light_max_criteria: 5         # most acceptance criteria a light (no HLD) design may have when no impact assessment sizes it (default 5)
 reviews:                        # optional
   max_rounds: 3                 # reviews of one document or branch before a person decides (default 3)
 delivery:                       # optional; what happens after release approval

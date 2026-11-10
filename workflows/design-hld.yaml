@@ -209,6 +209,11 @@ nodes:
       gap in the post-check; do not silently guess. Validate the HLD, deferred-question ledger, and
       post-check before completing, repairing deterministic defects inside this same call.
 
+      Deal with every item in the impact assessment at .maestro/runs/${inputs.slug}/impact.json
+      (domains, tables, jobs, queues, endpoints and their consumers, INV rules, CS scenarios): name
+      each where the design handles it, or write "<item>: no change needed, because …". The engine
+      checks this and sends any gap back.
+
       If the HLD already exists from an earlier pass, update it in place: change only the sections
       whose decisions changed. If the engine's check failed, fix only the file and defects it
       names and leave everything else untouched.
@@ -225,6 +230,7 @@ nodes:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
       open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
       post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
       hld_validator: ".maestro/engine/validate_hld.py"
@@ -245,6 +251,8 @@ nodes:
     check:
       - {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
       - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
+      # every item the impact assessment lists is dealt with (none to trace on greenfield)
+      - {run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --docs, ".maestro/runs/${inputs.slug}/hld.md", --stage, hld, --out, ".maestro/runs/${inputs.slug}/impact-trace.md"]}
     max_visits: 6
     routes:
       - {when: "${steps.write_hld.outputs.needs_clarification} == true", to: prepare_hld_questions}
@@ -413,7 +421,9 @@ nodes:
     artifact:
       - ".maestro/runs/${inputs.slug}/hld.md"
       - ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
-    check: {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
+    check:
+      - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
+      - {run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --docs, ".maestro/runs/${inputs.slug}/hld.md", --stage, hld, --out, ".maestro/runs/${inputs.slug}/impact-trace.md"]}
     max_visits: 3
     on_exhausted: hld_approval
     routes:
@@ -437,6 +447,8 @@ nodes:
     type: gate
     label: HLD approval
     prompt: |
+      Impact report (read this first): .maestro/runs/${inputs.slug}/impact-trace.md — everything
+      the feature touches and where the HLD deals with it.
       HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.write_hld.outputs.hld_summary}
       Architecture review: ${steps.arch_review.outputs.summary}
       Blocking findings (engine): ${steps.review_verdict.outputs.summary}
