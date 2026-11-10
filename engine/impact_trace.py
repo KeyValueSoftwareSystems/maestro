@@ -73,7 +73,7 @@ def trace(root, impact_path, docs, stage, match=False):
     if assessed is None:
         return rows, missing, ["no valid impact assessment: nothing to trace"], added, True
     where = STAGE_LABEL.get(stage, "the design")
-    if not texts:
+    if not texts and any(assessed[kind] for kind, _k in impact.KINDS):
         issues.append(f"none of the design documents exist: {', '.join(docs)}")
     for kind, key in impact.KINDS:
         for item in assessed[kind]:

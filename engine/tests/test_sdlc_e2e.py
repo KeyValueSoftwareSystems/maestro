@@ -422,7 +422,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "qa_env.py" in a or "deliver.py" in a
                                    or "infra_scan.py" in a or "decision_log.py" in a
                                    or "findings.py" in a or "sizing.py" in a
-                                   or "greenfield.py" in a
+                                   or "greenfield.py" in a or "impact_trace.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -827,9 +827,9 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         hld = [s.rsplit("/", 1)[-1] for s in steps if s.startswith("design/hld/")]
         start = hld.index("arch_review")
-        self.assertEqual(hld[start:start + 11], ["arch_review", "review_verdict",
+        self.assertEqual(hld[start:start + 12], ["arch_review", "review_verdict",
                                                  "revise_from_review", "revise_from_review#check",
-                                                 "review_resolution", "validate_hld",
+                                                 "revise_from_review#check", "review_resolution", "validate_hld",
                                                  "sync_decisions", "arch_scope", "arch_review",
                                                  "review_verdict", "hld_approval"])
         self.assertEqual(trace.count(("ask_gate", "design/hld/hld_approval")), 1)
@@ -1136,9 +1136,9 @@ class SdlcE2E(unittest.TestCase):
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
         # the revision round re-checks the LLDs; the test cases are written once, after it
-        self.assertEqual(lld[start:start + 12], ["readiness_review", "readiness_verdict",
+        self.assertEqual(lld[start:start + 13], ["readiness_review", "readiness_verdict",
                                                  "revise_llds", "readiness_resolution",
-                                                 "validate_llds", "sync_decisions",
+                                                 "validate_llds", "lld_impact_trace", "sync_decisions",
                                                  "readiness_scope", "readiness_review",
                                                  "readiness_verdict",
                                                  "test_cases", "test_cases#check", "lld_approval"])
@@ -1464,8 +1464,8 @@ class SdlcE2E(unittest.TestCase):
         steps = [step for _, step in trace]
         self.assertEqual(steps.count("design/hld/hld_interview"), 1)
         self.assertEqual(steps.count("design/hld/write_hld"), 1)
-        # the author's two checks (post-check, then the HLD), then the facts are recorded
-        self.assertEqual(steps.count("design/hld/write_hld#check"), 2)
+        # the author's three checks (post-check, the HLD, the impact trace), then the facts are recorded
+        self.assertEqual(steps.count("design/hld/write_hld#check"), 3)
         self.assertIn("design/hld/validate_hld", steps)
         self.assertNotIn("design/hld/hld_post_interview", steps)
 
