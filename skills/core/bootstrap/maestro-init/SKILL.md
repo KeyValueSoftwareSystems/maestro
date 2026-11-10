@@ -64,8 +64,24 @@ inline. Never parallelize these steps because each consumes the previous step's 
      this on the “docs already current” path — without it, doc-content drift is invisible.
    This makes later `/maestro` or `$maestro` starts a fast fetch + local SHA comparison with
    zero model call when nothing changed.
-7. **Summarize + next step.** Report the stacks installed, whether docs were written or
-   skipped, and whether the project-config skill created or updated `maestro.config.yaml`.
+7. **Domain rules (optional)** — run `python3 .maestro/engine/domain_rules.py status --root .`.
+   Rules that must never break (`INV-…`) and change scenarios (`CS-…`) are written by the
+   project's people in `docs/functional/<domain>.md` and `docs/impact/side-effects.yaml`;
+   Maestro uses them when they exist and runs fine without them.
+   - **`present=true`** — run `python3 .maestro/engine/domain_rules.py check --root .` and report
+     its `summary`. When `valid=false`, show its `issues_summary` and say the docs or the code need
+     fixing; do not fix them here and do not stop init.
+   - **`present=false`** — ask ONE question (AskUserQuestion on Claude Code; a numbered choice on
+     Cursor, answered in the next message): Maestro can use domain rules and change scenarios if
+     the team adds them under `docs/`. Options: **Create the starter file** (run
+     `python3 .maestro/engine/domain_rules.py scaffold --root .`, then point them at
+     `docs/impact/side-effects.yaml` and the `## Rules that must never break` /
+     `## If you change… also check` sections of each `docs/functional/<domain>.md`, as described
+     in `.maestro/docs/domain-rules.md`) or **Skip, no domain rules**. Either answer moves on to the summary.
+   Never write or invent rules yourself: the team decides what the rules are.
+8. **Summarize + next step.** Report the stacks installed, whether docs were written or
+   skipped, whether domain rules were found (and checked), and whether the project-config skill
+   created or updated `maestro.config.yaml`.
    Show each repo's `build` and `test` and ask the user to confirm them before a
    feature run. Then tell them that newly installed skills/agents
    become active after their host reloads the config, and that they can start a feature
@@ -81,7 +97,8 @@ inline. Never parallelize these steps because each consumes the previous step's 
 
 ## Safety
 - Writes are installer output into harness config dirs (`.claude/`, `.cursor/`, `.agents/`), documentation,
-  codebase-map markers, `docs/provenance.yaml`, and — only via the
+  codebase-map markers, `docs/provenance.yaml`, the empty starter
+  `docs/impact/side-effects.yaml` only when the person asks for it, and — only via the
   project-config skill — `maestro.config.yaml`. Never edit application code; never touch
   `.maestro/runs/` state.
   Repository updates are explicit-user-approved, verified fast-forwards only.

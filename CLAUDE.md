@@ -239,6 +239,14 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   whether it changes an interface between them, stored data or infrastructure, and a `size` of
   `minor` or `major`. `validate` checks every name is a discovered repository and the size; sizing and the LLD scope (`lld_set.py init --choice
   impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
+- **`domain_rules.py`** — optional domain rules (`INV-<CODE>-<NN>` under `## Rules that must never
+  break` in `docs/functional/<domain>.md`) and change scenarios (`CS-…`, the page's `## If you
+  change… also check` table plus `docs/impact/side-effects.yaml`), written by the team, never by an
+  agent. `status` (any present?), `check` (every file, symbol, table, queue, endpoint and test a
+  scenario names still exists; every rule is cited in code; no code cites an undefined id —
+  `--repo/--worktree` reads the feature's worktree), `scaffold` (empty starter yaml), `next`.
+  No rules = `skipped`. `impl.yaml`'s `domain_rules` step runs it after verify and never blocks;
+  the reviewer gets the report. Spec: `docs/domain-rules.md`.
 - **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
   `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
   without one: `auto` takes the light path
