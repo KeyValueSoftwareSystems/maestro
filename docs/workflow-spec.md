@@ -259,7 +259,10 @@ directly and records the outcome with `interview-record-batch --peek`: `--peek` 
 claiming the next worker or running engine scripts, so the main session's `next` still receives
 them. A partial batch recorded before the handoff keeps the rest of the round pending. `--raise TEXT` (repeatable) records a point the human
 raised unprompted as a `user-raised` decision under a fresh `raised-N` id. Completion outputs
-`assumption_count`, `deferred_count`, and `raised_count` for routing.
+`assumption_count`, `deferred_count`, `raised_count`, `all_accepted` (every question answered by
+accepting its recommendation, nothing raised) and `direction_accepted` (an accepted `direction`
+question was among them) for routing: the shipped design stages send an all-accepted round straight
+to the writer instead of preparing another queue.
 
 ```yaml
 - id: prd_interview
@@ -286,8 +289,9 @@ a queue may list `settled` points (`{topic, title, decision, source}`) the evide
 decision's one follow-up, and a `settled` source that does not exist. Both
 arrays must be empty before an empty queue may declare the interview clear. With
 `validate_prd_questions.py --require-direction` (the shipped HLD and LLD queues), an empty queue
-also needs a confirmed `direction` decision no older than any other decision, so a design document
-is never written from answers the human has not seen assembled. The engine appends each completed queue, including its
+in a stage where the human answered anything also needs a confirmed `direction` decision no older
+than any other decision, so a design document is never written from answers the human has not seen
+assembled. A stage whose points were all settled by evidence asks nothing and needs no direction. The engine appends each completed queue, including its
 resolution facts, to the cumulative decision artifact. Schema version 1 remains readable so an
 installed run can be upgraded in place.
 

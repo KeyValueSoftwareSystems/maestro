@@ -79,14 +79,26 @@ nodes:
       recommendation that fits the requirement and the team's existing tools.
 
       Make it a design conversation, not a questionnaire: give every genuine trade-off its
-      recommendation plus up to two real alternatives with their concrete consequences. When no
-      other gap remains, ask one kind "direction" question whose proposal summarises the intended
-      architecture (owners, main flow, key trade-offs) for the human to confirm, challenge, or
-      discuss; ask a fresh one whenever later answers change it.
+      recommendation plus up to two real alternatives with their concrete consequences.
 
-      Write schema_version 2 with 4-8 questions when several gaps remain, fewer when nearly clear,
-      and an empty queue only when all material architecture facts are concrete and consistent and
-      the latest direction is confirmed. Every question declares 1-4 short must_resolve facts.
+      Ask as few questions as the evidence allows; there is no minimum. The approved PRD is the
+      product authority: never ask the person to confirm or restate anything it, the decision log,
+      the code or the docs already settle. A question earns its place only when reasonable
+      architects would choose differently AND the choice is costly to change after approval. A
+      point with one sensible answer is not a question: record it under `settled` when a source
+      states it, otherwise design it — the architecture review and the approval gate check the
+      HLD. When the PRD and the existing architecture leave no such choice, write an empty queue:
+      that is the expected result, and the HLD is written straight away.
+
+      When you do ask, put every material gap in this one queue and end it with one kind
+      "direction" question whose proposal summarises the intended architecture (owners, main
+      flow, key trade-offs) assuming each recommendation is accepted: a round accepted as
+      recommended goes straight to writing. Ask a fresh direction in a later round only when an
+      answer changed it. Never ask a direction question on its own in a stage that asked nothing.
+
+      Write schema_version 2, with an empty queue once all material architecture facts are
+      concrete and consistent and, when anything was asked in this stage, the latest direction is
+      confirmed. Every question declares 1-4 short must_resolve facts.
       Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
       Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
       Never ask a topic already decided there or in this stage's decisions: give every question a
@@ -142,6 +154,9 @@ nodes:
     auto: {modes: [auto]}
     routes:
       - {when: "${run.mode} == auto", to: write_hld}
+      # A round accepted as recommended, direction included, leaves nothing to audit: write.
+      - {when: "${steps.hld_interview.outputs.direction_accepted} == false", to: prepare_hld_questions}
+      - {when: "${steps.hld_interview.outputs.all_accepted} == true", to: write_hld}
       - {to: prepare_hld_questions}
 
   - id: hld_clarity_limit

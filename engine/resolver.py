@@ -1751,12 +1751,23 @@ def _finish_interview_if_complete(run, frame, node, path, entry, sections, inter
     )
     sources = [turn.get("source") for turn in interview["turns"]]
     raised_count = len(interview.get("raised") or [])
+    # A round the person accepted as recommended, raising nothing, holds no new fact to audit:
+    # workflows route on `all_accepted` to skip the next queue-preparation pass. A design stage
+    # also needs `direction_accepted` (the round's direction summary was among them).
+    source_of = {turn.get("section"): turn.get("source") for turn in interview["turns"]}
+    all_accepted = bool(sections) and not raised_count and all(
+        source_of.get(section["id"]) == "accepted-proposal" for section in sections)
+    direction_accepted = any(
+        section.get("kind") == "direction"
+        and source_of.get(section["id"]) == "accepted-proposal" for section in sections)
     entry["outputs"] = {
         "context_path": context_path,
         "confirmed_count": len(answers),
         "assumption_count": sources.count("assumption"),
         "deferred_count": sources.count("deferred"),
         "raised_count": raised_count,
+        "all_accepted": all_accepted,
+        "direction_accepted": direction_accepted,
         "summary": f"Recorded {len(answers)} decisions"
                    + (f" and {raised_count} raised points" if raised_count else ""),
     }

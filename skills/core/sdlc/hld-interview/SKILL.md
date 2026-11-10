@@ -60,11 +60,13 @@ Architecture is decided with the user, not announced to them.
 - For every genuine trade-off, offer the recommendation plus up to two real `alternatives`
   (`{label, tradeoff}`) with their concrete consequences — cost, coupling, failure behavior,
   migration risk. Never invent a straw option to make the recommendation look good.
-- When no other gap remains, ask one `kind: "direction"` question. Its `proposal` (up to 150 words)
-  summarises the intended architecture — owners, boundaries, main flow, and the key trade-offs
-  taken — so the user confirms, challenges, or discusses the whole shape before prose is written.
-  The queue cannot close until the latest direction is confirmed after every other decision; ask a
-  fresh direction (new ID) whenever later answers change it.
+- When the queue asks anything, end it with one `kind: "direction"` question. Its `proposal` (up
+  to 150 words) summarises the intended architecture — owners, boundaries, main flow, and the key
+  trade-offs taken, assuming each recommendation is accepted — so the user confirms, challenges,
+  or discusses the whole shape before prose is written. Once the user has answered anything, the
+  queue cannot close until a direction is confirmed no earlier than their last answer; ask a
+  fresh direction (new ID) only when a later answer changes it. When there is nothing to ask,
+  ask no direction either.
 - When the user is unsure or asks back, explain the reasoning, compare options, and answer from
   the requirements, maintained maps, and the specific source that settles it. Say what you
   checked. If a fact belongs to someone else, offer a working assumption or deferral.
@@ -96,6 +98,13 @@ add `alternatives` and `kind` (`decision` by default, or `direction`).
 `audit.unresolved` and `audit.contradictions` name why another round exists. Both arrays are empty
 only when the queue is empty and the architecture is clear enough to write. Run the supplied
 validator before completing.
+
+**Fewest questions.** There is no minimum, and an empty queue on the first pass is a normal
+result. A question earns its place only when the approved requirement, the decision log, the code and the docs do not settle it and reasonable architects
+would choose differently at a cost that is high to change after approval. A point with one sensible answer is not a
+question: record it under `settled` when a source states it, otherwise design it and let the
+document's review check it. Put every material
+gap in one queue rather than spreading it over rounds.
 
 **One decision log, no repeats.** Your instructions may supply the feature's decision log (every
 earlier stage's decisions) and this stage's decisions. Give every question a short kebab-case

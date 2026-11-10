@@ -293,8 +293,15 @@ recommendation as a **working assumption** (the document marks it unverified) or
 open item (it is never treated as decided). Points you raise are recorded in your own words, and
 the next round must account for them.
 
-**You see the design before it's written.** HLD and LLD rounds end with a *direction* question:
-a short summary of the whole intended design for you to confirm, challenge or discuss. The engine
-won't let the queue close until the latest direction is confirmed after every other decision.
+**You see the design before it's written.** An HLD or LLD round that asks anything ends with a
+*direction* question: a short summary of the whole intended design for you to confirm, challenge
+or discuss. The engine won't let the queue close until a direction is confirmed no earlier than
+your last answer.
+
+**No question without a real choice.** A stage asks only what the approved documents, the decision
+log, the code and the docs leave open; when they settle everything it asks nothing and writes the
+document, which you still review at its approval gate. A round you accept as recommended goes
+straight to writing — only a typed answer, a chosen alternative, a parked item or a point you
+raise brings a follow-up round.
 At an approval gate you can also ask about the document ("why one service?") instead of choosing;
 Maestro answers from that document only and asks the gate again.

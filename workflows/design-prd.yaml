@@ -120,8 +120,18 @@ nodes:
       volume and growth, response time, availability and recovery, data retention and
       compliance, accessibility). Do not mechanically cover every lens. Do not ask about PRD headings,
       repeat a decided question, ask technical-design questions, inspect application source, or
-      draft the PRD. Write schema_version 2 with 4-8 questions when several material gaps remain,
-      fewer when nearly clear, and an empty questions array only after all must_resolve facts are
+      draft the PRD.
+
+      Ask as few questions as the evidence allows; there is no minimum. A question earns its place
+      only when the requirement, references, docs and decision log do not answer it AND reasonable
+      answers differ in a way that changes scope, user-visible behaviour or acceptance. A point
+      with one sensible answer is not a question: record it under `settled` when a source states
+      it, otherwise leave it to the writer — the approval gate reviews the PRD. Never ask the
+      person to confirm what the requirement already says. A detailed requirement normally needs
+      no question, or one or two. Put every material gap in this one queue: a round the person
+      accepts as recommended goes straight to writing.
+
+      Write schema_version 2, with an empty questions array once all must_resolve facts are
       explicit and no decisions conflict. Every question declares 1-4 short must_resolve facts.
       Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
       Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
@@ -177,8 +187,11 @@ nodes:
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
     auto: {modes: [auto]}
+    # A round accepted as recommended (nothing typed, parked or raised) leaves nothing to audit:
+    # write. Any other answer goes back through the queue for follow-ups.
     routes:
       - {when: "${run.mode} == auto", to: write_prd}
+      - {when: "${steps.prd_interview.outputs.all_accepted} == true", to: write_prd}
       - {to: prepare_prd}
 
   - id: clarity_limit

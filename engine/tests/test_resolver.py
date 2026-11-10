@@ -514,6 +514,9 @@ class InterviewConversationTest(Sim):
         statemod.save("feat", run.state, self.tmp)
         self.assertEqual(self.state()["steps"]["first"]["outputs"]["deferred_count"], 1)
         self.assertEqual(self.state()["steps"]["first"]["outputs"]["assumption_count"], 1)
+        # A mixed round is not "accepted as recommended", though its direction was accepted.
+        self.assertIs(self.state()["steps"]["first"]["outputs"]["all_accepted"], False)
+        self.assertIs(self.state()["steps"]["first"]["outputs"]["direction_accepted"], True)
 
         with open(os.path.join(run_dir, "prd-context.json")) as fh:
             context = json.load(fh)

@@ -89,6 +89,13 @@ make explicit. Optional `alternatives` holds at most two `{label, tradeoff}` obj
 queue. Both arrays must be empty when `questions` is empty. Keep IDs stable and feature-specific;
 they are internal and must not appear in the PRD.
 
+**Fewest questions.** There is no minimum, and an empty queue on the first pass is a normal
+result. A question earns its place only when the requirement, references, docs and decision log do not answer it and reasonable answers differ in a way
+that changes scope, user-visible behaviour or acceptance. A point with one sensible answer is not a
+question: record it under `settled` when a source states it, otherwise leave it to the PRD
+writer. Put every material
+gap in one queue rather than spreading it over rounds.
+
 **One decision log, no repeats.** Your instructions may supply the feature's decision log (every
 earlier stage's decisions) and this stage's decisions. Give every question a short kebab-case
 `topic` naming what it decides. Never ask a topic already decided in either; to refine a recorded
@@ -115,7 +122,7 @@ The user may not know an answer. That is a normal outcome, not a failure — hel
 ## Standards
 
 - Do not write or edit `prd.md` during this skill.
-- Do not silently assume. Unknown means ask.
+- Do not silently assume a material product fact: when it is unknown and answers differ, ask.
 - State each idea once. Prefer bullets or one short paragraph.
 - Do not ask technical-design questions; those belong to HLD/LLD.
 - Do not turn PRD headings into questions.

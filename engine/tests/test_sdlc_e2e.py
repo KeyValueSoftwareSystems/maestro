@@ -672,7 +672,7 @@ class SdlcE2E(unittest.TestCase):
         # one writer: the first write, then two targeted revisions, each checked
         self.assertEqual(steps.count("design/prd/write_prd"), 3)
         self.assertEqual(steps.count("design/prd/write_prd#check"), 3)
-        self.assertEqual(steps.count("design/prd/prepare_prd"), 2)  # initial loop only
+        self.assertEqual(steps.count("design/prd/prepare_prd"), 1)  # one accepted round, no re-ask
         revisions = self.prompts["design/prd/write_prd"][1:]
         self.assertIn("PRD approval choice (empty before the first approval): revise", revisions[0])
         self.assertIn("rename the role", revisions[0])
@@ -686,7 +686,7 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertEqual(steps.count("design/hld/write_hld"), 2)
         self.assertIn("HLD approval choice (empty before the first approval): revise", self.prompts["design/hld/write_hld"][1])
-        self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 2)
+        self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 1)  # an accepted round goes straight to writing
         self.assertEqual(steps.count("design/hld/validate_hld"), 2)
 
     def test_hld_revise_needing_a_decision_falls_back_to_clarification(self):
@@ -704,7 +704,7 @@ class SdlcE2E(unittest.TestCase):
             agent_overrides={"write_hld": write_hld})
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 3)
+        self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 2)
         self.assertEqual(steps.count("design/hld/write_hld"), 3)
 
     def test_hld_rethink_runs_the_full_clarification_pass(self):

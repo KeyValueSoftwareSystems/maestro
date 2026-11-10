@@ -112,14 +112,27 @@ nodes:
 
       Make it a design conversation, not a questionnaire: give every genuine trade-off its
       recommendation plus up to two real alternatives with their concrete consequences, grounded in
-      the code you inspected. When no other gap remains, ask one kind "direction" question whose
-      proposal summarises the intended change in each repository (seam, data/state, contract side,
-      failure handling) for the human to confirm, challenge, or discuss; ask a fresh one whenever
-      later answers change it.
+      the code you inspected.
 
-      Write schema version 2 with 3-7 grouped questions when several gaps remain, fewer when nearly
-      clear, and an empty queue only when every blocking decision is concrete and consistent and
-      the latest direction is confirmed. Validate it before completing.
+      Ask as few questions as the evidence allows; there is no minimum. The approved PRD, HLD and
+      contract are the authority: never ask the person to confirm or restate anything they, the
+      decision log or the code already settle. A question earns its place only when reasonable
+      developers would choose differently AND a wrong choice breaks correctness or compatibility.
+      A point with one sensible answer is not a question: record it under `settled` when a source
+      states it, otherwise design it — the readiness check and the approval gate check the LLDs.
+      When the approved design and the repository conventions leave no such choice, write an
+      empty queue: that is the expected result, and the LLDs are written straight away.
+
+      When you do ask, put every material gap in this one queue and end it with one kind
+      "direction" question whose proposal summarises the intended change in each repository
+      (seam, data/state, contract side, failure handling) assuming each recommendation is
+      accepted: a round accepted as recommended goes straight to writing. Ask a fresh direction
+      in a later round only when an answer changed it. Never ask a direction question on its own
+      in a stage that asked nothing.
+
+      Write schema version 2, with an empty queue once every blocking decision is concrete and
+      consistent and, when anything was asked in this stage, the latest direction is confirmed.
+      Validate it before completing.
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
       decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
       change (ownership, failure handling, rollout).
@@ -178,6 +191,9 @@ nodes:
     auto: {modes: [auto]}
     routes:
       - {when: "${run.mode} == auto", to: author_llds}
+      # A round accepted as recommended, direction included, leaves nothing to audit: write.
+      - {when: "${steps.lld_interview.outputs.direction_accepted} == false", to: prepare_lld_questions}
+      - {when: "${steps.lld_interview.outputs.all_accepted} == true", to: author_llds}
       - {to: prepare_lld_questions}
 
   - id: lld_clarity_limit

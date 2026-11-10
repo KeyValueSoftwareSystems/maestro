@@ -174,6 +174,14 @@ class QuestionQueueValidationTest(unittest.TestCase):
                 empty, decisions_path=path, require_direction=True,
             )
             self.assertEqual(errors, [])
+        # A stage that asked nothing (no decisions, or only evidence-settled ones) closes
+        # without a direction: there are no answers to show assembled.
+        settled = {"id": "settled-owner", "kind": "decision", "source": "evidence", "answer": "API"}
+        for path in (decisions(), decisions([settled]), None):
+            errors, _, _ = validate_prd_questions.validate(
+                empty, decisions_path=path, require_direction=True,
+            )
+            self.assertEqual(errors, [])
         # The flag only constrains closing the queue; asking questions is always allowed.
         errors, _, _ = validate_prd_questions.validate(
             self.write(self.v2([self.question(must_resolve=["fact"])])),

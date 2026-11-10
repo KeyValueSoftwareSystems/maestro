@@ -163,9 +163,16 @@ def _decided_ids(doc):
 def _direction_error(doc):
     """Why an empty queue may not close yet, or None when the direction is confirmed.
 
-    The human must confirm the overall design direction after every other decision, so the
-    document is never written from answers the human has not seen assembled together."""
+    Once the human has answered anything in this stage, they must confirm the overall design
+    direction no earlier than their last answer (the same round counts), so the document is
+    never written from answers the human has not seen assembled together. A stage that asked
+    nothing needs no direction."""
     decisions = [item for item in doc.get("decisions") or [] if isinstance(item, dict)]
+    # Nothing was asked in this stage: the approved documents, code and docs settled every point
+    # (`evidence`), so there is no set of answers to show assembled. The approval gate reviews
+    # the written document.
+    if all(item.get("source") == "evidence" for item in decisions):
+        return None
     rounds = [item for item in doc.get("rounds") or [] if isinstance(item, dict)]
     round_of = {}
     for index, round_ in enumerate(rounds):

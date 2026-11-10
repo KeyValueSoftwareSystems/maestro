@@ -25,7 +25,7 @@ source), and
 `user-raised` are confirmed. State an `assumption` as the chosen direction marked unverified, and
 list the risk of it being wrong under Delivery and risks. A `deferred` decision is not settled: a
 non-blocking one goes to Open questions and the deferred-question ledger; a blocking one belongs in
-the post-check, never in the design body. The confirmed `kind: direction` decision is the shape the
+the post-check, never in the design body. A confirmed `kind: direction` decision is the shape the
 user agreed to; the HLD must not depart from it. Where a decision records a chosen or rejected
 alternative, Key decisions names the alternative and why it lost.
 

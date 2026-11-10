@@ -49,10 +49,12 @@ The developer decides with you; do not just ask them to confirm.
 
 - For a genuine trade-off, offer the recommendation plus up to two real `alternatives`
   (`{label, tradeoff}`) grounded in the code you inspected — name the seam or pattern each follows.
-- When no other gap remains, ask one `kind: "direction"` question whose `proposal` (up to 150 words)
-  summarises the intended change in each repository: the seam, data/state changes, its contract
-  side, and failure handling. The queue cannot close until the latest direction is confirmed after every
-  other decision; ask a fresh one (new ID) whenever later answers change it.
+- When the queue asks anything, end it with one `kind: "direction"` question whose `proposal` (up
+  to 150 words) summarises the intended change in each repository — the seam, data/state changes,
+  its contract side, and failure handling — assuming each recommendation is accepted. Once the
+  user has answered anything, the queue cannot close until a direction is confirmed no earlier
+  than their last answer; ask a fresh one (new ID) only when a later answer changes it. When
+  there is nothing to ask, ask no direction either.
 - When the user is unsure or asks back, show the evidence: the existing pattern, what each option
   changes, and the risk. If a fact belongs to someone else (another team, a vendor), say so.
 - Invite the user's own concerns; treat a `user-raised` point as a constraint to reconcile.
@@ -71,9 +73,15 @@ The developer decides with you; do not just ask them to confirm.
 
 Write the supplied queue as schema version 2. Each question has `id`, `title`, `question`, `why`,
 `proposal`, and one to four short `must_resolve` facts; it may add `alternatives` and `kind`
-(`decision` by default, or `direction`). Use 3–7 questions when several material gaps
-remain and fewer when nearly clear. An empty queue requires empty `audit.unresolved` and
+(`decision` by default, or `direction`). An empty queue requires empty `audit.unresolved` and
 `audit.contradictions`. Run the supplied validator before completing.
+
+**Fewest questions.** There is no minimum, and an empty queue on the first pass is a normal
+result. A question earns its place only when the approved documents, the decision log and the code do not settle it and reasonable developers would choose
+differently in a way that changes correctness or compatibility. A point with one sensible answer is not a
+question: record it under `settled` when a source states it, otherwise design it and let the
+document's review check it. Put every material
+gap in one queue rather than spreading it over rounds.
 
 **One decision log, no repeats.** Your instructions may supply the feature's decision log (every
 earlier stage's decisions) and this stage's decisions. Give every question a short kebab-case
