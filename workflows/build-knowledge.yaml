@@ -74,7 +74,7 @@ nodes:
          section giving, per edge, the protocol (REST/gRPC/GraphQL/event/queue/shared DB),
          direction, sync vs async, the data that flows, and how calls are authenticated
          between services; note which datastore each service owns.
-      4. For EACH repo write docs/codebase-map.md — the standing per-repo grounding the HLD
+      4. For EACH repo write docs/codebase-maps/<repo>.md — the standing per-repo grounding the HLD
          reads: entry points, key modules, the primary flows and EVERY distinct execution mode
          each runs in (single-turn/multi-turn, sync/async, batch/streaming, …) and what selects
          it, the data model, APIs exposed/consumed, auth pattern and conventions, cited to
@@ -96,7 +96,7 @@ nodes:
   - id: record_maps
     type: script
     label: Record codebase-map commits (engine)
-    # Stamp each repo's current HEAD into its docs/codebase-map.md marker, so the next
+    # Stamp each repo's current HEAD into its map's marker (docs/codebase-maps/<repo>.md), so the next
     # build-knowledge / retrospect run refreshes only the diff. Owned by the engine, not the
     # skill — swapping build-knowledge can't change how incremental tracking works.
     run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]

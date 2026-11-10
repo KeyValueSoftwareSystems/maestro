@@ -1,4 +1,4 @@
-<!-- docs-format v1. Maestro (skills/core/bootstrap/build-knowledge/docs-format.md) and
+<!-- docs-format v2. Maestro (skills/core/bootstrap/build-knowledge/docs-format.md) and
      dev-workspace-template (skills/workspace-index/docs-format.md) each ship this file so each
      works on its own. When the format changes, update both. -->
 
@@ -18,12 +18,12 @@ docs/
   architecture.md              # level 0: always read first, at most 200 lines
   technical/<domain>.md        # level 1: per-domain technical view
   functional/<domain>.md       # level 1: per-domain functional view
+  codebase-maps/<name>.md      # level 2: one map per repo
   provenance.yaml              # written by tools, never by hand
-<repo>/docs/codebase-map.md    # level 2: per-repo map, inside each service repo
 ```
 
-In an umbrella workspace `<repo>` is `codebase/<name>`. In a single-repo workspace it is the
-repo itself, so the map is `docs/codebase-map.md` next to `architecture.md`.
+`<name>` is the repo's folder under `codebase/` (in a single-repo workspace, the repo's own
+folder name).
 
 Token cost while **writing** does not matter: read every repo and doc you need to be accurate.
 The size limits are for what **readers** load.
@@ -56,7 +56,8 @@ change. It has these `##` sections:
      WORKER[Order worker] -->|subscribe| Q
    ```
 
-4. `## Services`: one row per repo: name, kind, one-line purpose, link to its codebase map.
+4. `## Services`: one row per repo: name, kind, one-line purpose, link to its codebase map
+   (`codebase-maps/<name>.md`).
 5. `## How services connect`: per edge, the protocol (REST / gRPC / GraphQL / event or queue /
    shared DB), direction, sync or async, what data flows, and how calls are authenticated.
    Say which datastores each service owns.
@@ -70,7 +71,8 @@ No per-repo detail beyond one line. With 30+ repos, group the services rows by d
 ## `docs/technical/<domain>.md`
 
 - First line `# <domain>: Technical`.
-- Then a line listing the repos involved (linked to their codebase maps) and a link to
+- Then a line listing the repos involved (linked to their maps, `../codebase-maps/<name>.md`)
+  and a link to
   `../functional/<domain>.md`.
 - Then `##` sections (at least one): key modules and packages, data model and
   schemas, APIs exposed and consumed, storage, background jobs, build and test commands
@@ -86,7 +88,7 @@ No per-repo detail beyond one line. With 30+ repos, group the services rows by d
 
 Every domain has **both** files.
 
-## `<repo>/docs/codebase-map.md`
+## `docs/codebase-maps/<name>.md`
 
 The standing per-repo description a designer reads before changing that repo. One per repo.
 

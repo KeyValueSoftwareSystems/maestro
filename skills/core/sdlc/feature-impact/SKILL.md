@@ -14,7 +14,7 @@ design follows. Minutes, not a design pass.
 ## Inputs
 
 Your instructions name the approved PRD and the impact assessment path. Read each repository's
-codebase map (`docs/codebase-map.md`), the workspace architecture summary when there is one, and
+codebase map (`docs/codebase-maps/<name>.md`), the workspace architecture summary when there is one, and
 only the source needed to confirm where a behaviour lives. When the workspace has domain rules
 and change scenarios (a `## Rules that must never break` section in `docs/functional/<domain>.md`,
 or `docs/impact/side-effects.yaml`), read the rules and scenarios of the domains the feature

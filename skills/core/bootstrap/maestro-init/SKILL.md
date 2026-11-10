@@ -53,7 +53,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
 5. **Build the knowledge base (only if stale / missing)** — load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
    write the per-domain technical + functional docs, the architecture diagram, and a
-   per-repo `docs/codebase-map.md`. Capture `domains_written` and `architecture_path`.
+   codebase map per repo under `docs/codebase-maps/`. Capture `domains_written` and `architecture_path`.
 6. **Record exact provenance**
    - **6a (after authoring in step 5):** run
      `python3 .maestro/engine/codebase_scan.py record --root .`, then

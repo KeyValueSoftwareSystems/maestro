@@ -51,7 +51,8 @@ write; the format file says how it must look.
 
 ## Per-repo codebase map (the HLD's primary grounding)
 For EACH repo — in an umbrella workspace, each repo under `codebase/`; single repo, the repo
-itself — write **`docs/codebase-map.md`**, the standing, per-repo description a designer reads
+itself — write **`docs/codebase-maps/<name>.md`** (`map_path` in the plan below gives each one), the
+standing, per-repo description a designer reads
 before authoring an HLD (so it grounds the design in real code instead of the prompt):
 
 - entry points and key modules; how the repo is built/tested/run;
@@ -67,7 +68,7 @@ scope — at bootstrap every repo is `full` (write the whole map); on a refresh 
 `incremental` (update only the areas its `changed_files` touch) or `current` (skip). Do **not**
 write or edit the `<!-- maestro-codebase-map commit=… -->` marker line — the engine stamps the
 commit after you write, and that recorded commit is what makes the next refresh incremental.
-Each map is git-tracked in its own repo.
+The maps are committed with the rest of `docs/`.
 
 ## Standards
 - Document what the code **actually does today**, not aspirations. A wrong doc is worse than
@@ -79,9 +80,8 @@ Each map is git-tracked in its own repo.
   human edits.
 
 ## Safety
-- Read-only against application code; write only the docs (the central docs root AND each
-  repo's `docs/codebase-map.md`) and the optional memory incoming drop named in your
-  instruction. Never edit application code here.
+- Read-only against application code; write only the docs under the docs root (including
+  `codebase-maps/`) and the optional memory incoming drop named in your instruction. Never edit application code here.
 
 ## Output contract
 Return `domains_written` (count of domains documented), `architecture_path` (the

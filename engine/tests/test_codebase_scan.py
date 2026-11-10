@@ -48,8 +48,16 @@ def commit(repo, rel, content, msg):
     return sha
 
 
+def map_of(repo):
+    """The workspace map path for a repo: <umbrella>/docs/codebase-maps/<name>.md for a repo under
+    codebase/, else the single-repo workspace's own docs/codebase-maps/<name>.md."""
+    parent = os.path.dirname(repo)
+    root = os.path.dirname(parent) if os.path.basename(parent) == "codebase" else repo
+    return cs.map_path(root, os.path.basename(repo))
+
+
 def write_map(repo, body="# Codebase map\n\ncontent\n"):
-    path = os.path.join(repo, cs.DEFAULT_MAP_REL)
+    path = map_of(repo)
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as fh:
         fh.write(body)
@@ -70,7 +78,7 @@ class SingleRepo(unittest.TestCase):
         repos = cs.discover_repos(self.tmp)
         self.assertEqual(len(repos), 1)
         name, path = repos[0]
-        map_abs = os.path.join(path, cs.DEFAULT_MAP_REL)
+        map_abs = map_of(path)
         # no map file yet -> plan classifies full
         head = cs._head(path)
         prev = cs.read_marker(map_abs) if os.path.exists(map_abs) else None
@@ -85,8 +93,8 @@ class SingleRepo(unittest.TestCase):
         repo = self.tmp
         # write the map + record the current HEAD (simulates a build-knowledge run)
         write_map(repo)
-        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
-        recorded_sha = cs.read_marker(os.path.join(repo, cs.DEFAULT_MAP_REL))
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAPS_DIR)
+        recorded_sha = cs.read_marker(map_of(repo))
         self.assertEqual(recorded_sha, cs._head(repo))
 
         # nothing changed -> current, and the freshness gate reports not stale
@@ -111,14 +119,14 @@ class SingleRepo(unittest.TestCase):
 
         # record again -> marker advances to the new HEAD, back to current/not stale
         write_map(repo)
-        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAPS_DIR)
         self.assertEqual(self._plan_entry(repo)["mode"], "current")
         self.assertFalse(self._plan(repo)["stale"])
 
     def test_full_when_recorded_commit_is_gone(self):
         write_map(repo := self.tmp)
         # stamp a bogus commit that does not exist in history
-        cs.write_marker(os.path.join(repo, cs.DEFAULT_MAP_REL), "0" * 40)
+        cs.write_marker(map_of(repo), "0" * 40)
         entry = self._plan_entry(repo)
         self.assertEqual(entry["mode"], "full")
         self.assertTrue(self._plan(repo)["stale"])
@@ -126,18 +134,18 @@ class SingleRepo(unittest.TestCase):
     def test_verified_record_requires_map_prose_to_change(self):
         repo = self.tmp
         map_path = write_map(repo)
-        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAPS_DIR)
         commit(repo, "src/b.py", "print(2)\n", "change")
         snapshot = os.path.join(repo, ".maestro", "runs", "x", "map-snapshot.json")
-        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAP_REL, snapshot)
+        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAPS_DIR, snapshot)
 
-        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAP_REL, snapshot,
+        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAPS_DIR, snapshot,
                                        snap["snapshot_sha256"]), 1)
         self.assertNotEqual(cs.read_marker(map_path), cs._head(repo))
 
         with open(map_path, "a") as fh:
             fh.write("\nUpdated architecture notes.\n")
-        result = quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL, snapshot,
+        result = quiet(cs.cmd_record, repo, cs.DEFAULT_MAPS_DIR, snapshot,
                        snap["snapshot_sha256"])
         self.assertEqual(result["recorded"][0]["commit"], cs._head(repo))
         self.assertEqual(cs.read_marker(map_path), cs._head(repo))
@@ -145,30 +153,30 @@ class SingleRepo(unittest.TestCase):
     def test_verified_record_rejects_head_change_during_refresh(self):
         repo = self.tmp
         map_path = write_map(repo)
-        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAPS_DIR)
         commit(repo, "src/b.py", "print(2)\n", "change")
         snapshot = os.path.join(repo, ".maestro", "runs", "x", "map-snapshot.json")
-        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAP_REL, snapshot)
+        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAPS_DIR, snapshot)
         with open(map_path, "a") as fh:
             fh.write("\nUpdated notes.\n")
         commit(repo, "src/c.py", "print(3)\n", "concurrent change")
-        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAP_REL, snapshot,
+        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAPS_DIR, snapshot,
                                        snap["snapshot_sha256"]), 1)
 
     def test_verified_record_rejects_tampered_snapshot(self):
         repo = self.tmp
         write_map(repo)
-        quiet(cs.cmd_record, repo, cs.DEFAULT_MAP_REL)
+        quiet(cs.cmd_record, repo, cs.DEFAULT_MAPS_DIR)
         commit(repo, "src/b.py", "print(2)\n", "change")
         snapshot = os.path.join(repo, ".maestro", "runs", "x", "map-snapshot.json")
-        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAP_REL, snapshot)
+        snap = quiet(cs.cmd_snapshot, repo, cs.DEFAULT_MAPS_DIR, snapshot)
         with open(snapshot, "a") as fh:
             fh.write(" ")
-        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAP_REL, snapshot,
+        self.assertEqual(cs.cmd_record(repo, cs.DEFAULT_MAPS_DIR, snapshot,
                                        snap["snapshot_sha256"]), 1)
 
     def _plan(self, repo):
-        return quiet(cs.cmd_plan, repo, cs.DEFAULT_MAP_REL)
+        return quiet(cs.cmd_plan, repo, cs.DEFAULT_MAPS_DIR)
 
     def _plan_entry(self, repo):
         return self._plan(repo)["repos"][0]
@@ -206,17 +214,17 @@ class UmbrellaRepos(unittest.TestCase):
     def test_record_stamps_each_repo_independently(self):
         for name in ("backend", "frontend"):
             write_map(os.path.join(self.tmp, "codebase", name))
-        quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL)
+        quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAPS_DIR)
         for name in ("backend", "frontend"):
             repo = os.path.join(self.tmp, "codebase", name)
             self.assertEqual(
-                cs.read_marker(os.path.join(repo, cs.DEFAULT_MAP_REL)),
+                cs.read_marker(map_of(repo)),
                 cs._head(repo),
             )
 
     def test_record_skips_repo_without_map(self):
         write_map(os.path.join(self.tmp, "codebase", "backend"))
-        result = quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL)
+        result = quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAPS_DIR)
         self.assertEqual([r["name"] for r in result["recorded"]], ["backend"])
         self.assertEqual([s["name"] for s in result["skipped"]], ["frontend"])
 
@@ -226,36 +234,49 @@ class UmbrellaRepos(unittest.TestCase):
         frontend = os.path.join(self.tmp, "codebase", "frontend")
         write_map(backend)
         snapshot = os.path.join(self.tmp, ".maestro", "index", "snap.json")
-        snap = quiet(cs.cmd_snapshot, self.tmp, cs.DEFAULT_MAP_REL, snapshot, ["frontend"])
+        snap = quiet(cs.cmd_snapshot, self.tmp, cs.DEFAULT_MAPS_DIR, snapshot, ["frontend"])
         self.assertEqual(snap["stale_count"], 1)
         # frontend's map not written yet: recording must refuse
-        self.assertEqual(cs.cmd_record(self.tmp, cs.DEFAULT_MAP_REL, snapshot,
+        self.assertEqual(cs.cmd_record(self.tmp, cs.DEFAULT_MAPS_DIR, snapshot,
                                        snap["snapshot_sha256"]), 1)
         write_map(frontend)
-        result = quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL, snapshot,
+        result = quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAPS_DIR, snapshot,
                        snap["snapshot_sha256"])
         self.assertEqual([r["name"] for r in result["recorded"]], ["frontend"])
-        self.assertIsNone(cs.read_marker(os.path.join(backend, cs.DEFAULT_MAP_REL)))
-        self.assertEqual(quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAP_REL)["stale_repos"],
+        self.assertIsNone(cs.read_marker(map_of(backend)))
+        self.assertEqual(quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAPS_DIR)["stale_repos"],
                          ["backend"])
 
     def test_snapshot_refuses_an_unknown_repo_name(self):
         out = os.path.join(self.tmp, "snap.json")
         with redirect_stdout(io.StringIO()):
-            self.assertEqual(cs.cmd_snapshot(self.tmp, cs.DEFAULT_MAP_REL, out, ["nope"]), 1)
+            self.assertEqual(cs.cmd_snapshot(self.tmp, cs.DEFAULT_MAPS_DIR, out, ["nope"]), 1)
+
+    def test_nothing_is_written_into_the_repos(self):
+        for name in ("backend", "frontend"):
+            write_map(os.path.join(self.tmp, "codebase", name))
+        quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAPS_DIR)
+        for name in ("backend", "frontend"):
+            status = subprocess.run(["git", "-C", os.path.join(self.tmp, "codebase", name),
+                                     "status", "--porcelain"], capture_output=True, text=True)
+            self.assertEqual(status.stdout, "")
+        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAPS_DIR)
+        self.assertEqual([r["map_path"] for r in plan["repos"]],
+                         [os.path.join("docs", "codebase-maps", f"{n}.md")
+                          for n in ("backend", "frontend")])
 
     def test_stale_flags_only_the_drifted_repo(self):
         # both repos mapped + recorded -> nothing stale
         for name in ("backend", "frontend"):
             write_map(os.path.join(self.tmp, "codebase", name))
-        quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAP_REL)
-        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAP_REL)
+        quiet(cs.cmd_record, self.tmp, cs.DEFAULT_MAPS_DIR)
+        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAPS_DIR)
         self.assertFalse(plan["stale"])
         self.assertEqual(plan["stale_repos"], [])
 
         # a manual commit in just one repo (simulating work done outside Maestro)
         commit(os.path.join(self.tmp, "codebase", "backend"), "y.txt", "manual change", "manual")
-        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAP_REL)
+        plan = quiet(cs.cmd_plan, self.tmp, cs.DEFAULT_MAPS_DIR)
         self.assertTrue(plan["stale"])
         self.assertEqual(plan["stale_repos"], ["backend"])
 

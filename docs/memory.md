@@ -188,7 +188,7 @@ release approved ──► ARCHIVAL PHASE (before merge to master):
           → mem_consolidate.py (incoming/* → candidates/*, promote ≥3 → knowledge/*.md)
         │
         ▼
-human merges the pull requests (and commits the refreshed docs/ and codebase maps)
+human merges the pull requests (and commits the refreshed docs/, codebase maps included)
 ```
 
 - **Bootstrap** — `/build-knowledge` (workflow `workflows/build-knowledge.yaml`, skill
@@ -200,8 +200,8 @@ human merges the pull requests (and commits the refreshed docs/ and codebase map
   phase.
 - **Archival** — `workflows/archive.yaml` (deliver + harvest), wired as the post-release
   `archive` phase of `sdlc-main.yaml`. Maestro never merges: it reports the branches or opens
-  pull requests, then harvests. The docs/ and codebase-map refreshes the harvest writes are left
-  as local changes for a person to commit.
+  pull requests, then harvests. The docs/ refreshes the harvest writes (codebase maps included,
+  under `docs/codebase-maps/`) are left as local changes for a person to commit.
 
 ## Token posture
 

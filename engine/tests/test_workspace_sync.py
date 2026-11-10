@@ -44,12 +44,11 @@ class WorkspaceSyncTest(unittest.TestCase):
         git(self.repo, "remote", "add", "origin", self.remote)
         git(self.repo, "push", "-q", "-u", "origin", "main")
 
-        map_path = os.path.join(self.repo, "docs", "codebase-map.md")
+        map_path = codebase_scan.map_path(self.tmp, "backend")
         os.makedirs(os.path.dirname(map_path), exist_ok=True)
         with open(map_path, "w") as fh:
             fh.write("# Backend map\n")
         codebase_scan.write_marker(map_path, git(self.repo, "rev-parse", "HEAD"))
-        os.makedirs(os.path.join(self.tmp, "docs"))
         with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
             fh.write("# Architecture\n")
         for surface in ("technical", "functional"):
@@ -63,7 +62,10 @@ class WorkspaceSyncTest(unittest.TestCase):
         quiet(ws.cmd_record_knowledge, self.tmp, self.evidence)
 
     def test_untracked_managed_dir_is_not_dirty_but_other_dirs_are_listed_once(self):
-        # docs/ is untracked and holds only the engine-managed codebase map
+        # engine-managed .maestro/ state in the repo is not local work
+        os.makedirs(os.path.join(self.repo, ".maestro", "index"))
+        with open(os.path.join(self.repo, ".maestro", "index", "plan.json"), "w") as fh:
+            fh.write("{}\n")
         self.assertEqual(ws._dirty_paths(self.repo), [])
         big = os.path.join(self.repo, "generated")
         os.makedirs(big)
@@ -71,6 +73,7 @@ class WorkspaceSyncTest(unittest.TestCase):
             with open(os.path.join(big, f"f{i}.txt"), "w") as fh:
                 fh.write("x\n")
         self.assertEqual(ws._dirty_paths(self.repo), ["generated/"])
+        os.makedirs(os.path.join(self.repo, "docs"))
         with open(os.path.join(self.repo, "docs", "notes.md"), "w") as fh:
             fh.write("user doc\n")
         self.assertEqual(sorted(ws._dirty_paths(self.repo)), ["docs/notes.md", "generated/"])

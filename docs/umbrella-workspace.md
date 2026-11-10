@@ -61,19 +61,17 @@ my-project/                 ← umbrella repo (git init once; run Maestro here)
   the centralised `docs/`. Feature runs read this (frozen at init) to ground their designs and
   reviews; it's re-runnable and merges. See [memory.md](memory.md).
 
-- **Per-repo codebase map.** `build-knowledge` also writes a **`docs/codebase-map.md` inside
-  each repo under `codebase/`** — the standing, per-repo description of that repo's modules,
-  flows and execution modes that the HLD step reads before choosing an architecture. Each map
-  is git-tracked in its own repo; the engine (`codebase_scan.py`) records the commit it
-  reflects, so re-running `/build-knowledge` and the post-feature refresh (in the archive
-  phase) only re-examine the diff since that commit, then commit + push the updated map back to
-  each repo. Keeping the maps per repo is why they stay accurate as each service evolves
-  independently.
+- **Per-repo codebase map.** `build-knowledge` also writes one map per repo at
+  **`docs/codebase-maps/<name>.md` in the umbrella** — the standing description of that repo's
+  modules, flows and execution modes that the HLD step reads before choosing an architecture.
+  The maps are committed with the other living docs. Each map's marker records the commit of the repo
+  it describes (`codebase_scan.py`), so re-running `/build-knowledge` and the post-feature
+  refresh (in the archive phase) only re-examine that repo's diff since then.
 
 - **Adding a repository later.** Clone it into `codebase/` (in the template:
   `./scripts/repository add <url>` then `refresh`), then run `/maestro-sync` (`$maestro-sync` on
   Codex). It sets up only the new repo: its `maestro.config.yaml` entry, stack skills and
-  build/test commands, then writes its docs with `build-knowledge` (codebase map, domain pages,
+  build/test commands, then writes its docs with `build-knowledge` (`docs/codebase-maps/<name>.md`, domain pages,
   and its node and connections in `docs/architecture.md`). Feature runs already in progress keep the repos they
   started with.
 

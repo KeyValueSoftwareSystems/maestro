@@ -178,7 +178,7 @@ Codex). On Hermes Agent, run `hermes skills trust` first.
 
 This detects your tech stack, installs only the matching skills, and builds the **knowledge
 base**: an architecture overview of how your repos connect, technical and functional docs per area
-in `docs/`, and a `docs/codebase-map.md` inside each repo.
+in `docs/`, and a codebase map per repo in `docs/codebase-maps/`.
 
 You don't need to maintain the docs by hand. Maestro records which commit each doc describes, so
 re-running `/maestro-init` only re-reads what changed, and each finished feature refreshes the docs
@@ -314,8 +314,8 @@ More options (third-party skills, memory, delivery):
 - **One person drives a feature at a time.** The included pipeline is built for one developer
   taking a feature across every repo. Teams that split the work can add parallel steps to their
   own copy of the workflow.
-- **Share one knowledge base.** Commit `docs/` in the umbrella (and each repo's
-  `docs/codebase-map.md` in that repo), so everyone's runs start from the same picture of the code.
+- **Share one knowledge base.** Commit `docs/` in the umbrella (it includes every repo's
+  codebase map), so everyone's runs start from the same picture of the code.
 - **Workflow changed during a run?** Maestro stops and asks whether to accept the change or start
   over.
 

@@ -233,7 +233,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`greenfield.py`** — the new-product path: `check` (no repository discovered), `create` (git
   init + first commit for each repository the HLD's Repositories section lists), `configure` (adds
   the scaffold report's commands to maestro.config.yaml without touching existing entries, runs
-  each build and test once, stamps and commits each codebase map). `workflows/scaffold.yaml` runs
+  each build and test once, stamps each codebase map in `docs/codebase-maps/`). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
   `feature-impact` agent right after PRD approval): the repositories the feature changes and

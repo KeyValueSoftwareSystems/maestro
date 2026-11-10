@@ -119,7 +119,7 @@ nodes:
       Read ${steps.plan.outputs.plan_path} for per-repo provenance and changed files, and, when
       the sync fast-forwarded repositories, the apply result (the `apply_result` input).
 
-      For every stale repo, update its docs/codebase-map.md only where the changed files alter
+      For every stale repo, update its codebase map (docs/codebase-maps/<repo>.md) only where the changed files alter
       modules, flows, execution modes, APIs or conventions. Do not touch its engine-owned
       maestro-codebase-map marker. Update the central docs/technical/<domain>.md and
       docs/functional/<domain>.md files for affected domains. Update docs/architecture.md only

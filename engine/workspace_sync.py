@@ -36,8 +36,8 @@ MANAGED_DIRTY_PREFIXES = (
     ".maestro/runs/",
     ".maestro/memory/",
     ".maestro/index/",
+    codebase_scan.DEFAULT_MAPS_DIR + "/",  # single-repo layout: the maps sit inside the repo
 )
-MANAGED_DIRTY_PATHS = {"docs/codebase-map.md"}
 MAX_CHANGED = 500
 
 
@@ -231,7 +231,7 @@ def _is_managed_parent(path):
     """A collapsed untracked dir (`docs/`) that may hold only engine-managed files."""
     return path.endswith("/") and any(
         managed.startswith(path)
-        for managed in (*MANAGED_DIRTY_PATHS, *MANAGED_DIRTY_PREFIXES)
+        for managed in MANAGED_DIRTY_PREFIXES
     )
 
 
@@ -255,9 +255,7 @@ def _dirty_paths(repo):
     paths = []
     for line in lines:
         path = _porcelain_path(line)
-        if (path in MANAGED_DIRTY_PATHS
-                or any(path == p.rstrip("/") or path.startswith(p)
-                       for p in MANAGED_DIRTY_PREFIXES)):
+        if any(path == p.rstrip("/") or path.startswith(p) for p in MANAGED_DIRTY_PREFIXES):
             continue
         paths.append(path)
     return paths
@@ -410,7 +408,7 @@ def _map_stale_repos(root, repos):
     stale = []
     for entry in repos:
         repo = os.path.join(root, entry["path"])
-        if not codebase_scan.map_is_current(repo, head=entry["head_commit"]):
+        if not codebase_scan.map_is_current(root, entry["name"], repo, head=entry["head_commit"]):
             stale.append(entry["name"])
     return stale
 

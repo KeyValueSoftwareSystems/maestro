@@ -124,7 +124,7 @@ nodes:
     discuss:
       inputs:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-        codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
+        codebase_maps: "docs/architecture.md, docs/technical/, and docs/codebase-maps/<repo>.md for each affected repo"
         source: "only the files that settle this question"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
@@ -248,7 +248,7 @@ nodes:
       inputs:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
         hld_draft: ".maestro/runs/${inputs.slug}/hld.md"
-        codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
+        codebase_maps: "docs/architecture.md, docs/technical/, and docs/codebase-maps/<repo>.md for each affected repo"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     auto: {modes: [auto]}
     next: write_hld
@@ -332,7 +332,7 @@ nodes:
       slug: "${inputs.slug}"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      codebase_maps: "docs/architecture.md, docs/technical/, and each affected repo's docs/codebase-map.md"
+      codebase_maps: "docs/architecture.md, docs/technical/, and docs/codebase-maps/<repo>.md for each affected repo"
       decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
       changes_since_last_review: "${steps.arch_scope.outputs.diff_path}"

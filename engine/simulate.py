@@ -255,8 +255,8 @@ def _stub_agent(root, act, slug=None):
     if (step.endswith("/build")
             or step.endswith("refresh_knowledge")
             or step.endswith("/retrospect")):
-        for _name, repo in codebase_scan.discover_repos(root):
-            map_path = os.path.join(repo, codebase_scan.DEFAULT_MAP_REL)
+        for name, repo in codebase_scan.discover_repos(root):
+            map_path = codebase_scan.map_path(root, name)
             if (step.endswith("/retrospect")
                     and codebase_scan.read_marker(map_path) == codebase_scan._head(repo)):
                 continue

@@ -11,6 +11,7 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import codebase_scan  # noqa: E402
 import greenfield  # noqa: E402
 import project_config  # noqa: E402
 import validate_hld  # noqa: E402
@@ -57,8 +58,11 @@ class GreenfieldTest(unittest.TestCase):
         # created again: nothing is recreated
         self.assertEqual(self.cmd("create", "--root", self.root, "--hld", self.hld)[1]["created_csv"], "")
         api = os.path.join(self.root, "codebase", "notes-api")
-        os.makedirs(os.path.join(api, "docs"))
-        with open(os.path.join(api, "docs", "codebase-map.md"), "w") as fh:
+        with open(os.path.join(api, "README.md"), "w") as fh:
+            fh.write("# notes-api\n")
+        map_path = codebase_scan.map_path(self.root, "notes-api")
+        os.makedirs(os.path.dirname(map_path))
+        with open(map_path, "w") as fh:
             fh.write("# notes-api map\n")
         subprocess.run(["git", "-C", api, "add", "-A"], check=True)
         subprocess.run(["git", "-C", api, "commit", "-qm", "scaffold"], check=True, env=git_env())
@@ -68,7 +72,7 @@ class GreenfieldTest(unittest.TestCase):
         scaffold = os.path.join(self.run_dir, "scaffold.json")
         with open(scaffold, "w") as fh:
             json.dump({"repos": {
-                "notes-api": {"stack": "python", "commands": {"build": "test -d docs",
+                "notes-api": {"stack": "python", "commands": {"build": "test -f README.md",
                                                               "test": "true", "lint": "true"}},
                 "notes-web": {"stack": "react", "commands": {"build": "false", "test": "false"}}}}, fh)
         code, out, _ = self.cmd("configure", "--root", self.root, "--scaffold", scaffold)
@@ -76,9 +80,14 @@ class GreenfieldTest(unittest.TestCase):
         self.assertTrue(out["valid"], out)
         self.assertEqual(out["added_csv"], "notes-api")
         config = project_config.load(self.root)
-        self.assertEqual(config["repos"]["notes-api"]["commands"]["build"], "test -d docs")
+        self.assertEqual(config["repos"]["notes-api"]["commands"]["build"], "test -f README.md")
         self.assertEqual(config["repos"]["notes-web"]["commands"]["build"], "true")
         self.assertTrue(os.path.exists(project_config.config_path(self.root) + ".bak"))
+        # the map is stamped; the repository is left clean
+        self.assertEqual(codebase_scan.read_marker(map_path), codebase_scan._head(api))
+        status = subprocess.run(["git", "-C", api, "status", "--porcelain"],
+                                capture_output=True, text=True, check=True)
+        self.assertEqual(status.stdout, "")
 
     def test_configure_refuses_missing_or_failing_commands(self):
         self.cmd("create", "--root", self.root, "--hld", self.hld)

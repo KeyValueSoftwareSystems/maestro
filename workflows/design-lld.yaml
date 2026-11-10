@@ -84,7 +84,7 @@ nodes:
       LLD prose for the repositories in scope: ${steps.lld_scope_init.outputs.selected_csv}. Read the
       approved HLD and its deferred questions, the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml when it exists, confirmed LLD decisions, and for each
-      repository its docs/codebase-map.md, guidance, manifest, and only the source/tests around the
+      repository its codebase map (docs/codebase-maps/<repo>.md), guidance, manifest, and only the source/tests around the
       affected seam. Do not scan broadly.
 
       Decide normal implementation details from clear existing conventions. Ask only unresolved
@@ -160,7 +160,7 @@ nodes:
       inputs:
         hld: ".maestro/runs/${inputs.slug}/hld.md"
         contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
-        codebase_maps: "each in-scope repository's docs/codebase-map.md"
+        codebase_maps: "docs/codebase-maps/<repo>.md for each in-scope repository"
         source: "only the source and tests around the seam this question concerns"
     artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.

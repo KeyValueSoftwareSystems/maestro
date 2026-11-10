@@ -128,7 +128,7 @@ the workspace (cloned into `codebase/`, usually registered in `registry.yaml` fi
 engine step (`project_config.py sync`, or `./maestro sync` on its own) adds an empty entry for
 each repository on disk that has none; the skill then fills only those entries' stack and
 commands and writes the new repositories' docs with `build-knowledge` (each one's
-`docs/codebase-map.md`, its domain pages, and its place in `docs/architecture.md`). The
+`docs/codebase-maps/<name>.md`, its domain pages, and its place in `docs/architecture.md`). The
 engine step reports:
 
 | Report | Meaning |

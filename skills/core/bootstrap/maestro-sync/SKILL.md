@@ -61,7 +61,8 @@ Run these **in order**, in this session. Each step consumes the previous step's 
    2. Load and follow **`build-knowledge`**, scoped to the targets. Its instruction to you:
       read only `codebase/<target>/` (plus its `AGENTS.md` / `CLAUDE.md` / `.cursor/rules`) and
       the existing `docs/`; then
-      - write each target's **full** `docs/codebase-map.md` (without the marker line);
+      - write each target's **full** codebase map at `docs/codebase-maps/<name>.md` (without
+        the marker line);
       - for each domain a target implements: a domain with no page yet gets new
         `docs/technical/<domain>.md` and `docs/functional/<domain>.md`; an existing domain
         page the target takes part in is extended in place to cover it. Never rewrite what a
@@ -84,8 +85,7 @@ Run these **in order**, in this session. Each step consumes the previous step's 
 7. **Summarize.** Report the repos added and still needing commands, the stacks installed, the
    docs written (codebase maps, new and extended domain pages, architecture.md), any other
    repo whose docs are out of date, and the preflight result. Ask the person to review and
-   commit the docs: `docs/` in the workspace, and each new repo's `docs/codebase-map.md` in
-   that repo. Newly installed skills become active after the host reloads its config. A
+   commit `docs/` in the workspace. Newly installed skills become active after the host reloads its config. A
    feature run already in progress keeps the repositories its workspace lock pinned; the new
    repo joins the next feature.
 
