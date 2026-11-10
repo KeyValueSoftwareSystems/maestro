@@ -9,6 +9,8 @@ without them; when they exist, it uses them.
 | The team (developers, domain owners, the client) | Writes and owns the rules and scenarios under `docs/` |
 | `/maestro-init` | Checks them when present; when absent, asks once whether to create the starter file, and carries on either way |
 | `feature-impact` | Follows the scenarios a feature triggers into every repository they reach; lists their ids in `impact.json` (`scenarios`) |
+| `impact.py validate --prd` (engine) | Adds every scenario whose `when_changing` the PRD names, with its rules and `also_impacts` items, so the match never rests on the agent |
+| `impact_trace.py` (engine) | The HLD, then the LLDs, must deal with every listed rule, scenario and item, or say "no change needed, because …"; gaps go back to the writer |
 | `impl` → `domain_rules` (engine) | Checks the feature's worktree still matches every name the docs rely on; never blocks, reports to the reviewer |
 | `repo-review` | A mismatch the branch caused, or a broken rule, is a blocking finding |
 | `build-knowledge`, `retrospect` | Keep the team's sections word for word; `retrospect` proposes new ones, never writes them |

@@ -32,6 +32,11 @@ Verification. A `deferred` decision is unresolved: never write it as decided; if
 put it back in the post-check with sharper options. A confirmed `kind: direction` decision is the
 change agreed for that repository; the LLD must not depart from it.
 
+When your instructions name an impact assessment, deal with every item it lists (domains, tables,
+jobs, queues, endpoints and their consumers, `INV-` rules, `CS-` scenarios): name each, exactly as
+the assessment spells it, where the design handles it, or write "`<item>`: no change needed,
+because …". An item left out is work nobody planned.
+
 ## Required document shape
 
 Start with one concise level-1 title containing `LLD`, then these metadata lines:

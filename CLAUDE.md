@@ -237,8 +237,18 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
   `feature-impact` agent right after PRD approval): the repositories the feature changes and
   whether it changes an interface between them, stored data or infrastructure, and a `size` of
-  `minor` or `major`. `validate` checks every name is a discovered repository and the size; sizing and the LLD scope (`lld_set.py init --choice
-  impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
+  `minor` or `major`; schema 2 also lists every domain, table, job, queue, endpoint (with its
+  consumers), `INV` rule and `CS` scenario it touches, each with a reason and evidence. `validate`
+  checks every name is a discovered repository, the size, and that rules/scenarios/domains exist in
+  the domain docs; with `--prd` it adds every change scenario whose `when_changing` the PRD names
+  (`match_scenarios`/`merge`: the scenario, its rules and `also_impacts` items). Sizing and the LLD
+  scope (`lld_set.py init --choice impact`, the scope gate's autopilot answer) read it. Skipped on
+  greenfield.
+- **`impact_trace.py`** — the impact trace: `check --stage hld|lld` requires every impacted item
+  to be named in the HLD (a `write_hld`/`revise_from_review` check) or the LLDs (`lld_impact_trace`
+  node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
+  because …"; gaps go back to the writer. Writes `impact-trace.md`, which the HLD and LLD approval
+  gates show first. No assessment = valid.
 - **`domain_rules.py`** — optional domain rules (`INV-<CODE>-<NN>` under `## Rules that must never
   break` in `docs/functional/<domain>.md`) and change scenarios (`CS-…`, the page's `## If you
   change… also check` table plus `docs/impact/side-effects.yaml`), written by the team, never by an
