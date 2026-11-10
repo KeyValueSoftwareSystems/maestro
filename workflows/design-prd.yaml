@@ -87,8 +87,12 @@ nodes:
       .maestro/runs/${inputs.slug}/prd-questions.json. Use the project context and feature goal,
       requirement files, explicit references, revision feedback, and earlier decisions when the
       decisions file exists. Ask only unanswered product decisions that materially change scope,
-      user-visible behaviour, acceptance, or risk. Each item must resolve one decision, explain
-      briefly why it matters, and include a grounded recommendation when possible. When a real
+      user-visible behaviour, acceptance, or risk. Read the business rules in the functional docs
+      of the domains this feature touches (docs/functional/<domain>.md, chosen from the Domain map
+      in docs/architecture.md): never ask what an existing rule already settles, and when the
+      request conflicts with one, ask about that conflict and cite the rule's ID. Each item must
+      resolve one decision, explain briefly why it matters, and include a grounded recommendation
+      when possible. When a real
       choice exists, add up to two alternatives, each with its concrete trade-off, so the human
       can weigh options instead of only confirming yours.
 
@@ -169,7 +173,7 @@ nodes:
       inputs:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
         references: "${inputs.references}"
-        project_summaries: "AGENTS.md, CLAUDE.md, docs/architecture.md, docs/functional/, docs/technical/"
+        project_summaries: "AGENTS.md, CLAUDE.md, docs/architecture.md (Domain map, Glossary and aliases), docs/product/, and docs/functional/<domain>.md for the domains this feature touches (from the Domain map); business rules are cited by ID (e.g. PL-BR-001)"
     artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
     auto: {modes: [auto]}

@@ -27,6 +27,14 @@ nodes:
     type: script
     label: Detect workspace infrastructure
     run: [python3, .maestro/engine/infra_scan.py, --root, ".", --out, ".maestro/runs/${inputs.slug}/infra-profile.json"]
+    next: living_domains
+
+  # Engine-owned: the living-doc domains of the repositories the impact assessment names, so the
+  # architecture steps load those technical docs only (all domains when no assessment ran).
+  - id: living_domains
+    type: script
+    label: Find the affected domains' docs
+    run: [python3, .maestro/engine/living_docs.py, domains, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]
     next: prepare_hld_questions
 
   - id: prepare_hld_questions
@@ -36,9 +44,12 @@ nodes:
     instruction: |
       Build the next architecture Grill queue at
       .maestro/runs/${inputs.slug}/hld-questions.json before HLD prose is written. Read every
-      requirement file, the maintained codebase map in each affected repo, existing confirmed HLD
-      decisions when present, and revision feedback. Explore source only when a material decision
-      depends on detail absent from the maps.
+      requirement file, the maintained codebase map in each affected repo, docs/architecture.md and
+      the affected domains' technical docs (${steps.living_domains.outputs.technical_paths}),
+      existing confirmed HLD decisions when present, and revision feedback. Explore source only
+      when a material decision depends on detail absent from the maps. A direction that would
+      break an existing invariant (INV) or change a business rule (BR) is a material decision:
+      name the ID in the question.
 
       Ask only unresolved decisions that change system ownership, boundaries, data authority,
       cross-repo interaction, security/privacy, failure or recovery behavior, execution-mode
@@ -124,7 +135,7 @@ nodes:
     discuss:
       inputs:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-        codebase_maps: "docs/architecture.md, docs/technical/, and docs/codebase-maps/<repo>.md for each affected repo"
+        codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
         source: "only the files that settle this question"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
@@ -202,6 +213,10 @@ nodes:
       whose decisions changed. If the engine's check failed, fix only the file and defects it
       names and leave everything else untouched.
 
+      Ground the design in the living docs (the `living_docs` input) and cite the IDs of the
+      business rules, invariants and change scenarios it relies on or changes (e.g. PL-INV-001),
+      so later steps load exactly those rows.
+
       Return needs_clarification false unless a revision needs a new decision.
     skill: hld-writing
     inputs:
@@ -219,6 +234,7 @@ nodes:
       platforms: "${steps.infra_profile.outputs.platforms_csv}"
       infra_profile: "${steps.infra_profile.outputs.profile_path}"
       infra_level: "${steps.infra_profile.outputs.level}"
+      living_docs: "docs/architecture.md; ${steps.living_domains.outputs.technical_paths}"
       codebase_lessons: "${memory.knowledge.codebase}"
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary, needs_clarification]
@@ -248,7 +264,7 @@ nodes:
       inputs:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
         hld_draft: ".maestro/runs/${inputs.slug}/hld.md"
-        codebase_maps: "docs/architecture.md, docs/technical/, and docs/codebase-maps/<repo>.md for each affected repo"
+        codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
     artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
     auto: {modes: [auto]}
     next: write_hld
@@ -332,7 +348,7 @@ nodes:
       slug: "${inputs.slug}"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      codebase_maps: "docs/architecture.md, docs/technical/, and docs/codebase-maps/<repo>.md for each affected repo"
+      codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
       decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
       changes_since_last_review: "${steps.arch_scope.outputs.diff_path}"

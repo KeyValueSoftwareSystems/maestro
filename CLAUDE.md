@@ -266,6 +266,19 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`docs/provenance.yaml`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
+- **`living_docs.py`** — the deterministic half of the living docs (format v2.3,
+  `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R8: ID format/placement,
+  every cited ID defined in docs, run artifacts and code, `repo · path · symbol` anchors resolve,
+  generated output current, staleness vs `verified_at`, app calls reach a served route,
+  structure, token budgets; `--write` regenerates first), `extract` (inventories from contracts
+  and code — OpenAPI, AsyncAPI, SQL, `.env.example`, CronJobs, built-in Go/Python/JS/Dart/Java
+  patterns, `docs.extract` from maestro.config.yaml — into `docs/_generated/`, the technical doc's
+  connections block, the diagram, `docs/_index/code-to-facts.md` and opt-in facts blocks in
+  folder `AGENTS.md`/`CLAUDE.md`), `snapshot`/`stamp` (`verified_at` = HEAD and `status: draft` on
+  docs a writer changed), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD,
+  implement and review load), `domains` (doc paths for the repos `impact.json` names). The
+  build-knowledge, retrospect and workspace-sync writers run with `check --write` as a handoff
+  check; workspace_sync counts a facts-block-only change as managed and pre-v2.3 docs as stale.
 - **`install_workflows.py`** — `install.sh`'s workflow upgrader: per file, add / replace an
   byte-identical stock copy (strict hash, CRLF-normalised, against `.maestro/workflow-manifest.json`
   and `engine/workflow_releases.json`, every version ever shipped) / keep a local edit and write
@@ -443,10 +456,13 @@ injected via `${memory.knowledge.<domain>}`). A lesson promotes into knowledge o
 immediately).
 
 There is a **second knowledge surface**: the committed living docs under `docs/` —
-per-domain `docs/technical/<domain>.md` + `docs/functional/<domain>.md`, and
-`docs/architecture.md` (Mermaid + how services connect). `build-knowledge` authors it from
-the codebase; `retrospect` refreshes touched domains after a feature. Human-facing, read by
-subagents as ordinary workspace context. It coexists with the injected lessons store.
+`docs/architecture.md` (repos, Domain map, cross-repo flows, `ARCH-INV` invariants) and per
+domain `docs/functional/<domain>.md` (business rules `BR`) + `docs/technical/<domain>.md`
+(invariants `INV`, change scenarios `CS`, failure, gotchas). `build-knowledge` authors the
+judgement from the codebase; `retrospect` refreshes touched domains after a feature;
+`engine/living_docs.py` generates everything the code lists (`docs/_generated/`), checks the
+format and IDs, and stamps `verified_at`. Steps load only what they need: the touched domains'
+docs, and from LLD on only the rows the design cites. It coexists with the injected lessons store.
 
 **The load-bearing separation (swappable skills):** the consolidation *functionality* —
 counting distinct runs, the threshold, promotion, pruning, rendering — is deterministic

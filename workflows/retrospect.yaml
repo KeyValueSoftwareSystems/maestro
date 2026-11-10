@@ -21,12 +21,26 @@ nodes:
     run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: snapshot_maps}
-      - {to: retrospect}
+      - {to: snapshot_docs}
 
   - id: snapshot_maps
     type: script
     label: Snapshot maps before refresh
     run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-map-snapshot.json"]
+    on_fail: abort
+    next: snapshot_docs
+
+  - id: snapshot_docs
+    type: script
+    label: Snapshot living docs before the refresh
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-docs-snapshot.json"]
+    on_fail: abort
+    next: extract_inventory
+
+  - id: extract_inventory
+    type: script
+    label: Extract the workspace inventory (engine)
+    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-inventory.md"]
     on_fail: abort
     next: retrospect
 
@@ -38,22 +52,25 @@ nodes:
       .maestro/runs/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance text;
       per-step visits/attempts/status showing loops and retries) and the run's review/QA
       artifacts and design documents under .maestro/runs/${inputs.slug}/. Then do BOTH:
-      1. Add to / refresh the living docs — technical, functional AND architectural — for the
-         domains this feature touched. CREATE docs/technical/<domain>.md and
-         docs/functional/<domain>.md for any NEW domain the feature introduced, else update
-         the existing ones. Update docs/architecture.md whenever a service, component,
-         connection or data flow was added or changed — add the new node(s)/edge(s) to the
-         Mermaid diagram(s) and the matching "How services connect" entry. Create missing
-         files; edit existing ones in place (never duplicate); skip only a surface the feature
-         genuinely did not affect. ALSO refresh each affected repo's codebase map
-         (docs/codebase-maps/<repo>.md): run
+      1. Add to / refresh the living docs — functional, technical AND architectural — for the
+         domains this feature touched, in the shared format (docs-format.md in the
+         build-knowledge skill). Functional: the business rules the feature added or changed
+         (BR rows with edge and source, from the approved PRD and gate feedback), new states,
+         flows, terms and open questions. Technical: the invariants the design relies on (INV
+         rows: what enforces each, the test that proves it), the change scenarios the run
+         discovered (CS rows), failure behaviour and gotchas the reviews raised.
+         Architecture: new repos or providers, cross-repo flows, platform-wide invariants, and
+         a Domain map row for any NEW domain (which gets both files). A new fact takes the next
+         free ID; never renumber or reuse one; a fact the feature made untrue becomes
+         `Retired YYYY-MM-DD: <why>`. Never restate what the extracted inventory (the
+         `inventory` input) lists, and never edit docs/_generated/, docs/_index/, a generated:
+         block or verified_at — the engine regenerates and stamps them. ALSO refresh each
+         affected repo's codebase map (docs/codebase-maps/<repo>.md): run
          `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed
          since the map was last recorded — update ONLY those areas (new/changed flows,
          execution modes, APIs, conventions); a repo reported `current` is unchanged, skip it.
          Do NOT touch the `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps
-         it next. Keep every file in the shared living-docs format (docs-format.md in the
-         build-knowledge skill): new domains get both files, a Domains-table row and the exact
-         titles; docs/architecture.md stays within 200 lines.
+         it next. Skip only a surface the feature genuinely did not affect.
       2. Write a STRUCTURED lessons drop to .maestro/memory/incoming/${inputs.slug}.json as
          JSON: {"slug": "${inputs.slug}", "lessons": [{"domain": "<role>",
          "key": "<stable-kebab-key>", "text": "<one actionable sentence>"}, ...]}. Draw the
@@ -67,9 +84,21 @@ nodes:
          picks the SAME key (that is how the engine corroborates). Do NOT set authoritative.
          Do NOT write knowledge/ or candidates/ — the engine renders those.
     skill: retrospect
-    inputs: {slug: "${inputs.slug}"}
+    model: sonnet
+    inputs:
+      slug: "${inputs.slug}"
+      inventory: ".maestro/runs/${inputs.slug}/retrospect-inventory.md"
     outputs: [incoming_path, lessons_count, summary]
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
+    # Regenerates the generated files and blocks, then checks the format, IDs and anchors.
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --report]}
+    next: stamp_docs
+
+  - id: stamp_docs
+    type: script
+    label: Stamp refreshed docs (engine)
+    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/retrospect-docs-snapshot.json"]
+    on_fail: abort
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
       - {to: record_knowledge}

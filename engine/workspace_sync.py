@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 import codebase_scan
+import living_docs
 
 
 SCHEMA_VERSION = 1
@@ -66,7 +67,7 @@ def _git(repo, *args, timeout=60):
             ["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout,
             env=_GIT_ENV,
         )
-        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+        return proc.returncode, proc.stdout.rstrip(), proc.stderr.strip()
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
 
@@ -257,6 +258,9 @@ def _dirty_paths(repo):
         path = _porcelain_path(line)
         if any(path == p.rstrip("/") or path.startswith(p) for p in MANAGED_DIRTY_PREFIXES):
             continue
+        # A folder instruction file whose only change is its engine-generated facts block.
+        if line.startswith(" M") and living_docs.only_generated_changes(repo, path):
+            continue
         paths.append(path)
     return paths
 
@@ -394,8 +398,12 @@ def _knowledge_status(root, repos, state_path):
     docs_hash_stale = False
     if isinstance(state, dict) and state.get("docs_sha256"):
         docs_hash_stale = state["docs_sha256"] != _docs_hash(root)
+    # Docs written before format v2.3 (no front-matter) are rewritten by the next refresh.
+    format_stale = not missing_docs and not living_docs.current_format(root)
     return {
-        "stale": bool(stale_repos or removed_repos or missing_docs or docs_hash_stale),
+        "stale": bool(stale_repos or removed_repos or missing_docs or docs_hash_stale
+                      or format_stale),
+        "format_stale": format_stale,
         "stale_repos": stale_repos,
         "removed_repos": removed_repos,
         "missing_docs": missing_docs,
@@ -457,6 +465,8 @@ def _summary(repos, knowledge, map_stale, lock_drift):
             bits.append(f"fetch failed: {repo['fetch_error']}")
         lines.append("- " + "; ".join(bits))
     if knowledge["stale"]:
+        if knowledge.get("format_stale"):
+            lines.append("- Living docs predate format v2.3; the refresh rewrites them.")
         if knowledge.get("docs_hash_stale") and not (
                 knowledge["stale_repos"] or knowledge["removed_repos"] or knowledge["missing_docs"]):
             lines.append("- Living docs content changed since last index (docs_sha256 drift).")

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 import codebase_scan  # noqa: E402
+import living_docs  # noqa: E402
 import lld_set  # noqa: E402
 import workspace_sync  # noqa: E402
 
@@ -133,13 +134,7 @@ class SdlcE2E(unittest.TestCase):
         # Simulate the normal /maestro-init result so the happy path proves the new sync
         # checkpoint is zero-agent/no-gate when code and knowledge are already current.
         os.makedirs(os.path.join(self.tmp, "docs"), exist_ok=True)
-        with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
-            fh.write("# Architecture\n")
-        for surface in ("technical", "functional"):
-            directory = os.path.join(self.tmp, "docs", surface)
-            os.makedirs(directory)
-            with open(os.path.join(directory, "demo.md"), "w") as fh:
-                fh.write(f"# Demo {surface}\n")
+        living_docs.write_minimal_docs(self.tmp, "demo", ["backend", "frontend"])
         evidence = os.path.join(self.tmp, ".maestro", "bootstrap-evidence.md")
         with open(evidence, "w") as fh:
             fh.write("Indexed test workspace.\n")

@@ -61,6 +61,10 @@ ENVIRONMENT_KEYS = {"start", "ready", "stop"}
 DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
 WORKTREE_KEYS = {"create", "path", "branch", "remove"}
+DOCS_KEYS = {"facts_blocks", "extract"}
+# living_docs.py extraction kinds and the named groups each pattern must capture.
+DOCS_EXTRACT_KINDS = {"route": "path", "call": "path", "event_out": "name", "event_in": "name",
+                      "job": "schedule", "config": "key", "table": "name"}
 # Placeholders each worktree setting may use (worktrees.py fills them). `${VAR}` is shell, not ours.
 WORKTREE_PLACEHOLDERS = {"create": {"slug", "root"}, "remove": {"slug", "root"},
                          "path": {"slug", "repo"}, "branch": {"slug", "repo"}}
@@ -433,12 +437,70 @@ def check(config, discovered):
                                         "reviews.max_rounds"))
     if "worktree" in config:
         issues.extend(_check_worktree(config["worktree"]))
+    if "docs" in config:
+        issues.extend(_check_docs(config["docs"], set(repos) | set(discovered)))
     if "delivery" in config:
         delivery = config["delivery"]
         _check_strings("delivery", delivery, DELIVERY_KEYS, "delivery", issues)
         if isinstance(delivery, dict) and delivery.get("mode") not in (None, *DELIVERY_MODES):
             issues.append(Issue("error", "config-shape",
                                 f"must be one of: {', '.join(DELIVERY_MODES)}", "delivery.mode"))
+    return issues
+
+
+def _check_docs(section, known_repos):
+    """`docs`: facts_blocks (repos that receive generated facts blocks) and extract patterns."""
+    issues = []
+    if not isinstance(section, dict):
+        return [Issue("error", "config-shape", "`docs` must be a mapping", "docs")]
+    for key in section:
+        if key not in DOCS_KEYS:
+            issues.append(Issue("error", "config-unknown-key",
+                                f"unknown key `{key}` (allowed: {', '.join(sorted(DOCS_KEYS))})",
+                                f"docs.{key}"))
+    blocks = section.get("facts_blocks")
+    if blocks is not None:
+        if not isinstance(blocks, list) or not all(isinstance(r, str) and r for r in blocks):
+            issues.append(Issue("error", "config-shape", "must be a list of repository names",
+                                "docs.facts_blocks"))
+        else:
+            for repo in blocks:
+                if repo not in known_repos:
+                    issues.append(Issue("warning", "config-unknown-repo",
+                                        f"repo `{repo}` is not in this workspace", "docs.facts_blocks"))
+    rules = section.get("extract")
+    if rules is not None:
+        if not isinstance(rules, list):
+            return issues + [Issue("error", "config-shape", "must be a list of patterns", "docs.extract")]
+        for index, rule in enumerate(rules):
+            where = f"docs.extract[{index}]"
+            if not isinstance(rule, dict):
+                issues.append(Issue("error", "config-shape", "each pattern must be a mapping", where))
+                continue
+            unknown = set(rule) - {"kind", "pattern", "glob", "repo"}
+            if unknown:
+                issues.append(Issue("error", "config-unknown-key",
+                                    f"unknown key `{sorted(unknown)[0]}` (allowed: glob, kind, pattern, repo)",
+                                    where))
+            kind = rule.get("kind")
+            if kind not in DOCS_EXTRACT_KINDS:
+                issues.append(Issue("error", "config-shape",
+                                    f"kind must be one of: {', '.join(DOCS_EXTRACT_KINDS)}", f"{where}.kind"))
+                continue
+            try:
+                compiled = re.compile(str(rule.get("pattern") or ""))
+            except re.error as exc:
+                issues.append(Issue("error", "config-shape", f"pattern does not compile: {exc}",
+                                    f"{where}.pattern"))
+                continue
+            needed = DOCS_EXTRACT_KINDS[kind]
+            if not rule.get("pattern") or needed not in compiled.groupindex:
+                issues.append(Issue("error", "config-shape",
+                                    f"a {kind} pattern needs a named group (?P<{needed}>…)",
+                                    f"{where}.pattern"))
+            if rule.get("repo") is not None and rule.get("repo") not in known_repos:
+                issues.append(Issue("warning", "config-unknown-repo",
+                                    f"repo `{rule.get('repo')}` is not in this workspace", f"{where}.repo"))
     return issues
 
 

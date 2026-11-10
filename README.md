@@ -59,9 +59,11 @@ Before the first feature, tell Maestro how to build and test your code
 
 - **One feature across several repos.** One PRD and one design cover the whole feature. Each
   affected repo gets its own detailed design and branch, and all of them share one API contract.
-- **A knowledge base of all your repos.** Architecture, technical and functional docs, and a
-  codebase map per repo. Every design step reads them, and each feature refreshes the parts it
-  changed.
+- **A knowledge base of all your repos.** Architecture, and per area the business rules
+  (functional) and the invariants and change scenarios (technical), each with a stable ID, plus a
+  codebase map per repo. Endpoints, events, jobs, tables and config are generated from the code,
+  never written by a model. Each step loads only the docs and rows it needs, and each feature
+  refreshes the parts it changed.
 - **Results you can trust.** Maestro runs your build, lint, tests, a secret scan and a check for committed build output itself, and
   checks that every requirement has a passing test before it asks you to release.
 - **You stay in charge, or go hands-off.** Maestro stops at approval points ("gates") instead of
@@ -177,8 +179,9 @@ Replace `claude-code` with your agent's [install target](#works-with-your-agent)
 Codex). On Hermes Agent, run `hermes skills trust` first.
 
 This detects your tech stack, installs only the matching skills, and builds the **knowledge
-base**: an architecture overview of how your repos connect, technical and functional docs per area
-in `docs/`, and a codebase map per repo in `docs/codebase-maps/`.
+base**: an architecture overview of how your repos connect, functional and technical docs per area
+in `docs/` (checked by the engine; inventories generated from the code under `docs/_generated/`),
+and a codebase map per repo in `docs/codebase-maps/`.
 
 You don't need to maintain the docs by hand. Maestro records which commit each doc describes, so
 re-running `/maestro-init` only re-reads what changed, and each finished feature refreshes the docs

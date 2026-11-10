@@ -57,6 +57,13 @@ worktree:                       # optional; how each feature's worktrees are mad
   path: sandbox/{slug}/codebase/{repo}         # where create leaves each repository
   branch: sandbox/{slug}                       # optional; the branch create checks out
   remove: ./scripts/sandbox rm {slug} -y       # optional; run after delivery
+docs:                           # optional; the living docs (engine/living_docs.py)
+  facts_blocks: [backend]       # repos whose folder AGENTS.md / CLAUDE.md get generated facts blocks
+  extract:                      # extra extraction patterns, added to the built-in ones
+    - kind: route               # route | call | event_out | event_in | job | config | table
+      repo: backend             # optional; every repo when omitted
+      glob: "internal/**/*.go"  # optional; repo-relative fnmatch
+      pattern: 'mux\.Route\("(?P<method>\w+)", "(?P<path>/[^"]*)", (?P<symbol>\w+)'
 ```
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
@@ -114,6 +121,16 @@ backlog or a broken build script no longer sends the fixer after problems the fe
 cause. The result is cached per base commit and command, so a slow build runs on the base once.
 Pre-existing **test** failures are different: the engine cannot show the feature's tests pass, so
 the release verdict is `baseline-failing` and autopilot leaves the release to a person.
+
+The living docs' generated inventories (`docs/_generated/`) come from contracts in any stack
+(OpenAPI, AsyncAPI, SQL migrations, `.env.example`, Kubernetes CronJobs) and built-in patterns for
+Go, Python, JS/TS, Dart and Java/Kotlin routes, client calls, events, jobs and config. When the
+project registers routes or publishes events its own way, add a `docs.extract` pattern: a Python
+regular expression with named groups — `path` (and optionally `method`, `symbol`) for `route` and
+`call`, `name` for events and tables, `schedule` (and `name`, `symbol`) for `job`, `key` (and
+`default`, `symbol`) for `config`. Without `symbol`, the enclosing function is used. Facts blocks
+are written only into instruction files that already exist in a listed repo; the engine never
+creates one.
 
 Every review loop (architecture review of the HLD, LLD readiness check, code review) stops after
 `reviews.max_rounds` reviews; any blocking finding still open then goes to the person at that

@@ -43,8 +43,10 @@ nodes:
     label: Summarize project context
     instruction: |
       State this project's product context in at most three short sentences. Read only root
-      AGENTS.md / CLAUDE.md, maintained summaries under docs/ (architecture.md, technical/,
-      functional/), and every file under .maestro/runs/${inputs.slug}/requirement/, including
+      AGENTS.md / CLAUDE.md, docs/architecture.md (System context and repos, Domain map,
+      Glossary and aliases), docs/product/ when present, the docs/functional/<domain>.md of the
+      domains the request touches (pick them from the Domain map), and every file under
+      .maestro/runs/${inputs.slug}/requirement/, including
       any reference links listed there. Local paths are read; links that cannot be opened are
       recorded for the PRD and become a question only if their content matters. Do not read
       application source or search outside this repository. If context is missing, say so

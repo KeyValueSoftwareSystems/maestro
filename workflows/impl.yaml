@@ -49,7 +49,15 @@ nodes:
     on_exhausted: abort
     routes:
       - {when: "${steps.tasks.outputs.escalate} == true", to: stop_gate}
-      - {to: implement}
+      - {to: facts}
+
+  # Engine-owned: the living-doc rows (rules, invariants, change scenarios) this repository's LLD
+  # cites, so the implementer and reviewer load exactly those facts.
+  - id: facts
+    type: script
+    label: Collect the facts the LLD cites
+    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/lld/${inputs.stack}.md", --out, ".maestro/runs/${inputs.slug}/${inputs.stack}/facts.md"]
+    next: implement
 
   - id: implement
     type: agent
@@ -61,7 +69,9 @@ nodes:
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one), grounded in the
       maintained codebase map
-      at docs/codebase-maps/${inputs.stack}.md. Explore
+      at docs/codebase-maps/${inputs.stack}.md and the living-doc facts the LLD cites at
+      ${steps.facts.outputs.facts_path}: keep every invariant listed there, and when you change
+      something a change scenario names, also handle and test what it says is affected. Explore
       the live source further only where the map or LLD doesn't cover what a slice
       touches. Report tests honestly. The approved LLD and contract are the human approval for
       what they describe, including tasks marked needs_human_gate: build those exactly as
@@ -182,8 +192,10 @@ nodes:
       .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json, the functional test cases at
       .maestro/runs/${inputs.slug}/test-cases.md, the standards and the maintained codebase map
       (docs/codebase-maps/${inputs.stack}.md) — use the map to check blast radius, not
-      just the diff in isolation. Check every task in the task list is built; look closely at the
-      tasks marked needs_human_gate. The engine ran build, lint and tests
+      just the diff in isolation. A change that breaks an invariant in the living-doc facts (the
+      `living_doc_facts` input) or skips what a change scenario there says is affected is
+      blocking. Check every task in the task list is built; look closely at the tasks marked
+      needs_human_gate. The engine ran build, lint and tests
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
       still listed there was accepted by a person. Review the design and code, not whether it
       compiles. When the `pre_existing_checks` input names checks that also fail on the base
@@ -224,6 +236,7 @@ nodes:
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
       test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+      living_doc_facts: "${steps.facts.outputs.facts_path}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
       previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"

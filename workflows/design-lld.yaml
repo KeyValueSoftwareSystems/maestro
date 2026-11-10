@@ -73,6 +73,14 @@ nodes:
       - --impact
       - ".maestro/runs/${inputs.slug}/impact.json"
     on_fail: lld_scope
+    next: lld_facts
+
+  # Engine-owned: the living-doc rows the approved PRD and HLD cite (rules, invariants, change
+  # scenarios), plus the technical docs of the in-scope repositories' domains.
+  - id: lld_facts
+    type: script
+    label: Collect the cited living-doc facts
+    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/requirement/prd.md", --from, ".maestro/runs/${inputs.slug}/hld.md", --repos, "${steps.lld_scope_init.outputs.selected_csv}", --out, ".maestro/runs/${inputs.slug}/design-facts.md"]
     next: prepare_lld_questions
 
   - id: prepare_lld_questions
@@ -84,8 +92,11 @@ nodes:
       LLD prose for the repositories in scope: ${steps.lld_scope_init.outputs.selected_csv}. Read the
       approved HLD and its deferred questions, the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml when it exists, confirmed LLD decisions, and for each
-      repository its codebase map (docs/codebase-maps/<repo>.md), guidance, manifest, and only the source/tests around the
-      affected seam. Do not scan broadly.
+      repository its codebase map (docs/codebase-maps/<repo>.md), guidance, manifest, and only the
+      source/tests around the affected seam. Do not scan broadly. The living-doc facts the PRD and
+      HLD cite are at ${steps.lld_facts.outputs.facts_path}; the domains' technical docs are
+      ${steps.lld_facts.outputs.technical_paths}. Settle what an invariant or change scenario
+      already answers instead of asking it.
 
       Decide normal implementation details from clear existing conventions. Ask only unresolved
       choices that materially change correctness, the extension seam, local state/data lifecycle,
@@ -160,7 +171,7 @@ nodes:
       inputs:
         hld: ".maestro/runs/${inputs.slug}/hld.md"
         contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
-        codebase_maps: "docs/codebase-maps/<repo>.md for each in-scope repository"
+        codebase_maps: "docs/codebase-maps/<repo>.md for each in-scope repository; cited living-doc facts: ${steps.lld_facts.outputs.facts_path}"
         source: "only the source and tests around the seam this question concerns"
     artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
@@ -191,7 +202,10 @@ nodes:
       ${steps.lld_scope_init.outputs.lld_paths_csv}
       Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/openapi.yaml when it exists,
       the confirmed decisions at .maestro/runs/${inputs.slug}/lld-context.json, each repository's
-      guidance and maintained map, and the bounded source/test evidence already inspected.
+      guidance and maintained map, the cited living-doc facts and the domains' technical docs (the
+      `living_docs` input), and the bounded source/test evidence already inspected. Keep every
+      invariant the facts list, check each change scenario they name, and cite those IDs where
+      the LLD relies on them.
 
       Use plain, skimmable technical English and the exact nine-section LLD contract, with the
       feature slug ${inputs.slug} as the parent feature. Make each repository's implementation
@@ -219,6 +233,7 @@ nodes:
       post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
+      living_docs: "${steps.lld_facts.outputs.facts_path}; ${steps.lld_facts.outputs.technical_paths}"
       lessons: "${memory.knowledge.repo-design}"
     outputs: [summary, contract_change_needed, contract_change]
     artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"

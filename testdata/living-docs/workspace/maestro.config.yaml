@@ -1,0 +1,13 @@
+version: 1
+repos:
+  cofee-backend:
+    stack: go
+    commands: {build: make build, test: make test}
+  cofee-payer-app:
+    stack: flutter
+    commands: {build: flutter build web, test: flutter test}
+  cofee-admin-app:
+    stack: flutter
+    commands: {build: flutter build apk, test: flutter test}
+docs:
+  facts_blocks: [cofee-backend, cofee-payer-app]

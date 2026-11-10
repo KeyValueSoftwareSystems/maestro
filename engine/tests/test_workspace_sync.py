@@ -50,12 +50,12 @@ class WorkspaceSyncTest(unittest.TestCase):
             fh.write("# Backend map\n")
         codebase_scan.write_marker(map_path, git(self.repo, "rev-parse", "HEAD"))
         with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
-            fh.write("# Architecture\n")
+            fh.write("---\ndoc: architecture\n---\n# Architecture\n")
         for surface in ("technical", "functional"):
             directory = os.path.join(self.tmp, "docs", surface)
             os.makedirs(directory)
             with open(os.path.join(directory, "auth.md"), "w") as fh:
-                fh.write(f"# {surface.title()} auth\n")
+                fh.write(f"---\ndoc: {surface}\n---\n# auth: {surface.title()}\n")
         self.evidence = os.path.join(self.tmp, "evidence.md")
         with open(self.evidence, "w") as fh:
             fh.write("indexed\n")

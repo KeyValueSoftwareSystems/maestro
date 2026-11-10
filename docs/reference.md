@@ -51,7 +51,7 @@ The one-liner above installs the core pack. To finish setting the repo up, open 
 run **`/maestro-init`** (Claude Code/Cursor) or **`$maestro-init`** (Codex) once. It:
 
 1. **detects your stack** (`detect-stack`) and re-runs the installer with the matching `--stack …`, so only the core pack + the per-stack skills your code actually uses get installed;
-2. **builds the living-docs knowledge base** (`build-knowledge`) — per-domain technical + functional docs and an architecture diagram under `docs/`, plus one codebase map per repo at **`docs/codebase-maps/<name>.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
+2. **builds the living-docs knowledge base** (`build-knowledge`) — `docs/architecture.md` plus per-domain functional (business rules) and technical (invariants, change scenarios) docs under `docs/`, with endpoints, events, jobs, tables and config generated from the code by `living_docs.py`, plus one codebase map per repo at **`docs/codebase-maps/<name>.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
 
 The codebase map is **commit-tracked and incremental**: the engine (`codebase_scan.py`) records, in each map's marker, the commit of the repo it reflects, so re-running (and the post-feature refresh in the archive phase) only re-examines the diff since that commit — not the whole repo. The maps are committed with the rest of `docs/`.
 
