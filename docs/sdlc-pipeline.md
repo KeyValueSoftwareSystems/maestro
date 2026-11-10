@@ -217,7 +217,7 @@ which repositories to create â€” one per deployable service or shared library â€
 and the HLD lists them in a Repositories section (`` `name` (stack): purpose ``). After you approve
 the HLD, the engine creates each repository, a scaffolding agent gives it a passing build and test,
 lint, a README, CI, a container image or starting infrastructure when the design deploys one, and
-a codebase map; the engine adds their commands to `maestro.config.yaml`, runs them once to prove the
+a codebase map (`docs/codebase-maps/<name>.md` in the workspace); the engine adds their commands to `maestro.config.yaml`, runs them once to prove the
 skeleton works, and pins the new commits. The contract, LLDs and delivery then run on the new
 repositories exactly as on existing code.
 

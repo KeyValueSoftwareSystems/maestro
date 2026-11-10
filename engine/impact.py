@@ -14,10 +14,10 @@ An agent reads the approved PRD and the codebase maps and writes impact.json:
    "tables": [...], "jobs": [...], "queues": [...],       # same item shape
    "endpoints": [{"name": "POST /v1/fee-groups", "reason": "...", "evidence": "...",
                   "consumers": ["web: FeeGroupsScreen"]}],  # consumers also allowed on queues
-   "rules": [{"id": "INV-PL-01", ...}], "scenarios": [{"id": "CS-PL-01", ...}]}
+   "rules": [{"id": "PL-INV-001", ...}], "scenarios": [{"id": "PL-CS-001", ...}]}
 Every repository must be one the workspace has (codebase/* or the root itself). Sizing takes the
 light path for `minor` and the full path for `major`, and the LLD scope defaults to these repositories.
-Rules and scenarios must be defined in the domain docs (domain_rules.py), domains must have a page.
+Rules and scenarios must be defined in the living docs (living_docs.py), domains must have a page.
 
   impact.py validate --root . --impact <impact.json> [--prd <prd.md>]
 Prints one JSON line {valid, repos_csv, count, interfaces_change, data_migration,
@@ -34,7 +34,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
-import domain_rules  # noqa: E402
+import living_docs  # noqa: E402
 
 FLAGS = ("interfaces_change", "data_migration", "infrastructure_change")
 SIZES = ("minor", "major")
@@ -43,6 +43,7 @@ KINDS = (("domains", "name"), ("tables", "name"), ("jobs", "name"), ("queues", "
          ("endpoints", "name"), ("rules", "id"), ("scenarios", "id"))
 # side-effects also_impacts lists that become impact items
 ALSO = ("domains", "tables", "queues", "endpoints")
+ID_RE = {k: re.compile(rf"^{living_docs.PREFIX_RE}-{k}-\d{{3}}$") for k in ("INV", "CS")}
 
 
 def _items(doc, kind, issues):
@@ -72,34 +73,31 @@ def _items(doc, kind, issues):
 
 
 def _check_docs(root, lists, issues):
-    """Rule, scenario and domain names the impact cites must exist in the domain docs, when any do."""
-    errors = []
-    pages = domain_rules.load_pages(root, errors, [])
-    scenarios = domain_rules.load_side_effects(root, errors) or []
-    rules = {rid for page in pages.values() for rid in page["rules"]}
-    known_cs = {str(sc.get("id")) for sc in scenarios if isinstance(sc, dict)} | {
-        cs for page in pages.values() for cs in page["scenarios"]}
-    for item in lists["rules"]:
-        if not domain_rules.ID_RE.match(item["id"]) or not item["id"].startswith("INV-"):
-            issues.append(f"rules: {item['id']!r} is not an INV-<CODE>-<NN> id")
-        elif pages and item["id"] not in rules:
-            issues.append(f"rules: {item['id']} is not defined in any docs/functional page")
-    for item in lists["scenarios"]:
-        if not domain_rules.ID_RE.match(item["id"]) or not item["id"].startswith("CS-"):
-            issues.append(f"scenarios: {item['id']!r} is not a CS-<CODE>-<NN> id")
-        elif (pages or scenarios) and item["id"] not in known_cs:
-            issues.append(f"scenarios: {item['id']} is not a change scenario in the domain docs")
-    if pages:
+    """Rule, scenario and domain names the impact cites must exist in the living docs, when any do."""
+    docs = living_docs.load_docs(root)
+    defs = living_docs.collect_ids(docs, living_docs.Report())
+    scenarios = living_docs.load_side_effects(root, living_docs.Report()) or []
+    domains = {d.domain for d in docs if d.domain}
+    rules = {i for i in defs if "-INV-" in i}
+    known_cs = {i for i in defs if "-CS-" in i} | {
+        str(sc.get("id")) for sc in scenarios if isinstance(sc, dict)}
+    for kind, label, ids in (("rules", "INV", rules), ("scenarios", "CS", known_cs)):
+        for item in lists[kind]:
+            if not ID_RE[label].match(item["id"]):
+                issues.append(f"{kind}: {item['id']!r} is not a <PREFIX>-{label}-NNN id")
+            elif (docs or scenarios) and item["id"] not in ids:
+                issues.append(f"{kind}: {item['id']} is not defined in the living docs")
+    if domains:
         for item in lists["domains"]:
-            if item["name"] not in pages:
-                issues.append(f"domains: {item['name']!r} has no docs/functional/{item['name']}.md")
+            if item["name"] not in domains:
+                issues.append(f"domains: {item['name']!r} has no docs/functional or docs/technical page")
 
 
 def match_scenarios(root, texts):
     """Side-effects scenarios whose when_changing names a file or symbol found in any of texts."""
     text = "\n".join(t for t in texts if t)
     found = []
-    for sc in domain_rules.load_side_effects(root, []) or []:
+    for sc in living_docs.load_side_effects(root, living_docs.Report()) or []:
         if not isinstance(sc, dict) or not sc.get("id"):
             continue
         for entry in sc.get("when_changing") or []:
@@ -110,7 +108,7 @@ def match_scenarios(root, texts):
             if not thing:
                 continue
             # shortcut: substring/word match, no code parsing — upgrade if false hits show up
-            if domain_rules._file_like(thing):
+            if "/" in thing or os.path.splitext(thing)[1].lower() in living_docs.SOURCE_EXT:
                 hit = thing in text or os.path.basename(thing) in text
             else:
                 hit = re.search(r"(?<![A-Za-z0-9_])" + re.escape(thing) + r"(?![A-Za-z0-9_])", text)

@@ -37,6 +37,7 @@ import ac_trace  # noqa: E402
 import state as statemod  # noqa: E402
 import validate as validatemod  # noqa: E402
 import codebase_scan  # noqa: E402
+import living_docs  # noqa: E402
 import lld_set  # noqa: E402
 
 
@@ -256,20 +257,19 @@ def _stub_agent(root, act, slug=None):
     if (step.endswith("/build")
             or step.endswith("refresh_knowledge")
             or step.endswith("/retrospect")):
-        for _name, repo in codebase_scan.discover_repos(root):
-            map_path = os.path.join(repo, codebase_scan.DEFAULT_MAP_REL)
+        for name, repo in codebase_scan.discover_repos(root):
+            map_path = codebase_scan.map_path(root, name)
             if (step.endswith("/retrospect")
                     and codebase_scan.read_marker(map_path) == codebase_scan._head(repo)):
                 continue
             os.makedirs(os.path.dirname(map_path), exist_ok=True)
             with open(map_path, "a", encoding="utf-8") as fh:
                 fh.write("\n# Simulated map refresh\n")
-    if step.endswith("refresh_knowledge"):
-        for surface in ("technical", "functional"):
-            path = os.path.join(root, "docs", surface, "simulated.md")
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(f"# Simulated {surface} knowledge\n")
+    if (step.endswith("/build") or step.endswith("refresh_knowledge")
+            or step.endswith("/retrospect")):
+        # A knowledge writer: leave a living-docs set that passes the engine's format check.
+        living_docs.write_minimal_docs(
+            root, "simulated", [name for name, _path in codebase_scan.discover_repos(root)])
     bool_values = {"blocking": False, "tests_passed": True, "passed": True,
                    "checks_passed": True, "risky": False, "contract_change_needed": False,
                    "needs_clarification": False}

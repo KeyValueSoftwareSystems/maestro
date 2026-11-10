@@ -33,31 +33,32 @@ wrong while running** — because both are where a future run can do better from
    breakages, worktree or merge trouble — anything (from `visits`/`attempts`/`status`,
    failure reasons, and the artifacts) that made the run stumble. Turn each into a lesson
    that helps a future run avoid it.
-3. **Add to / refresh the living docs — technical, functional, AND architectural.** Using
-   the same structure `build-knowledge` produced, for every domain the feature touched:
-   - **Technical** (`docs/technical/<domain>.md`) — CREATE the file if the feature introduced
-     a new domain; otherwise update it (new or changed modules, schemas, APIs, storage, jobs).
-   - **Functional** (`docs/functional/<domain>.md`) — likewise: create for a new domain, else
-     update (new or changed behaviour, business rules, flows, edge cases).
-     The sections `## Rules that must never break` and `## If you change… also check`, when a
-     page has them, belong to the team: keep them word for word, with every `INV-…`/`CS-…` id.
-     If the feature showed a rule or a "change X, also check Y" the docs lack, propose it in your
-     summary for the team to add; do not add or renumber ids yourself.
-   - **Architectural** (`docs/architecture.md`) — whenever the feature added or changed a
-     service, component, connection, or data flow: add the new node(s)/edge(s) to the Mermaid
-     diagram(s) and the matching entry in the "How services connect" section.
-   - **Per-repo codebase map** (`docs/codebase-map.md` in each affected repo) — run
+3. **Add to / refresh the living docs — functional, technical, AND architectural.** Keep every
+   file in the shared living-docs format ([docs-format.md](../build-knowledge/docs-format.md)).
+   For every domain the feature touched:
+   - **Functional** (`docs/functional/<domain>.md`) — the rules the feature added or changed
+     (from the approved PRD's acceptance criteria and the gate feedback) as `BR` rows with their
+     edge and source; new states, flows, terms and open questions.
+   - **Technical** (`docs/technical/<domain>.md`) — new failure and concurrency behaviour and
+     the gotchas the reviews raised. The invariants the design relied on and the change
+     scenarios the run discovered (what else broke or had to change, which tests verify it) go
+     under `## Proposed rules and scenarios`, without an ID, for the team to accept.
+   - **Architectural** (`docs/architecture.md`) — a new repo or provider, a new or changed
+     cross-repo flow, a new domain (a Domain map row linking both of its files).
+   - **Never the team's rules.** `## Invariants and consistency`, `## Change scenarios`,
+     `## Platform-wide invariants` and `docs/impact/side-effects.yaml` belong to the project's
+     people: leave them exactly as they are. The engine restores any change to them.
+   - **Per-repo codebase map** (`docs/codebase-maps/<name>.md` for each affected repo) — run
      `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed since
      the map was last recorded; update ONLY those areas (new/changed flows, execution modes,
      APIs, conventions). A repo reported `current` is unchanged — skip it. Do NOT touch the
      `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps it after you write.
-   Keep every file in the shared living-docs format
-   ([docs-format.md](../build-knowledge/docs-format.md)): a new domain gets both files with
-   their exact titles and a row in the architecture Domains table, and `docs/architecture.md`
-   stays within 200 lines.
-   Create files that don't exist yet; edit existing ones in place (never duplicate). Skip a
-   surface only when the feature genuinely did not affect it — but wherever it did, ADD the
-   content, don't just tweak.
+   IDs: a new business rule takes the next free number in its doc; never renumber or reuse one; a
+   rule the feature made untrue keeps its row as `Retired YYYY-MM-DD: <why>`. Cite existing IDs instead of
+   restating them. Never write what the code lists (endpoints, events, jobs, tables, config, calls
+   between repos) and never edit generated output (`docs/_generated/`, `docs/_index/`, any
+   `generated:` block, `verified_at`): a tool regenerates them. A new domain gets both files and a
+   Domain map row. Skip a surface only when the feature genuinely did not affect it.
 4. **Emit a structured lessons drop.** Write the incoming file named in your instruction as JSON:
 
    ```json
@@ -86,8 +87,8 @@ wrong while running** — because both are where a future run can do better from
 
 ## Safety
 - Read-only against application code; writes are limited to the incoming JSON drop named in
-  your instruction and the living docs it refreshes (the central `docs/` tree and each repo's
-  `docs/codebase-map.md`). Never edit application code or run state.
+  your instruction and the living docs it refreshes (the central `docs/` tree, including
+  `docs/codebase-maps/`). Never edit application code or run state.
 
 ## Output contract
 Return `incoming_path` (the JSON file written), `lessons_count` (integer), and `summary`

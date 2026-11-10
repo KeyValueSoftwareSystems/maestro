@@ -21,7 +21,7 @@ runtime. It ships:
   slash commands (`/prd-writing`, `/repo-implement`, …) or Maestro invokes them via subagents.
   Skills are portable: they must NOT hardcode artifact paths or their position in a
   pipeline — that lives in the workflow node. Two kinds live here beyond the SDLC steps:
-  **bootstrap skills** (`detect-stack`, `maestro-init`, `build-knowledge`, `retrospect`) and
+  **bootstrap skills** (`detect-stack`, `maestro-init`, `maestro-sync`, `build-knowledge`, `retrospect`) and
   **per-stack reference skills** (`golang-patterns`, `react-testing`, `springboot-security`,
   `go-review`, …) — the "how" style guides and review checklists. See the stack-tag note below.
   **Source layout** — the `skills/` tree is organized into category folders (`skills/maestro`
@@ -74,8 +74,9 @@ runtime. It ships:
   (probes `/api/health`; then loads runs/workflows over HTTP — see the branch points guarded
   by `window.MAESTRO_SERVER`). `ui/embed.py` refreshes its embedded schema + lint-rule blocks.
 - **`bin/maestro`** — a repo-local dev wrapper `install.sh` drops at the consumer repo root
-  as `./maestro`. Exactly two subcommands: `maestro ui` (serve the builder via
-  `engine/ui_server.py`) and `maestro install` (proxy to `install.sh`). It is dev tooling
+  as `./maestro`. Subcommands: `maestro ui` (serve the builder via
+  `engine/ui_server.py`), `maestro install` (proxy to `install.sh`), `maestro init` and
+  `maestro sync` (`project_config.py init` / `sync`: config entries only). It is dev tooling
   only — it NEVER drives a run or writes run state; the Maestro skill + engine stay the
   sole execution path and only state writer.
 - **`install.sh`** — the installer. There is deliberately NO **execution** CLI and NO config
@@ -232,7 +233,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`greenfield.py`** — the new-product path: `check` (no repository discovered), `create` (git
   init + first commit for each repository the HLD's Repositories section lists), `configure` (adds
   the scaffold report's commands to maestro.config.yaml without touching existing entries, runs
-  each build and test once, stamps and commits each codebase map). `workflows/scaffold.yaml` runs
+  each build and test once, stamps each codebase map in `docs/codebase-maps/`). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
   `feature-impact` agent right after PRD approval): the repositories the feature changes and
@@ -240,7 +241,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `minor` or `major`; schema 2 also lists every domain, table, job, queue, endpoint (with its
   consumers), `INV` rule and `CS` scenario it touches, each with a reason and evidence. `validate`
   checks every name is a discovered repository, the size, and that rules/scenarios/domains exist in
-  the domain docs; with `--prd` it adds every change scenario whose `when_changing` the PRD names
+  the living docs (`living_docs.py`); with `--prd` it adds every change scenario whose `when_changing` the PRD names
   (`match_scenarios`/`merge`: the scenario, its rules and `also_impacts` items). Sizing and the LLD
   scope (`lld_set.py init --choice impact`, the scope gate's autopilot answer) read it. Skipped on
   greenfield.
@@ -249,14 +250,6 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
   because …"; gaps go back to the writer. Writes `impact-trace.md`, which the HLD and LLD approval
   gates show first. No assessment = valid.
-- **`domain_rules.py`** — optional domain rules (`INV-<CODE>-<NN>` under `## Rules that must never
-  break` in `docs/functional/<domain>.md`) and change scenarios (`CS-…`, the page's `## If you
-  change… also check` table plus `docs/impact/side-effects.yaml`), written by the team, never by an
-  agent. `status` (any present?), `check` (every file, symbol, table, queue, endpoint and test a
-  scenario names still exists; every rule is cited in code; no code cites an undefined id —
-  `--repo/--worktree` reads the feature's worktree), `scaffold` (empty starter yaml), `next`.
-  No rules = `skipped`. `impl.yaml`'s `domain_rules` step runs it after verify and never blocks;
-  the reviewer gets the report. Spec: `docs/domain-rules.md`.
 - **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
   `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
   without one: `auto` takes the light path
@@ -277,6 +270,28 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`docs/provenance.yaml`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
+- **`living_docs.py`** — the deterministic half of the living docs (format v2.3,
+  `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R9: ID format/placement,
+  every cited ID defined in docs, run artifacts and code, every invariant cited in code (warning),
+  `repo · path · symbol` anchors and `docs/impact/side-effects.yaml` names resolve, generated
+  output current, staleness vs `verified_at`, app calls reach a served route, structure, token
+  budgets; `--write` regenerates first), `extract` (inventories from contracts and code —
+  OpenAPI, AsyncAPI, SQL, `.env.example`, CronJobs, built-in Go/Python/JS/Dart/Java patterns,
+  `docs.extract` from maestro.config.yaml — into `docs/_generated/`, the technical doc's
+  connections block, the diagram, `docs/_index/code-to-facts.md` and opt-in facts blocks in folder
+  `AGENTS.md`/`CLAUDE.md`), `snapshot`/`stamp` (`verified_at` = HEAD and `status: draft` on docs a
+  writer changed), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD, implement
+  and review load), `domains` (doc paths for the repos `impact.json` names). **Team-owned
+  content** — invariants (`INV`) and change scenarios (`CS`): technical `## Invariants and
+  consistency` / `## Change scenarios`, architecture `## Platform-wide invariants`,
+  `side-effects.yaml` — is written by people only. The build-knowledge, retrospect and
+  workspace-sync writers run `check --write --locked-from <snapshot>` as their handoff check: R9
+  fails and the engine restores any change to that content (models propose under `## Proposed
+  rules and scenarios`), and a problem inside it is a warning for the team, not the writer's to
+  fix. `status`/`rules` (`--repo/--worktree`: the team's rules against a feature's branch; never
+  blocks — `impl.yaml`'s `domain_rules` step hands it to the reviewer)/`scaffold`/`next`. Guide:
+  `docs/domain-rules.md`. workspace_sync counts a facts-block-only change as managed and pre-v2.3
+  docs as stale.
 - **`install_workflows.py`** — `install.sh`'s workflow upgrader: per file, add / replace an
   byte-identical stock copy (strict hash, CRLF-normalised, against `.maestro/workflow-manifest.json`
   and `engine/workflow_releases.json`, every version ever shipped) / keep a local edit and write
@@ -454,10 +469,13 @@ injected via `${memory.knowledge.<domain>}`). A lesson promotes into knowledge o
 immediately).
 
 There is a **second knowledge surface**: the committed living docs under `docs/` —
-per-domain `docs/technical/<domain>.md` + `docs/functional/<domain>.md`, and
-`docs/architecture.md` (Mermaid + how services connect). `build-knowledge` authors it from
-the codebase; `retrospect` refreshes touched domains after a feature. Human-facing, read by
-subagents as ordinary workspace context. It coexists with the injected lessons store.
+`docs/architecture.md` (repos, Domain map, cross-repo flows, `ARCH-INV` invariants) and per
+domain `docs/functional/<domain>.md` (business rules `BR`) + `docs/technical/<domain>.md`
+(invariants `INV`, change scenarios `CS`, failure, gotchas). `build-knowledge` authors the
+judgement from the codebase; `retrospect` refreshes touched domains after a feature;
+`engine/living_docs.py` generates everything the code lists (`docs/_generated/`), checks the
+format and IDs, and stamps `verified_at`. Steps load only what they need: the touched domains'
+docs, and from LLD on only the rows the design cites. It coexists with the injected lessons store.
 
 **The load-bearing separation (swappable skills):** the consolidation *functionality* —
 counting distinct runs, the threshold, promotion, pruning, rendering — is deterministic

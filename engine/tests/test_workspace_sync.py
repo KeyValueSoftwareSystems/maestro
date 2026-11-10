@@ -44,26 +44,28 @@ class WorkspaceSyncTest(unittest.TestCase):
         git(self.repo, "remote", "add", "origin", self.remote)
         git(self.repo, "push", "-q", "-u", "origin", "main")
 
-        map_path = os.path.join(self.repo, "docs", "codebase-map.md")
+        map_path = codebase_scan.map_path(self.tmp, "backend")
         os.makedirs(os.path.dirname(map_path), exist_ok=True)
         with open(map_path, "w") as fh:
             fh.write("# Backend map\n")
         codebase_scan.write_marker(map_path, git(self.repo, "rev-parse", "HEAD"))
-        os.makedirs(os.path.join(self.tmp, "docs"))
         with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
-            fh.write("# Architecture\n")
+            fh.write("---\ndoc: architecture\n---\n# Architecture\n")
         for surface in ("technical", "functional"):
             directory = os.path.join(self.tmp, "docs", surface)
             os.makedirs(directory)
             with open(os.path.join(directory, "auth.md"), "w") as fh:
-                fh.write(f"# {surface.title()} auth\n")
+                fh.write(f"---\ndoc: {surface}\n---\n# auth: {surface.title()}\n")
         self.evidence = os.path.join(self.tmp, "evidence.md")
         with open(self.evidence, "w") as fh:
             fh.write("indexed\n")
         quiet(ws.cmd_record_knowledge, self.tmp, self.evidence)
 
     def test_untracked_managed_dir_is_not_dirty_but_other_dirs_are_listed_once(self):
-        # docs/ is untracked and holds only the engine-managed codebase map
+        # engine-managed .maestro/ state in the repo is not local work
+        os.makedirs(os.path.join(self.repo, ".maestro", "index"))
+        with open(os.path.join(self.repo, ".maestro", "index", "plan.json"), "w") as fh:
+            fh.write("{}\n")
         self.assertEqual(ws._dirty_paths(self.repo), [])
         big = os.path.join(self.repo, "generated")
         os.makedirs(big)
@@ -71,6 +73,7 @@ class WorkspaceSyncTest(unittest.TestCase):
             with open(os.path.join(big, f"f{i}.txt"), "w") as fh:
                 fh.write("x\n")
         self.assertEqual(ws._dirty_paths(self.repo), ["generated/"])
+        os.makedirs(os.path.join(self.repo, "docs"))
         with open(os.path.join(self.repo, "docs", "notes.md"), "w") as fh:
             fh.write("user doc\n")
         self.assertEqual(sorted(ws._dirty_paths(self.repo)), ["docs/notes.md", "generated/"])
@@ -211,6 +214,40 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertEqual(parsed["repos"][0]["path"], "codebase/backend")
         self.assertEqual(parsed["repos"][0]["branch"], "main")
         self.assertTrue(parsed["docs_sha256"])
+
+    def test_record_knowledge_for_named_repos_keeps_the_others_recorded_commit(self):
+        path = os.path.join(self.tmp, "docs", "provenance.yaml")
+        old_backend = git(self.repo, "rev-parse", "HEAD")
+        with open(os.path.join(self.repo, "app.txt"), "w") as fh:
+            fh.write("v2\n")
+        git(self.repo, "commit", "-qam", "backend moved; its docs were not refreshed")
+        billing = os.path.join(self.tmp, "codebase", "billing")
+        os.makedirs(billing)
+        git(billing, "init", "-q", "-b", "main")
+        git(billing, "config", "user.email", "test@example.com")
+        git(billing, "config", "user.name", "Test")
+        with open(os.path.join(billing, "x.txt"), "w") as fh:
+            fh.write("billing\n")
+        git(billing, "add", "x.txt")
+        git(billing, "commit", "-q", "-m", "initial")
+
+        code, out = quiet(ws.cmd_record_knowledge, self.tmp, self.evidence, only=["billing"])
+        self.assertEqual(code, 0)
+        self.assertEqual(out["recorded_repos_csv"], "backend,billing")
+        with open(path, encoding="utf-8") as fh:
+            recorded = {e["name"]: e["commit"]
+                        for e in ws._parse_index_state_yaml(fh.read())["repos"]}
+        self.assertEqual(recorded["backend"], old_backend)
+        self.assertEqual(recorded["billing"], git(billing, "rev-parse", "HEAD"))
+        repos = [{"name": n, "path": f"codebase/{n}", "head_commit": git(r, "rev-parse", "HEAD")}
+                 for n, r in (("backend", self.repo), ("billing", billing))]
+        status, _ = ws._knowledge_status(self.tmp, repos, ws.DEFAULT_INDEX_STATE)
+        self.assertEqual(status["stale_repos"], ["backend"])
+
+    def test_record_knowledge_refuses_an_unknown_repo_name(self):
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(ws.cmd_record_knowledge(self.tmp, self.evidence, only=["nope"]), 1)
 
     def test_docs_content_drift_marks_knowledge_stale(self):
         with open(os.path.join(self.tmp, "docs", "architecture.md"), "a") as fh:

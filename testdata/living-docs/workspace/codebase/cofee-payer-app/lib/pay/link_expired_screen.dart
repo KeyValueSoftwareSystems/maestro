@@ -1,0 +1,1 @@
+class LinkExpiredScreen extends StatelessWidget {}

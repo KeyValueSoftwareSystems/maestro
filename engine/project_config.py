@@ -27,6 +27,7 @@ sections above are typos and fail.
 Usage: project_config.py preflight [--root .]
        project_config.py init [--root .]     # create maestro.config.yaml if missing
        project_config.py apply --detected F  # fill stack and commands from detect-stack
+       project_config.py sync [--dry-run]    # add entries for repos new to the workspace
 """
 
 from __future__ import annotations
@@ -60,6 +61,10 @@ ENVIRONMENT_KEYS = {"start", "ready", "stop"}
 DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
 WORKTREE_KEYS = {"create", "path", "branch", "remove"}
+DOCS_KEYS = {"facts_blocks", "extract"}
+# living_docs.py extraction kinds and the named groups each pattern must capture.
+DOCS_EXTRACT_KINDS = {"route": "path", "call": "path", "event_out": "name", "event_in": "name",
+                      "job": "schedule", "config": "key", "table": "name"}
 # Placeholders each worktree setting may use (worktrees.py fills them). `${VAR}` is shell, not ours.
 WORKTREE_PLACEHOLDERS = {"create": {"slug", "root"}, "remove": {"slug", "root"},
                          "path": {"slug", "repo"}, "branch": {"slug", "repo"}}
@@ -170,6 +175,107 @@ def apply_detected(root, detected):
     if created or updated or worktree_added:
         wf.dump_file(path, config)
     return {"created": created, "updated": updated, "worktree_added": worktree_added}
+
+
+def sync(root=".", dry_run=False):
+    """Add maestro.config.yaml entries for repositories new to the workspace. Deterministic,
+    no scan; only ever adds.
+
+    Every repo on disk (discover_repos — what preflight checks) without an entry gets an empty
+    one for the project-config skill to fill. registry.yaml, when present, only adds facts: a
+    registered repo not cloned yet is reported, not added, and a clone the registry does not
+    list is still added but reported. Existing entries are never touched. The edit is textual,
+    so comments and layout survive.
+    -> {"created", "added", "missing_clones", "unregistered", "needs_commands", "changed"}
+    """
+    import registry as registry_mod
+    discovered = [name for name, _path in codebase_scan.discover_repos(root)]
+    reg = registry_mod.load(root)
+    registered = [e["name"] for e in (reg or {}).get("repos") or [] if e.get("name")]
+    path = config_path(root)
+    created = not os.path.exists(path)
+    config = load(root) or {"version": CONFIG_VERSION}
+    repos = config.get("repos") if isinstance(config.get("repos"), dict) else {}
+    added = [name for name in discovered if name not in repos]
+    needs_commands = [name for name in discovered if any(
+        command not in repo_commands(config, name) for command in REQUIRED_COMMANDS)]
+    changed = bool(created or added)
+    if changed and not dry_run:
+        _write_synced(path, config, added, created)
+    return {
+        "created": created,
+        "added": added,
+        "missing_clones": [name for name in registered if name not in discovered],
+        "unregistered": [name for name in discovered if reg is not None and name not in registered],
+        "needs_commands": needs_commands,
+        "changed": changed,
+        "dry_run": bool(dry_run),
+    }
+
+
+def _write_synced(path, config, added, created):
+    """Append empty entries under `repos:` by editing lines, then reload to prove the result;
+    anything the line edit cannot handle falls back to a full re-dump."""
+    existing = dict(config.get("repos") or {})
+    if not created:
+        with open(path, encoding="utf-8") as fh:
+            text = fh.read()
+        edited = _append_repos(text, added)
+        if edited is not None:
+            tmp = path + ".sync.tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.write(edited)
+            try:
+                reloaded = wf.load_file(tmp)
+                ok = (isinstance(reloaded, dict) and isinstance(reloaded.get("repos"), dict)
+                      and sorted(reloaded["repos"]) == sorted([*existing, *added])
+                      and all(reloaded["repos"][name] == spec for name, spec in existing.items()))
+            except (OSError, ValueError):
+                ok = False
+            if ok:
+                os.replace(tmp, path)
+                return
+            os.remove(tmp)
+    for name in added:
+        existing[name] = {}
+    config["repos"] = existing
+    wf.dump_file(path, config)
+
+
+def _append_repos(text, added):
+    """`text` with `added` appended to the block-style `repos:` map, or None when there is no
+    block-style `repos:` to edit."""
+    lines = text.splitlines(keepends=True)
+    start = next((i for i, line in enumerate(lines)
+                  if re.match(r"repos:\s*(#.*)?$", line.rstrip("\r\n"))), None)
+    if start is None:
+        return None
+
+    def top_level(line):
+        body = line.rstrip("\r\n")
+        return bool(body) and not body[0].isspace() and not body.lstrip().startswith("#")
+
+    end = next((i for i in range(start + 1, len(lines)) if top_level(lines[i])), len(lines))
+    block = lines[start + 1:end]
+    # Blank lines closing the block stay after the new entries, before the next section.
+    tail = []
+    while block and not block[-1].strip():
+        tail.insert(0, block.pop())
+    widths = [len(line) - len(line.lstrip(" ")) for line in block
+              if line.strip() and not line.lstrip().startswith("#")]
+    indent = min(widths, default=2) or 2
+    newline = "\r\n" if lines[start].endswith("\r\n") else "\n"
+    if block and not block[-1].endswith(("\n", "\r\n")):
+        block[-1] += newline
+    block += [f"{' ' * indent}{_yaml_key(name)}: {{}}{newline}" for name in added]
+    head = lines[:start + 1]
+    if not head[-1].endswith(("\n", "\r\n")):
+        head[-1] += newline
+    return "".join(head + block + tail + lines[end:])
+
+
+def _yaml_key(name):
+    return name if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", name) else json.dumps(name)
 
 
 def _detected_worktree(value):
@@ -331,12 +437,70 @@ def check(config, discovered):
                                         "reviews.max_rounds"))
     if "worktree" in config:
         issues.extend(_check_worktree(config["worktree"]))
+    if "docs" in config:
+        issues.extend(_check_docs(config["docs"], set(repos) | set(discovered)))
     if "delivery" in config:
         delivery = config["delivery"]
         _check_strings("delivery", delivery, DELIVERY_KEYS, "delivery", issues)
         if isinstance(delivery, dict) and delivery.get("mode") not in (None, *DELIVERY_MODES):
             issues.append(Issue("error", "config-shape",
                                 f"must be one of: {', '.join(DELIVERY_MODES)}", "delivery.mode"))
+    return issues
+
+
+def _check_docs(section, known_repos):
+    """`docs`: facts_blocks (repos that receive generated facts blocks) and extract patterns."""
+    issues = []
+    if not isinstance(section, dict):
+        return [Issue("error", "config-shape", "`docs` must be a mapping", "docs")]
+    for key in section:
+        if key not in DOCS_KEYS:
+            issues.append(Issue("error", "config-unknown-key",
+                                f"unknown key `{key}` (allowed: {', '.join(sorted(DOCS_KEYS))})",
+                                f"docs.{key}"))
+    blocks = section.get("facts_blocks")
+    if blocks is not None:
+        if not isinstance(blocks, list) or not all(isinstance(r, str) and r for r in blocks):
+            issues.append(Issue("error", "config-shape", "must be a list of repository names",
+                                "docs.facts_blocks"))
+        else:
+            for repo in blocks:
+                if repo not in known_repos:
+                    issues.append(Issue("warning", "config-unknown-repo",
+                                        f"repo `{repo}` is not in this workspace", "docs.facts_blocks"))
+    rules = section.get("extract")
+    if rules is not None:
+        if not isinstance(rules, list):
+            return issues + [Issue("error", "config-shape", "must be a list of patterns", "docs.extract")]
+        for index, rule in enumerate(rules):
+            where = f"docs.extract[{index}]"
+            if not isinstance(rule, dict):
+                issues.append(Issue("error", "config-shape", "each pattern must be a mapping", where))
+                continue
+            unknown = set(rule) - {"kind", "pattern", "glob", "repo"}
+            if unknown:
+                issues.append(Issue("error", "config-unknown-key",
+                                    f"unknown key `{sorted(unknown)[0]}` (allowed: glob, kind, pattern, repo)",
+                                    where))
+            kind = rule.get("kind")
+            if kind not in DOCS_EXTRACT_KINDS:
+                issues.append(Issue("error", "config-shape",
+                                    f"kind must be one of: {', '.join(DOCS_EXTRACT_KINDS)}", f"{where}.kind"))
+                continue
+            try:
+                compiled = re.compile(str(rule.get("pattern") or ""))
+            except re.error as exc:
+                issues.append(Issue("error", "config-shape", f"pattern does not compile: {exc}",
+                                    f"{where}.pattern"))
+                continue
+            needed = DOCS_EXTRACT_KINDS[kind]
+            if not rule.get("pattern") or needed not in compiled.groupindex:
+                issues.append(Issue("error", "config-shape",
+                                    f"a {kind} pattern needs a named group (?P<{needed}>…)",
+                                    f"{where}.pattern"))
+            if rule.get("repo") is not None and rule.get("repo") not in known_repos:
+                issues.append(Issue("warning", "config-unknown-repo",
+                                    f"repo `{rule.get('repo')}` is not in this workspace", f"{where}.repo"))
     return issues
 
 
@@ -412,10 +576,18 @@ def summary(issues):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["preflight", "init", "apply"])
+    parser.add_argument("command", choices=["preflight", "init", "apply", "sync"])
     parser.add_argument("--root", default=".")
     parser.add_argument("--detected", help="detect-stack JSON report (apply)")
+    parser.add_argument("--dry-run", action="store_true", help="sync: report, write nothing")
     args = parser.parse_args(argv)
+    if args.command == "sync":
+        try:
+            print(json.dumps(sync(args.root, dry_run=args.dry_run), indent=2))
+        except ConfigError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        return 0
     if args.command == "init":
         # `wrote` or `exists` — /maestro-init reports which one happened.
         print(init(args.root))

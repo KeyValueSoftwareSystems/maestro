@@ -12,18 +12,17 @@ import impact  # noqa: E402
 import impact_trace  # noqa: E402
 
 PAGES = {
-    "fees": "# Fees\n\n## Rules that must never break\n- INV-FC-01 A student is charged a fee once per cycle.\n",
-    "payments": "# Payments\n\n## Rules that must never break\n- INV-PL-01 One active link per invoice.\n"
-                "\n## If you change… also check\n| ID | Change | Also check |\n|----|----|----|\n"
-                "| CS-PL-01 | Payment links | Reminders |\n",
-    "whatsapp": "# WhatsApp\n\n## Rules that must never break\n- INV-WA-01 Never message an opted-out parent.\n",
+    "fees": "---\ndoc: technical\ndomain: fees\nid_prefix: FC\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| FC-INV-001 | A student is charged a fee once per cycle. |\n",
+    "payments": "---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n"
+                "\n## Change scenarios\n| ID | When changing | Also affects |\n| --- | --- | --- |\n| PL-CS-001 | Payment links | Reminders |\n",
+    "whatsapp": "---\ndoc: technical\ndomain: whatsapp\nid_prefix: WA\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| WA-INV-001 | Never message an opted-out parent. |\n",
 }
 SIDE_EFFECTS = """version: 1
 scenarios:
-  - id: CS-PL-01
+  - id: PL-CS-001
     domain: payments
     summary: Changing payment links
-    rules: [INV-PL-01]
+    rules: [PL-INV-001]
     repo: backend
     when_changing: ["internal/links/create.go"]
     also_impacts:
@@ -46,16 +45,16 @@ FEE_GROUPS = {
     "queues": [item("whatsapp.send", "reused for fee reminders", consumers=["notifier"]),
                item("payment.succeeded", "reused to settle fees")],
     "endpoints": [item("POST /v1/fee-groups", consumers=["web: FeeGroupsScreen"])],
-    "rules": [item("INV-FC-01", key="id"), item("INV-PL-01", key="id"), item("INV-WA-01", key="id")],
+    "rules": [item("FC-INV-001", key="id"), item("PL-INV-001", key="id"), item("WA-INV-001", key="id")],
 }
 HLD = """# HLD
 New tables `fee_groups` and `fee_group_members` in the fees domain.
-The `fee-schedule-run` job charges each group (INV-FC-01) and posts POST /v1/fee-groups results.
-It reuses `whatsapp.send` for reminders, honouring INV-WA-01, and settles on `payment.succeeded`.
-INV-PL-01: no change needed, because links are created exactly as today.
+The `fee-schedule-run` job charges each group (FC-INV-001) and posts POST /v1/fee-groups results.
+It reuses `whatsapp.send` for reminders, honouring WA-INV-001, and settles on `payment.succeeded`.
+PL-INV-001: no change needed, because links are created exactly as today.
 """
 NEEDLES = ["fee_groups", "fee-schedule-run", "whatsapp.send", "payment.succeeded",
-           "INV-FC-01", "INV-PL-01", "INV-WA-01"]
+           "FC-INV-001", "PL-INV-001", "WA-INV-001"]
 
 
 class ImpactTraceTest(unittest.TestCase):
@@ -64,7 +63,7 @@ class ImpactTraceTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         subprocess.run(["git", "init", "-q", os.path.join(self.root, "codebase", "backend")], check=True)
         for name, text in PAGES.items():
-            self.write(f"docs/functional/{name}.md", text)
+            self.write(f"docs/technical/{name}.md", text)
         self.write("docs/impact/side-effects.yaml", SIDE_EFFECTS)
         self.impact = self.write("impact.json", json.dumps(FEE_GROUPS))
 
@@ -100,15 +99,15 @@ class ImpactTraceTest(unittest.TestCase):
 
     def test_no_change_needed_needs_a_reason(self):
         _rows, _missing, issues, _ = self.check(HLD.replace(", because links are created exactly as today", ""))
-        self.assertTrue(any("INV-PL-01 needs no change but not why" in i for i in issues), issues)
+        self.assertTrue(any("PL-INV-001 needs no change but not why" in i for i in issues), issues)
 
     def test_match_adds_the_scenario_a_planned_file_triggers(self):
         lld = HLD + "\nChange internal/links/create.go to tag fee invoices.\n"
         _rows, missing, _issues, added = self.check(lld, stage="lld", match=True)
-        self.assertEqual(added, ["CS-PL-01"])
-        self.assertIn("CS-PL-01", missing)  # the scenario itself must now be dealt with
+        self.assertEqual(added, ["PL-CS-001"])
+        self.assertIn("PL-CS-001", missing)  # the scenario itself must now be dealt with
         with open(self.impact) as fh:
-            self.assertIn("CS-PL-01", [s["id"] for s in json.load(fh)["scenarios"]])
+            self.assertIn("PL-CS-001", [s["id"] for s in json.load(fh)["scenarios"]])
 
     def test_cli_writes_report_and_skips_without_assessment(self):
         hld = self.write("hld.md", HLD)

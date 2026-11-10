@@ -94,7 +94,7 @@ nodes:
     run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
     routes:
       - {when: "${steps.map_plan.outputs.stale} == true", to: snapshot_maps}
-      - {to: refresh_knowledge}
+      - {to: snapshot_docs}
 
   - id: snapshot_maps
     type: script
@@ -108,6 +108,23 @@ nodes:
       - --out
       - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-map-snapshot.json"
     on_fail: abort
+    next: snapshot_docs
+
+  - id: snapshot_docs
+    type: script
+    label: Snapshot living docs before refresh
+    # Lets the stamp step below mark exactly the docs this refresh rewrote.
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-docs-snapshot.json"]
+    on_fail: abort
+    next: extract_inventory
+
+  - id: extract_inventory
+    type: script
+    label: Extract the workspace inventory (engine)
+    # Endpoints, calls, events, jobs, tables and config read from code and contracts, so the
+    # writer never has to restate or grep for them.
+    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-inventory.md"]
+    on_fail: abort
     next: refresh_knowledge
 
   - id: refresh_knowledge
@@ -119,13 +136,21 @@ nodes:
       Read ${steps.plan.outputs.plan_path} for per-repo provenance and changed files, and, when
       the sync fast-forwarded repositories, the apply result (the `apply_result` input).
 
-      For every stale repo, update its docs/codebase-map.md only where the changed files alter
+      For every stale repo, update its codebase map (docs/codebase-maps/<repo>.md) only where the changed files alter
       modules, flows, execution modes, APIs or conventions. Do not touch its engine-owned
-      maestro-codebase-map marker. Update the central docs/technical/<domain>.md and
-      docs/functional/<domain>.md files for affected domains. Update docs/architecture.md only
-      when services, components, ownership, protocols or data flows changed; otherwise preserve
-      it byte-for-byte. Create missing knowledge surfaces when this is the first indexed run.
-      Preserve unrelated sections and human edits. Do not edit application code.
+      maestro-codebase-map marker. In the domains the changes touch, update the rows of
+      docs/functional/<domain>.md (business rules) and docs/technical/<domain>.md (failure
+      behaviour, gotchas, known gaps) whose anchored code changed, keeping every ID stable; a
+      new fact takes the next free number. Invariants and change scenarios are team-owned: never
+      edit them or docs/impact/side-effects.yaml (the engine restores them); when changed code
+      breaks one, say so in the audit and propose the fix under §Proposed rules and scenarios.
+      Update docs/architecture.md only when repos, ownership or cross-repo flows changed;
+      otherwise preserve it byte-for-byte. Create missing knowledge surfaces when this is the first indexed run.
+      Follow docs-format.md in the build-knowledge skill. Endpoints, events, jobs, tables,
+      config and cross-repo calls are generated (the extracted inventory is the `inventory`
+      input): never restate them, and never edit docs/_generated/, docs/_index/, a generated:
+      block or verified_at. Preserve unrelated sections and human edits. Do not edit
+      application code.
 
       Write a concise audit of files assessed, docs changed, and why unchanged docs remained
       valid to .maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md.
@@ -136,10 +161,21 @@ nodes:
       plan_path: "${steps.plan.outputs.plan_path}"
       apply_result: "${steps.apply.outputs.result_path}"
       updated_repos: "${steps.apply.outputs.updated_repos_csv}"
+      inventory: ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-inventory.md"
     outputs: [domains_written, architecture_path, summary]
     artifact:
       - docs/architecture.md
       - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md"
+    # Regenerates the generated files and blocks, then checks the format, IDs and anchors.
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-docs-snapshot.json", --report]}
+    next: stamp_docs
+
+  - id: stamp_docs
+    type: script
+    label: Stamp refreshed docs (engine)
+    # verified_at = each repo's HEAD, status back to draft, only on the docs this refresh changed.
+    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-docs-snapshot.json"]
+    on_fail: abort
     routes:
       - {when: "${steps.map_plan.outputs.stale} == true", to: record_maps}
       - {to: record_knowledge}

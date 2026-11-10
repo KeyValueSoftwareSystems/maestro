@@ -2,15 +2,17 @@
 """Per-repo codebase-map commit tracking — the deterministic half of the living
 codebase map.
 
-The skill (build-knowledge / retrospect) supplies the PROSE of a repo's
-`docs/codebase-map.md`; this engine script owns the load-bearing determinism —
+The skill (build-knowledge / retrospect) supplies the PROSE of a repo's map; this engine script
+owns the load-bearing determinism —
 WHICH repos exist, WHAT changed since the map was last written, and the recorded
 commit — so swapping that skill can never change how the incremental refresh works
 (the same reason memory consolidation lives in the engine, not a skill).
 
+Every map is `<root>/docs/codebase-maps/<repo>.md`, committed with the rest of the living docs.
+
 Commands
 --------
-  plan   [--root .] [--map-rel docs/codebase-map.md]
+  plan   [--root .] [--maps-dir docs/codebase-maps]
       Detect the repo(s) — each git repo directly under <root>/codebase/*, or <root>
       itself for a single-repo workspace — and for each, read the commit recorded in
       its map file's marker and classify:
@@ -23,13 +25,13 @@ Commands
       without inspecting the per-repo array (used by design-hld.yaml's pre-HLD freshness gate).
       Read-only (git reads + file reads). Prints a JSON plan on stdout.
 
-  record [--root .] [--map-rel docs/codebase-map.md]
+  record [--root .] [--maps-dir docs/codebase-maps]
       Stamp each repo's current HEAD into its map file's marker, AFTER the skill has
       (re)written the map. Skips repos with no map file. This is the step that makes
       the NEXT run incremental — kept in the engine, invoked from a workflow script
       node, so it can't be skipped by swapping the skill.
 
-  snapshot [--root .] --out <path> [--map-rel docs/codebase-map.md]
+  snapshot [--root .] --out <path> [--repos a,b] [--maps-dir docs/codebase-maps]
       Capture stale map prose hashes and repo HEADs immediately before refresh. Use
       `record --snapshot <path> --snapshot-sha256 <hash>` afterward; record refuses to
       advance markers if the engine snapshot changed, map prose stayed unchanged, or a
@@ -47,7 +49,7 @@ import re
 import subprocess
 import sys
 
-DEFAULT_MAP_REL = "docs/codebase-map.md"
+DEFAULT_MAPS_DIR = "docs/codebase-maps"   # relative to the workspace root
 MARKER_RE = re.compile(r"<!--\s*maestro-codebase-map\s+commit=([0-9a-fA-F]+).*?-->")
 MAX_CHANGED = 500  # cap the emitted file list so a huge diff can't bloat the prompt
 
@@ -151,11 +153,22 @@ def _rel(path, root):
         return path
 
 
-def map_is_current(repo, map_rel=None, head=None):
-    """True when the repository's codebase map describes its HEAD: the map's marker is HEAD, or
-    the only file changed since the marked commit is the map itself (its refresh was committed)."""
-    map_rel = map_rel or DEFAULT_MAP_REL
-    map_abs = os.path.join(repo, map_rel)
+def map_path(root, name, maps_dir=None):
+    """Absolute path of repo `name`'s codebase map: <root>/<maps_dir>/<name>.md."""
+    return os.path.join(os.path.abspath(root), maps_dir or DEFAULT_MAPS_DIR, f"{name}.md")
+
+
+def _map_only_paths(repo, map_abs):
+    """Repo-relative paths whose commits are map refreshes, not code changes: the map itself when
+    it sits inside the repo (single-repo layout, where the workspace root is the repo)."""
+    rel = os.path.relpath(map_abs, repo)
+    return set() if rel.startswith("..") else {rel.replace(os.sep, "/")}
+
+
+def map_is_current(root, name, repo, head=None, maps_dir=None):
+    """True when repo `name`'s codebase map describes its HEAD: the map's marker is HEAD, or the
+    only files changed since the marked commit are the map itself (a committed map refresh)."""
+    map_abs = map_path(root, name, maps_dir)
     head = head or _head(repo)
     prev = read_marker(map_abs) if os.path.exists(map_abs) else None
     if head is None or prev is None:
@@ -163,14 +176,15 @@ def map_is_current(repo, map_rel=None, head=None):
     if prev == head:
         return True
     rc, out = _git(repo, "diff", "--name-only", prev, head)
-    return rc == 0 and {line for line in out.splitlines() if line.strip()} <= {map_rel}
+    return rc == 0 and {line for line in out.splitlines() if line.strip()} <= _map_only_paths(
+        repo, map_abs)
 
 
-def cmd_plan(root, map_rel):
+def cmd_plan(root, maps_dir=None):
     root = os.path.abspath(root)
     repos_out = []
     for name, repo in discover_repos(root):
-        map_abs = os.path.join(repo, map_rel)
+        map_abs = map_path(root, name, maps_dir)
         head = _head(repo)
         prev = read_marker(map_abs) if os.path.exists(map_abs) else None
         changed = []
@@ -185,9 +199,10 @@ def cmd_plan(root, map_rel):
             if rc != 0:  # recorded commit gone (history rewritten) — rebuild whole map
                 mode = "full"
             else:
-                changed = [line for line in out.splitlines() if line.strip()]
-                # committing the refreshed map itself is not a code change the map misses
-                mode = "current" if set(changed) <= {map_rel} else "incremental"
+                # committing a refreshed map is not a code change the map misses
+                changed = [line for line in out.splitlines()
+                           if line.strip() and line not in _map_only_paths(repo, map_abs)]
+                mode = "incremental" if changed else "current"
                 if mode == "current":
                     changed = []
         entry = {
@@ -211,7 +226,7 @@ def cmd_plan(root, map_rel):
     # scalar-only filter, so also emit stale_repos_csv for route/prompt placeholders to use.
     print(json.dumps({
         "root": root,
-        "map_rel": map_rel,
+        "maps_dir": maps_dir or DEFAULT_MAPS_DIR,
         "repos": repos_out,
         "stale": bool(stale_repos),
         "stale_repos": stale_repos,
@@ -220,12 +235,21 @@ def cmd_plan(root, map_rel):
     return 0
 
 
-def cmd_snapshot(root, map_rel, out):
-    """Capture the stale maps' HEADs and prose hashes before an agent refresh."""
+def cmd_snapshot(root, maps_dir, out, only=None):
+    """Capture the stale maps' HEADs and prose hashes before an agent refresh. `only` (repo
+    names) limits it to those repos, so a later `record --snapshot` stamps only them."""
     root = os.path.abspath(root)
     stale = []
-    for name, repo in discover_repos(root):
-        map_abs = os.path.join(repo, map_rel)
+    discovered = discover_repos(root)
+    if only is not None:
+        unknown = sorted(set(only) - {name for name, _repo in discovered})
+        if unknown:
+            print(f"FAIL: not a discovered repo: {', '.join(unknown)}", file=sys.stderr)
+            return 1
+    for name, repo in discovered:
+        if only is not None and name not in only:
+            continue
+        map_abs = map_path(root, name, maps_dir)
         head = _head(repo)
         prev = read_marker(map_abs) if os.path.exists(map_abs) else None
         if head is not None and prev == head:
@@ -243,7 +267,7 @@ def cmd_snapshot(root, map_rel, out):
     out_abs = out if os.path.isabs(out) else os.path.join(root, out)
     os.makedirs(os.path.dirname(out_abs), exist_ok=True)
     with open(out_abs, "w", encoding="utf-8") as fh:
-        json.dump({"schema_version": 1, "root": root, "map_rel": map_rel,
+        json.dump({"schema_version": 1, "root": root, "maps_dir": maps_dir or DEFAULT_MAPS_DIR,
                    "stale_repos": stale}, fh, indent=2)
         fh.write("\n")
     print(json.dumps({"snapshot_path": _rel(out_abs, root),
@@ -266,7 +290,7 @@ def _load_snapshot(root, snapshot):
     return doc
 
 
-def cmd_record(root, map_rel, snapshot=None, snapshot_sha256=None):
+def cmd_record(root, maps_dir=None, snapshot=None, snapshot_sha256=None):
     root = os.path.abspath(root)
     required = None
     if snapshot:
@@ -287,8 +311,8 @@ def cmd_record(root, map_rel, snapshot=None, snapshot_sha256=None):
         except ValueError as exc:
             print(f"FAIL: {exc}", file=sys.stderr)
             return 1
-        if doc.get("map_rel") != map_rel:
-            print("FAIL: refresh snapshot map path does not match --map-rel", file=sys.stderr)
+        if doc.get("maps_dir") != (maps_dir or DEFAULT_MAPS_DIR):
+            print("FAIL: refresh snapshot maps dir does not match --maps-dir", file=sys.stderr)
             return 1
         required = {entry.get("name"): entry for entry in doc["stale_repos"]}
         discovered = {name: repo for name, repo in discover_repos(root)}
@@ -304,7 +328,7 @@ def cmd_record(root, map_rel, snapshot=None, snapshot_sha256=None):
             if _head(repo) != entry.get("head_commit"):
                 failures.append(f"{name}: HEAD changed while its map was being refreshed")
                 continue
-            new_hash = map_content_hash(os.path.join(repo, map_rel))
+            new_hash = map_content_hash(map_path(root, name, maps_dir))
             if new_hash is None:
                 failures.append(f"{name}: refreshed map is missing")
             elif new_hash == entry.get("content_hash"):
@@ -318,7 +342,7 @@ def cmd_record(root, map_rel, snapshot=None, snapshot_sha256=None):
     for name, repo in discover_repos(root):
         if required is not None and name not in required:
             continue
-        map_abs = os.path.join(repo, map_rel)
+        map_abs = map_path(root, name, maps_dir)
         head = _head(repo)
         if not os.path.exists(map_abs):
             skipped.append({"name": name, "reason": "no map file"})
@@ -340,20 +364,22 @@ def main(argv=None):
     for cmd in ("plan", "record"):
         p = sub.add_parser(cmd)
         p.add_argument("--root", default=".")
-        p.add_argument("--map-rel", default=DEFAULT_MAP_REL)
+        p.add_argument("--maps-dir", default=DEFAULT_MAPS_DIR)
         if cmd == "record":
             p.add_argument("--snapshot")
             p.add_argument("--snapshot-sha256")
     p = sub.add_parser("snapshot")
     p.add_argument("--root", default=".")
-    p.add_argument("--map-rel", default=DEFAULT_MAP_REL)
+    p.add_argument("--maps-dir", default=DEFAULT_MAPS_DIR)
     p.add_argument("--out", required=True)
+    p.add_argument("--repos", help="comma-separated: snapshot only these repos")
     args = parser.parse_args(argv)
     if args.cmd == "plan":
-        return cmd_plan(args.root, args.map_rel)
+        return cmd_plan(args.root, args.maps_dir)
     if args.cmd == "snapshot":
-        return cmd_snapshot(args.root, args.map_rel, args.out)
-    return cmd_record(args.root, args.map_rel, args.snapshot, args.snapshot_sha256)
+        only = [n.strip() for n in args.repos.split(",") if n.strip()] if args.repos else None
+        return cmd_snapshot(args.root, args.maps_dir, args.out, only)
+    return cmd_record(args.root, args.maps_dir, args.snapshot, args.snapshot_sha256)
 
 
 if __name__ == "__main__":

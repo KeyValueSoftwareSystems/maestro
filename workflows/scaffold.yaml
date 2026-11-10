@@ -31,7 +31,8 @@ nodes:
       Scaffold each new repository (${steps.create.outputs.repos_csv}) under codebase/ from the
       approved HLD at .maestro/runs/${inputs.slug}/hld.md: the stack's layout, a passing build and
       trivial test, lint, a README, CI, a container image when the HLD deploys it, starting
-      infrastructure definitions when it names a platform, and docs/codebase-map.md. Write no
+      infrastructure definitions when it names a platform, and each repository's codebase map at
+      docs/codebase-maps/<repo>.md. Write no
       feature behaviour. Commit each skeleton on its default branch. Write the report with each
       repository's stack and commands to .maestro/runs/${inputs.slug}/scaffold.json.
       If the engine's check failed, fix exactly what it reports.

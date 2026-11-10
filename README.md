@@ -59,9 +59,11 @@ Before the first feature, tell Maestro how to build and test your code
 
 - **One feature across several repos.** One PRD and one design cover the whole feature. Each
   affected repo gets its own detailed design and branch, and all of them share one API contract.
-- **A knowledge base of all your repos.** Architecture, technical and functional docs, and a
-  codebase map per repo. Every design step reads them, and each feature refreshes the parts it
-  changed.
+- **A knowledge base of all your repos.** Architecture, and per area the business rules
+  (functional) and the invariants and change scenarios (technical, written by your team and never
+  changed by a model), each with a stable ID, plus a codebase map per repo. Endpoints, events, jobs, tables and config are generated from the code,
+  never written by a model. Each step loads only the docs and rows it needs, and each feature
+  refreshes the parts it changed.
 - **Results you can trust.** Maestro runs your build, lint, tests, a secret scan and a check for committed build output itself, and
   checks that every requirement has a passing test before it asks you to release.
 - **You stay in charge, or go hands-off.** Maestro stops at approval points ("gates") instead of
@@ -152,7 +154,7 @@ Each service repo stays independent; this is **not** a monorepo. Full walkthroug
 ├── memory/           lessons learned across features
 └── engine/  ui/      Maestro's program and the visual builder (replaced on upgrade)
 .claude/  .cursor/  or  .agents/     the AI skills (replaced on upgrade)
-maestro               helper: ./maestro ui (builder) · ./maestro install (upgrade)
+maestro               helper: ./maestro ui (builder) · ./maestro install (upgrade) · ./maestro sync (new repo)
 ```
 
 Commit `maestro.config.yaml`, `.maestro/workflows/`, `.maestro/runs/`, `.maestro/memory/`,
@@ -177,8 +179,9 @@ Replace `claude-code` with your agent's [install target](#works-with-your-agent)
 Codex). On Hermes Agent, run `hermes skills trust` first.
 
 This detects your tech stack, installs only the matching skills, and builds the **knowledge
-base**: an architecture overview of how your repos connect, technical and functional docs per area
-in `docs/`, and a `docs/codebase-map.md` inside each repo.
+base**: an architecture overview of how your repos connect, functional and technical docs per area
+in `docs/` (checked by the engine; inventories generated from the code under `docs/_generated/`),
+and a codebase map per repo in `docs/codebase-maps/`.
 
 You don't need to maintain the docs by hand. Maestro records which commit each doc describes, so
 re-running `/maestro-init` only re-reads what changed, and each finished feature refreshes the docs
@@ -202,6 +205,12 @@ repos:
 Maestro runs these commands itself to check every change, so a run can't finish without them.
 Check the file with `python3 .maestro/engine/maestroctl.py preflight`. All the options:
 [docs/project-config.md](docs/project-config.md).
+
+**Added a repository later?** Run `/maestro-sync` (`$maestro-sync` on Codex). It adds the new
+repo to `maestro.config.yaml`, detects only its stack, fills its commands, installs matching
+stack skills, and writes its docs with build-knowledge: its codebase map, its domain pages
+and its place in `docs/architecture.md`. Existing entries and other repos' docs are left alone.
+`./maestro sync` does just the config entries, without a model.
 
 ## Start your first feature
 
@@ -308,8 +317,8 @@ More options (third-party skills, memory, delivery):
 - **One person drives a feature at a time.** The included pipeline is built for one developer
   taking a feature across every repo. Teams that split the work can add parallel steps to their
   own copy of the workflow.
-- **Share one knowledge base.** Commit `docs/` in the umbrella (and each repo's
-  `docs/codebase-map.md` in that repo), so everyone's runs start from the same picture of the code.
+- **Share one knowledge base.** Commit `docs/` in the umbrella (it includes every repo's
+  codebase map), so everyone's runs start from the same picture of the code.
 - **Workflow changed during a run?** Maestro stops and asks whether to accept the change or start
   over.
 

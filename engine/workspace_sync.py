@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 import codebase_scan
+import living_docs
 
 
 SCHEMA_VERSION = 1
@@ -36,8 +37,8 @@ MANAGED_DIRTY_PREFIXES = (
     ".maestro/runs/",
     ".maestro/memory/",
     ".maestro/index/",
+    codebase_scan.DEFAULT_MAPS_DIR + "/",  # single-repo layout: the maps sit inside the repo
 )
-MANAGED_DIRTY_PATHS = {"docs/codebase-map.md"}
 MAX_CHANGED = 500
 
 
@@ -66,7 +67,7 @@ def _git(repo, *args, timeout=60):
             ["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout,
             env=_GIT_ENV,
         )
-        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+        return proc.returncode, proc.stdout.rstrip(), proc.stderr.strip()
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, "", str(exc)
 
@@ -231,7 +232,7 @@ def _is_managed_parent(path):
     """A collapsed untracked dir (`docs/`) that may hold only engine-managed files."""
     return path.endswith("/") and any(
         managed.startswith(path)
-        for managed in (*MANAGED_DIRTY_PATHS, *MANAGED_DIRTY_PREFIXES)
+        for managed in MANAGED_DIRTY_PREFIXES
     )
 
 
@@ -255,9 +256,10 @@ def _dirty_paths(repo):
     paths = []
     for line in lines:
         path = _porcelain_path(line)
-        if (path in MANAGED_DIRTY_PATHS
-                or any(path == p.rstrip("/") or path.startswith(p)
-                       for p in MANAGED_DIRTY_PREFIXES)):
+        if any(path == p.rstrip("/") or path.startswith(p) for p in MANAGED_DIRTY_PREFIXES):
+            continue
+        # A folder instruction file whose only change is its engine-generated facts block.
+        if line.startswith(" M") and living_docs.only_generated_changes(repo, path):
             continue
         paths.append(path)
     return paths
@@ -396,8 +398,12 @@ def _knowledge_status(root, repos, state_path):
     docs_hash_stale = False
     if isinstance(state, dict) and state.get("docs_sha256"):
         docs_hash_stale = state["docs_sha256"] != _docs_hash(root)
+    # Docs written before format v2.3 (no front-matter) are rewritten by the next refresh.
+    format_stale = not missing_docs and not living_docs.current_format(root)
     return {
-        "stale": bool(stale_repos or removed_repos or missing_docs or docs_hash_stale),
+        "stale": bool(stale_repos or removed_repos or missing_docs or docs_hash_stale
+                      or format_stale),
+        "format_stale": format_stale,
         "stale_repos": stale_repos,
         "removed_repos": removed_repos,
         "missing_docs": missing_docs,
@@ -410,7 +416,7 @@ def _map_stale_repos(root, repos):
     stale = []
     for entry in repos:
         repo = os.path.join(root, entry["path"])
-        if not codebase_scan.map_is_current(repo, head=entry["head_commit"]):
+        if not codebase_scan.map_is_current(root, entry["name"], repo, head=entry["head_commit"]):
             stale.append(entry["name"])
     return stale
 
@@ -459,6 +465,8 @@ def _summary(repos, knowledge, map_stale, lock_drift):
             bits.append(f"fetch failed: {repo['fetch_error']}")
         lines.append("- " + "; ".join(bits))
     if knowledge["stale"]:
+        if knowledge.get("format_stale"):
+            lines.append("- Living docs predate format v2.3; the refresh rewrites them.")
         if knowledge.get("docs_hash_stale") and not (
                 knowledge["stale_repos"] or knowledge["removed_repos"] or knowledge["missing_docs"]):
             lines.append("- Living docs content changed since last index (docs_sha256 drift).")
@@ -638,7 +646,10 @@ def _provenance_fields_complete(state):
     )
 
 
-def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE):
+def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE, only=None):
+    """Record which commits the living docs describe. `only` (repo names) records just those
+    repos — the rest keep the commits recorded before, so a repo whose docs were not refreshed
+    stays stale instead of being marked current."""
     root = os.path.abspath(root)
     evidence_abs = _resolve(root, evidence)
     architecture = os.path.join(root, "docs", "architecture.md")
@@ -656,8 +667,23 @@ def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE):
             print(f"FAIL: docs/{surface}/ has no non-empty Markdown domain docs", file=sys.stderr)
             return 1
     now = _now()
+    discovered = codebase_scan.discover_repos(root)
+    previous = {}
+    if only is not None:
+        unknown = sorted(set(only) - {name for name, _path in discovered})
+        if unknown:
+            print(f"FAIL: not a discovered repo: {', '.join(unknown)}", file=sys.stderr)
+            return 1
+        state, _ = _load_index_state(root, state_path)
+        if isinstance(state, dict):
+            previous = {e["name"]: e for e in state.get("repos") or []
+                        if isinstance(e, dict) and e.get("name")}
     repos = []
-    for name, path in codebase_scan.discover_repos(root):
+    for name, path in discovered:
+        if only is not None and name not in only:
+            if name in previous:
+                repos.append(previous[name])
+            continue
         head = codebase_scan._head(path)
         if not head:
             print(f"FAIL: {name}: cannot resolve HEAD", file=sys.stderr)
@@ -788,6 +814,8 @@ def main(argv=None):
     p.add_argument("--evidence", required=True)
     p.add_argument("--index-state", default=DEFAULT_INDEX_STATE,
                    dest="index_state")
+    p.add_argument("--repos", help="comma-separated: record only these repos (others keep "
+                   "their recorded commits)")
 
     p = sub.add_parser("ensure-index-state")
     p.add_argument("--root", default=".")
@@ -808,7 +836,8 @@ def main(argv=None):
     if args.cmd == "apply":
         return cmd_apply(args.root, args.plan, args.plan_sha256, args.out)
     if args.cmd == "record-knowledge":
-        return cmd_record_knowledge(args.root, args.evidence, args.index_state)
+        only = [n.strip() for n in args.repos.split(",") if n.strip()] if args.repos else None
+        return cmd_record_knowledge(args.root, args.evidence, args.index_state, only)
     if args.cmd == "ensure-index-state":
         return cmd_ensure_index_state(args.root, args.evidence, args.index_state)
     return cmd_lock(args.root, args.out, args.result)

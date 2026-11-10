@@ -57,6 +57,13 @@ worktree:                       # optional; how each feature's worktrees are mad
   path: sandbox/{slug}/codebase/{repo}         # where create leaves each repository
   branch: sandbox/{slug}                       # optional; the branch create checks out
   remove: ./scripts/sandbox rm {slug} -y       # optional; run after delivery
+docs:                           # optional; the living docs (engine/living_docs.py)
+  facts_blocks: [backend]       # repos whose folder AGENTS.md / CLAUDE.md get generated facts blocks
+  extract:                      # extra extraction patterns, added to the built-in ones
+    - kind: route               # route | call | event_out | event_in | job | config | table
+      repo: backend             # optional; every repo when omitted
+      glob: "internal/**/*.go"  # optional; repo-relative fnmatch
+      pattern: 'mux\.Route\("(?P<method>\w+)", "(?P<path>/[^"]*)", (?P<symbol>\w+)'
 ```
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
@@ -115,11 +122,43 @@ cause. The result is cached per base commit and command, so a slow build runs on
 Pre-existing **test** failures are different: the engine cannot show the feature's tests pass, so
 the release verdict is `baseline-failing` and autopilot leaves the release to a person.
 
+The living docs' generated inventories (`docs/_generated/`) come from contracts in any stack
+(OpenAPI, AsyncAPI, SQL migrations, `.env.example`, Kubernetes CronJobs) and built-in patterns for
+Go, Python, JS/TS, Dart and Java/Kotlin routes, client calls, events, jobs and config. When the
+project registers routes or publishes events its own way, add a `docs.extract` pattern: a Python
+regular expression with named groups — `path` (and optionally `method`, `symbol`) for `route` and
+`call`, `name` for events and tables, `schedule` (and `name`, `symbol`) for `job`, `key` (and
+`default`, `symbol`) for `config`. Without `symbol`, the enclosing function is used. Facts blocks
+are written only into instruction files that already exist in a listed repo; the engine never
+creates one.
+
 Every review loop (architecture review of the HLD, LLD readiness check, code review) stops after
 `reviews.max_rounds` reviews; any blocking finding still open then goes to the person at that
 stage's gate instead of another revision round. A re-review sees only the changes since its last
 round, and a blocking finding first raised on a re-review that the revision did not introduce is
 shown to the person as "late" rather than starting another round.
+
+## Adding a repository
+
+`/maestro-sync` (`$maestro-sync` on Codex) is for one moment: a new repository was added to
+the workspace (cloned into `codebase/`, usually registered in `registry.yaml` first). The
+engine step (`project_config.py sync`, or `./maestro sync` on its own) adds an empty entry for
+each repository on disk that has none; the skill then fills only those entries' stack and
+commands and writes the new repositories' docs with `build-knowledge` (each one's
+`docs/codebase-maps/<name>.md`, its domain pages, and its place in `docs/architecture.md`). The
+engine step reports:
+
+| Report | Meaning |
+|---|---|
+| `added` | on disk, had no entry; entry added |
+| `needs_commands` | no `build` or `test` yet; filled from detect-stack evidence, else by hand |
+| `missing_clones` | registered but not cloned; added once it is cloned |
+| `unregistered` | cloned but not in `registry.yaml`; added anyway, register it |
+
+It only adds: existing entries are never changed or removed (remove a repository's entry by
+hand; preflight warns about one that is no longer in the workspace). The edit keeps the file's
+comments and layout, and `--dry-run` reports without writing. A feature already running keeps
+the repositories its workspace lock pinned.
 
 ## Check it
 

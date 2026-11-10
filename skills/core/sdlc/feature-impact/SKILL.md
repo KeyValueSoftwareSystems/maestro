@@ -15,11 +15,11 @@ nobody listed. Minutes, not a design pass.
 ## Inputs
 
 Your instructions name the approved PRD and the impact assessment path. Read each repository's
-codebase map (`docs/codebase-map.md`), the workspace architecture summary when there is one, and
-only the source needed to confirm where a behaviour lives. When the workspace has domain rules
-and change scenarios (a `## Rules that must never break` section in `docs/functional/<domain>.md`,
-or `docs/impact/side-effects.yaml`), read the rules and scenarios of the domains the feature
-touches; without them, carry on as usual. Standalone? read the PRD the user names
+codebase map (`docs/codebase-maps/<name>.md`), the workspace architecture summary when there is one, and
+only the source needed to confirm where a behaviour lives. When the workspace has invariants
+and change scenarios (the `## Invariants and consistency` and `## Change scenarios` sections of
+`docs/technical/<domain>.md`, or `docs/impact/side-effects.yaml`), read those of the domains the
+feature touches; without them, carry on as usual. Standalone? read the PRD the user names
 and write the assessment to a path you choose (and tell the user where).
 
 ## Steps
@@ -32,15 +32,17 @@ and write the assessment to a path you choose (and tell the user where).
    change to stored data's shape (a migration), or an infrastructure change (new queue, bucket,
    service, environment variable owned by an infrastructure repository).
 4. **List what it touches**, each item with a one-line `reason` and an `evidence` pointer (the map
-   entry, doc section or `file:line` that shows it): the `domains` (a `docs/functional/<domain>.md`
-   page name), the `tables` read or written in a new way, the scheduled or background `jobs`, the
-   `queues` or topics published or consumed (new or reused), the `endpoints` added, changed or
-   newly called, each with its `consumers` (the app screens and clients that call it), the `INV-…`
-   `rules` at risk, and the `CS-…` `scenarios` it triggers. Spell each name as the code or docs do;
-   the designs are checked against these exact names.
+   entry, doc section or `file:line` that shows it): the `domains` (a `docs/technical/<domain>.md` or
+   `docs/functional/<domain>.md` page name), the `tables` read or written in a new way, the scheduled
+   or background `jobs`, the `queues` or topics published or consumed (new or reused), the
+   `endpoints` added, changed or newly called, each with its `consumers` (the app screens and
+   clients that call it), the `<PREFIX>-INV-NNN` `rules` at risk, and the `<PREFIX>-CS-NNN`
+   `scenarios` it triggers. Spell each name as the code or docs do; the designs are checked against
+   these exact names.
 5. **Follow the change scenarios**, when the workspace has them: a scenario whose `when_changing`
    names a file or symbol the feature changes adds every repository its `also_impacts` lands in,
-   its id goes in `scenarios`, and its `also_impacts` items and rules go in their lists.
+   its id goes in `scenarios`, and its `also_impacts` items and invariants (`<PREFIX>-INV-NNN`) go in
+   their lists.
 6. **Classify the size.** `minor`: a small, self-contained change a single repository's design can
    carry, with no real design decision left open (a label, a field, a validation, a small
    endpoint). `major`: anything that needs an architecture decision or a cross-repository design
@@ -69,15 +71,15 @@ and write the assessment to a path you choose (and tell the user where).
  "size": "major",
  "summary": "one line",
  "domains": [{"name": "tickets", "reason": "transfers are a ticket lifecycle change",
-              "evidence": "docs/functional/tickets.md"}],
+              "evidence": "docs/technical/tickets.md"}],
  "tables": [{"name": "ticket_transfers", "reason": "new table", "evidence": "backend/docs/codebase-map.md#data"}],
  "jobs": [{"name": "transfer-expiry", "reason": "expires pending transfers", "evidence": "backend/jobs/expiry.go:12"}],
  "queues": [{"name": "notify.send", "reason": "reused to tell the recipient",
              "evidence": "backend/notify/send.go:30", "consumers": ["notifier"]}],
  "endpoints": [{"name": "POST /v1/tickets/{id}/transfers", "reason": "new", "evidence": "backend/docs/codebase-map.md#api",
                 "consumers": ["web: TicketScreen", "mobile: TicketDetail"]}],
- "rules": [{"id": "INV-TK-01", "reason": "a ticket has one owner at a time", "evidence": "docs/functional/tickets.md"}],
- "scenarios": [{"id": "CS-TK-02", "reason": "changing ticket ownership", "evidence": "docs/impact/side-effects.yaml"}]}
+ "rules": [{"id": "TK-INV-001", "reason": "a ticket has one owner at a time", "evidence": "docs/technical/tickets.md"}],
+ "scenarios": [{"id": "TK-CS-002", "reason": "changing ticket ownership", "evidence": "docs/impact/side-effects.yaml"}]}
 ```
 
 ## Safety

@@ -51,9 +51,9 @@ The one-liner above installs the core pack. To finish setting the repo up, open 
 run **`/maestro-init`** (Claude Code/Cursor) or **`$maestro-init`** (Codex) once. It:
 
 1. **detects your stack** (`detect-stack`) and re-runs the installer with the matching `--stack …`, so only the core pack + the per-stack skills your code actually uses get installed;
-2. **builds the living-docs knowledge base** (`build-knowledge`) — per-domain technical + functional docs and an architecture diagram under `docs/`, plus a per-repo **`docs/codebase-map.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
+2. **builds the living-docs knowledge base** (`build-knowledge`) — `docs/architecture.md` plus per-domain functional (business rules) and technical (invariants, change scenarios) docs under `docs/`, with endpoints, events, jobs, tables and config generated from the code by `living_docs.py`, plus one codebase map per repo at **`docs/codebase-maps/<name>.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
 
-The codebase map is **commit-tracked and incremental**: the engine (`codebase_scan.py`) records the git commit each `docs/codebase-map.md` reflects, so re-running (and the post-feature refresh in the archive phase) only re-examines the diff since that commit — not the whole repo. In an umbrella workspace each repo keeps its own map, committed and pushed in that repo.
+The codebase map is **commit-tracked and incremental**: the engine (`codebase_scan.py`) records, in each map's marker, the commit of the repo it reflects, so re-running (and the post-feature refresh in the archive phase) only re-examines the diff since that commit — not the whole repo. The maps are committed with the rest of `docs/`.
 
 ```bash
 /maestro-init                 # detect stack → install matching packs → build docs
@@ -61,6 +61,8 @@ $maestro-init                 # the same operation in Codex
 ```
 
 It's idempotent — safe to re-run after a stack change (it refreshes, never duplicates). Newly installed skills become active once your host reloads its config; then start a feature with `/maestro <slug>` or `$maestro <slug>`.
+
+**Added a repository later?** Run **`/maestro-sync`** (or `$maestro-sync`) instead of `/maestro-init`. It is only for a newly added repository: it adds that repo's `maestro.config.yaml` entry, detects its stack, fills its build/test commands, installs matching stack skills, and writes its docs with `build-knowledge` — its `docs/codebase-maps/<name>.md`, new or extended domain pages, and its node, connections and domains in `docs/architecture.md`. Existing entries are never changed or removed, and other repos' docs are only touched where a shared page gains the new repo; a repo already out of date stays flagged for `/build-knowledge`. `./maestro sync` adds just the config entry, without a model (`--dry-run` to preview). Details: [project-config.md](project-config.md#adding-a-repository).
 
 **Prefer to pick stacks by hand?** The pack ships per-stack reference skills + reviewers (Go, Java/Spring, Kotlin, Python/Django, React, Vue, Angular, Node, Rust, Flutter, Android, DB, Terraform, Kubernetes/Helm, Docker…); install only what your repo uses instead of running `/maestro-init`:
 
@@ -92,7 +94,7 @@ The UI server answers only requests addressed to `127.0.0.1` or `localhost` on i
 only from the builder page it served (a per-session token), so another web page you have open
 cannot read your repository or write a workflow file through it.
 
-`./maestro ui` and `./maestro install` are dev tooling only — the wrapper never drives a run or writes `.maestro/**/state.yaml` (that stays the Maestro skill + engine's job).
+`./maestro ui`, `./maestro install`, `./maestro init` and `./maestro sync` are dev tooling only — the wrapper never drives a run or writes `.maestro/**/state.yaml` (that stays the Maestro skill + engine's job).
 
 ## Engine commands
 
@@ -207,11 +209,11 @@ After install, in your project repo:
 ```
 .claude/  (or .cursor/ — set by the installer for those hosts)
   skills/     one SKILL.md per SDLC step + maestro (the lead agent) + bootstrap
-              (detect-stack, maestro-init, build-knowledge, retrospect)
+              (detect-stack, maestro-init, maestro-sync, build-knowledge, retrospect)
               + per-stack reference packs tagged stack:<x>
   agents/     core roles (product, architect, implementer, reviewer, qa, analyst, general,
               discussant; planner = the architect's older name)
-  commands/   /maestro, /maestro-init and /maestro-discuss slash-command shims (steps are invoked as skills)
+  commands/   /maestro, /maestro-init, /maestro-sync and /maestro-discuss slash-command shims (steps are invoked as skills)
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record

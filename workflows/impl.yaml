@@ -49,7 +49,15 @@ nodes:
     on_exhausted: abort
     routes:
       - {when: "${steps.tasks.outputs.escalate} == true", to: stop_gate}
-      - {to: implement}
+      - {to: facts}
+
+  # Engine-owned: the living-doc rows (rules, invariants, change scenarios) this repository's LLD
+  # cites, so the implementer and reviewer load exactly those facts.
+  - id: facts
+    type: script
+    label: Collect the facts the LLD cites
+    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/lld/${inputs.stack}.md", --out, ".maestro/runs/${inputs.slug}/${inputs.stack}/facts.md"]
+    next: implement
 
   - id: implement
     type: agent
@@ -61,7 +69,9 @@ nodes:
       .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
       .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one), grounded in the
       maintained codebase map
-      at ${inputs.repo_path}/docs/codebase-map.md. Explore
+      at docs/codebase-maps/${inputs.stack}.md and the living-doc facts the LLD cites at
+      ${steps.facts.outputs.facts_path}: keep every invariant listed there, and when you change
+      something a change scenario names, also handle and test what it says is affected. Explore
       the live source further only where the map or LLD doesn't cover what a slice
       touches. Report tests honestly. The approved LLD and contract are the human approval for
       what they describe, including tasks marked needs_human_gate: build those exactly as
@@ -152,13 +162,13 @@ nodes:
       - {when: "${steps.verify.outputs.unchanged} == true", to: impl_gate}
       - {to: fix}
 
-  # Engine-owned and optional: when people have written domain rules and change scenarios
-  # (docs/functional/<domain>.md, docs/impact/side-effects.yaml), check this branch still matches
-  # every name they rely on. Never blocks: the result goes to the reviewer. No rules: skipped.
+  # Engine-owned and optional: when the team has written invariants and change scenarios
+  # (docs/technical/<domain>.md, docs/impact/side-effects.yaml), check this branch still matches
+  # every name they rely on. Never blocks: the result goes to the reviewer. None written: skipped.
   - id: domain_rules
     type: script
-    label: Domain rules (engine)
-    run: [python3, .maestro/engine/domain_rules.py, check, --root, ".", --repo, "${inputs.stack}", --worktree, "${steps.handoff.outputs.worktree}", --out, ".maestro/runs/${inputs.slug}/${inputs.stack}/domain-rules.json"]
+    label: Team rules vs this branch (engine)
+    run: [python3, .maestro/engine/living_docs.py, rules, --root, ".", --repo, "${inputs.stack}", --worktree, "${steps.handoff.outputs.worktree}", --out, ".maestro/runs/${inputs.slug}/${inputs.stack}/domain-rules.json"]
     max_visits: 10
     on_exhausted: review_scope
     on_fail: review_scope
@@ -181,9 +191,11 @@ nodes:
       .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one), the task list at
       .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json, the functional test cases at
       .maestro/runs/${inputs.slug}/test-cases.md, the standards and the maintained codebase map
-      (docs/codebase-map.md in the ${inputs.stack} repo) — use the map to check blast radius, not
-      just the diff in isolation. Check every task in the task list is built; look closely at the
-      tasks marked needs_human_gate. The engine ran build, lint and tests
+      (docs/codebase-maps/${inputs.stack}.md) — use the map to check blast radius, not
+      just the diff in isolation. A change that breaks an invariant in the living-doc facts (the
+      `living_doc_facts` input) or skips what a change scenario there says is affected is
+      blocking. Check every task in the task list is built; look closely at the tasks marked
+      needs_human_gate. The engine ran build, lint and tests
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
       still listed there was accepted by a person. Review the design and code, not whether it
       compiles. When the `pre_existing_checks` input names checks that also fail on the base
@@ -193,11 +205,12 @@ nodes:
       whether the change follows the approved design; a weakened, skipped or deleted assertion
       without that basis is blocking. Findings need file:line evidence; severity blocking only
       for must-fix issues. Record the reviewed commit at the top of the report.
-      When the `domain_rules_present` input is true, the workspace has domain rules and change
+      When the `domain_rules_present` input is true, the team has written invariants and change
       scenarios: the engine's check (${steps.domain_rules.outputs.summary}; report:
       ${steps.domain_rules.outputs.report_path}) lists names the code no longer matches. A mismatch
-      this branch caused, or a change that breaks a rule, is blocking; for each change scenario
-      whose files this branch touches, check the places it says to check. Otherwise ignore them.
+      this branch caused, or a change that breaks an invariant, is blocking; for each change
+      scenario whose files this branch touches, check the places it says to check. Otherwise
+      ignore them.
       Write every finding to .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json as
       well as the report (the engine decides from that file). If it exists from an earlier round,
       this is a re-review after a fix (the `fix_summary` input says what changed): read it, the report and
@@ -224,6 +237,7 @@ nodes:
       contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
       tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
       test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+      living_doc_facts: "${steps.facts.outputs.facts_path}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
       previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"

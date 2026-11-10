@@ -16,7 +16,8 @@ Sync facts and provenance come from deterministic engine scripts; detect-stack, 
 and build-knowledge each own one job.
 
 ## When to use
-The first time you adopt Maestro in a repo (or after a big stack change). Safe to re-run —
+The first time you adopt Maestro in a repo (or after a big stack change). For a repository
+added later, use **`/maestro-sync`** instead — it handles only the new ones. Safe to re-run —
 both underlying skills are idempotent (refresh, don't duplicate). On a template umbrella
 that already ran `/workspace-index`, this should usually install stacks and skip docs.
 
@@ -52,7 +53,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
 5. **Build the knowledge base (only if stale / missing)** — load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
    write the per-domain technical + functional docs, the architecture diagram, and a
-   per-repo `docs/codebase-map.md`. Capture `domains_written` and `architecture_path`.
+   codebase map per repo under `docs/codebase-maps/`. Capture `domains_written` and `architecture_path`.
 6. **Record exact provenance**
    - **6a (after authoring in step 5):** run
      `python3 .maestro/engine/codebase_scan.py record --root .`, then
@@ -64,20 +65,22 @@ inline. Never parallelize these steps because each consumes the previous step's 
      this on the “docs already current” path — without it, doc-content drift is invisible.
    This makes later `/maestro` or `$maestro` starts a fast fetch + local SHA comparison with
    zero model call when nothing changed.
-7. **Domain rules (optional)** — run `python3 .maestro/engine/domain_rules.py status --root .`.
-   Rules that must never break (`INV-…`) and change scenarios (`CS-…`) are written by the
-   project's people in `docs/functional/<domain>.md` and `docs/impact/side-effects.yaml`;
+7. **Domain rules (optional)** — run `python3 .maestro/engine/living_docs.py status --root .`.
+   Invariants that must never break (`<PREFIX>-INV-NNN`) and change scenarios
+   (`<PREFIX>-CS-NNN`) are written by the project's people in `docs/technical/<domain>.md`
+   (`## Invariants and consistency`, `## Change scenarios`) and `docs/impact/side-effects.yaml`;
    Maestro uses them when they exist and runs fine without them.
-   - **`present=true`** — run `python3 .maestro/engine/domain_rules.py check --root .` and report
+   - **`present=true`** — run `python3 .maestro/engine/living_docs.py rules --root .` and report
      its `summary`. When `valid=false`, show its `issues_summary` and say the docs or the code need
      fixing; do not fix them here and do not stop init.
    - **`present=false`** — ask ONE question (AskUserQuestion on Claude Code; a numbered choice on
      Cursor, answered in the next message): Maestro can use domain rules and change scenarios if
      the team adds them under `docs/`. Options: **Create the starter file** (run
-     `python3 .maestro/engine/domain_rules.py scaffold --root .`, then point them at
-     `docs/impact/side-effects.yaml` and the `## Rules that must never break` /
-     `## If you change… also check` sections of each `docs/functional/<domain>.md`, as described
-     in `.maestro/docs/domain-rules.md`) or **Skip, no domain rules**. Either answer moves on to the summary.
+     `python3 .maestro/engine/living_docs.py scaffold --root .`, then point them at
+     `docs/impact/side-effects.yaml`, the `## Invariants and consistency` / `## Change scenarios`
+     sections of each `docs/technical/<domain>.md`, and the proposals build-knowledge left under
+     `## Proposed rules and scenarios`, as described in `.maestro/docs/domain-rules.md`) or
+     **Skip, no domain rules**. Either answer finishes init.
    Never write or invent rules yourself: the team decides what the rules are.
 8. **Summarize + next step.** Report the stacks installed, whether docs were written or
    skipped, whether domain rules were found (and checked), and whether the project-config skill

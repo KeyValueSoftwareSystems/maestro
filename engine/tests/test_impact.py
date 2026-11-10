@@ -60,19 +60,19 @@ class ImpactTest(unittest.TestCase):
                 self.assertIn(issue, result["issues_summary"])
 
     def test_v2_items_need_reason_evidence_and_defined_ids(self):
-        os.makedirs(os.path.join(self.root, "docs", "functional"))
-        with open(os.path.join(self.root, "docs", "functional", "payments.md"), "w") as fh:
-            fh.write("## Rules that must never break\n- INV-PL-01 One active link per invoice.\n")
+        os.makedirs(os.path.join(self.root, "docs", "technical"))
+        with open(os.path.join(self.root, "docs", "technical", "payments.md"), "w") as fh:
+            fh.write("---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n")
         ok = {"name": "payment_links", "reason": "new column", "evidence": "docs/codebase-map.md"}
         good = self.check(self.doc([{"name": "web", "change": "x"}], schema_version=2, tables=[ok],
-                                   rules=[{"id": "INV-PL-01", "reason": "r", "evidence": "e"}]))
+                                   rules=[{"id": "PL-INV-001", "reason": "r", "evidence": "e"}]))
         self.assertEqual((good["valid"], good["item_count"]), (True, 2), good["issues_summary"])
         cases = [
             ({"tables": [{"name": "t", "evidence": "e"}]}, "reason is required"),
-            ({"rules": [{"id": "INV-PL-09", "reason": "r", "evidence": "e"}]}, "not defined"),
-            ({"rules": [{"id": "PL-1", "reason": "r", "evidence": "e"}]}, "not an INV-"),
-            ({"scenarios": [{"id": "CS-PL-01", "reason": "r", "evidence": "e"}]}, "not a change scenario"),
-            ({"domains": [{"name": "billing", "reason": "r", "evidence": "e"}]}, "no docs/functional/billing.md"),
+            ({"rules": [{"id": "PL-INV-009", "reason": "r", "evidence": "e"}]}, "not defined"),
+            ({"rules": [{"id": "PL-1", "reason": "r", "evidence": "e"}]}, "not a <PREFIX>-INV-NNN"),
+            ({"scenarios": [{"id": "PL-CS-001", "reason": "r", "evidence": "e"}]}, "not defined in the living docs"),
+            ({"domains": [{"name": "billing", "reason": "r", "evidence": "e"}]}, "'billing' has no docs/functional"),
         ]
         for extra, issue in cases:
             with self.subTest(issue=issue):
@@ -82,12 +82,12 @@ class ImpactTest(unittest.TestCase):
 
     def test_prd_triggers_scenario_merge(self):
         os.makedirs(os.path.join(self.root, "docs", "impact"))
-        os.makedirs(os.path.join(self.root, "docs", "functional"))
-        with open(os.path.join(self.root, "docs", "functional", "payments.md"), "w") as fh:
-            fh.write("## Rules that must never break\n- INV-PL-01 One active link per invoice.\n")
+        os.makedirs(os.path.join(self.root, "docs", "technical"))
+        with open(os.path.join(self.root, "docs", "technical", "payments.md"), "w") as fh:
+            fh.write("---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n")
         with open(os.path.join(self.root, "docs", "impact", "side-effects.yaml"), "w") as fh:
-            fh.write("version: 1\nscenarios:\n  - id: CS-PL-01\n    summary: Disabling a link\n"
-                     "    rules: [INV-PL-01]\n    when_changing: [links.Service.Disable]\n"
+            fh.write("version: 1\nscenarios:\n  - id: PL-CS-001\n    summary: Disabling a link\n"
+                     "    rules: [PL-INV-001]\n    when_changing: [links.Service.Disable]\n"
                      "    also_impacts:\n      tables: [payment_links]\n")
         prd = os.path.join(self.root, "prd.md")
         with open(prd, "w") as fh:
@@ -95,8 +95,8 @@ class ImpactTest(unittest.TestCase):
         self.check(self.doc([{"name": "web", "change": "x"}]))
         result = impact.validate(self.root, self.path, prd)
         self.assertTrue(result["valid"], result["issues_summary"])
-        self.assertEqual(result["scenarios_csv"], "CS-PL-01")
-        self.assertIn("engine added scenario CS-PL-01", result["summary"])
+        self.assertEqual(result["scenarios_csv"], "PL-CS-001")
+        self.assertIn("engine added scenario PL-CS-001", result["summary"])
         with open(self.path) as fh:
             doc = json.load(fh)
         self.assertEqual(doc["schema_version"], 2)

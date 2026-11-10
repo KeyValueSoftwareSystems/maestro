@@ -11,8 +11,8 @@
       the scaffolding agent's report {"repos": {name: {"stack", "commands": {build, test, ...}}}}:
       adds each repository's entry to maestro.config.yaml (an existing entry is never changed; the
       previous file is kept as maestro.config.yaml.bak), then runs each new repository's build and
-      test once to prove the skeleton works, then stamps each codebase map with its commit (and
-      commits the stamp). The scaffold stage then records the knowledge's provenance and pins the
+      test once to prove the skeleton works, then stamps each codebase map
+      (docs/codebase-maps/<name>.md) with its repository's commit. The scaffold stage then records the knowledge's provenance and pins the
       commits with workspace_sync.py.
       {valid, failed_csv, summary} — exits 0; the workflow routes on `valid`.
 
@@ -100,21 +100,12 @@ def _merge_config(root, scaffold):
     return added
 
 
-def _record_map(repo):
-    """Stamp the scaffold's codebase map with the commit it describes and commit the stamp, so the
-    workspace check finds the map current and the repository clean."""
-    map_path = os.path.join(repo, codebase_scan.DEFAULT_MAP_REL)
-    if not os.path.isfile(map_path):
-        return
-    codebase_scan.write_marker(map_path, codebase_scan._head(repo))
-    subprocess.run(["git", "-C", repo, "add", codebase_scan.DEFAULT_MAP_REL], check=True)
-    subprocess.run(["git", "-C", repo, "commit", "-q", "-m", "Record the codebase map's commit"],
-                   check=False, capture_output=True,
-                   env={**os.environ, "GIT_AUTHOR_NAME": os.environ.get("GIT_AUTHOR_NAME", "Maestro"),
-                        "GIT_AUTHOR_EMAIL": os.environ.get("GIT_AUTHOR_EMAIL", "maestro@localhost"),
-                        "GIT_COMMITTER_NAME": os.environ.get("GIT_COMMITTER_NAME", "Maestro"),
-                        "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL",
-                                                              "maestro@localhost")})
+def _record_map(root, name, repo):
+    """Stamp the scaffold's codebase map (docs/codebase-maps/<name>.md in the workspace) with the
+    repository commit it describes, so the workspace check finds the map current."""
+    path = codebase_scan.map_path(root, name)
+    if os.path.isfile(path):
+        codebase_scan.write_marker(path, codebase_scan._head(repo))
 
 
 def cmd_configure(args):
@@ -154,7 +145,7 @@ def cmd_configure(args):
     if failed:
         return _out({"valid": False, "failed_csv": ",".join(failed), "summary": "; ".join(problems)})
     for name in scaffold:
-        _record_map(discovered[name])
+        _record_map(args.root, name, discovered[name])
     return _out({"valid": True, "failed_csv": "", "added_csv": ",".join(added),
                  "summary": f"{len(scaffold)} repositories scaffolded; build and test pass"})
 

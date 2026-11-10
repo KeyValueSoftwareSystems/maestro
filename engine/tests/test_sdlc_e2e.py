@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 import codebase_scan  # noqa: E402
+import living_docs  # noqa: E402
 import lld_set  # noqa: E402
 import workspace_sync  # noqa: E402
 
@@ -118,7 +119,7 @@ class SdlcE2E(unittest.TestCase):
                 fh.write(f"{stack}\n")
             subprocess.run(["git", "add", "README.md"], cwd=path, check=True)
             subprocess.run(["git", "commit", "-q", "-m", "initial"], cwd=path, check=True)
-            map_path = os.path.join(path, "docs", "codebase-map.md")
+            map_path = codebase_scan.map_path(self.tmp, stack)
             os.makedirs(os.path.dirname(map_path), exist_ok=True)
             with open(map_path, "w") as fh:
                 fh.write(f"# {stack} map\n")
@@ -133,13 +134,7 @@ class SdlcE2E(unittest.TestCase):
         # Simulate the normal /maestro-init result so the happy path proves the new sync
         # checkpoint is zero-agent/no-gate when code and knowledge are already current.
         os.makedirs(os.path.join(self.tmp, "docs"), exist_ok=True)
-        with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
-            fh.write("# Architecture\n")
-        for surface in ("technical", "functional"):
-            directory = os.path.join(self.tmp, "docs", surface)
-            os.makedirs(directory)
-            with open(os.path.join(directory, "demo.md"), "w") as fh:
-                fh.write(f"# Demo {surface}\n")
+        living_docs.write_minimal_docs(self.tmp, "demo", ["backend", "frontend"])
         evidence = os.path.join(self.tmp, ".maestro", "bootstrap-evidence.md")
         with open(evidence, "w") as fh:
             fh.write("Indexed test workspace.\n")
@@ -959,7 +954,7 @@ class SdlcE2E(unittest.TestCase):
         subprocess.run(["git", "commit", "-q", "-m", "infra"], cwd=repo, check=True)
         head = subprocess.run(["git", "-C", repo, "rev-parse", "HEAD"], check=True,
                               capture_output=True, text=True).stdout.strip()
-        codebase_scan.write_marker(os.path.join(repo, "docs", "codebase-map.md"), head)
+        codebase_scan.write_marker(codebase_scan.map_path(self.tmp, os.path.basename(repo)), head)
         with __import__("contextlib").redirect_stdout(__import__("io").StringIO()):
             workspace_sync.cmd_record_knowledge(
                 self.tmp, os.path.join(self.tmp, ".maestro", "bootstrap-evidence.md"))
@@ -1100,9 +1095,10 @@ class SdlcE2E(unittest.TestCase):
             report = {"repos": {}}
             for repo in ("backend", "frontend"):
                 path = Path(self.tmp, "codebase", repo)
-                (path / "docs").mkdir(exist_ok=True)
                 (path / "README.md").write_text(f"# {repo}\n")
-                (path / "docs" / "codebase-map.md").write_text(f"# {repo} map\n")
+                map_path = Path(codebase_scan.map_path(self.tmp, repo))
+                map_path.parent.mkdir(parents=True, exist_ok=True)
+                map_path.write_text(f"# {repo} map\n")
                 subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
                 subprocess.run(["git", "-C", str(path), "-c", "user.email=t@e", "-c", "user.name=T",
                                 "commit", "-qm", "scaffold"], check=True)
@@ -1273,8 +1269,7 @@ class SdlcE2E(unittest.TestCase):
 
         def refresh_knowledge():
             for stack in ("backend", "frontend"):
-                with open(os.path.join(self.tmp, "codebase", stack, "docs", "codebase-map.md"),
-                          "a") as fh:
+                with open(codebase_scan.map_path(self.tmp, stack), "a") as fh:
                     fh.write("\nRefreshed after the manual commit.\n")
             return {"domains_written": 1, "architecture_path": "docs/architecture.md",
                     "summary": "refreshed"}

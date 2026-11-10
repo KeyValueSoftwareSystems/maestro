@@ -33,8 +33,9 @@ where the report is.
    repository, a container image definition; when it names an infrastructure platform, that
    repository's starting definitions (an empty Terraform root module, a Helm chart) — using the
    matching infrastructure pack when installed.
-6. **Codebase map** — `docs/codebase-map.md`: the layout, entry points and conventions, so later
-   steps read the map instead of exploring.
+6. **Codebase map** — at the path your instructions name (by default
+   `docs/codebase-maps/<name>.md`): the layout, entry points and conventions, so later steps read
+   the map instead of exploring.
 7. **Commit** the skeleton on the repository's default branch.
 
 ## Report
