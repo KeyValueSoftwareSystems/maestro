@@ -56,11 +56,14 @@ nodes:
          domains this feature touched, in the shared format (docs-format.md in the
          build-knowledge skill). Functional: the business rules the feature added or changed
          (BR rows with edge and source, from the approved PRD and gate feedback), new states,
-         flows, terms and open questions. Technical: the invariants the design relies on (INV
-         rows: what enforces each, the test that proves it), the change scenarios the run
-         discovered (CS rows), failure behaviour and gotchas the reviews raised.
-         Architecture: new repos or providers, cross-repo flows, platform-wide invariants, and
-         a Domain map row for any NEW domain (which gets both files). A new fact takes the next
+         flows, terms and open questions. Technical: failure behaviour and gotchas the reviews
+         raised, and the invariants and change scenarios the run relied on or discovered as
+         proposals (§Proposed rules and scenarios, with the anchor that enforces each), for the
+         team to accept. Invariants and change scenarios are team-owned: never edit §Invariants and consistency, §Change scenarios, §Platform-wide
+         invariants or docs/impact/side-effects.yaml (the engine restores them); write what you
+         find under §Proposed rules and scenarios instead.
+         Architecture: new repos or providers, cross-repo flows, and a Domain map row for any
+         NEW domain (which gets both files). A new business rule takes the next
          free ID; never renumber or reuse one; a fact the feature made untrue becomes
          `Retired YYYY-MM-DD: <why>`. Never restate what the extracted inventory (the
          `inventory` input) lists, and never edit docs/_generated/, docs/_index/, a generated:
@@ -91,7 +94,7 @@ nodes:
     outputs: [incoming_path, lessons_count, summary]
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
     # Regenerates the generated files and blocks, then checks the format, IDs and anchors.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --report]}
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/retrospect-docs-snapshot.json", --report]}
     next: stamp_docs
 
   - id: stamp_docs

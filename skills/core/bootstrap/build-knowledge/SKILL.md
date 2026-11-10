@@ -27,8 +27,13 @@ what it names.
 
 ## What you write, and what you never write
 - **Write only judgement**: purpose and actors, business rules with their edge cases, states and
-  flows, invariants with where they are enforced and what tests them, change scenarios, failure
-  and concurrency behaviour, gotchas, known gaps, owned unknowns.
+  flows, failure and concurrency behaviour, gotchas, known gaps, owned unknowns.
+- **Never edit the team's rules.** Invariants and change scenarios belong to the project's
+  people: `## Invariants and consistency` and `## Change scenarios` in a technical doc,
+  `## Platform-wide invariants` in the architecture, and `docs/impact/side-effects.yaml`. Leave
+  them exactly as they are (a new doc's say `None.`). What you find goes under
+  `## Proposed rules and scenarios`, without an ID, for the team to accept. The engine restores
+  any change to the team's content and sends its check report back to you.
 - **Never write what the code already lists**: endpoints, events, jobs, tables, config keys,
   calls between repos, directory listings, build commands. A tool generates those into
   `docs/_generated/` and the `Cross-repo connections` block; refer to them, never copy them.
@@ -47,19 +52,20 @@ what it names.
 3. **Per domain, write two files** in the format:
    - `docs/functional/<domain>.md`: purpose and actors; glossary; business rules (`BR`), each
      with its edge and source; states and flows; open questions.
-   - `docs/technical/<domain>.md`: invariants (`INV`) with the BR they enforce, the anchor that
-     enforces them, consistency and the test that proves them; change scenarios (`CS`): when
-     changing this anchor, what else breaks and which tests verify it; failure, concurrency and
-     idempotency; gotchas; known gaps. Leave the `Cross-repo connections` section holding only
-     its generated block markers.
-   Read the code that enforces a rule before writing it. A rule you cannot point at code for is
-   either an owned unknown or not a rule.
+   - `docs/technical/<domain>.md`: failure, concurrency and idempotency; gotchas; known gaps;
+     and the proposals: each invariant you find (what must always hold, the anchor that enforces
+     it, the test that proves it) and each change scenario (changing this anchor also affects
+     that). Leave the team's sections as they are and the `Cross-repo connections` section
+     holding only its generated block markers.
+   Read the code that enforces a rule before writing or proposing it. A rule you cannot point at
+   code for is either an owned unknown or not a rule.
 4. **Write `docs/architecture.md`**: system context and repos, the Domain map (a row per domain
-   linking both files), cross-repo flows and contracts, platform-wide invariants (`ARCH-INV`),
-   conventions and boundaries, shared glossary. Within budget.
-5. **Refresh = keep IDs stable.** Update rows in place. A new fact takes the next free number in
-   its doc. Never renumber or reuse an ID; a fact that no longer holds keeps its row as
-   `Retired YYYY-MM-DD: <why>`.
+   linking both files), cross-repo flows and contracts, conventions and boundaries, shared
+   glossary; platform-wide invariants you find are proposals. Within budget.
+5. **Refresh = keep IDs stable.** Update business-rule rows in place. A new rule takes the next
+   free number (`python3 .maestro/engine/living_docs.py next <PREFIX>`). Never renumber or reuse
+   an ID; a rule that no longer holds keeps its row as `Retired YYYY-MM-DD: <why>`. When changed
+   code breaks one of the team's invariants or scenarios, propose the fix; never edit theirs.
 6. **Seed cross-cutting review lessons (optional).** For recurring standards/pitfalls that
    belong to the corroborated-lesson store (not domain docs), also write an authoritative
    drop to the memory incoming path named in your instruction, as JSON:

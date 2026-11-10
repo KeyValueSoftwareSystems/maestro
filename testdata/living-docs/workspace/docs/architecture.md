@@ -40,11 +40,11 @@ CoFee collects fees for small institutions such as dance schools and tuition cen
 | --- | --- | --- | --- |
 | ARCH-INV-001 | Money amounts are int64 paise in code, database and APIs, never float. | cofee-backend · internal/money/paise.go · Paise | checked in review |
 | ARCH-INV-002 | Only cofee-backend calls Cashfree and WhatsApp; apps never hold provider keys. | cofee-backend · internal/links/provider.go · LinkProvider | boundary, checked in review |
-| ARCH-INV-003 | API changes stay backward compatible with every app version above 1% of sessions. | process: API review | checked in review |
 
 ## Conventions and boundaries
 - Payer phone numbers are personal data; logs mask all but the last 4 digits. All customer data stays in AWS ap-south-1.
 - Every API error uses the envelope code, message, details from api/openapi.yaml.
+- API changes stay backward compatible with every app version above 1% of sessions; checked in API review.
 - Risk tiers by code path live in maestro.config.yaml; product docs (feature catalog, PRD index, analytics events) live in docs/product/.
 
 ## Glossary and aliases

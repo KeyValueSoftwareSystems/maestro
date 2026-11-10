@@ -15,10 +15,10 @@ design follows. Minutes, not a design pass.
 
 Your instructions name the approved PRD and the impact assessment path. Read each repository's
 codebase map (`docs/codebase-maps/<name>.md`), the workspace architecture summary when there is one, and
-only the source needed to confirm where a behaviour lives. When the workspace has domain rules
-and change scenarios (a `## Rules that must never break` section in `docs/functional/<domain>.md`,
-or `docs/impact/side-effects.yaml`), read the rules and scenarios of the domains the feature
-touches; without them, carry on as usual. Standalone? read the PRD the user names
+only the source needed to confirm where a behaviour lives. When the workspace has invariants
+and change scenarios (the `## Invariants and consistency` and `## Change scenarios` sections of
+`docs/technical/<domain>.md`, or `docs/impact/side-effects.yaml`), read those of the domains the
+feature touches; without them, carry on as usual. Standalone? read the PRD the user names
 and write the assessment to a path you choose (and tell the user where).
 
 ## Steps
@@ -34,8 +34,8 @@ and write the assessment to a path you choose (and tell the user where).
    than one extra design.
 5. **Follow the change scenarios**, when the workspace has them: a scenario whose `when_changing`
    names a file or symbol the feature changes adds every repository its `also_impacts` lands in,
-   and its id goes in `scenarios`. Name the `INV-…` rules at risk in the affected repository's
-   `change` line.
+   and its id goes in `scenarios`. Name the invariants at risk (`<PREFIX>-INV-NNN`) in the
+   affected repository's `change` line.
 
 ## Standards
 
@@ -53,7 +53,7 @@ and write the assessment to a path you choose (and tell the user where).
  "interfaces_change": true,
  "data_migration": true,
  "infrastructure_change": false,
- "scenarios": ["CS-PL-01"],
+ "scenarios": ["PL-CS-001"],
  "summary": "one line"}
 ```
 

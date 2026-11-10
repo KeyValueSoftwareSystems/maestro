@@ -39,20 +39,22 @@ wrong while running** — because both are where a future run can do better from
    - **Functional** (`docs/functional/<domain>.md`) — the rules the feature added or changed
      (from the approved PRD's acceptance criteria and the gate feedback) as `BR` rows with their
      edge and source; new states, flows, terms and open questions.
-   - **Technical** (`docs/technical/<domain>.md`) — the invariants the design relies on (`INV`
-     rows: what enforces each and the test that proves it), the change scenarios the run
-     discovered (`CS` rows: what else broke or had to change, which tests verify it), new
-     failure and concurrency behaviour, and gotchas the reviews raised.
+   - **Technical** (`docs/technical/<domain>.md`) — new failure and concurrency behaviour and
+     the gotchas the reviews raised. The invariants the design relied on and the change
+     scenarios the run discovered (what else broke or had to change, which tests verify it) go
+     under `## Proposed rules and scenarios`, without an ID, for the team to accept.
    - **Architectural** (`docs/architecture.md`) — a new repo or provider, a new or changed
-     cross-repo flow, a new platform-wide invariant, a new domain (a Domain map row linking both
-     of its files).
+     cross-repo flow, a new domain (a Domain map row linking both of its files).
+   - **Never the team's rules.** `## Invariants and consistency`, `## Change scenarios`,
+     `## Platform-wide invariants` and `docs/impact/side-effects.yaml` belong to the project's
+     people: leave them exactly as they are. The engine restores any change to them.
    - **Per-repo codebase map** (`docs/codebase-maps/<name>.md` for each affected repo) — run
      `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed since
      the map was last recorded; update ONLY those areas (new/changed flows, execution modes,
      APIs, conventions). A repo reported `current` is unchanged — skip it. Do NOT touch the
      `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps it after you write.
-   IDs: a new fact takes the next free number in its doc; never renumber or reuse one; a fact the
-   feature made untrue keeps its row as `Retired YYYY-MM-DD: <why>`. Cite existing IDs instead of
+   IDs: a new business rule takes the next free number in its doc; never renumber or reuse one; a
+   rule the feature made untrue keeps its row as `Retired YYYY-MM-DD: <why>`. Cite existing IDs instead of
    restating them. Never write what the code lists (endpoints, events, jobs, tables, config, calls
    between repos) and never edit generated output (`docs/_generated/`, `docs/_index/`, any
    `generated:` block, `verified_at`): a tool regenerates them. A new domain gets both files and a

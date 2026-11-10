@@ -89,13 +89,18 @@ nodes:
          code_roots.
       2. For EACH domain write docs/functional/<domain>.md (purpose and actors, glossary,
          business rules as BR rows with edge and source, states and flows, open questions) and
-         docs/technical/<domain>.md (invariants as INV rows with what enforces and tests them,
-         change scenarios as CS rows, failure/concurrency/idempotency, gotchas, known gaps;
-         the Cross-repo connections section holds only the empty generated block markers).
-         Read the code that enforces each rule before writing it.
+         docs/technical/<domain>.md (failure/concurrency/idempotency, gotchas, known gaps, and
+         the invariants and change scenarios you find, as proposals with the anchor that
+         enforces each; the Cross-repo connections section holds only the empty generated block
+         markers). Invariants and change scenarios are team-owned: never edit §Invariants and consistency, §Change scenarios, §Platform-wide
+         invariants or docs/impact/side-effects.yaml (the engine restores them); write what you
+         find under §Proposed rules and scenarios instead. A new
+         technical doc's §Invariants and consistency and §Change scenarios say None. Read the
+         code that enforces each rule before proposing it.
       3. Write docs/architecture.md: system context and repos (with Runs on), the Domain map
-         linking both files of every domain, cross-repo flows and contracts, platform-wide
-         invariants as ARCH-INV rows, conventions and boundaries, shared glossary.
+         linking both files of every domain, cross-repo flows and contracts, conventions and
+         boundaries, shared glossary; platform-wide invariants you find go under its
+         §Proposed rules and scenarios.
       4. For EACH repo write docs/codebase-maps/<repo>.md — the standing per-repo grounding the HLD
          reads: entry points, key modules, the primary flows and EVERY distinct execution mode
          each runs in (single-turn/multi-turn, sync/async, batch/streaming, …) and what selects
@@ -117,7 +122,7 @@ nodes:
     artifact: "docs/architecture.md"
     # Regenerates the generated files and blocks, then checks the format, IDs and anchors; a
     # failure sends the report back to this agent.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --report]}
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/docs-snapshot.json", --report]}
     next: stamp_docs
 
   - id: stamp_docs

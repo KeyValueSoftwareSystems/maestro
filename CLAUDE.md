@@ -240,14 +240,6 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   whether it changes an interface between them, stored data or infrastructure. `validate` checks
   every name is a discovered repository; sizing and the LLD scope (`lld_set.py init --choice
   impact`, the scope gate's autopilot answer) read it. Skipped on greenfield.
-- **`domain_rules.py`** — optional domain rules (`INV-<CODE>-<NN>` under `## Rules that must never
-  break` in `docs/functional/<domain>.md`) and change scenarios (`CS-…`, the page's `## If you
-  change… also check` table plus `docs/impact/side-effects.yaml`), written by the team, never by an
-  agent. `status` (any present?), `check` (every file, symbol, table, queue, endpoint and test a
-  scenario names still exists; every rule is cited in code; no code cites an undefined id —
-  `--repo/--worktree` reads the feature's worktree), `scaffold` (empty starter yaml), `next`.
-  No rules = `skipped`. `impl.yaml`'s `domain_rules` step runs it after verify and never blocks;
-  the reviewer gets the report. Spec: `docs/domain-rules.md`.
 - **`sizing.py`** — after PRD approval, full or light design: `auto` takes the light path
   (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
   `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
@@ -267,18 +259,27 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   fast-forward-only apply, living-doc commit provenance (`docs/provenance.yaml`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
 - **`living_docs.py`** — the deterministic half of the living docs (format v2.3,
-  `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R8: ID format/placement,
-  every cited ID defined in docs, run artifacts and code, `repo · path · symbol` anchors resolve,
-  generated output current, staleness vs `verified_at`, app calls reach a served route,
-  structure, token budgets; `--write` regenerates first), `extract` (inventories from contracts
-  and code — OpenAPI, AsyncAPI, SQL, `.env.example`, CronJobs, built-in Go/Python/JS/Dart/Java
-  patterns, `docs.extract` from maestro.config.yaml — into `docs/_generated/`, the technical doc's
-  connections block, the diagram, `docs/_index/code-to-facts.md` and opt-in facts blocks in
-  folder `AGENTS.md`/`CLAUDE.md`), `snapshot`/`stamp` (`verified_at` = HEAD and `status: draft` on
-  docs a writer changed), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD,
-  implement and review load), `domains` (doc paths for the repos `impact.json` names). The
-  build-knowledge, retrospect and workspace-sync writers run with `check --write` as a handoff
-  check; workspace_sync counts a facts-block-only change as managed and pre-v2.3 docs as stale.
+  `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R9: ID format/placement,
+  every cited ID defined in docs, run artifacts and code, every invariant cited in code (warning),
+  `repo · path · symbol` anchors and `docs/impact/side-effects.yaml` names resolve, generated
+  output current, staleness vs `verified_at`, app calls reach a served route, structure, token
+  budgets; `--write` regenerates first), `extract` (inventories from contracts and code —
+  OpenAPI, AsyncAPI, SQL, `.env.example`, CronJobs, built-in Go/Python/JS/Dart/Java patterns,
+  `docs.extract` from maestro.config.yaml — into `docs/_generated/`, the technical doc's
+  connections block, the diagram, `docs/_index/code-to-facts.md` and opt-in facts blocks in folder
+  `AGENTS.md`/`CLAUDE.md`), `snapshot`/`stamp` (`verified_at` = HEAD and `status: draft` on docs a
+  writer changed), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD, implement
+  and review load), `domains` (doc paths for the repos `impact.json` names). **Team-owned
+  content** — invariants (`INV`) and change scenarios (`CS`): technical `## Invariants and
+  consistency` / `## Change scenarios`, architecture `## Platform-wide invariants`,
+  `side-effects.yaml` — is written by people only. The build-knowledge, retrospect and
+  workspace-sync writers run `check --write --locked-from <snapshot>` as their handoff check: R9
+  fails and the engine restores any change to that content (models propose under `## Proposed
+  rules and scenarios`), and a problem inside it is a warning for the team, not the writer's to
+  fix. `status`/`rules` (`--repo/--worktree`: the team's rules against a feature's branch; never
+  blocks — `impl.yaml`'s `domain_rules` step hands it to the reviewer)/`scaffold`/`next`. Guide:
+  `docs/domain-rules.md`. workspace_sync counts a facts-block-only change as managed and pre-v2.3
+  docs as stale.
 - **`install_workflows.py`** — `install.sh`'s workflow upgrader: per file, add / replace an
   byte-identical stock copy (strict hash, CRLF-normalised, against `.maestro/workflow-manifest.json`
   and `engine/workflow_releases.json`, every version ever shipped) / keep a local edit and write

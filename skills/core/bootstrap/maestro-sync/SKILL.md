@@ -57,7 +57,8 @@ Run these **in order**, in this session. Each step consumes the previous step's 
    build-knowledge for the whole workspace exactly as `/maestro-init` does (its steps 5–6) and
    go to step 6. Otherwise, with `<targets>` the docs targets comma-separated:
    1. `python3 .maestro/engine/codebase_scan.py snapshot --root . --repos <targets> --out .maestro/index/maestro-sync-map-snapshot.json`
-      — capture `snapshot_sha256`.
+      — capture `snapshot_sha256`. Then
+      `python3 .maestro/engine/living_docs.py snapshot --root . --out .maestro/index/maestro-sync-docs-snapshot.json`.
    2. Load and follow **`build-knowledge`**, scoped to the targets. Its instruction to you:
       read only `codebase/<target>/` (plus its `AGENTS.md` / `CLAUDE.md` / `.cursor/rules`) and
       the existing `docs/`; then
@@ -66,12 +67,17 @@ Run these **in order**, in this session. Each step consumes the previous step's 
       - for each domain a target implements: a domain with no page yet gets new
         `docs/technical/<domain>.md` and `docs/functional/<domain>.md`; an existing domain
         page the target takes part in is extended in place to cover it. Never rewrite what a
-        page says about other repos; keep the team's `## Rules that must never break` and
-        `## If you change… also check` sections word for word;
-      - update `docs/architecture.md`: the target as a node with its edges in the topology,
-        its row in Services, each connection in How services connect, and its domains in the
-        Domains table — within the 200-line cap;
+        page says about other repos; never edit the team's invariants and change scenarios
+        (`## Invariants and consistency`, `## Change scenarios`, `## Platform-wide invariants`,
+        `docs/impact/side-effects.yaml`) — write what you find under
+        `## Proposed rules and scenarios`;
+      - update `docs/architecture.md`: the target's row in System context and repos, each of its
+        connections in Cross-repo flows and contracts, and its domains in the Domain map —
+        within budget;
       - do not seed review lessons.
+      Then run `python3 .maestro/engine/living_docs.py check --root . --write --locked-from .maestro/index/maestro-sync-docs-snapshot.json --report`
+      and fix every error it reports in the docs you wrote, until `valid` is true; then
+      `python3 .maestro/engine/living_docs.py stamp --root . --snapshot .maestro/index/maestro-sync-docs-snapshot.json`.
    3. `python3 .maestro/engine/codebase_scan.py record --root . --snapshot .maestro/index/maestro-sync-map-snapshot.json --snapshot-sha256 <snapshot_sha256>`
       — stamps only the targets. If it refuses because a target's map was not written or did
       not change, go back to 5.2 for that repo.

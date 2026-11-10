@@ -16,14 +16,25 @@ Commands (all take --root, default .):
            cite (missing files are skipped); with --repos, also those repos' domain doc paths
   domains  [--repos a,b] [--impact impact.json]   the domains (and their doc paths) whose Domain
            map row names one of the repos; every domain when none is named or none matches
-  snapshot --out PATH        hash every doc before a writer runs
+  snapshot --out PATH        hash every doc, and keep the team-owned content, before a writer runs
   stamp    [--snapshot PATH] set verified_at (and status: draft) on docs new or changed since
+  status                     are there team-owned invariants and change scenarios?
+  rules    [--repo R --worktree W] [--out F]   the team's rules and scenarios against the code
+           (a feature's worktree for R); never blocks: a review step reads it
+  scaffold                   write a starter docs/impact/side-effects.yaml (never overwrites)
+  next     PREFIX            the next free BR, INV and CS number for a domain
 
 Rules: R1 ID format, prefix, kind, uniqueness · R2 every cited ID is defined · R3 every
 `repo · path · symbol` anchor resolves · R4 generated output is current and not hand-edited ·
 R5 anchored code changed since verified_at (warning; error after 30 days with --nightly) ·
 R6 every app call reaches a served route · R7 structure: front-matter, headings, table columns,
-owned unknowns, rows that stand alone, Domain map ↔ files · R8 token budgets (warning).
+owned unknowns, rows that stand alone, Domain map ↔ files · R8 token budgets (warning) ·
+R9 (with --locked-from) a writer changed team-owned content: the engine restores it.
+
+Team-owned: invariants (INV) and change scenarios (CS) — technical docs' "Invariants and
+consistency" and "Change scenarios", architecture's "Platform-wide invariants", and
+docs/impact/side-effects.yaml. People write them; a model only proposes, under "Proposed rules
+and scenarios". In a writer's check, a problem inside team-owned content is a warning for the team.
 """
 import argparse
 import datetime
@@ -56,7 +67,8 @@ FORMAT = {
         "required": ["System context and repos", "Domain map", "Cross-repo flows and contracts",
                      "Platform-wide invariants"],
         "order": ["System context and repos", "Domain map", "Cross-repo flows and contracts",
-                  "Platform-wide invariants", "Conventions and boundaries", "Glossary and aliases"],
+                  "Platform-wide invariants", "Proposed rules and scenarios",
+                  "Conventions and boundaries", "Glossary and aliases"],
     },
     "functional": {
         "required": ["Purpose and actors", "Business rules", "Open questions and owned unknowns"],
@@ -66,8 +78,9 @@ FORMAT = {
     "technical": {
         "required": ["Invariants and consistency", "Change scenarios", "Cross-repo connections",
                      "Known gaps and tech debt"],
-        "order": ["Invariants and consistency", "Change scenarios", "Cross-repo connections",
-                  "Failure, concurrency and idempotency", "Gotchas", "Known gaps and tech debt"],
+        "order": ["Invariants and consistency", "Change scenarios", "Proposed rules and scenarios",
+                  "Cross-repo connections", "Failure, concurrency and idempotency", "Gotchas",
+                  "Known gaps and tech debt"],
     },
 }
 # The first table of these sections must carry exactly these columns (case-insensitive).
@@ -88,7 +101,27 @@ TABLE_COLUMNS = {
     ("technical", "Invariants and consistency"):
         ["ID", "Invariant", "Enforces", "Where (repo · path · symbol)", "Consistency", "Tested by"],
     ("technical", "Change scenarios"): ["ID", "When changing", "Also affects", "Verify with", "Source"],
+    ("architecture", "Proposed rules and scenarios"):
+        ["Kind", "Proposal", "Where (repo · path · symbol)", "Evidence"],
+    ("technical", "Proposed rules and scenarios"):
+        ["Kind", "Proposal", "Where (repo · path · symbol)", "Evidence"],
 }
+# Owned by the project's people, never by a model: invariants and change scenarios. A writer step
+# that changes them fails its check (R9) and the engine puts the snapshot text back; a model
+# writes what it finds under "Proposed rules and scenarios" for the team to accept.
+TEAM_SECTIONS = {
+    "architecture": ("Platform-wide invariants",),
+    "functional": (),
+    "technical": ("Invariants and consistency", "Change scenarios"),
+}
+PROPOSALS = "Proposed rules and scenarios"
+PROPOSAL_KINDS = ("invariant", "change scenario")
+SIDE_EFFECTS = os.path.join("docs", "impact", "side-effects.yaml")
+SOURCE_EXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java", ".kt", ".rs",
+              ".rb", ".php", ".cs", ".swift", ".dart", ".sql", ".yaml", ".yml", ".json", ".sh",
+              ".toml", ".proto", ".graphql", ".vue", ".svelte", ".html", ".prisma", ".scala", ".tf"}
+SIDE_EFFECT_NAMES = (("tables", "table"), ("queues", "queue"), ("endpoints", "endpoint"),
+                     ("files", "file"), ("symbols", "symbol"))
 # Which ID kinds each doc may define, and in which section.
 DEFINES = {
     "architecture": {"INV": "Platform-wide invariants"},
@@ -124,11 +157,17 @@ def block_re(name):
 
 
 class Report:
-    def __init__(self):
-        self.errors, self.warnings = [], []
+    """Errors and warnings. With `locked` (a writer's check), a problem inside team-owned content
+    is a warning for the team: the writer may not edit that content, so it cannot fix it."""
 
-    def err(self, rule, where, msg, fix):
-        self.errors.append(f"{rule} {where}: {msg}. Fix: {fix}")
+    def __init__(self, locked=False):
+        self.errors, self.warnings, self.locked = [], [], locked
+
+    def err(self, rule, where, msg, fix, team=False):
+        if team and self.locked:
+            self.warnings.append(f"{rule} {where}: {msg} (team-owned; the team should: {fix})")
+        else:
+            self.errors.append(f"{rule} {where}: {msg}. Fix: {fix}")
 
     def warn(self, rule, where, msg):
         self.warnings.append(f"{rule} {where}: {msg}")
@@ -217,8 +256,10 @@ class Doc:
             self.body = self.text[match.end():]
         self.domain = self.fm.get("domain") if kind != "architecture" else None
         self.prefix = str(self.fm.get("id_prefix") or "")
-        self.sections, self.headings = {}, []
+        self.sections, self.headings, self.line_section = {}, [], []
         current, fenced = None, False
+        offset = self.text[:len(self.text) - len(self.body)].count("\n")
+        self.line_section = [None] * offset
         for line in self.body.split("\n"):
             if FENCE_RE.match(line):
                 fenced = not fenced
@@ -228,6 +269,30 @@ class Doc:
                 self.sections.setdefault(current, [])
             elif current is not None:
                 self.sections[current].append("" if fenced else line)
+            self.line_section.append(current)
+
+    def is_team(self, section):
+        return section in TEAM_SECTIONS.get(self.kind, ())
+
+    def team_line(self, number):
+        """True when 1-based line `number` lies in a team-owned section."""
+        index = number - 1
+        return 0 <= index < len(self.line_section) and self.is_team(self.line_section[index])
+
+    def section_text(self, section):
+        """The section's body as written (fences kept), trimmed; None when the heading is absent."""
+        if section not in self.sections:
+            return None
+        lines, on, fenced = [], False, False
+        for line in self.body.split("\n"):
+            if FENCE_RE.match(line):
+                fenced = not fenced
+            if not fenced and line.startswith("## "):
+                on = line[3:].strip() == section
+                continue
+            if on:
+                lines.append(line.rstrip())
+        return "\n".join(lines).strip("\n")
 
     def tables(self, section):
         out, lines, i = [], self.sections.get(section, []), 0
@@ -349,7 +414,8 @@ def check_structure(doc, repos, report):
             header = tables[0][0]
             if [h.lower() for h in header] != [h.lower() for h in expected]:
                 report.err("R7", f"{doc.rel} §{section}", "table columns are "
-                           f"{' | '.join(header)}", "use the columns " + " | ".join(expected))
+                           f"{' | '.join(header)}", "use the columns " + " | ".join(expected),
+                           team=doc.is_team(section))
         if section in fmt["required"] and not tables and not any(
                 line.strip() for line in doc.sections.get(section, [])):
             report.err("R7", f"{doc.rel} §{section}", "section is empty",
@@ -357,13 +423,17 @@ def check_structure(doc, repos, report):
     for number, line in enumerate(doc.text.split("\n"), 1):
         if "Unknown." in line and line.count("Unknown.") != len(UNKNOWN_OK.findall(line)):
             report.err("R7", f"{doc.rel}:{number}", "an Unknown. has no owner or date",
-                       "write Unknown. (ask: <who>, since <YYYY-MM-DD>)")
+                       "write Unknown. (ask: <who>, since <YYYY-MM-DD>)", team=doc.team_line(number))
     for section, header, item in doc.items():
         first = item[0] if header else item
         if (header and not first) or PRONOUN_RE.match(first or ""):
             report.err("R7", f"{doc.rel} §{section}", f"row does not name its subject: "
                        f"{(' | '.join(item) if header else item)[:70]}",
-                       "start the row with the thing it is about, so it reads on its own")
+                       "start the row with the thing it is about, so it reads on its own",
+                       team=doc.is_team(section))
+        if section == PROPOSALS and header and first.lower() not in PROPOSAL_KINDS:
+            report.err("R7", f"{doc.rel} §{section}", f"proposal kind '{first}'",
+                       f"write one of: {', '.join(PROPOSAL_KINDS)}")
     tokens = len(doc.text) // 4
     if tokens > BUDGET[kind]:
         report.warn("R8", doc.rel, f"about {tokens} tokens, budget {BUDGET[kind]}; cut anything an "
@@ -441,31 +511,57 @@ def collect_ids(docs, report):
                 if prefix not in prefixes:
                     continue
                 token = f"{prefix}-{kind}-{digits}"
+                team = doc.team_line(number)
                 if kind not in ID_KINDS:
                     report.err("R1", f"{doc.rel}:{number}", f"{token} uses an ID kind that does not "
-                               "exist", "only BR, INV and CS take IDs; make it a plain bullet")
+                               "exist", "only BR, INV and CS take IDs; make it a plain bullet",
+                               team=team)
                 elif len(digits) != 3:
                     report.err("R1", f"{doc.rel}:{number}", f"{token} is not three digits",
-                               f"write {prefix}-{kind}-{int(digits):03d}")
+                               f"write {prefix}-{kind}-{int(digits):03d}", team=team)
         for section, header, row in doc.items():
             if not header or not re.fullmatch(rf"{PREFIX_RE}-(?:{'|'.join(ID_KINDS)})-\d{{3}}", row[0]):
                 continue
             ident = row[0]
             prefix, kind, _ = ident.split("-")
+            team = doc.is_team(section)
+            if section == PROPOSALS:
+                report.err("R1", f"{doc.rel} §{section}", f"{ident} gives a proposal an ID",
+                           "leave proposals without an ID; the team numbers a rule when it accepts it")
+                continue
             if ident in defs:
                 report.err("R1", doc.rel, f"{ident} is defined twice (also in {defs[ident][0].rel})",
-                           "give the new fact the next free number; never reuse an ID")
+                           "give the new fact the next free number; never reuse an ID", team=team)
                 continue
             if prefix != doc.prefix:
                 report.err("R1", doc.rel, f"{ident} does not use this doc's prefix {doc.prefix}",
-                           "define it in the doc that owns that prefix")
+                           "define it in the doc that owns that prefix", team=team)
             allowed = DEFINES[doc.kind]
             if kind not in allowed or allowed[kind] != section:
                 where = ", ".join(f"{k} in §{s}" for k, s in allowed.items())
                 report.err("R1", f"{doc.rel} §{section}", f"{ident} is defined in the wrong place",
-                           f"a {doc.kind} doc defines {where}")
+                           f"a {doc.kind} doc defines {where}", team=team)
             defs[ident] = (doc, section, header, row)
     return defs
+
+
+def code_citations(repos, pattern):
+    """[(repo, path, line number, line)] for every line of code or tests that cites an ID.
+    Markdown and anything under docs/ do not count: a rule is cited where code enforces it."""
+    grep = pattern.pattern.replace(r"\b", "").replace("(?:", "(").replace(r"\d{3}", "[0-9]{3}")
+    hits = []
+    for name, path in sorted(repos.items()):
+        rc, out = _git(path, "grep", "-n", "-I", "-E", "--untracked", grep)
+        if rc not in (0, 1):
+            continue
+        for hit in out.splitlines():
+            file_part, _, rest = hit.partition(":")
+            number, _, line = rest.partition(":")
+            parts = file_part.split("/")
+            if any(part in SKIP_DIRS for part in parts) or parts[0] == "docs" or file_part.endswith(".md"):
+                continue
+            hits.append((name, file_part, number, line))
+    return hits
 
 
 def check_citations(root, repos, docs, defs, report):
@@ -486,20 +582,23 @@ def check_citations(root, repos, docs, defs, report):
                 if ident not in defs:
                     report.err("R2", f"{label}:{number}", f"{ident} is cited but never defined",
                                "define it, or correct the citation")
-    grep = pattern.pattern.replace(r"\b", "").replace("(?:", "(").replace(r"\d{3}", "[0-9]{3}")
-    for name, path in sorted(repos.items()):
-        rc, out = _git(path, "grep", "-n", "-I", "-E", "--untracked", grep)
-        if rc not in (0, 1):
-            continue
-        for hit in out.splitlines():
-            file_part, _, rest = hit.partition(":")
-            number, _, line = rest.partition(":")
-            if any(part in SKIP_DIRS for part in file_part.split("/")):
-                continue
-            for ident in pattern.findall(line):
-                if ident not in defs:
-                    report.err("R2", f"{name}/{file_part}:{number}", f"{ident} is cited but never "
-                               "defined", "define it in the docs, or correct the comment")
+    cited_in_code = set()
+    for name, file_part, number, line in code_citations(repos, pattern):
+        for ident in pattern.findall(line):
+            cited_in_code.add(ident)
+            if ident not in defs:
+                report.err("R2", f"{name}/{file_part}:{number}", f"{ident} is cited but never "
+                           "defined", "define it in the docs, or correct the comment")
+    check_rules_cited(defs, cited_in_code, report)
+    return cited_in_code
+
+
+def check_rules_cited(defs, cited_in_code, report):
+    """Every live invariant is cited where code or a test enforces it (`// PL-INV-001: why`)."""
+    for ident, (doc, _section, _header, _row) in sorted(defs.items()):
+        if "-INV-" in ident and not is_retired(defs, ident) and ident not in cited_in_code:
+            report.warn("R2", doc.rel, f"{ident} is cited in no code or test; the team should add "
+                        f"`{ident}: why` as a comment where it is enforced, or in its test's name")
 
 
 def is_retired(defs, ident):
@@ -567,7 +666,8 @@ def collect_anchors(repos, docs, defs, report):
                 problem = resolve_anchor(repos, repo, path, symbol, cache)
                 if problem:
                     report.err("R3", f"{doc.rel} §{section}", f"{key}: {problem}",
-                               "point the anchor at the symbol's current repo, path and name")
+                               "point the anchor at the symbol's current repo, path and name",
+                               team=doc.is_team(section))
                 anchors.setdefault(key, set()).update(ids)
                 by_doc[doc.rel].add(key)
     return anchors, by_doc
@@ -1286,6 +1386,350 @@ def check_staleness(repos, docs, by_doc, nightly, today, report):
                 report.warn("R5", doc.rel, msg)
 
 
+# --------------------------------------------------------------------------- team-owned content
+
+def team_snapshot(root):
+    """The text of every team-owned section, and side-effects.yaml, as a writer step starts."""
+    locked = {}
+    for doc in load_docs(root):
+        sections = TEAM_SECTIONS.get(doc.kind, ())
+        if sections:
+            locked[doc.rel] = {name: doc.section_text(name) for name in sections}
+    side = os.path.join(root, SIDE_EFFECTS)
+    return {"locked": locked, "side_effects": read_text(side) if os.path.isfile(side) else None}
+
+
+def _empty(text):
+    return (text or "").strip() in ("", "None.")
+
+
+def _replace_section(path, kind, section, body):
+    """Put `body` back as the section's content, re-adding the heading in format order if gone."""
+    text = read_text(path) or ""
+    lines = text.split("\n")
+    start, end, fenced = None, None, False
+    for i, line in enumerate(lines):
+        if FENCE_RE.match(line):
+            fenced = not fenced
+        if fenced or not line.startswith("## "):
+            continue
+        if start is not None:
+            end = i
+            break
+        if line[3:].strip() == section:
+            start = i
+    new = [f"## {section}", *(body or "None.").split("\n"), ""]
+    if start is not None:
+        lines[start:end if end is not None else len(lines)] = new
+    else:
+        order = FORMAT[kind]["order"]
+        later = order[order.index(section) + 1:]
+        at = next((i for i, line in enumerate(lines)
+                   if line.startswith("## ") and line[3:].strip() in later), len(lines))
+        lines[at:at] = new
+    write_text(path, "\n".join(lines).rstrip("\n") + "\n")
+
+
+def enforce_lock(root, snapshot, write, report):
+    """R9: a writer step may not change team-owned content. With --write the engine puts the
+    snapshot text back, so the guarantee holds even when the writer ignores the report."""
+    before = snapshot.get("locked") or {}
+    for doc in load_docs(root):
+        for section in TEAM_SECTIONS.get(doc.kind, ()):
+            now = doc.section_text(section)
+            if doc.rel in before:
+                was = before[doc.rel].get(section)
+                if (now or "").strip() == (was or "").strip():
+                    continue
+                restore = was
+            else:
+                if _empty(now):
+                    continue
+                restore = "None."
+            report.err("R9", f"{doc.rel} §{section}", "team-owned content was changed by this step"
+                       + (" and has been restored" if write else ""),
+                       f"leave §{section} exactly as the team wrote it; write what you found as rows "
+                       f"under '## {PROPOSALS}' instead")
+            if write:
+                _replace_section(doc.path, doc.kind, section, restore)
+    present = {d.rel for d in load_docs(root)}
+    for rel, sections in sorted(before.items()):
+        if rel not in present and any(not _empty(t) for t in sections.values()):
+            report.err("R9", rel, "a doc holding team-owned rules was removed",
+                       f"restore docs/{rel}; only the team may retire its rules")
+    side = os.path.join(root, SIDE_EFFECTS)
+    now = read_text(side) if os.path.isfile(side) else None
+    was = snapshot.get("side_effects")
+    if now != was:
+        report.err("R9", SIDE_EFFECTS, "team-owned change scenarios were changed by this step"
+                   + (" and have been restored" if write else ""),
+                   f"leave {SIDE_EFFECTS} to the team; propose scenarios under '## {PROPOSALS}'")
+        if write:
+            if was is None:
+                os.remove(side)
+            else:
+                write_text(side, was)
+
+
+SIDE_EFFECTS_STARTER = """\
+# Change scenarios, machine-readable: "if you change X, also check Y". Written by the team, never by
+# a model. Each scenario is also a row in the domain's docs/technical/<domain>.md under
+# "## Change scenarios", with the same ID. Maestro's engine checks every name below still exists.
+#
+# - id: PL-CS-001                    # <PREFIX>-CS-NNN, defined in docs/technical/<domain>.md
+#   domain: payment-links            # the technical doc whose table lists it
+#   summary: Disabling a payment link
+#   rules: [PL-INV-004]              # invariants at risk (<PREFIX>-INV-NNN or ARCH-INV-NNN)
+#   repo: backend                    # default repository for the names below ("repo:name" overrides)
+#   when_changing: ["internal/links/disable.go", "Service.Disable"]
+#   also_impacts:
+#     domains: [reminders]
+#     tables: [payment_links]
+#     queues: [link.disabled]
+#     endpoints: ["GET /v1/links/{id}"]
+#     files: ["web:src/screens/Links.tsx"]
+#     symbols: []
+#   verify: ["TestDisablePublishesEvent"]
+version: 1
+scenarios: []
+"""
+
+
+def load_side_effects(root, report):
+    """The scenarios list, [] when empty, None when the file does not exist."""
+    path = os.path.join(root, SIDE_EFFECTS)
+    if not os.path.isfile(path):
+        return None
+    try:
+        doc = wf.loads(read_text(path) or "")
+    except Exception as exc:  # wf raises its own error types
+        report.err("R7", SIDE_EFFECTS, f"not readable YAML ({exc})", "use Maestro's YAML subset",
+                   team=True)
+        return []
+    items = doc.get("scenarios") if isinstance(doc, dict) else doc
+    if items in (None, ""):
+        return []
+    if not isinstance(items, list):
+        report.err("R7", SIDE_EFFECTS, "expected a 'scenarios:' list", "write scenarios: [...]",
+                   team=True)
+        return []
+    return items
+
+
+class Code:
+    """Each repository's source text (not docs, not markdown), for whole-word name lookups."""
+
+    def __init__(self, repos):
+        self.repos, self._files = dict(repos), {}
+
+    def files(self, repo):
+        if repo not in self._files:
+            texts = {}
+            for rel in repo_files(self.repos[repo]):
+                if rel.split("/")[0] == "docs" or rel.endswith(".md"):
+                    continue
+                text = read_text(os.path.join(self.repos[repo], rel))
+                if text is not None:
+                    texts[rel] = text
+            self._files[repo] = texts
+        return self._files[repo]
+
+    def has_path(self, repo, rel):
+        return os.path.exists(os.path.join(self.repos[repo], rel.lstrip("./")))
+
+    def has_word(self, repo, word):
+        pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(word) + r"(?![A-Za-z0-9_])")
+        return any(pattern.search(text) for text in self.files(repo).values())
+
+    def has_literal(self, repo, word):
+        """`word` right after a quote or slash: route segments, table and queue names."""
+        pattern = re.compile(r"""["'`/]""" + re.escape(word) + r"(?![A-Za-z0-9_])")
+        return any(pattern.search(text) for text in self.files(repo).values())
+
+
+def _check_name(kind, entry, default_repo, code, where, report):
+    entry = str(entry).strip()
+    repo, thing = default_repo, entry
+    if ":" in entry and not re.match(r"^(GET|POST|PUT|PATCH|DELETE)\s", entry, re.I):
+        head, tail = entry.split(":", 1)
+        if head in code.repos:
+            repo, thing = head, tail.strip()
+    if repo is None:
+        if len(code.repos) != 1:
+            report.err("R3", where, f"'{entry}' names no repository",
+                       f"write 'repo:{entry}' or set the scenario's repo:", team=True)
+            return
+        repo = next(iter(code.repos))
+    if repo not in code.repos:
+        report.err("R3", where, f"repository '{repo}' is not in this workspace",
+                   "name a repository the workspace has", team=True)
+        return
+    if kind == "auto":
+        file_like = "/" in thing or os.path.splitext(thing)[1].lower() in SOURCE_EXT
+        kind = "file" if file_like else "symbol"
+    problem = None
+    if kind == "file" and not code.has_path(repo, thing):
+        problem = f"file '{thing}' no longer exists in {repo}"
+    elif kind == "symbol":
+        for part in [re.sub(r"\(.*\)$", "", p) for p in re.split(r"::|[.#]", thing) if p]:
+            if part and not code.has_word(repo, part):
+                problem = f"symbol '{thing}' ('{part}') no longer exists in {repo}"
+                break
+    elif kind in ("table", "queue") and not (code.has_literal(repo, thing) or code.has_word(repo, thing)):
+        problem = f"{kind} '{thing}' no longer appears in {repo}"
+    elif kind == "endpoint":
+        match = re.match(r"^(GET|POST|PUT|PATCH|DELETE)\s+(\S+)$", thing, re.I)
+        if not match:
+            problem = f"endpoint '{thing}' should look like 'GET /v1/things/{{id}}'"
+        else:
+            for seg in match.group(2).split("/"):
+                if seg and not seg.startswith(("{", ":", "<")) and not code.has_literal(repo, seg):
+                    problem = f"endpoint '{thing}' (segment '{seg}') no longer exists in {repo}"
+                    break
+    elif kind == "test" and not (code.has_word(repo, thing) or code.has_literal(repo, thing)):
+        problem = f"test '{thing}' no longer exists in {repo}"
+    if problem:
+        report.err("R3", where, problem, "update the scenario to the code's current names", team=True)
+
+
+def check_side_effects(root, repos, docs, defs, report):
+    """docs/impact/side-effects.yaml against the docs (IDs, domains) and the code (every name)."""
+    items = load_side_effects(root, report)
+    if items is None:
+        return 0
+    domains = {d.domain for d in docs if d.domain}
+    in_tables = {i: d for i, (d, section, _h, _r) in defs.items() if section == "Change scenarios"}
+    code, seen = Code(repos), set()
+    for number, scenario in enumerate(items, 1):
+        sid = str(scenario.get("id", "")) if isinstance(scenario, dict) else ""
+        where = f"{SIDE_EFFECTS} {sid or '#' + str(number)}"
+        if not re.fullmatch(rf"{PREFIX_RE}-CS-\d{{3}}", sid):
+            report.err("R1", where, "each scenario needs an ID like PL-CS-001",
+                       "use the ID of its row in the technical doc's Change scenarios", team=True)
+            continue
+        if sid in seen:
+            report.err("R1", where, "duplicate scenario ID", "give each scenario its own ID", team=True)
+        seen.add(sid)
+        if sid not in in_tables:
+            report.warn("R2", where, "no row in any technical doc's Change scenarios table")
+        elif scenario.get("domain") and scenario.get("domain") != in_tables[sid].domain:
+            report.err("R2", where, f"domain '{scenario.get('domain')}' but its row is in "
+                       f"{in_tables[sid].rel}", "make the two agree", team=True)
+        if not scenario.get("when_changing"):
+            report.err("R7", where, "when_changing names nothing", "name at least one file or symbol",
+                       team=True)
+        for rule in scenario.get("rules") or []:
+            if rule not in defs or "-INV-" not in rule:
+                report.err("R2", where, f"cites rule {rule}, which no doc defines as an invariant",
+                           "cite a defined <PREFIX>-INV-NNN or ARCH-INV-NNN", team=True)
+        also = scenario.get("also_impacts") or {}
+        if not isinstance(also, dict):
+            report.err("R7", where, "also_impacts must be a mapping", "write also_impacts: {...}",
+                       team=True)
+            also = {}
+        for domain in also.get("domains") or []:
+            if domain not in domains:
+                report.err("R2", where, f"also_impacts.domains '{domain}' has no docs",
+                           "name a domain from the Domain map", team=True)
+        if not repos:
+            continue
+        default = scenario.get("repo") or None
+        for entry in scenario.get("when_changing") or []:
+            _check_name("auto", entry, default, code, where + " when_changing", report)
+        for key, kind in SIDE_EFFECT_NAMES:
+            for entry in also.get(key) or []:
+                _check_name(kind, entry, default, code, f"{where} also_impacts.{key}", report)
+        for entry in scenario.get("verify") or []:
+            _check_name("test", entry, default, code, where + " verify", report)
+    for sid, doc in sorted(in_tables.items()):
+        if sid not in seen and not is_retired(defs, sid):
+            report.warn("R2", doc.rel, f"{sid} has no entry in {SIDE_EFFECTS}")
+    return len(seen)
+
+
+def rules_status(root):
+    docs = load_docs(root)
+    defs = collect_ids(docs, Report())
+    items = load_side_effects(root, Report())
+    rules = sorted(i for i in defs if "-INV-" in i and not is_retired(defs, i))
+    scenarios = sorted(i for i in defs if "-CS-" in i and not is_retired(defs, i))
+    present = bool(rules or scenarios or items)
+    domains = sorted({defs[i][0].domain or "architecture" for i in rules + scenarios})
+    if present:
+        summary = f"{len(rules)} invariants, {len(scenarios)} change scenarios ({', '.join(domains)})"
+    else:
+        summary = ("no team-owned rules yet: the team writes invariants and change scenarios in "
+                   "docs/technical/<domain>.md and docs/impact/side-effects.yaml (optional)")
+    return {"present": present, "rule_count": len(rules), "scenario_count": len(scenarios),
+            "domains_csv": ",".join(domains), "side_effects": items is not None, "summary": summary}
+
+
+def rules_check(root, repo=None, worktree=None):
+    """The team's rules and scenarios against the code (a feature's worktree for `repo`).
+    Never blocks: a review step reads the result."""
+    root = os.path.abspath(root)
+    status = rules_status(root)
+    if not status["present"]:
+        return {"present": False, "valid": True, "skipped": True, "error_count": 0,
+                "warning_count": 0, "rule_count": 0, "scenario_count": 0, "issues_summary": "",
+                "errors": [], "warnings": [], "summary": "no team-owned rules or scenarios; skipped"}
+    repos = workspace_repos(root)
+    if repo and worktree and os.path.isdir(worktree):
+        repos[repo] = os.path.abspath(worktree)
+    report = Report()
+    docs = load_docs(root)
+    defs = collect_ids(docs, Report())
+    team_docs = [d for d in docs if TEAM_SECTIONS.get(d.kind)]
+    cache = {}
+    for doc in team_docs:
+        for section, header, item in doc.items():
+            if not doc.is_team(section):
+                continue
+            text = " | ".join(item) if header else item
+            for r, path, symbol in anchors_in(text, repos):
+                problem = resolve_anchor(repos, r, path, symbol, cache)
+                if problem:
+                    report.err("R3", f"{doc.rel} §{section}", f"{r} · {path} · {symbol}: {problem}",
+                               "the branch must keep what the rule relies on, or the team updates it")
+    scenario_count = check_side_effects(root, repos, docs, defs, report)
+    pattern = id_re(known_prefixes(docs))
+    cited = set()
+    for name, file_part, number, line in code_citations(repos, pattern):
+        for ident in pattern.findall(line):
+            cited.add(ident)
+            if ident not in defs:
+                report.err("R2", f"{name}/{file_part}:{number}", f"{ident} is cited but never defined",
+                           "correct the comment, or ask the team to define it")
+    check_rules_cited(defs, cited, report)
+    errors = list(dict.fromkeys(report.errors))
+    warnings = list(dict.fromkeys(report.warnings))
+    summary = (f"{status['rule_count']} invariants, {status['scenario_count']} scenarios: "
+               + ("all names still exist" if not errors else f"{len(errors)} mismatch(es) with the code"))
+    return {"present": True, "valid": not errors, "skipped": False, "error_count": len(errors),
+            "warning_count": len(warnings), "rule_count": status["rule_count"],
+            "scenario_count": max(status["scenario_count"], scenario_count),
+            "issues_summary": " | ".join(errors[:5]), "errors": errors, "warnings": warnings,
+            "summary": summary}
+
+
+def scaffold_side_effects(root):
+    path = os.path.join(root, SIDE_EFFECTS)
+    if os.path.exists(path):
+        return {"created": False, "path": SIDE_EFFECTS}
+    write_text(path, SIDE_EFFECTS_STARTER)
+    return {"created": True, "path": SIDE_EFFECTS}
+
+
+def next_ids(root, prefix):
+    defs = collect_ids(load_docs(root), Report())
+    top = {kind: 0 for kind in ID_KINDS}
+    for ident in defs:
+        p, kind, digits = ident.split("-")
+        if p == prefix:
+            top[kind] = max(top[kind], int(digits))
+    return {kind.lower(): f"{prefix}-{kind}-{top[kind] + 1:03d}" for kind in ID_KINDS}
+
+
 # --------------------------------------------------------------------------- config + check
 
 def docs_config(root):
@@ -1302,10 +1746,14 @@ def workspace_repos(root):
     return {name: path for name, path in codebase_scan.discover_repos(root)}
 
 
-def run_check(root, write=False, nightly=False, today=None):
+def run_check(root, write=False, nightly=False, today=None, locked_from=None):
+    """All rules. `locked_from` (a writer's snapshot) turns on R9 and makes problems inside
+    team-owned content warnings for the team, since the writer may not touch it."""
     root = os.path.abspath(root)
     today = today or datetime.date.today()
-    report = Report()
+    report = Report(locked=locked_from is not None)
+    if locked_from is not None:
+        enforce_lock(root, locked_from, write, report)
     repos = workspace_repos(root)
     settings = docs_config(root)
     docs = load_docs(root)
@@ -1354,6 +1802,7 @@ def run_check(root, write=False, nightly=False, today=None):
     if write:
         remove_stale_facts(repos, opted_in, set(blocks))
     check_citations(root, repos, docs, defs, report)
+    check_side_effects(root, repos, docs, defs, report)
     for call in inv.calls:
         if inv.routes and not serving_route(inv, call):
             report.err("R6", call["anchor"], f"calls {call['method']} {call['path']}, which no "
@@ -1564,6 +2013,7 @@ def main(argv=None):
     p.add_argument("--nightly", action="store_true")
     p.add_argument("--today")
     p.add_argument("--report", action="store_true", help="always exit 0; last line is JSON")
+    p.add_argument("--locked-from", help="a writer's snapshot: team-owned content may not change (R9)")
     p = sub.add_parser("extract")
     p.add_argument("--root", default=".")
     p.add_argument("--out", required=True)
@@ -1585,11 +2035,31 @@ def main(argv=None):
     p = sub.add_parser("stamp")
     p.add_argument("--root", default=".")
     p.add_argument("--snapshot")
+    p = sub.add_parser("status")
+    p.add_argument("--root", default=".")
+    p = sub.add_parser("rules")
+    p.add_argument("--root", default=".")
+    p.add_argument("--repo", help="read this repository from --worktree instead of its checkout")
+    p.add_argument("--worktree")
+    p.add_argument("--out", help="also write the full report (JSON) here")
+    p = sub.add_parser("scaffold")
+    p.add_argument("--root", default=".")
+    p = sub.add_parser("next")
+    p.add_argument("prefix")
+    p.add_argument("--root", default=".")
     args = parser.parse_args(argv)
 
     if args.cmd == "check":
         today = datetime.date.fromisoformat(args.today) if args.today else None
-        report, stats = run_check(args.root, write=args.write, nightly=args.nightly, today=today)
+        locked = None
+        if args.locked_from:
+            if not os.path.isfile(args.locked_from):
+                print(f"--locked-from {args.locked_from} does not exist", file=sys.stderr)
+                return 2
+            with open(args.locked_from, encoding="utf-8") as fh:
+                locked = json.load(fh).get("team") or {}
+        report, stats = run_check(args.root, write=args.write, nightly=args.nightly, today=today,
+                                  locked_from=locked)
         for warning in report.warnings:
             print("WARN ", warning)
         for error in report.errors:
@@ -1654,13 +2124,37 @@ def main(argv=None):
                           "domain_count": len(rows)}))
         return 0
     if args.cmd == "snapshot":
-        write_text(args.out, json.dumps({"docs": doc_hashes(args.root)}, indent=2, sort_keys=True) + "\n")
+        write_text(args.out, json.dumps({"docs": doc_hashes(args.root), "team": team_snapshot(args.root)},
+                                        indent=2, sort_keys=True) + "\n")
         print(json.dumps({"snapshot_path": args.out}))
         return 0
     if args.cmd == "stamp":
         snapshot = args.snapshot if args.snapshot and os.path.isfile(args.snapshot) else None
         stamped = stamp(args.root, snapshot)
         print(json.dumps({"stamped_count": len(stamped), "stamped_csv": ",".join(stamped)}))
+        return 0
+    if args.cmd == "status":
+        print(json.dumps(rules_status(os.path.abspath(args.root))))
+        return 0
+    if args.cmd == "rules":
+        if bool(args.repo) != bool(args.worktree):
+            parser.error("--repo and --worktree go together")
+        result = rules_check(args.root, args.repo, args.worktree)
+        report_path = ""
+        if args.out:
+            write_text(args.out, json.dumps(result, indent=2) + "\n")
+            report_path = args.out
+        line = {k: v for k, v in result.items() if k not in ("errors", "warnings")}
+        line["report_path"] = report_path
+        print(json.dumps(line))
+        return 0
+    if args.cmd == "scaffold":
+        print(json.dumps(scaffold_side_effects(os.path.abspath(args.root))))
+        return 0
+    if args.cmd == "next":
+        if not re.fullmatch(PREFIX_RE, args.prefix.upper()):
+            parser.error("next needs a domain's id_prefix, e.g. 'next PL'")
+        print(json.dumps(next_ids(args.root, args.prefix.upper())))
         return 0
     return 2
 

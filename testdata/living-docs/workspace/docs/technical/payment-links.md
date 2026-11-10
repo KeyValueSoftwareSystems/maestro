@@ -28,6 +28,11 @@ status: verified
 | PL-CS-002 | Cashfree retry settings: cofee-backend · internal/config/links.go · Config.CashfreeRetryMax | A changed idempotency key creates two Cashfree links for one invoice (PL-INV-001); payments stuck as pending | cofee-backend · internal/links/link_test.go · TestRetryKeepsIdempotencyKey | Review comment on PR #418 |
 | PL-CS-003 | Payment-link amount handling: cofee-backend · internal/links/link.go · Service.ForInvoice | Revenue report totals; the amount in the WhatsApp reminder template (reminders domain); ARCH-INV-001 | cofee-backend · internal/links/link_test.go · TestLinkAmountInPaise | Domain owner, 2026-11-02 |
 
+## Proposed rules and scenarios
+| Kind | Proposal | Where (repo · path · symbol) | Evidence |
+| --- | --- | --- | --- |
+| invariant | A payment link's expiry date never moves earlier once sent. | cofee-backend · internal/links/sweep.go · ExpirySweep.Run | The sweep only expires links past their date; no code shortens it. |
+
 ## Cross-repo connections
 <!-- generated:connections begin; from code by living_docs.py; do not edit -->
 | From (repo · path · function) | To | Operation | Handler |

@@ -1,0 +1,31 @@
+# Change scenarios, machine-readable. Written by the team, never by a model.
+version: 1
+scenarios:
+  - id: PL-CS-001
+    domain: payment-links
+    summary: Disabling a payment link
+    rules: [PL-INV-004]
+    repo: cofee-backend
+    when_changing: ["internal/links/disable.go", "Service.Disable"]
+    also_impacts:
+      tables: [payment_links]
+      queues: [link.disabled]
+      endpoints: ["POST /v1/links/{id}/disable"]
+      files: ["cofee-payer-app:lib/pay/link_expired_screen.dart"]
+    verify: ["TestDisablePublishesEvent"]
+  - id: PL-CS-002
+    domain: payment-links
+    summary: Cashfree retry settings
+    rules: [PL-INV-001]
+    repo: cofee-backend
+    when_changing: ["internal/config/links.go", "Config.CashfreeRetryMax"]
+    verify: ["TestRetryKeepsIdempotencyKey"]
+  - id: PL-CS-003
+    domain: payment-links
+    summary: Payment-link amount handling
+    rules: [PL-INV-002, ARCH-INV-001]
+    repo: cofee-backend
+    when_changing: ["Service.ForInvoice"]
+    also_impacts:
+      tables: [payment_links]
+    verify: ["TestLinkAmountInPaise"]

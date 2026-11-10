@@ -20,8 +20,10 @@ AGENTS.md                         workspace map + rules that apply everywhere
 docs/
   architecture.md                 written · level 0, read first
   functional/<domain>.md          written · business rules, states, terms
-  technical/<domain>.md           written · invariants, change scenarios, failure, gotchas
-                                            + one generated block (Cross-repo connections)
+  technical/<domain>.md           TEAM · invariants, change scenarios
+                                  written · proposals, failure, gotchas, known gaps
+                                  generated · one block (Cross-repo connections)
+  impact/side-effects.yaml        TEAM · change scenarios, machine-readable
   product/                        people · feature-catalog.md, prd-index.md, analytics-events.md
   _generated/<domain>.inventory.md  generated · APIs, events, jobs, data, config
   _generated/diagrams/architecture.mmd  generated · from architecture's flows table
@@ -32,8 +34,14 @@ docs/
 ```
 
 `<name>` is the repo's folder under `codebase/` (in a single-repo workspace, the repo's own
-folder name); `<repo>` is that repository's checkout. **Generated** files and blocks come from Maestro's `living_docs.py check --write`;
-never edit them. Without Maestro they are not produced, and the written docs keep this format.
+folder name); `<repo>` is that repository's checkout.
+
+- **Written**: by the docs writer (a model, reviewed by a person).
+- **TEAM**: invariants (`INV`) and change scenarios (`CS`) are written and owned by the project's
+  people, never by a model. A writer leaves them exactly as they are and puts what it finds under
+  `## Proposed rules and scenarios`; Maestro's engine restores any change a writer makes to them.
+- **Generated** files and blocks come from Maestro's `living_docs.py check --write`; never edit
+  them. Without Maestro they are not produced, and the written docs keep this format.
 
 Readers open the architecture first, then one domain, then one inventory section, repo map, or
 the rows a task cites. Nobody loads all of `docs/`.
@@ -63,11 +71,13 @@ refreshes in place: update existing rows, add rows and files for new facts, keep
    ```
 
    Never invent an owner or reviewer. A writer leaves `status: draft`; a person sets `verified`.
-2. **IDs.** Only three kinds of fact take an ID: `<PREFIX>-BR-NNN` business rule (functional),
-   `<PREFIX>-INV-NNN` invariant (technical; `ARCH-INV-NNN` in architecture), `<PREFIX>-CS-NNN`
-   change scenario (technical). Always three digits. Give a new fact the next free number; never
-   reuse or renumber. To retire a fact, keep its row and start its second cell with
-   `Retired YYYY-MM-DD:` and why. Alerts, edge cases and findings are plain bullets, not IDs.
+2. **IDs.** Only three kinds of fact take an ID: `<PREFIX>-BR-NNN` business rule (functional,
+   written), `<PREFIX>-INV-NNN` invariant (technical; `ARCH-INV-NNN` in architecture; team) and
+   `<PREFIX>-CS-NNN` change scenario (technical; team). Always three digits. A new fact takes the
+   next free number (`living_docs.py next <PREFIX>`); never reuse or renumber. To retire a fact,
+   keep its row and start its second cell with `Retired YYYY-MM-DD:` and why. Proposals, alerts,
+   edge cases and findings take no ID. Code and tests cite the invariant they enforce
+   (`// PL-INV-001: why`).
 3. **Anchors** point at code as `repo · path · symbol` (a function, type, method as
    `Type.Method`, test, table, operationId or config key). Never line numbers. A path ending in
    `/` names a folder. Every anchor must resolve.
@@ -99,11 +109,14 @@ Title `# Architecture`. Sections (R = required):
 3. `## Cross-repo flows and contracts` (R):
    `| From | To | Operation / event | Protocol | Sync | Auth | Contract |`, one row per connection,
    the contract as an anchor or `<provider> API (external)`. The diagram is generated from it.
-4. `## Platform-wide invariants` (R): `| ID | Invariant | Where (repo · path · symbol) | Consistency |`
-   with `ARCH-INV-NNN` rows: rules every repo keeps (money type, who may call a provider).
-5. `## Conventions and boundaries`: bullets for personal data and residency, the error envelope,
+4. `## Platform-wide invariants` (R, TEAM): `| ID | Invariant | Where (repo · path · symbol) | Consistency |`
+   with `ARCH-INV-NNN` rows: rules every repo keeps (money type, who may call a provider), or `None.`
+5. `## Proposed rules and scenarios`: `| Kind | Proposal | Where (repo · path · symbol) | Evidence |`,
+   written by the model: kind `invariant` or `change scenario`, no ID. The team accepts a row by
+   moving it, with the next free ID, into its section.
+6. `## Conventions and boundaries`: bullets for personal data and residency, the error envelope,
    trust boundaries, and where risk tiers and product docs live.
-6. `## Glossary and aliases`: `| Term | Meaning | Code names and aliases | Not to be confused with |`,
+7. `## Glossary and aliases`: `| Term | Meaning | Code names and aliases | Not to be confused with |`,
    only terms shared by several domains.
 
 ## `docs/functional/<domain>.md`
@@ -127,26 +140,54 @@ behaviour must be clear from it alone.
 Note: `> <domain> technical. Rules <PREFIX>-BR-* are in functional/<domain>.md. Endpoints, events, jobs, data and config are generated in _generated/<domain>.inventory.md.`
 Title `# <domain>: Technical`.
 
-1. `## Invariants and consistency` (R):
-   `| ID | Invariant | Enforces | Where (repo · path · symbol) | Consistency | Tested by |`.
+1. `## Invariants and consistency` (R, TEAM):
+   `| ID | Invariant | Enforces | Where (repo · path · symbol) | Consistency | Tested by |`, or `None.`
    Enforces cites the BR or ARCH-INV it protects. Consistency says transactional (and by what:
    index, lock, transaction) or eventual (and how soon). Tested by is a test anchor or an owned
    unknown.
-2. `## Change scenarios` (R): `| ID | When changing | Also affects | Verify with | Source |`. When
-   changing names the thing and its anchor; also affects names what breaks elsewhere (citing
-   IDs, other domains, apps); verify with names test anchors.
-3. `## Cross-repo connections` (R): only the generated block below. Never write inside it.
+2. `## Change scenarios` (R, TEAM): `| ID | When changing | Also affects | Verify with | Source |`,
+   or `None.` When changing names the thing and its anchor; also affects names what breaks
+   elsewhere (citing IDs, other domains, apps); verify with names test anchors. Each scenario may
+   also be an entry in `docs/impact/side-effects.yaml` with the same ID (see below).
+3. `## Proposed rules and scenarios`: written by the model, as in architecture: what it found that
+   the team has not written, each with its anchor and evidence, no ID.
+4. `## Cross-repo connections` (R): only the generated block below. Never write inside it.
 
    ```
    <!-- generated:connections begin; from code by living_docs.py; do not edit -->
    <!-- generated:connections end -->
    ```
 
-4. `## Failure, concurrency and idempotency`: bullets for races, retries, late or duplicate
+5. `## Failure, concurrency and idempotency`: bullets for races, retries, late or duplicate
    arrivals and timeouts, each citing the ID it protects.
-5. `## Gotchas`: bullets for code not to copy (with its anchor and what to use instead),
+6. `## Gotchas`: bullets for code not to copy (with its anchor and what to use instead),
    extension points, and alerts with where to start looking.
-6. `## Known gaps and tech debt` (R): bullets, or `None.`
+7. `## Known gaps and tech debt` (R): bullets, or `None.`
+
+## `docs/impact/side-effects.yaml` (TEAM)
+
+Optional: the change scenarios, machine-readable, so feature-impact can follow them into every
+repository they reach and the engine can check every name still exists. Maestro's YAML subset (no
+anchors, no folded text); `living_docs.py scaffold` writes a starter.
+
+```yaml
+version: 1
+scenarios:
+  - id: PL-CS-001                   # the row's ID in the technical doc
+    domain: payment-links
+    summary: Disabling a payment link
+    rules: [PL-INV-004]             # invariants at risk
+    repo: cofee-backend             # default repository for the names below
+    when_changing: ["internal/links/disable.go", "Service.Disable"]
+    also_impacts:
+      domains: [reminders]
+      tables: [payment_links]
+      queues: [link.disabled]
+      endpoints: ["POST /v1/links/{id}/disable"]
+      files: ["cofee-payer-app:lib/pay/link_expired_screen.dart"]   # "repo:path" for another repo
+      symbols: []
+    verify: ["TestDisablePublishesEvent"]
+```
 
 ## Generated files
 
@@ -171,11 +212,15 @@ Java/Kotlin. A project adds its own under `docs.extract` (see `docs/project-conf
 
 `python3 .maestro/engine/living_docs.py check --root . [--write]` fails on: malformed, duplicate
 or wrongly placed IDs (R1); an ID cited in docs, run artifacts or code that is never defined (R2);
-an anchor that does not resolve (R3); generated output that is stale or hand-edited (R4); an app
-call no repo serves (R6); front-matter, headings, table columns, unowned unknowns, rows that do
-not stand alone, or a Domain map that does not match the files (R7). It warns when anchored code
-changed since `verified_at` or a doc is still draft (R5) and when a doc is over budget (R8).
-Every message says how to fix it.
+an anchor, or a name in `side-effects.yaml`, that does not resolve (R3); generated output that is
+stale or hand-edited (R4); an app call no repo serves (R6); front-matter, headings, table
+columns, unowned unknowns, rows that do not stand alone, or a Domain map that does not match the
+files (R7); and, in a writer's check (`--locked-from`), any change to the team's content, which
+the engine restores (R9). It warns when anchored code changed since `verified_at` or a doc is
+still draft (R5), when an invariant is cited in no code or test (R2), and when a doc is over
+budget (R8). In a writer's check, a problem inside the team's content is a warning for the team.
+Every message says how to fix it. `living_docs.py rules` checks only the team's content against
+the code (a feature's worktree with `--repo/--worktree`) and never blocks.
 
 ## `docs/codebase-maps/<name>.md`
 

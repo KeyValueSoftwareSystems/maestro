@@ -376,6 +376,111 @@ class IntegrationTest(LivingDocsBase):
         self.assertTrue(any("unknown key `budget`" in m for m in messages), messages)
 
 
+class TeamOwnedTest(LivingDocsBase):
+    """Invariants and change scenarios belong to the team: a writer step cannot change them."""
+
+    def snapshot(self, root):
+        return living_docs.team_snapshot(root)
+
+    def test_writer_edit_to_a_team_section_fails_and_is_restored(self):
+        root = self.copy()
+        snap = self.snapshot(root)
+        path = os.path.join(root, T)
+        before = open(path).read()
+        edit(path, "| PL-INV-001 | An invoice has at most one active payment link",
+             "| PL-INV-001 | An invoice has any number of payment links")
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/payment-links.md §Invariants and consistency")
+                            for e in report.errors), report.errors)
+        self.assertEqual(open(path).read(), before)
+
+    def test_writer_may_not_add_rules_to_a_new_doc(self):
+        root = self.copy()
+        snap = self.snapshot(root)
+        living_docs.write_minimal_docs(os.path.join(root, "scratch"), "reminders", ["cofee-backend"])
+        for kind in ("functional", "technical"):
+            text = open(os.path.join(root, f"scratch/docs/{kind}/reminders.md")).read()
+            text = text.replace("id_prefix: DM", "id_prefix: RM").replace("DM-", "RM-")
+            text = text.replace("cofee-backend/src", "cofee-backend/internal/links")
+            if kind == "technical":
+                text = text.replace("## Invariants and consistency\nNone.",
+                                    "## Invariants and consistency\n| ID | Invariant | Enforces | Where (repo · path · symbol) | Consistency | Tested by |\n| --- | --- | --- | --- | --- | --- |\n| RM-INV-001 | Reminders stop when a link is disabled. | RM-BR-001 | cofee-backend · internal/links/disable.go · Service.Disable | eventual | Unknown. (ask: team, since 2026-11-10) |")
+            open(os.path.join(root, f"docs/{kind}/reminders.md"), "w").write(text)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/reminders.md") for e in report.errors), report.errors)
+        self.assertNotIn("RM-INV-001", open(os.path.join(root, "docs/technical/reminders.md")).read())
+
+    def test_writer_may_not_touch_side_effects(self):
+        root = self.copy()
+        snap = self.snapshot(root)
+        path = os.path.join(root, "docs/impact/side-effects.yaml")
+        before = open(path).read()
+        edit(path, "summary: Disabling a payment link", "summary: Anything")
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 docs/impact/side-effects.yaml") for e in report.errors))
+        self.assertEqual(open(path).read(), before)
+
+    def test_team_problems_are_warnings_in_a_writer_check(self):
+        root = self.copy()
+        edit(os.path.join(root, "codebase/cofee-backend/internal/links/link_test.go"),
+             "TestForInvoiceReusesActiveLink", "TestReuse")
+        plain = self.check(root)
+        self.assertTrue(any(e.startswith("R3") for e in plain.errors), plain.errors)
+        locked = living_docs.run_check(root, locked_from=self.snapshot(root))[0]
+        self.assertFalse([e for e in locked.errors if e.startswith("R3")], locked.errors)
+        self.assertTrue(any("team-owned; the team should" in w for w in locked.warnings))
+
+    def test_proposals_take_no_id_and_a_known_kind(self):
+        root = self.copy()
+        edit(os.path.join(root, T), "| invariant | A payment link's expiry",
+             "| PL-INV-009 | A payment link's expiry")
+        report = self.check(root)
+        self.assertTrue(any("gives a proposal an ID" in e or "proposal kind" in e for e in report.errors),
+                        report.errors)
+
+    def test_invariant_not_cited_in_code_warns(self):
+        root = self.copy()
+        edit(os.path.join(root, "codebase/cofee-backend/internal/webhooks/cashfree.go"),
+             "// PL-INV-003: apply each Cashfree event id at most once.\n", "")
+        report = self.check(root)
+        self.assertTrue(any("PL-INV-003 is cited in no code or test" in w for w in report.warnings))
+
+    def test_side_effects_names_rules_and_rows_are_checked(self):
+        root = self.copy()
+        path = os.path.join(root, "docs/impact/side-effects.yaml")
+        edit(path, "queues: [link.disabled]", "queues: [link.removed]")
+        edit(path, "rules: [PL-INV-001]", "rules: [PL-INV-099]")
+        report = self.check(root)
+        self.assertTrue(any("queue 'link.removed' no longer appears" in e for e in report.errors), report.errors)
+        self.assertTrue(any("cites rule PL-INV-099" in e for e in report.errors), report.errors)
+
+    def test_status_rules_scaffold_next(self):
+        root = self.copy()
+        status = living_docs.rules_status(root)
+        self.assertEqual((status["present"], status["rule_count"], status["scenario_count"]), (True, 6, 3))
+        result = living_docs.rules_check(root)
+        self.assertTrue(result["valid"], result["errors"])
+        self.assertEqual(living_docs.next_ids(root, "PL"),
+                         {"br": "PL-BR-005", "inv": "PL-INV-005", "cs": "PL-CS-004"})
+        self.assertEqual(living_docs.scaffold_side_effects(root)["created"], False)
+        empty = tempfile.mkdtemp(dir=self.base)
+        self.assertTrue(living_docs.scaffold_side_effects(empty)["created"])
+        self.assertFalse(living_docs.rules_status(empty)["present"])
+
+    def test_rules_reads_the_feature_worktree(self):
+        root = self.copy()
+        worktree = os.path.join(self.base, "wt-" + os.path.basename(root))
+        shutil.copytree(os.path.join(root, "codebase/cofee-backend"), worktree, symlinks=True)
+        edit(os.path.join(worktree, "internal/links/disable.go"), "func (s *Service) Disable",
+             "func (s *Service) Deactivate")
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            living_docs.main(["rules", "--root", root, "--repo", "cofee-backend", "--worktree", worktree])
+        result = json.loads(out.getvalue().strip())
+        self.assertFalse(result["valid"])
+        self.assertIn("Disable", result["issues_summary"])
+        self.assertTrue(living_docs.rules_check(root)["valid"])
+
+
 class ExtractorTest(unittest.TestCase):
     def repo(self, files):
         root = tempfile.mkdtemp(prefix="ld-extract-")

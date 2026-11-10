@@ -60,8 +60,8 @@ Before the first feature, tell Maestro how to build and test your code
 - **One feature across several repos.** One PRD and one design cover the whole feature. Each
   affected repo gets its own detailed design and branch, and all of them share one API contract.
 - **A knowledge base of all your repos.** Architecture, and per area the business rules
-  (functional) and the invariants and change scenarios (technical), each with a stable ID, plus a
-  codebase map per repo. Endpoints, events, jobs, tables and config are generated from the code,
+  (functional) and the invariants and change scenarios (technical, written by your team and never
+  changed by a model), each with a stable ID, plus a codebase map per repo. Endpoints, events, jobs, tables and config are generated from the code,
   never written by a model. Each step loads only the docs and rows it needs, and each feature
   refreshes the parts it changed.
 - **Results you can trust.** Maestro runs your build, lint, tests, a secret scan and a check for committed build output itself, and
