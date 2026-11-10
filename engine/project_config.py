@@ -118,11 +118,11 @@ def init(root="."):
 def apply_detected(root, detected):
     """Merge a project-config report into maestro.config.yaml.
 
-    `detected` is {"repos": {name: {"stack", "role", "commands"}}, "worktree": {...}?}. Missing
-    file is created. Names come from registry.yaml when present, plus any name in the report.
-    A stack, role, or command that is already set is left alone; `worktree` is added only when
-    the file has none.
-    -> {"created": bool, "updated": [repo names], "worktree_added": bool}
+    `detected` is {"repos": {name: {"stack", "role", "commands"}}, "worktree": {...}?,
+    "environment": {...}?}. Missing file is created. Names come from registry.yaml when present,
+    plus any name in the report. A stack, role, or command that is already set is left alone;
+    `worktree` and `environment` are each added only when the file has none.
+    -> {"created": bool, "updated": [repo names], "worktree_added": bool, "environment_added": bool}
     """
     if not isinstance(detected, dict):
         raise ConfigError("detected stacks must be a mapping")
@@ -168,13 +168,17 @@ def apply_detected(root, detected):
         if changed:
             updated.append(name)
     config["repos"] = repos
-    worktree = _detected_worktree(detected.get("worktree"))
-    worktree_added = bool(worktree) and not config.get("worktree")
-    if worktree_added:
-        config["worktree"] = worktree
-    if created or updated or worktree_added:
+    added = {}
+    for key, keys, required in (("worktree", ("create", "path", "branch", "remove"), ("create", "path")),
+                                ("environment", ("start", "ready", "stop"), ("start", "stop"))):
+        section = _detected_section(detected.get(key), keys, required)
+        added[key] = bool(section) and not config.get(key)
+        if added[key]:
+            config[key] = section
+    if created or updated or any(added.values()):
         wf.dump_file(path, config)
-    return {"created": created, "updated": updated, "worktree_added": worktree_added}
+    return {"created": created, "updated": updated, "worktree_added": added["worktree"],
+            "environment_added": added["environment"]}
 
 
 def sync(root=".", dry_run=False):
@@ -278,14 +282,14 @@ def _yaml_key(name):
     return name if re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]*", name) else json.dumps(name)
 
 
-def _detected_worktree(value):
-    """A reported `worktree` section, kept only when create and path are both given; an existing
-    section in the file is never touched (whole section or nothing)."""
+def _detected_section(value, keys, required):
+    """A reported `worktree` / `environment` section, kept only when every required key is given;
+    an existing section in the file is never touched (whole section or nothing)."""
     if not isinstance(value, dict):
         return None
-    section = {key: str(value[key]).strip() for key in ("create", "path", "branch", "remove")
+    section = {key: str(value[key]).strip() for key in keys
                if isinstance(value.get(key), str) and value[key].strip()}
-    return section if section.get("create") and section.get("path") else None
+    return section if all(section.get(key) for key in required) else None
 
 
 def load(root="."):

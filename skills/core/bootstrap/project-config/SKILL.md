@@ -1,6 +1,6 @@
 ---
 name: project-config
-description: Write maestro.config.yaml from a detect-stack result. Repo names come from registry.yaml when that file exists; a workspace sandbox script's documented commands become the worktree settings. Does not scan the codebase and does not install skills. Called by /maestro-init after detect-stack
+description: Write maestro.config.yaml from a detect-stack result. Repo names come from registry.yaml when that file exists; a workspace sandbox script's documented commands become the worktree settings, an infra script's the environment settings. Does not scan the codebase and does not install skills. Called by /maestro-init after detect-stack
 allowed-tools: Bash
 tags: [maestro, bootstrap]
 ---
@@ -50,7 +50,15 @@ no detect-stack `repos` result, stop and run detect-stack first — do not detec
    command that deletes that feature's worktrees). Copy what the script documents; never guess a
    flag it does not show. No such script, or its usage is unclear: leave `worktree` out — Maestro
    then creates its own worktrees.
-4. **Write the report and apply it.**
+4. **Environment, only when the workspace has a script that runs the stack.** When the workspace
+   root has a script that starts and stops the whole stack (e.g. `scripts/infra`), read its usage
+   the same way and add an `environment` section: `start` (starts the stack in the background,
+   non-interactive), `stop` (stops it) and `ready` (a command that exits 0 only once the stack is
+   healthy, when the usage shows one). When the script takes a per-feature target and the
+   `worktree` section uses the same script family, pass the feature as `"$MAESTRO_SLUG"` (the
+   engine sets it) so the stack runs from that feature's worktrees. Never guess a flag the usage
+   does not show; no such script, or no clear start and stop: leave `environment` out.
+5. **Write the report and apply it.**
 
 ```bash
 python3 .maestro/engine/project_config.py apply --root . --detected .maestro/index/detected-stacks.json
@@ -61,19 +69,22 @@ The JSON shape is:
 ```json
 {"repos": {"backend": {"stack": "go, db", "commands": {"build": "go build ./...", "test": "go test ./..."}}},
  "worktree": {"create": "./scripts/sandbox create {slug} -y", "path": "sandbox/{slug}/codebase/{repo}",
-              "branch": "sandbox/{slug}", "remove": "./scripts/sandbox rm {slug} -y"}}
+              "branch": "sandbox/{slug}", "remove": "./scripts/sandbox rm {slug} -y"},
+ "environment": {"start": "./scripts/infra up \"$MAESTRO_SLUG\"",
+                 "stop": "./scripts/infra down \"$MAESTRO_SLUG\""}}
 ```
 
 `apply` creates `maestro.config.yaml` when it is missing, copies registry names onto it,
 and fills empty `stack` / `commands`. A value already in the file is left unchanged; `worktree`
-is added only when the file has none. Show the person any `worktree` section it added — it
-decides where every feature's code is written.
+and `environment` are each added only when the file has none. Show the person any `worktree`
+section it added — it decides where every feature's code is written — and any `environment`
+section — QA starts and stops the stack with it.
 
 ## Safety
 - The only write is `.maestro/index/detected-stacks.json` and `maestro.config.yaml`. Read a
-  sandbox script's usage; never run its create or remove commands here.
+  sandbox or infra script's usage; never run its create, remove, start or stop commands here.
 - Never edit application code. Never touch `.maestro/runs/` state.
 
 ## Output contract
 Return `created` (whether the config file was new), `updated` (repo names whose empty
-fields were filled), and `summary` (one line, naming the worktree commands when added).
+fields were filled), and `summary` (one line, naming the worktree and environment commands when added).
