@@ -1,11 +1,8 @@
 # QA phase: the engine brings the QA environment up from maestro.config.yaml (built from the
-# verified worktrees) and re-checks the E2E harness delivery prepared (workspace e2e folder, a
-# repo's own framework, else Playwright; a setup failure goes to a person, not the fix loop), the
-# QA agent automates and runs the
-# test-case catalog, then the engine runs
+# verified worktrees), the QA agent automates and runs the test-case catalog, then the engine runs
 # each repository's own e2e command. Test-harness failures get a bounded fix cycle; a product bug
 # ends QA with `product_bug` and the repos to fix, and delivery fixes them in their worktrees and
-# re-runs QA. The environment is stopped on every exit, an abort included.
+# re-runs QA. The environment is stopped on every normal exit.
 version: 1
 name: qa
 title: QA
@@ -27,33 +24,7 @@ nodes:
     run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, "${inputs.implementation_manifest}"]
     timeout: 1800
     on_fail: ask
-    next: qa_harness
-
-  # The engine, not the agent, installs the E2E framework, so a broken setup is reported as an
-  # environment problem instead of a failing suite that the fix loop cannot repair. Delivery ran
-  # it before implementation; here it is a quick re-check against the verified worktrees.
-  - id: qa_harness
-    type: script
-    label: Prepare the E2E harness
-    run: [python3, .maestro/engine/qa_env.py, harness, --root, ".", --manifest, "${inputs.implementation_manifest}", --out, ".maestro/runs/${inputs.slug}/qa/harness.json"]
-    timeout: 1800
-    routes:
-      - {when: "${steps.qa_harness.outputs.ready} == true", to: qa_run}
-      - {to: harness_gate}
-
-  - id: harness_gate
-    type: gate
-    label: E2E harness setup failed
-    prompt: |
-      The engine could not prepare the E2E test harness, so the QA suite cannot run in a browser.
-      ${steps.qa_harness.outputs.summary}
-      Receipt: .maestro/runs/${inputs.slug}/qa/harness.json
-      Fix the cause (Node/npm on PATH, network or proxy for npm and the headless Chromium download) and
-      retry, or continue: the QA agent then marks the browser cases skipped with the reason.
-    options:
-      - {id: retry, label: Retry the harness setup, to: qa_harness}
-      - {id: continue, label: Continue without the browser harness, to: qa_run}
-      - {id: abandon, label: Abort, to: env_down_abort}
+    next: qa_run
 
   - id: qa_run
     type: agent
@@ -61,23 +32,10 @@ nodes:
     brief: full
     instruction: |
       Automate the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
-      into an executable E2E suite (critical journeys first) and RUN it. Write the run report.
-      Report results honestly — failures route into the fix loop, they are not yours to hide.
-      Test harness (prepared by the engine): ${steps.qa_harness.outputs.summary}
-      - mode `workspace`: use the workspace E2E setup in ${steps.qa_harness.outputs.workspace_dir}
-        exactly as the summary says. Write this feature's specs in
-        ${steps.qa_harness.outputs.dir}/tests, never in the workspace folder; import its fixtures,
-        page objects and helpers instead of copying them. Do not install packages or browsers.
-      - mode `playwright`: ${steps.qa_harness.outputs.dir} is a ready Playwright project for the
-        web repos the summary names. Write their specs under its tests/ folder and run
-        `npx playwright test` from that folder, with BASE_URL set to the web app's URL. Do not
-        install packages or browsers. Repos the summary lists with an existing framework use it.
-      - mode `existing`: use each named repository's own E2E framework.
-      - mode `not-needed`: the engine found no web repository; test the API journeys over HTTP
-        with the repositories' own tooling. If a case still needs a browser, record it
-        "skipped" with the harness summary as the note; do not install a framework.
-      - harness not ready (a person chose to continue): do not install a framework yourself;
-        record each case that needs a browser as "skipped" with the harness summary as the note.
+      into an executable E2E suite (use the project's
+      existing E2E framework, else
+      Playwright; critical journeys first) and RUN it. Write the run report. Report
+      results honestly — failures route into the fix loop, they are not yours to hide.
       Before doing anything, SHA-256 ${inputs.implementation_manifest} and require it to
       equal ${inputs.implementation_manifest_sha256}; fail integrity if it differs. Then
       read it. For every repository,
@@ -171,7 +129,7 @@ nodes:
     options:
       - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}
       - {id: accept, label: Accept with known failures, to: env_down}
-      - {id: abandon, label: Abort, to: env_down_abort}
+      - {id: abandon, label: Abort, to: abort}
 
   - id: env_down
     type: script
@@ -179,14 +137,6 @@ nodes:
     run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, "${inputs.implementation_manifest}"]
     timeout: 900
     next: end
-
-  # An abort still stops the stack env_up started, then ends the workflow as failed.
-  - id: env_down_abort
-    type: script
-    label: Stop the QA environment (abort)
-    run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, "${inputs.implementation_manifest}"]
-    timeout: 900
-    next: abort
 
 outputs:
   qa_summary: "${steps.qa_run.outputs.summary}"
