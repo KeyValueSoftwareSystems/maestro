@@ -181,7 +181,10 @@ design that changed after approval goes back through design instead of being bui
 After LLD approval, Maestro implements every repository in the approved design, in
 parallel. If the release is sent back to design, the next delivery pass rebuilds every repository
 against the revised design; the pre-implementation workspace drift check still protects stale
-designs.
+designs. That check sends the run back to design whenever a sync moved a repository's commits
+after approval, which redoes the PRD, HLD and LLDs and takes hours. Keep the current commits at
+that gate unless you need the updates; set `design.sync_restart: cited` (maestro.config.yaml) to
+redo the design only when a changed file is one the design cites or a migration.
 
 QA tests exactly those verified commits. When `maestro.config.yaml` defines an `environment`, the
 engine starts it before QA (with each repository's worktree and commit in environment variables,

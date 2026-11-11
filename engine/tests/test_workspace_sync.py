@@ -198,6 +198,79 @@ class WorkspaceSyncTest(unittest.TestCase):
         _, second = quiet(ws.cmd_lock, self.tmp, lock_path)
         self.assertTrue(second["head_changed"])
 
+    # -- design.sync_restart: does a sync after design approval send the run back to design? --
+
+    def push_files(self, files):
+        clone = os.path.join(self.tmp, "writer")
+        shutil.rmtree(clone, ignore_errors=True)
+        subprocess.run(["git", "clone", "-q", self.remote, clone], check=True)
+        git(clone, "config", "user.email", "writer@example.com")
+        git(clone, "config", "user.name", "Writer")
+        git(clone, "switch", "-q", "main")
+        for name, text in files.items():
+            path = os.path.join(clone, name)
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write(text)
+            git(clone, "add", name)
+        git(clone, "commit", "-q", "-m", "remote change")
+        git(clone, "push", "-q", "origin", "main")
+
+    def sync_after_design(self, files, policy=None, design=True):
+        """Pin at feature start, write a design citing src/handler.go, then sync `files` and re-lock."""
+        lock_path = os.path.join(self.tmp, "workspace-lock.json")
+        quiet(ws.cmd_lock, self.tmp, lock_path, None, "f")
+        if policy:
+            with open(os.path.join(self.tmp, "maestro.config.yaml"), "w") as fh:
+                fh.write(f"version: 1\ndesign:\n  sync_restart: {policy}\n")
+        if design:
+            lld = os.path.join(self.tmp, ".maestro", "runs", "f", "lld")
+            os.makedirs(lld)
+            with open(os.path.join(lld, "backend.md"), "w") as fh:
+                fh.write("The shift calls `src/handler.go:10-40` and README.md.\n")
+        self.push_files(files)
+        plan_path, out, _ = self.plan()
+        quiet(ws.cmd_apply, self.tmp, plan_path, out["plan_sha256"],
+              os.path.join(self.tmp, "result.json"))
+        return quiet(ws.cmd_lock, self.tmp, lock_path, "result.json", "f")[1]
+
+    def test_a_sync_after_design_restarts_it_by_default(self):
+        locked = self.sync_after_design({"src/other.go": "x\n"})
+        self.assertTrue(locked["head_changed"])
+        self.assertTrue(locked["changed"])
+        self.assertFalse(locked["design_still_valid"])
+
+    def test_cited_policy_keeps_the_design_when_no_cited_file_changed(self):
+        locked = self.sync_after_design({"src/other.go": "x\n", "README.md": "y\n"}, "cited")
+        self.assertTrue(locked["head_changed"])
+        self.assertTrue(locked["updated"])
+        self.assertFalse(locked["changed"])
+        self.assertTrue(locked["design_still_valid"])
+
+    def test_cited_policy_restarts_when_a_cited_file_changed(self):
+        locked = self.sync_after_design({"src/handler.go": "x\n"}, "cited")
+        self.assertTrue(locked["changed"])
+        self.assertFalse(locked["design_still_valid"])
+        self.assertEqual(json.loads(locked["design_overlap"]), {"backend": ["src/handler.go"]})
+
+    def test_cited_policy_restarts_when_a_cited_file_changes_under_another_directory_prefix(self):
+        # the design cites `src/handler.go`; the repo path is `internal/src/handler.go`
+        locked = self.sync_after_design({"internal/src/handler.go": "x\n"}, "cited")
+        self.assertTrue(locked["changed"])
+
+    def test_cited_policy_restarts_on_any_migration_change(self):
+        locked = self.sync_after_design({"db/migrations/0004_add.sql": "select 1;\n"}, "cited")
+        self.assertTrue(locked["changed"])
+        self.assertIn("db/migrations/0004_add.sql", locked["design_overlap"])
+
+    def test_cited_policy_cannot_judge_without_a_design_so_it_restarts(self):
+        locked = self.sync_after_design({"src/other.go": "x\n"}, "cited", design=False)
+        self.assertTrue(locked["changed"])
+
+    def test_unknown_policy_value_behaves_as_always(self):
+        locked = self.sync_after_design({"src/other.go": "x\n"}, "sometimes")
+        self.assertTrue(locked["changed"])
+
     def test_record_knowledge_writes_shared_index_state_yaml(self):
         path = os.path.join(self.tmp, "docs", "provenance.yaml")
         self.assertTrue(os.path.isfile(path))

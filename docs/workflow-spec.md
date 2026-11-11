@@ -44,7 +44,7 @@ inputs:                     # declared inputs (all optional keys except the map 
   slug:    {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, required: false, default: "${inputs.slug}"}
 defaults:                   # optional per-workflow fallbacks
-  model: haiku              # model for agent nodes that don't set one
+  model: haiku              # model for agent nodes that don't set one (see "Which model a step uses")
   agent: general            # subagent type fallback (agents/general.md)
   max_visits: 10            # global revisit cap fallback
 start: first_node_id        # entry node
@@ -137,6 +137,16 @@ The validator allows cycles but warns about cycles containing no gate and no scr
 its `retries`. `ask` synthesizes a gate: **Retry / Skip this step / Abort**, with the failure
 reason. Skipping marks the node `skipped` and takes its default route.
 
+## Which model a step uses
+
+An agent node's model is the first of: the node's `model:`, the workflow's `defaults.model`,
+`models.default` in `maestro.config.yaml`, then `haiku`. The result is then looked up in
+`models.aliases` of `maestro.config.yaml`, so `aliases: {opus: sonnet}` runs every `opus` step on
+`sonnet` without editing a workflow (this also lowers reviews pinned to `opus`). An
+`execution: lead` step ignores the model: it runs on the lead session's own model. The shipped
+workflows set `defaults.model` themselves, so `models.default` only reaches a workflow that sets
+none.
+
 ## Node types
 
 ### `agent`
@@ -183,7 +193,10 @@ skill (Obra, Superpowers, â€¦), or omit `skill:` and let the harness auto-pick â
 unchanged either way.
 
 Use `execution: lead` only for small, context-continuous work such as confirming and writing
-a PRD. The action prompt remains the authority: it should name a narrow read/write boundary.
+a PRD. A lead step runs in the long-lived lead session, whose context only grows over a run and
+is re-read on every turn, so a large write there (the repository LLDs, tens of KB of output) makes
+every later turn slower and dearer. Give a big write its own worker context (`execution: worker`
+with an explicit `model`) and pass it what it needs as files named in `inputs`. The action prompt remains the authority: it should name a narrow read/write boundary.
 Pinned skills are resolved only from the active repository's `.agents/skills/`,
 `.claude/skills/`, or `.cursor/skills/` trees; a lead must never search the wider filesystem.
 
@@ -427,7 +440,7 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
 ```
 
 The shipped design workflow writes every repository's LLD in one run of `design-lld.yaml`: one
-grouped interview, one lead-written file per repository (`lld/<repo>.md`), `lld_set.py validate`
+grouped interview, one worker-written file per repository (`lld/<repo>.md`), `lld_set.py validate`
 over the whole set, functional test cases, a readiness check, and one approval gate. Approval runs
 `lld_set.py approve`, which records the HLD, contract and per-LLD hashes; delivery's first step,
 `lld_set.py verify`, sends a design that changed after approval back through design. Generic

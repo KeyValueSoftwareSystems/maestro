@@ -156,6 +156,14 @@ class PreflightTest(unittest.TestCase):
         self.assertIn(("config-shape", "infrastructure.level"), errors)
         self.assertIn(("config-unknown-key", "infrastructure.owner"), errors)
 
+    def test_design_sync_restart_is_always_or_cited(self):
+        self.write(VALID + "design: {sync_restart: cited, light_max_criteria: 3}\n")
+        self.assertEqual(self.codes("error"), [])
+        self.write(VALID + "design: {sync_restart: sometimes, other: 1}\n")
+        errors = self.codes("error")
+        self.assertIn(("config-shape", "design.sync_restart"), errors)
+        self.assertIn(("config-unknown-key", "design.other"), errors)
+
     def test_test_patterns_must_be_a_list_of_patterns(self):
         self.write(VALID.replace("    timeout_s: 600", "    timeout_s: 600\n    test_patterns: tests"))
         self.assertIn(("config-shape", "repos.backend.test_patterns"), self.codes("error"))

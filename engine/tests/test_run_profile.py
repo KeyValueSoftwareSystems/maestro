@@ -146,6 +146,30 @@ class BuildTest(unittest.TestCase):
         self.assertEqual(report["top"][0]["step"], "g")
         self.assertNotIn("stage", report["steps"])
 
+    def test_a_work_visit_of_an_hour_or_more_is_flagged_as_suspect(self):
+        minute = 60_000
+        report = run_profile.build(self.state([
+            # a lead step whose session was paused overnight still counts as work
+            {"step": "write", "type": "agent", "execution": "lead", "visit": 1,
+             "start_ms": 0, "end_ms": 940 * minute},
+            {"step": "quick", "type": "agent", "execution": "worker", "visit": 1,
+             "start_ms": 940 * minute, "end_ms": 945 * minute},
+            # a person taking an hour at a gate is human time, not a suspect work visit
+            {"step": "gate", "type": "gate", "visit": 1,
+             "start_ms": 945 * minute, "end_ms": 1010 * minute},
+        ]))
+        self.assertEqual(report["long_visits"],
+                         [{"step": "write", "visit": 1, "active_ms": 940 * minute}])
+        text = run_profile.render_md(report)
+        self.assertIn("Suspect long visits", text)
+        self.assertIn("15h40m", text)
+
+    def test_no_long_visit_section_when_nothing_is_long(self):
+        report = run_profile.build(self.state([
+            {"step": "a", "type": "agent", "visit": 1, "start_ms": 0, "end_ms": 10 * 60_000}]))
+        self.assertEqual(report["long_visits"], [])
+        self.assertNotIn("Suspect long visits", run_profile.render_md(report))
+
 
 if __name__ == "__main__":
     unittest.main()

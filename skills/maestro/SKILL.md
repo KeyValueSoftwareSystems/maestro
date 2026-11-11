@@ -102,7 +102,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   in the feature folder's `profile.md`. Pass it only when the user asks to debug or profile the
   run; on a running feature, re-run `init --debug` and it records from then on. `maestroctl
   profile --slug <slug>` prints it; never read or edit the profile in place of the engine's
-  actions.
+  actions. A step open for an hour or more is listed as a suspect long visit: the engine cannot
+  see a session that was paused mid-step, so tell the user its work time may be an overcount.
 - `init` is safe when the run already exists (that IS the resume path — say "resuming" and
   continue); it only releases worker claims left by an interrupted session. Its output carries
   `todo`, the run's stage checklist: put it in your task list now (see **Task list**).
@@ -442,6 +443,13 @@ action the run is currently waiting on (often a gate you left open). Always `ini
 your memory of where you were, decides what happens next. If the user asks "where did we leave
 off?", run `todo --slug <slug>` (the stage checklist; `status` has the full step table) and tell
 them, then resume.
+
+**Long runs.** Your context only grows during a run, and every turn re-reads it, so late stages
+are slower and cost more than early ones. The ledger holds all progress, so a fresh session loses
+nothing. At a natural pause (a gate or interview you are waiting on) after a stage finished — the
+PRD, the HLD and contract, LLD approval, implementation — you may tell the user ONCE that they can
+close this session and re-invoke `/maestro <slug>` to continue with a small context. Do not stop
+the run or end the session yourself, and do not repeat the note at every gate.
 
 ## Harness degradation — inline mode
 

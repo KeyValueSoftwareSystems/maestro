@@ -13,6 +13,9 @@ busy with other work, or no session running); the rest is `active`. Active time 
   human   gates and interviews a person answered (autopilot answers count as work)
 Stages (subworkflow and parallel nodes) are recorded for their wall time and never summed.
 `idle` is run wall time when no visit was active — the time nothing ran and nobody was asked.
+The engine is not called while a lead or worker step is running, so a session that was paused or
+closed mid-step (a laptop asleep overnight) still counts as that step's work. A work visit of an
+hour or more is therefore listed under `long_visits` as suspect, not trusted as real work time.
 
   run_profile.py --slug S [--root .] [--json]
 """
@@ -28,6 +31,7 @@ SERVED_KEY = "served_at_ms"
 STAGE_TYPES = ("subworkflow", "parallel")
 HUMAN_TYPES = ("gate", "interview")
 GAP_MS = 5 * 60 * 1000  # idle stretches at least this long are listed
+LONG_VISIT_MS = 60 * 60 * 1000  # a work visit this long is flagged: likely a paused session
 TOP = 10
 
 
@@ -107,7 +111,7 @@ def _blank():
 def build(state):
     """The profile report as a dict (see the module docstring for the categories)."""
     visits = list((state.get("profile") or {}).get("visits") or [])
-    steps, stages, active, top = {}, {}, [], []
+    steps, stages, active, top, long_visits = {}, {}, [], [], []
     totals = {"work_ms": 0, "human_ms": 0, "queued_ms": 0}
     for visit in visits:
         category = _category(visit)
@@ -128,6 +132,9 @@ def build(state):
         active.append((active_from, visit["end_ms"]))
         top.append({"step": visit["step"], "visit": visit["visit"], "category": category,
                     "active_ms": active_ms})
+        if category == "work" and active_ms >= LONG_VISIT_MS:
+            long_visits.append({"step": visit["step"], "visit": visit["visit"],
+                                "active_ms": active_ms})
     starts = [v["start_ms"] for v in visits]
     ends = [v["end_ms"] for v in visits]
     wall = (max(ends) - min(starts)) if visits else 0
@@ -147,6 +154,7 @@ def build(state):
         "steps": steps,
         "top": top[:TOP],
         "gaps": long_gaps,
+        "long_visits": sorted(long_visits, key=lambda t: -t["active_ms"]),
     }
 
 
@@ -199,6 +207,14 @@ def render_md(report):
         for item in report["top"]:
             lines.append(f"| {item['step']} | {item['visit']} | {item['category']} | "
                          f"{_dur(item['active_ms'])} |")
+        lines.append("")
+    if report.get("long_visits"):
+        lines += ["## Suspect long visits (1 h or more)", "",
+                  "The engine cannot see a paused or closed session, so these may include time "
+                  "nothing ran. Their Work above is an upper bound.", "",
+                  "| Step | Visit | Counted as work |", "|---|---|---|"]
+        for item in report["long_visits"]:
+            lines.append(f"| {item['step']} | {item['visit']} | {_dur(item['active_ms'])} |")
         lines.append("")
     if report["gaps"]:
         lines += ["## Idle stretches (5 min or more)", "", "| From | To | Length |", "|---|---|---|"]

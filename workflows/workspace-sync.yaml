@@ -50,6 +50,12 @@ nodes:
       the living technical/functional knowledge or codebase maps are stale — for example after
       commits made outside Maestro. Continuing uses committed HEADs; uncommitted application
       changes are not part of the feature lock or its implementation worktrees.
+
+      Before implementation, "Apply safe updates" moves the commits the approved design was
+      grounded in and sends the run back to design (PRD, HLD and LLDs are redone and approved
+      again, often hours). Pick "Keep current commits" unless you need the updates now; they can
+      be pulled at the next feature start. With `design.sync_restart: cited` in
+      maestro.config.yaml, only updates that touch code the design cites, or a migration, go back.
     options:
       - {id: sync, label: Apply safe updates and refresh stale docs; leave blocked repos unchanged, to: apply}
       - {id: current, label: Keep current commits; refresh stale docs, to: keep_current}
@@ -223,6 +229,8 @@ nodes:
       - ".maestro/runs/${inputs.slug}/workspace-lock.json"
       - --result
       - "${steps.apply.outputs.result_path}"
+      - --slug
+      - "${inputs.slug}"
     on_fail: abort
     next: end
 

@@ -13,7 +13,9 @@ Commands
   apply             Verify a plan, then fast-forward only repositories proven safe in it.
   record-knowledge  Stamp the exact repository commits assessed by a knowledge refresh.
   ensure-index-state  Fill docs_sha256/evidence when docs are current but provenance is incomplete.
-  lock              Pin exact repository commits for a feature/checkpoint.
+  lock              Pin exact repository commits for a feature/checkpoint. With `--slug`, and
+                    `design.sync_restart: cited` in maestro.config.yaml, a sync that only moved
+                    commits the approved design never cites does not send the run back to design.
 """
 from __future__ import annotations
 
@@ -23,6 +25,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -40,6 +43,17 @@ MANAGED_DIRTY_PREFIXES = (
     codebase_scan.DEFAULT_MAPS_DIR + "/",  # single-repo layout: the maps sit inside the repo
 )
 MAX_CHANGED = 500
+
+# design.sync_restart in maestro.config.yaml: when a sync moves commits after the design was
+# approved, does the run go back to design? `always` (default): yes. `cited`: only when a changed
+# file is one the design cites, or touches a migration (numbering must not collide).
+SYNC_RESTART_POLICIES = ("always", "cited")
+DEFAULT_SYNC_RESTART = "always"
+_CODE_EXTENSIONS = ("go", "ts", "tsx", "js", "jsx", "mjs", "py", "sql", "yaml", "yml", "proto",
+                    "graphql", "prisma", "java", "kt")
+_CITED_PATH_RE = re.compile(
+    r"(?<![\w./-])([\w@.\-]+(?:/[\w@.\-]+)*\.(?:%s))(?![\w])" % "|".join(_CODE_EXTENSIONS))
+MAX_OVERLAP = 50
 
 
 def _now():
@@ -746,7 +760,75 @@ def cmd_ensure_index_state(root, evidence, state_path=DEFAULT_INDEX_STATE):
     return cmd_record_knowledge(root, evidence, state_path)
 
 
-def cmd_lock(root, out, result=None):
+def sync_restart_policy(root):
+    """`design.sync_restart` from maestro.config.yaml; anything unreadable or unknown is `always`."""
+    try:
+        import project_config
+        config = project_config.load(root) or {}
+    except Exception:  # an unreadable config is preflight's to report
+        return DEFAULT_SYNC_RESTART
+    value = (config.get("design") or {}).get("sync_restart") if isinstance(config, dict) else None
+    return value if value in SYNC_RESTART_POLICIES else DEFAULT_SYNC_RESTART
+
+
+def _design_cited_paths(root, slug):
+    """Code paths the approved design cites, or None when there is no design to compare with."""
+    folder = os.path.join(root, ".maestro", "runs", slug)
+    files = [os.path.join(folder, "hld.md"), os.path.join(folder, "impact.json"),
+             os.path.join(folder, "design-facts.md")]
+    lld_dir = os.path.join(folder, "lld")
+    if os.path.isdir(lld_dir):
+        files += [os.path.join(lld_dir, n) for n in sorted(os.listdir(lld_dir)) if n.endswith(".md")]
+    cited, found = set(), False
+    for path in files:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        found = True
+        cited.update(m.group(1) for m in _CITED_PATH_RE.finditer(text))
+    return cited if found else None
+
+
+def _overlaps(changed_file, cited):
+    if "migration" in changed_file.lower():
+        return True
+    return any(changed_file == c or changed_file.endswith("/" + c) or c.endswith("/" + changed_file)
+               or (("/" not in c) and os.path.basename(changed_file) == c)
+               for c in cited)
+
+
+def _design_overlap(root, slug, old_lock, repos):
+    """{repo: [files]} the sync changed that the design cites; None when it cannot be judged.
+
+    Judged conservatively: no design artifacts, a repo that appeared or vanished, or a diff git
+    cannot produce all count as an overlap, so the run goes back to design as before."""
+    cited = _design_cited_paths(root, slug)
+    if cited is None:
+        return None
+    previous = {e.get("name"): e.get("commit") for e in (old_lock or {}).get("repos", [])
+                if isinstance(e, dict)}
+    overlap = {}
+    for entry in repos:
+        name, before = entry["name"], previous.get(entry["name"])
+        if before == entry["commit"]:
+            continue
+        if not before:
+            return None  # a repository the design never saw
+        rc, out, _ = _git(os.path.join(root, entry["path"]), "diff", "--name-only",
+                          before, entry["commit"])
+        if rc != 0:
+            return None
+        hits = [f for f in out.splitlines() if f.strip() and _overlaps(f.strip(), cited)]
+        if hits:
+            overlap[name] = hits[:MAX_OVERLAP]
+    if set(previous) - {e["name"] for e in repos}:
+        return None  # a repository the design saw is gone
+    return overlap
+
+
+def cmd_lock(root, out, result=None, slug=None):
     root = os.path.abspath(root)
     out_abs = _resolve(root, out)
     old = _read_json(out_abs)
@@ -775,12 +857,23 @@ def cmd_lock(root, out, result=None):
     }
     _atomic_json(out_abs, doc)
     head_changed = bool(old) and old_commits != new_commits
+    changed = updated or head_changed
+    design_still_valid, overlap = False, None
+    if changed and old and slug and sync_restart_policy(root) == "cited":
+        overlap = _design_overlap(root, slug, old, repos)
+        if overlap is not None and not overlap:
+            changed, design_still_valid = False, True
+            print("note: the sync moved commits, but no changed file is one the approved design "
+                  "cites and none is a migration; the design stays approved "
+                  "(design.sync_restart: cited)", file=sys.stderr)
     print(json.dumps({
         "lock_path": _rel(out_abs, root),
         "lock_sha256": _sha256(out_abs),
         "updated": updated,
         "head_changed": head_changed,
-        "changed": updated or head_changed,
+        "changed": changed,
+        "design_still_valid": design_still_valid,
+        "design_overlap": json.dumps(overlap) if overlap else "",
         "pinned_repos_csv": ",".join(e["name"] for e in repos),
     }))
     return 0
@@ -827,6 +920,8 @@ def main(argv=None):
     p.add_argument("--root", default=".")
     p.add_argument("--out", required=True)
     p.add_argument("--result")
+    p.add_argument("--slug", help="the feature: lets `design.sync_restart: cited` compare the "
+                                  "changed files with the design it approved")
 
     args = parser.parse_args(argv)
     if args.cmd == "plan":
@@ -840,7 +935,7 @@ def main(argv=None):
         return cmd_record_knowledge(args.root, args.evidence, args.index_state, only)
     if args.cmd == "ensure-index-state":
         return cmd_ensure_index_state(args.root, args.evidence, args.index_state)
-    return cmd_lock(args.root, args.out, args.result)
+    return cmd_lock(args.root, args.out, args.result, args.slug)
 
 
 if __name__ == "__main__":

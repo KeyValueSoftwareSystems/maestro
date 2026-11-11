@@ -367,6 +367,8 @@ nodes:
     skill: architecture-review
     agent: reviewer
     model: opus
+    # a review takes minutes; a worker stuck or gone shows under `stale` after 15 min, not the default hour
+    timeout: 900
     inputs:
       slug: "${inputs.slug}"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"

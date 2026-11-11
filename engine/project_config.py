@@ -417,10 +417,14 @@ def check(config, discovered):
             issues.append(Issue("error", "config-shape", "`design` must be a mapping", "design"))
         else:
             for key, value in design.items():
-                if key != "light_max_criteria":
+                if key not in ("light_max_criteria", "sync_restart"):
                     issues.append(Issue("error", "config-unknown-key",
-                                        f"unknown key `{key}` (allowed: light_max_criteria)",
-                                        f"design.{key}"))
+                                        f"unknown key `{key}` (allowed: light_max_criteria, "
+                                        "sync_restart)", f"design.{key}"))
+                elif key == "sync_restart":
+                    if value not in ("always", "cited"):
+                        issues.append(Issue("error", "config-shape",
+                                            "must be `always` or `cited`", "design.sync_restart"))
                 elif not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                     issues.append(Issue("error", "config-shape",
                                         "must be a positive whole number of acceptance criteria",

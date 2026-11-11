@@ -46,6 +46,12 @@ infrastructure:                 # optional; overrides the detected level for HLD
   level: iac                    # none | containers | iac
 design:                         # optional
   light_max_criteria: 5         # most acceptance criteria a light (no HLD) design may have when no impact assessment sizes it (default 5)
+  sync_restart: always          # always (default) | cited. Pre-implementation sync moved repo commits after the design
+                                # was approved: `always` redoes the design; `cited` redoes it only when a changed file
+                                # is one the design cites or a migration (compares paths in the HLD/LLDs, not behaviour)
+models:                         # optional; which model each agent step runs on
+  default: sonnet               # used by a workflow that sets no defaults.model (the shipped ones do)
+  aliases: {opus: sonnet}       # rewrite a model name everywhere, e.g. to cap cost; lowers pinned reviews too
 reviews:                        # optional
   max_rounds: 3                 # reviews of one document or branch before a person decides (default 3)
 delivery:                       # optional; what happens after release approval

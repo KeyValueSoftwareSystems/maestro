@@ -208,7 +208,11 @@ nodes:
 
   - id: author_llds
     type: agent
-    execution: lead
+    # worker, not lead: the LLD text (tens of KB of output) is written in a fresh context instead of
+    # the lead's, which by this stage holds 300-500K tokens that every turn re-reads. Everything it
+    # needs is in files named in `inputs` (decisions, HLD, contract, impact, facts).
+    execution: worker
+    model: opus
     label: Write the repository LLDs once
     instruction: |
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
@@ -230,6 +234,11 @@ nodes:
       exactly; if a repository needs something the contract lacks, report it as a contract change
       instead of designing around it. Do not repeat the HLD, include open decisions, produce a
       file-by-file task dump, or implement code. Never remove necessary detail to reduce length.
+
+      Verify before you write: for every claim about existing code (a function, package, lock,
+      column, call path, "no other caller does X") grep or read the code and cite file:line in the
+      LLD. A claim you could not verify is stated as such or left out. For every "A is serialised
+      with B" or "all callers do X" claim, check each caller, not only the one you changed.
 
       Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
       post-check. Keep it empty unless synthesis reveals a genuinely new blocking decision; never
@@ -419,6 +428,8 @@ nodes:
     skill: lld-readiness
     agent: reviewer
     model: opus
+    # a review takes minutes; a worker stuck or gone shows under `stale` after 15 min, not the default hour
+    timeout: 900
     inputs:
       slug: "${inputs.slug}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
@@ -482,7 +493,8 @@ nodes:
   # Targeted edits from the readiness check, the approval gate, or a contract change.
   - id: revise_llds
     type: agent
-    execution: lead
+    execution: worker
+    model: opus
     label: Revise the repository LLDs
     instruction: |
       Make targeted edits to the LLDs at ${steps.lld_scope_init.outputs.lld_paths_csv} for whichever
@@ -501,6 +513,9 @@ nodes:
       - the engine's impact trace (${steps.lld_impact_trace.outputs.issues_summary}): when it names
         items no LLD deals with, cover each in the LLD of the repository that owns it, or write
         "<item>: no change needed, because …".
+      Before you mark a finding fixed, re-check the new wording against the code it cites (every
+      caller, every column the fix touches): a revision that adds a claim must verify it, so the
+      next readiness round does not find the same kind of gap again.
       Change only the sections affected; keep every confirmed decision. A finding that would
       overturn a decision the person confirmed is never fixed silently: contest it, citing the
       decision, when the decision still meets the requirements; otherwise escalate it so the person
