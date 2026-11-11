@@ -1,4 +1,5 @@
-# Child of sdlc-main: design staleness check -> implement every designed repository -> verified
+# Child of sdlc-main: design staleness check -> worktrees and the E2E harness -> implement every
+# designed repository -> verified
 # test context -> QA (product bugs: fix the named repos, rebuild the manifest, QA again) ->
 # acceptance-criteria trace -> design-vs-code drift check -> assumption log -> review pack ->
 # release approval. It decides; the parent acts. Leaving for a
@@ -61,7 +62,33 @@ nodes:
     run: [python3, .maestro/engine/worktrees.py, prepare, --root, ., --slug, "${inputs.slug}"]
     timeout: 900
     on_fail: ask
-    next: implement
+    next: qa_harness
+
+  # The E2E harness, prepared before any code is written so a broken setup (no Node, a blocked
+  # npm or browser download, a workspace e2e/ config that cannot take the run's specs) reaches a
+  # person in minutes, not after implementation and review. Workspace e2e folder first, then each
+  # repository's own framework, else Playwright. QA re-checks it; nothing is reinstalled then.
+  - id: qa_harness
+    type: script
+    label: Prepare the E2E harness
+    run: [python3, .maestro/engine/qa_env.py, harness, --root, ".", --slug, "${inputs.slug}", --out, ".maestro/runs/${inputs.slug}/qa/harness.json"]
+    timeout: 1800
+    routes:
+      - {when: "${steps.qa_harness.outputs.ready} == true", to: implement}
+      - {to: harness_gate}
+
+  - id: harness_gate
+    type: gate
+    label: E2E harness setup failed
+    prompt: |
+      The engine could not prepare the E2E test harness. Implementation can go ahead; QA will
+      check the harness again before it runs.
+      ${steps.qa_harness.outputs.summary}
+      Receipt: .maestro/runs/${inputs.slug}/qa/harness.json
+    options:
+      - {id: retry, label: Retry the harness setup (after fixing the cause), to: qa_harness}
+      - {id: continue, label: Continue to implementation, to: implement}
+      - {id: abandon, label: Abort, to: abort}
 
   - id: implement
     type: parallel

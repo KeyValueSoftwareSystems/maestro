@@ -156,6 +156,12 @@ class PreflightTest(unittest.TestCase):
         self.assertIn(("config-shape", "infrastructure.level"), errors)
         self.assertIn(("config-unknown-key", "infrastructure.owner"), errors)
 
+    def test_workspace_e2e_section(self):
+        self.write(VALID + "e2e: {path: e2e, command: npx playwright test}\n")
+        self.assertEqual(self.codes("error"), [])
+        self.write(VALID + "e2e: {dir: e2e}\n")
+        self.assertIn(("config-unknown-key", "e2e.dir"), self.codes("error"))
+
     def test_test_patterns_must_be_a_list_of_patterns(self):
         self.write(VALID.replace("    timeout_s: 600", "    timeout_s: 600\n    test_patterns: tests"))
         self.assertIn(("config-shape", "repos.backend.test_patterns"), self.codes("error"))

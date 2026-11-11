@@ -21,7 +21,10 @@ Standalone? read them and write to a path you choose (and tell the user where).
 
 ## Steps
 1. **Pick the framework** — default **Playwright** (use the project's existing E2E framework
-   if one is already set up; e.g. Maestro for mobile).
+   if one is already set up; e.g. Maestro for mobile). When your instructions name a harness
+   the caller already prepared, use it as given and do not install packages or browsers. If
+   that harness is not ready, mark the browser cases `skipped` with the reason rather than
+   setting a framework up yourself. Only when working standalone do you set Playwright up.
 2. **Source the journeys.** If `test_cases_path` exists, that catalog is the source of truth —
    automate its cases, preserving each case's ID/traceability, and do not silently drop a case
    (note any you defer and why). Only when no catalog is present do you derive journeys straight

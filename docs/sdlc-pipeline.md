@@ -179,14 +179,18 @@ Approval records the exact HLD, contract and LLD hashes. Delivery starts by chec
 design that changed after approval goes back through design instead of being built stale.
 
 After LLD approval, Maestro implements every repository in the approved design, in
-parallel. If the release is sent back to design, the next delivery pass rebuilds every repository
+parallel. Before any code is written, the engine prepares the E2E harness QA will use: the
+workspace E2E folder (`e2e.path` in `maestro.config.yaml`, else `e2e/`), else each web
+repository's own framework, else a Playwright project it installs for the run. A setup failure
+goes to you straight away (retry, continue, or abort), not hours later in QA. If the release is sent back to design, the next delivery pass rebuilds every repository
 against the revised design; the pre-implementation workspace drift check still protects stale
 designs.
 
 QA tests exactly those verified commits. When `maestro.config.yaml` defines an `environment`, the
 engine starts it before QA (with each repository's worktree and commit in environment variables,
-so the stack is built from the code under test) and stops it afterwards. The QA agent automates
-and runs the test cases; then the engine runs each repository's own `e2e` command in its
+so the stack is built from the code under test) and stops it afterwards. The engine re-checks the
+harness (nothing is reinstalled when it is in place); the QA agent automates the test cases in
+it, keeping the feature's specs in the run folder, and runs them; then the engine runs each repository's own `e2e` command in its
 worktree. A test-harness failure gets a bounded fix. A **product bug** never stops at a gate: the
 QA fixer writes a diagnosis (`qa/bugs.md`) naming the repositories, each is fixed on its own
 feature branch with a regression test, re-verified by the engine and re-reviewed (only the new
