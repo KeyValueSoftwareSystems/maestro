@@ -33,24 +33,30 @@ Run these **in order**, in this session. Each step consumes the previous step's 
    - `unregistered` — cloned but missing from `registry.yaml`. Report it; they are still
      configured, since Maestro works on every repo on disk. Suggest registering them.
 
-   Then run the same command without `--dry-run`. Capture `added` and `needs_commands`.
+   Then run the same command without `--dry-run`. Capture `added`, `needs_commands` and
+   `needs_e2e` (every repo without an `e2e` command, existing ones included, so a suite added
+   since the last check is found).
 2. **Pick the targets.** Run `python3 .maestro/engine/codebase_scan.py plan --root .`.
    - **Config targets** = `needs_commands` (it includes every added repo).
+   - **E2E targets** = `needs_e2e` minus the config targets (those get the E2E check with
+     their full detection).
    - **Docs targets** = every repo whose entry has `prev_commit: null` (no codebase map yet —
      never documented), plus `added`, minus any whose `mode` is `current` (already documented
      at its HEAD). An entry with an older `prev_commit` is an existing repo whose map is merely
      out of date; it is not a target.
 
-   Both empty: stop and report that nothing new needs setting up.
-3. **Detect stack for the config targets only.** Skip when there are none. Load and follow the
+   All three empty: stop and report that nothing new needs setting up.
+3. **Detect stack for the config targets; E2E only for the E2E targets.** Skip when there are
+   none. Load and follow the
    **`detect-stack`** skill, scanning only `codebase/<name>/` for each target. When it runs the
    installer, pass `--stack` as the union of the targets' tokens, the `stack` values already
    in `maestro.config.yaml`, and the `stacks` recorded in `.maestro/install.json` — never just
    the new tokens, so the recorded install stays complete. Skip the install when the targets
-   add no token beyond that set.
-4. **Project config.** Load and follow the **`project-config`** skill with the config targets'
-   detect-stack `repos` result only. Its `apply` fills empty `stack` / `commands` and never
-   overwrites a value already set. Do not report a `worktree` or `environment` section; the
+   add no token beyond that set. For the E2E targets, follow only detect-stack's **E2E suite**
+   section, scanning `codebase/<name>/` for each, and keep their `repos` entries (`name`, `e2e`).
+4. **Project config.** Load and follow the **`project-config`** skill with the config and E2E
+   targets' detect-stack `repos` results only. Its `apply` fills empty `stack` / `commands`, never
+   overwrites a value already set, and records each E2E check (its output's `e2e` map). Do not report a `worktree` or `environment` section; the
    existing ones cover new repos.
 5. **Write the new repos' docs** with **`build-knowledge`**. Skip when there are no docs targets.
    When `docs/architecture.md` does not exist, the workspace has never been documented: run
@@ -88,7 +94,8 @@ Run these **in order**, in this session. Each step consumes the previous step's 
 6. **Preflight.** Run `python3 .maestro/engine/maestroctl.py preflight`. Report every error
    verbatim; a missing `build` / `test` the evidence could not supply is for the person to fill
    by hand in `maestro.config.yaml`.
-7. **Summarize.** Report the repos added and still needing commands, the stacks installed, the
+7. **Summarize.** Report the repos added and still needing commands, each E2E suite confirmed
+   (or why none was), the stacks installed, the
    docs written (codebase maps, new and extended domain pages, architecture.md), any other
    repo whose docs are out of date, and the preflight result. Ask the person to review and
    commit `docs/` in the workspace. Newly installed skills become active after the host reloads its config. A
@@ -112,5 +119,5 @@ Run these **in order**, in this session. Each step consumes the previous step's 
 
 ## Output contract
 Return `added` (repo names, comma-separated), `needs_commands` (repos preflight still fails
-on), `documented` (repos whose docs were written, comma-separated), `domains_written` (domain
+on), `e2e_confirmed` (repos whose E2E suite was confirmed this run, comma-separated), `documented` (repos whose docs were written, comma-separated), `domains_written` (domain
 pages created or extended), and `summary` (one line).

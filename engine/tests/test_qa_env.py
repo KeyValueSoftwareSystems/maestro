@@ -51,6 +51,19 @@ class QaEnvTest(unittest.TestCase):
         self.assertIn("No project e2e command configured", out["summary"])
         self.assertEqual(self.run_cmd("down")[1]["configured"], False)
 
+    def test_plan_reports_whether_the_workspace_has_an_e2e_suite(self):
+        self.config("repos:\n  backend:\n    commands: {build: b, test: t}\n"
+                    "    e2e: {status: none, reason: none found}\n")
+        code, out, _ = self.run_cmd("plan")
+        self.assertEqual((code, out["has_e2e"], out["e2e_repos_csv"]), (0, False, ""))
+        self.assertIn("add no framework", out["summary"])
+        self.config("repos:\n  backend:\n    commands: {build: b, test: t}\n  web-app:\n"
+                    "    commands: {build: b, test: t, e2e: npm run e2e}\n"
+                    "    e2e: {status: verified, framework: playwright}\n")
+        _, out, _ = self.run_cmd("plan")
+        self.assertEqual((out["has_e2e"], out["e2e_repos_csv"]), (True, "web-app"))
+        self.assertIn("web-app (playwright: npm run e2e)", out["summary"])
+
     def test_start_gets_the_code_under_test_and_ready_must_pass(self):
         self.config('repos: {}\nenvironment:\n'
                     '  start: "echo $MAESTRO_WORKTREE_WEB_APP $MAESTRO_COMMIT_BACKEND > up.txt"\n'

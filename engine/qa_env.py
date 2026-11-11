@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """The QA environment and the project's own E2E suites, run by the engine from maestro.config.yaml.
 
+  qa_env.py plan [--root .]                   whether the workspace has an E2E suite: any repo
+                                              with an `e2e` command (has_e2e, e2e_repos_csv)
   qa_env.py up   [--root .] --manifest M      environment.start, then environment.ready
   qa_env.py e2e  [--root .] --manifest M --out R
                  each manifest repository's `e2e` command, in its verified worktree
@@ -11,6 +13,8 @@ build the stack from the verified worktrees instead of the main checkouts:
   MAESTRO_SLUG, MAESTRO_MANIFEST, and per repository MAESTRO_WORKTREE_<REPO> and
   MAESTRO_COMMIT_<REPO> (<REPO> upper-cased, non-alphanumerics as `_`).
 
+QA writes and runs an E2E suite only when `plan` reports has_e2e, in that repository's framework;
+otherwise it checks the test cases directly against the running system and adds no framework.
 Nothing configured is not a failure: `up`/`down` report `configured: false`, and `e2e` passes
 with a summary saying no suite is configured, so QA results stay agent-reported for that repo.
 `up` exits 1 when start or ready fails (QA cannot run against a stack that is not up). `e2e`
@@ -115,6 +119,30 @@ def cmd_down(args):
     return 0
 
 
+def cmd_plan(args):
+    if _simulated():
+        print(json.dumps({"has_e2e": True, "e2e_repos_csv": "",
+                          "summary": "[simulated] project E2E suite present"}))
+        return 0
+    config = project_config.load(args.root) or {}
+    suites = []
+    for repo, entry in sorted((config.get("repos") or {}).items()):
+        command = project_config.repo_commands(config, repo).get("e2e")
+        if command:
+            record = entry.get("e2e") if isinstance(entry, dict) else None
+            framework = record.get("framework") if isinstance(record, dict) else None
+            suites.append((repo, f"{repo} ({framework + ': ' if framework else ''}{command})"))
+    if suites:
+        summary = ("Project E2E suite: " + "; ".join(text for _repo, text in suites)
+                   + ". Write the suite in that framework")
+    else:
+        summary = ("No E2E suite in this workspace: check each test case directly against the "
+                   "running system; add no framework and write no suite")
+    print(json.dumps({"has_e2e": bool(suites), "e2e_repos_csv": ",".join(r for r, _t in suites),
+                      "summary": summary}))
+    return 0
+
+
 def cmd_e2e(args):
     if _simulated():
         print(json.dumps({"passed": True, "failed_repos": "", "ran_csv": "",
@@ -163,10 +191,10 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd", required=True)
-    for name, fn in (("up", cmd_up), ("down", cmd_down), ("e2e", cmd_e2e)):
+    for name, fn in (("plan", cmd_plan), ("up", cmd_up), ("down", cmd_down), ("e2e", cmd_e2e)):
         p = sub.add_parser(name)
         p.add_argument("--root", default=".")
-        p.add_argument("--manifest", required=True)
+        p.add_argument("--manifest", required=name != "plan")
         if name == "e2e":
             p.add_argument("--out", required=True)
         p.set_defaults(fn=fn)
