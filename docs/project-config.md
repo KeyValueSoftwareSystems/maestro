@@ -22,7 +22,10 @@ repos:                          # one entry per repository Maestro finds
       lint: golangci-lint run   # recommended
       test: go test ./...       # required
       security: gosec ./...     # recommended; the project's own scanner (semgrep, npm audit…)
-      e2e: make e2e             # recommended; used by QA
+      e2e: make e2e             # written by init/sync only once the engine confirms the suite; used by QA
+    e2e: {status: verified, framework: playwright, method: list, specs: 12}
+                                # set by init/sync: what E2E detection found (status: none + reason when
+                                # the repository has no suite); a hand-written commands.e2e is trusted
     timeout_s: 900              # optional, per command (default 900)
     test_patterns: ["tests/*"]  # optional; which files are tests (default: common conventions)
   infra:                        # an infrastructure repository is verified like any other
@@ -69,14 +72,24 @@ docs:                           # optional; the living docs (engine/living_docs.
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
 workspace root itself in a single-repo layout.
 
+`e2e` is never guessed. detect-stack proposes each repository's suite (framework, command, the
+framework's list or dry-run command, and the files that run it) and `engine/e2e_check.py` decides,
+with no person in the loop: the list command must exit 0 and show at least one spec, or, when it
+has no list mode or cannot run, a cited `package.json`, Makefile or CI file must run or define the
+command. A config file alone, or a list showing zero specs, is recorded as `status: none` with the
+reason. `/maestro-sync` re-checks every repository without an `e2e` command (never checked or
+`none`), so a suite added later is picked up; a confirmed or hand-written command is left alone.
+
 QA runs against the code the engine verified, not the main checkouts. The engine runs
 `environment.start` (then `ready`) before QA and `stop` after it, at the workspace root, with the
 code under test in environment variables: `MAESTRO_SLUG`, `MAESTRO_MANIFEST`, and per repository
 `MAESTRO_WORKTREE_<REPO>` and `MAESTRO_COMMIT_<REPO>` (name upper-cased, other characters as `_`)
 — point your compose build contexts or start scripts at them. After the QA agent's suite passes,
 the engine runs each repository's `e2e` command in its worktree (same variables) and writes
-`qa/e2e-receipt.json`; a failure goes back to the QA fixer. Without `e2e`, QA results are only
-what the QA agent reports.
+`qa/e2e-receipt.json`; a failure goes back to the QA fixer. QA writes an E2E suite only when some
+repository has an `e2e` command, and then in that framework. Without one, the QA agent checks each
+test case directly against the running system (HTTP, CLI, database, the repos' own test runners),
+adds no framework, and QA results are only what it reports.
 
 After release approval, `delivery.mode: pull-request` pushes each repository's verified branch
 (never forced; refused if the branch moved off its verified commit) and opens a pull request with
@@ -173,7 +186,9 @@ python3 .maestro/engine/maestroctl.py preflight
 | A repository has no `build` or `test` command | error |
 | Unknown key inside `repos`, `commands`, `environment`, `design`, `reviews`, `delivery` or `worktree` (a typo) | error |
 | `worktree.create` without `worktree.path` (or the reverse), a `path` without `{slug}` and `{repo}` or outside the workspace, an unknown placeholder | error |
-| No `lint`, `security` or `e2e` command | warning — that check is skipped |
+| `e2e` that is not a mapping with `status: verified \| none`, or `status: verified` without `commands.e2e` | error |
+| No `lint` or `security` command | warning — that check is skipped |
+| No `e2e` command and no `e2e: {status: none}` record (never checked) | warning |
 | A configured repository is not in the workspace | warning |
 
 Issues print to stderr; a JSON summary prints to stdout. The exit code is 1 when there is any

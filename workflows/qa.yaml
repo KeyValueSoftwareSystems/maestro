@@ -1,6 +1,8 @@
 # QA phase: the engine brings the QA environment up from maestro.config.yaml (built from the
-# verified worktrees), the QA agent automates and runs the test-case catalog, then the engine runs
-# each repository's own e2e command. Test-harness failures get a bounded fix cycle; a product bug
+# verified worktrees) and reports whether the workspace has an E2E suite. With one, the QA agent
+# automates the test-case catalog in that framework and runs it; without one, it checks each case
+# directly against the running system and adds no framework. Then the engine runs each
+# repository's own e2e command. Test-harness failures get a bounded fix cycle; a product bug
 # ends QA with `product_bug` and the repos to fix, and delivery fixes them in their worktrees and
 # re-runs QA. The environment is stopped on every normal exit.
 version: 1
@@ -24,17 +26,31 @@ nodes:
     run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, "${inputs.implementation_manifest}"]
     timeout: 1800
     on_fail: ask
+    next: e2e_plan
+
+  # Whether the workspace has an E2E suite, from the `e2e` commands init/sync confirmed.
+  - id: e2e_plan
+    type: script
+    label: Find the project's E2E suite
+    run: [python3, .maestro/engine/qa_env.py, plan, --root, "."]
     next: qa_run
 
   - id: qa_run
     type: agent
-    label: Author & run E2E suite
+    label: Run the test cases (E2E suite when the project has one)
     brief: full
     instruction: |
-      Automate the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
-      into an executable E2E suite (use the project's
-      existing E2E framework, else
-      Playwright; critical journeys first) and RUN it. Write the run report. Report
+      Test the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
+      (critical journeys first). ${steps.e2e_plan.outputs.summary}.
+      Project E2E suite present: ${steps.e2e_plan.outputs.has_e2e}.
+      - true: automate the catalog into an executable E2E suite under
+        .maestro/runs/${inputs.slug}/qa/ in that framework, reusing its config, fixtures and
+        helpers, and RUN it. Do not install packages or browsers.
+      - false: do not add a framework, install packages or write a suite. Check each case
+        directly against the running system with tools already available (HTTP requests, the
+        CLI, database queries, the repositories' own test runners) and record what you observed
+        as each case's evidence in the report.
+      Write the run report. Report
       results honestly — failures route into the fix loop, they are not yours to hide.
       Before doing anything, SHA-256 ${inputs.implementation_manifest} and require it to
       equal ${inputs.implementation_manifest_sha256}; fail integrity if it differs. Then

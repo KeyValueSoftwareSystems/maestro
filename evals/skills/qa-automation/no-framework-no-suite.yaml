@@ -1,0 +1,13 @@
+skill: qa-automation
+name: no-framework-no-suite
+prompt: |
+  You cannot run commands or write files. The project has no E2E framework: its only tests are Go
+  unit tests, and the API is running at http://localhost:8080. Describe exactly how you would
+  test TC-order-export-001 (GET /reports/orders.csv as an admin returns 200 with a text/csv body
+  whose first line is the header row; as a non-admin it returns 403), then your last-line JSON.
+must_include:
+  - 'TC-order-export-001'
+  - 'curl|HTTP|http://localhost:8080'
+  - '403'
+must_not_include:
+  - 'npm (i|install)|npx playwright install|pip install|playwright\.config'

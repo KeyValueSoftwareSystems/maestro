@@ -163,7 +163,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   a configured sandbox only once delivery pushed its branches.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
-  repos, missing `build`/`test` commands (errors) and missing `lint`/`security`/`e2e` (warnings). Engine
+  repos, missing `build`/`test` commands (errors) and missing `lint`/`security`/`e2e` (warnings; not
+  `e2e` when the repo's `e2e: {status: none}` record says none was found). `apply` writes
+  `commands.e2e` only after **`e2e_check.py`** confirms detect-stack's proposal (list mode shows ≥1
+  spec, else a cited package.json/Makefile/CI file runs or defines the command; otherwise `none`
+  with the reason); `sync` returns `needs_e2e` so /maestro-sync re-checks. Engine
   steps read commands from here, never from skill prose. Spec: `docs/project-config.md`.
 - **`repo_checks.py`** — the `verify` script step: runs a repo's configured setup/build/
   typecheck/lint/test in the exact implementation worktree (CI=true, per-command timeout) and
@@ -216,8 +220,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   by a test case (`### TC-…` blocks) and none is unknown; `qa` joins criteria → cases → QA's
   `qa/results.json` into `ac-trace.md` with `all_passed`, which the release autopilot requires.
 - **`qa_env.py`** — QA's environment and the project's own e2e suites from maestro.config.yaml:
-  `up` (environment.start + ready), `e2e` (each repo's `e2e` command in its verified worktree,
-  receipt), `down`; every command gets the code under test as `MAESTRO_WORKTREE_<REPO>` /
+  `plan` (`has_e2e`: some repo has an `e2e` command — QA writes a suite in that framework only
+  then, else checks cases directly and adds no framework), `up` (environment.start + ready),
+  `e2e` (each repo's `e2e` command in its verified worktree, receipt), `down`; every command gets the code under test as `MAESTRO_WORKTREE_<REPO>` /
   `MAESTRO_COMMIT_<REPO>`.
 - **`deliver.py`** — the archive stage's delivery: `delivery.mode` `branch` reports the verified
   branches; `pull-request` re-checks each branch is at its verified commit, pushes it (never

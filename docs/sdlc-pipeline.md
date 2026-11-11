@@ -185,8 +185,10 @@ designs.
 
 QA tests exactly those verified commits. When `maestro.config.yaml` defines an `environment`, the
 engine starts it before QA (with each repository's worktree and commit in environment variables,
-so the stack is built from the code under test) and stops it afterwards. The QA agent automates
-and runs the test cases; then the engine runs each repository's own `e2e` command in its
+so the stack is built from the code under test) and stops it afterwards. When a repository has
+an `e2e` command (confirmed at init or sync), the QA agent automates the test cases in that
+framework and runs them; when none does, it checks each case directly against the running system
+and adds no framework. Then the engine runs each repository's own `e2e` command in its
 worktree. A test-harness failure gets a bounded fix. A **product bug** never stops at a gate: the
 QA fixer writes a diagnosis (`qa/bugs.md`) naming the repositories, each is fixed on its own
 feature branch with a regression test, re-verified by the engine and re-reviewed (only the new

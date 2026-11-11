@@ -39,8 +39,11 @@ no detect-stack `repos` result, stop and run detect-stack first — do not detec
    | `*.tf` and no application stack | `terraform fmt -check -recursive && terraform init -backend=false` | `terraform validate` |
 
    A Makefile target wins over the language default for that command. Add `lint`,
-   `typecheck`, `security`, or `e2e` only when the cited evidence names that script or
-   target. `role: infra` when the only tokens are `terraform` and/or `kubernetes`.
+   `typecheck` or `security` only when the cited evidence names that script or target. Never
+   put `e2e` under `commands`: copy each repo's detect-stack `e2e` proposal unchanged into the
+   report as that repo's `e2e`; the engine runs its list command or checks its evidence and
+   writes `commands.e2e` only when it confirms the suite. `role: infra` when the only tokens are
+   `terraform` and/or `kubernetes`.
 3. **Worktrees, only when the workspace has a sandbox command.** When the workspace root has a
    script that creates a per-feature workspace of worktrees (e.g. `scripts/sandbox`), read its
    usage (`--help`, or the script's header comment) and add a `worktree` section to the report:
@@ -67,7 +70,11 @@ python3 .maestro/engine/project_config.py apply --root . --detected .maestro/ind
 The JSON shape is:
 
 ```json
-{"repos": {"backend": {"stack": "go, db", "commands": {"build": "go build ./...", "test": "go test ./..."}}},
+{"repos": {"backend": {"stack": "go, db", "commands": {"build": "go build ./...", "test": "go test ./..."},
+                      "e2e": {"command": null, "reason": "no E2E framework or suite found"}},
+           "web": {"stack": "react", "commands": {"build": "npm run build", "test": "npm test"},
+                   "e2e": {"command": "npm run test:e2e", "list": "npx playwright test --list",
+                           "framework": "playwright", "evidence": ["package.json"]}}},
  "worktree": {"create": "./scripts/sandbox create {slug} -y", "path": "sandbox/{slug}/codebase/{repo}",
               "branch": "sandbox/{slug}", "remove": "./scripts/sandbox rm {slug} -y"},
  "environment": {"start": "./scripts/infra up \"$MAESTRO_SLUG\"",
@@ -76,7 +83,10 @@ The JSON shape is:
 
 `apply` creates `maestro.config.yaml` when it is missing, copies registry names onto it,
 and fills empty `stack` / `commands`. A value already in the file is left unchanged; `worktree`
-and `environment` are each added only when the file has none. Show the person any `worktree`
+and `environment` are each added only when the file has none. For each `e2e` proposal on a repo
+without an `e2e` command it records the engine's verdict as that repo's `e2e`
+(`status: verified` plus `commands.e2e`, or `status: none` with the reason); its output's `e2e`
+map says which. Show the person any `worktree`
 section it added — it decides where every feature's code is written — and any `environment`
 section — QA starts and stops the stack with it.
 
@@ -87,4 +97,5 @@ section — QA starts and stops the stack with it.
 
 ## Output contract
 Return `created` (whether the config file was new), `updated` (repo names whose empty
-fields were filled), and `summary` (one line, naming the worktree and environment commands when added).
+fields were filled), and `summary` (one line, naming the worktree and environment commands when
+added and the E2E suites confirmed).

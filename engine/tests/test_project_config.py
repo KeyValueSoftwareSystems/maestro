@@ -129,6 +129,49 @@ class PreflightTest(unittest.TestCase):
         self.assertIn(("config-missing-command", "repos.backend.commands.lint"), warnings)
         self.assertIn(("config-missing-command", "repos.backend.commands.e2e"), warnings)
 
+    def test_apply_records_the_engine_e2e_verdict(self):
+        self.repo("web")
+        with open(os.path.join(self.root, "codebase", "web", "package.json"), "w") as fh:
+            json.dump({"scripts": {"test:e2e": "playwright test"}}, fh)
+        self.write("version: 1\nrepos:\n  backend:\n    commands: {build: b, test: t, e2e: make e2e}\n")
+        result = project_config.apply_detected(self.root, {"repos": {
+            "backend": {"e2e": {"command": None, "reason": "nothing found"}},
+            "web": {"commands": {"build": "npm run build", "test": "npm test"},
+                    "e2e": {"command": "npm run test:e2e", "list": "exit 1",
+                            "framework": "playwright", "evidence": ["package.json"]}}}})
+        config = project_config.load(self.root)
+        self.assertEqual(config["repos"]["backend"]["commands"]["e2e"], "make e2e")
+        self.assertNotIn("e2e", config["repos"]["backend"])  # a set command is never re-checked
+        web = config["repos"]["web"]
+        self.assertEqual(web["commands"]["e2e"], "npm run test:e2e")
+        self.assertEqual((web["e2e"]["status"], web["e2e"]["method"]), ("verified", "evidence"))
+        self.assertEqual(result["e2e"], {"web": "verified: npm run test:e2e"})
+
+    def test_apply_never_takes_e2e_from_reported_commands(self):
+        self.write("version: 1\nrepos:\n  backend: {}\n")
+        result = project_config.apply_detected(self.root, {"repos": {
+            "backend": {"commands": {"build": "b", "test": "t", "e2e": "npx playwright test"}},
+            "ghost": {"e2e": {"command": "make e2e", "evidence": ["Makefile"]}}}})
+        self.assertNotIn("e2e", project_config.load(self.root)["repos"]["backend"]["commands"])
+        self.assertEqual(result["e2e"], {"ghost": "not checked: not a repository on disk"})
+
+    def test_a_repo_checked_without_a_suite_does_not_warn_about_e2e(self):
+        self.write(VALID.replace("      e2e: make e2e\n", ""))
+        self.assertIn(("config-missing-command", "repos.backend.commands.e2e"), self.codes("warning"))
+        project_config.apply_detected(self.root, {"repos": {"backend": {
+            "e2e": {"command": None, "reason": "no E2E framework found"}}}})
+        entry = project_config.load(self.root)["repos"]["backend"]
+        self.assertEqual(entry["e2e"], {"status": "none", "reason": "no E2E framework found"})
+        self.assertEqual(self.codes("warning"), [])
+        self.assertEqual(self.codes("error"), [])
+
+    def test_e2e_record_shape(self):
+        self.write(VALID.replace("    timeout_s: 600", "    timeout_s: 600\n    e2e: {status: maybe}"))
+        self.assertIn(("config-shape", "repos.backend.e2e"), self.codes("error"))
+        self.write(VALID.replace("      e2e: make e2e\n", "")
+                   .replace("    timeout_s: 600", "    timeout_s: 600\n    e2e: {status: verified}"))
+        self.assertIn(("config-missing-command", "repos.backend.commands.e2e"), self.codes("error"))
+
     def test_typos_inside_known_sections_fail(self):
         self.write(VALID.replace("    stack: go\n", "    stak: go\n")
                    .replace("      lint:", "      lnt:"))
@@ -225,6 +268,7 @@ class SyncTest(unittest.TestCase):
         result = project_config.sync(self.root)
         self.assertEqual(result["added"], ["billing"])
         self.assertEqual(result["needs_commands"], ["billing"])
+        self.assertEqual(result["needs_e2e"], ["backend", "billing"])
         text = self.text()
         self.assertIn("# Team config — keep this comment.", text)
         self.assertIn("backend:   # the Go API", text)
@@ -233,6 +277,15 @@ class SyncTest(unittest.TestCase):
         self.assertEqual(config["repos"]["billing"], {})
         self.assertEqual(config["repos"]["backend"]["commands"]["test"], "go test ./...")
         self.assertEqual(config["delivery"], {"mode": "branch"})
+
+    def test_needs_e2e_skips_confirmed_suites_but_rechecks_none(self):
+        self.repo("backend")
+        self.repo("legacy")
+        self.write("maestro.config.yaml", SYNC_CONFIG
+                   .replace("      test: go test ./...\n", "      test: go test ./...\n      e2e: make e2e\n")
+                   .replace("{build: make, test: make test}",
+                            "{build: make, test: make test}\n    e2e: {status: none, reason: x}"))
+        self.assertEqual(project_config.sync(self.root, dry_run=True)["needs_e2e"], ["legacy"])
 
     def test_second_run_changes_nothing(self):
         self.repo("backend")
