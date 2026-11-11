@@ -38,6 +38,9 @@ repos:                          # one entry per repository Maestro finds
       build: npm run build
       lint: npm run lint
       test: npm test -- --watchAll=false
+e2e:                            # optional: the workspace E2E folder QA uses first
+  path: e2e                     # default: e2e/ when it holds a package.json or Playwright config
+  command: npx playwright test  # how its suite runs (default for Playwright)
 environment:                    # optional: bring the stack up for QA
   start: docker compose up -d --build
   ready: ./scripts/wait-for-health   # recommended; QA starts only after it passes (preflight warns without it)
@@ -73,7 +76,22 @@ QA runs against the code the engine verified, not the main checkouts. The engine
 `environment.start` (then `ready`) before QA and `stop` after it, at the workspace root, with the
 code under test in environment variables: `MAESTRO_SLUG`, `MAESTRO_MANIFEST`, and per repository
 `MAESTRO_WORKTREE_<REPO>` and `MAESTRO_COMMIT_<REPO>` (name upper-cased, other characters as `_`)
-— point your compose build contexts or start scripts at them. After the QA agent's suite passes,
+— point your compose build contexts or start scripts at them. Before the QA agent runs, the engine
+prepares its test harness (`qa_env.py harness`, receipt `qa/harness.json`); delivery runs it once
+before implementation and QA re-checks it. **A workspace E2E folder comes first** (`e2e.path`, else
+`e2e/`): its dependencies are installed when `node_modules` is missing, and for Playwright headless
+Chromium too. The feature's specs stay in the run's `qa/tests/` and Playwright runs from the workspace
+folder, so its config must take the specs from the run:
+`testDir: process.env.MAESTRO_QA_TESTS ?? './tests'`. `qa/node_modules` links to the workspace's,
+so specs import `@playwright/test` and the workspace's fixtures. Without a workspace folder: a
+repository is web when its `stack` names a web framework (`react`, `vue`, `angular`, …); `stack` decides, so set it
+for a web app. Only a repository without a `stack` is judged from its `package.json` (at the root
+or one folder down). When a web repository in the change has no E2E framework (`e2e` command,
+Playwright/Cypress/WebdriverIO config or package), the engine installs a self-contained Playwright
+project with headless Chromium in the run's `qa/` folder; this needs Node/npm and network access to npm and
+the browser download, within a 25-minute budget. If setup fails, a person retries, continues
+(browser cases are recorded as skipped) or aborts; an abort still runs `environment.stop`.
+After the QA agent's suite passes,
 the engine runs each repository's `e2e` command in its worktree (same variables) and writes
 `qa/e2e-receipt.json`; a failure goes back to the QA fixer. Without `e2e`, QA results are only
 what the QA agent reports.

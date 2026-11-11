@@ -13,6 +13,7 @@ changes per client — it reads these values.
         commands: {build: make build, lint: golangci-lint run, test: go test ./...}
         timeout_s: 900
     environment: {start: docker compose up -d, stop: docker compose down}
+    e2e: {path: e2e, command: npx playwright test}   # optional: the workspace E2E folder
     delivery: {mode: branch, base: main}
     worktree:                        # optional: how each feature's worktrees are made
       create: ./scripts/sandbox create {slug} -y
@@ -58,6 +59,7 @@ DEFAULT_TEST_PATTERNS = (
     "*Test.java", "*Tests.java", "*Test.kt", "*Tests.kt", "*_spec.rb",
 )
 ENVIRONMENT_KEYS = {"start", "ready", "stop"}
+E2E_KEYS = {"path", "command"}
 DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
 WORKTREE_KEYS = {"create", "path", "branch", "remove"}
@@ -403,6 +405,8 @@ def check(config, discovered):
                                 "no `ready` command; QA will treat the stack as up as soon as "
                                 "`start` returns — add a health probe (e.g. curl -fsS …/health)",
                                 "environment.ready"))
+    if "e2e" in config:
+        _check_strings("e2e", config["e2e"], E2E_KEYS, "e2e", issues)
     if "infrastructure" in config:
         infrastructure = config["infrastructure"]
         _check_strings("infrastructure", infrastructure, {"level"}, "infrastructure", issues)
