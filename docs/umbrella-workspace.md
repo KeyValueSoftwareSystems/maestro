@@ -165,7 +165,7 @@ summarizes behind, dirty or diverged repos and stale knowledge; approved clean u
 fast-forward-only, affected docs are refreshed once, and exact commits are pinned in the run's
 `workspace-lock.json`. A repo with local changes is never updated automatically.
 
-> Release ordering: **approve release → archival (harvest lessons into memory + publish
+> Release ordering: **approve release → confirm the archive → archival (harvest lessons into memory + publish
 > curated docs) → merge the feature branch to master.** Archival is the last automated phase;
 > Maestro does not perform the merge itself.
 

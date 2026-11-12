@@ -1,6 +1,7 @@
-# Post-release phase (invoked by sdlc-main.yaml after release approval): deliver the verified
-# branches, then harvest lessons into memory.
-#   deliver (branch report, or push + pull requests per maestro.config.yaml) -> harvest -> cleanup
+# Post-release phase (invoked by sdlc-main.yaml after release approval, or on its own later): a
+# person confirms the archive, then deliver the verified branches and harvest lessons into memory.
+#   check the release record -> confirm (person only) -> deliver (branch report, or push + pull
+#   requests per maestro.config.yaml) -> harvest -> cleanup
 # Nothing is merged here: a person merges the pull requests (or the reported branches).
 version: 1
 name: archive
@@ -9,14 +10,39 @@ description: Deliver the released feature's branches (or pull requests), then ha
 inputs:
   slug: {type: string, required: true}
   feature: {type: string, default: "${inputs.slug}"}
-  manifest: {type: string, required: true, description: engine-verified repo/branch/commit manifest}
-  pack: {type: string, default: "", description: the release review pack}
-  release_by: {type: string, default: person, description: who approved the release (person or autopilot)}
+  # Defaults let a person archive later on its own: /maestro <slug> .maestro/workflows/archive.yaml
+  manifest: {type: string, default: ".maestro/runs/${inputs.slug}/implementation-manifest.json", description: engine-verified repo/branch/commit manifest}
+  pack: {type: string, default: ".maestro/runs/${inputs.slug}/review-pack.md", description: the release review pack}
 defaults:
   model: haiku
   agent: analyst
-start: deliver
+start: check_release
 nodes:
+  # Engine-owned: the release gate must have approved exactly this manifest (release.json, written
+  # by delivery). Refuses an unapproved feature, or one rebuilt since the approval — which matters
+  # when this workflow is run on its own.
+  - id: check_release
+    type: script
+    label: Check the release was approved
+    run: [python3, .maestro/engine/release_record.py, check, --root, ., --slug, "${inputs.slug}", --manifest, "${inputs.manifest}"]
+    on_fail: abort
+    next: confirm_archive
+
+  # Always a person: no `auto:` policy, so an autopilot release stops here too. "Not now" ends the
+  # stage with nothing pushed, no lessons harvested, the living docs untouched and the worktrees kept
+  # (the person pushes from them); running this workflow on the slug later archives it.
+  - id: confirm_archive
+    type: gate
+    label: Archive confirmation
+    prompt: |
+      Release approved. Archive this feature now?
+      Archiving pushes the code (or opens pull requests) and updates the docs/ folder.
+      Not now: you push the code yourself, and docs/ is not updated until you archive with
+      /maestro ${inputs.slug} .maestro/workflows/archive.yaml
+    options:
+      - {id: archive, label: Archive now, to: deliver}
+      - {id: skip, label: Not now — I will push the code myself, to: end}
+
   # Engine-owned: re-checks each branch is still at its verified commit, then (delivery.mode
   # pull-request) pushes it and opens or reuses a pull request — a draft when autopilot approved
   # the release. Never force-pushes; a failure (gh missing, push rejected) asks a person.
@@ -39,7 +65,7 @@ nodes:
       - --assumptions
       - ".maestro/runs/${inputs.slug}/assumptions.md"
       - --release-by
-      - "${inputs.release_by}"
+      - "${steps.check_release.outputs.release_by}"
     timeout: 900
     on_fail: ask
     next: harvest
@@ -61,6 +87,7 @@ nodes:
     next: end
 
 outputs:
+  archive: "${steps.confirm_archive.outputs.choice}"
   delivery: "${steps.deliver.outputs.summary}"
   pull_requests: "${steps.deliver.outputs.pr_urls_csv}"
   worktrees: "${steps.cleanup.outputs.summary}"

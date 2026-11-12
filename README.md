@@ -228,7 +228,7 @@ and its place in `docs/architecture.md`. Existing entries and other repos' docs 
    want to discuss it.
 4. **Approve at gates.** At each approval point you choose **Approve** or **Revise** (and say what
    to change). Want fewer stops? Say "run it on autopilot" when you start (Maestro then stops only
-   when a check fails), or "only stop for design approval".
+   when a check fails, and to confirm the archive), or "only stop for design approval".
 5. **Find the results** in `.maestro/runs/<feature>/`: PRD, designs, API contract, test cases,
    review reports, and the branches (or pull requests) ready to merge.
 

@@ -20,7 +20,8 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
    → acceptance-criteria trace → design-vs-code drift check → assumption log → review pack
-   → [approve] → branches or pull requests (per config) → harvest lessons
+   → [approve release] → [confirm archive] → branches or pull requests (per config)
+          → harvest lessons, refresh docs/ → remove worktrees
 ```
 
 **Roles.** Each step is done by a role, and the workflow fixes the order in which work passes
@@ -284,8 +285,18 @@ for design approval"). The mode decides who answers each gate:
 | LLD approval | you | approved if the readiness check passes | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
 | Release | you | approved if the engine verified every repository and every acceptance criterion passes QA | same |
+| Archive confirmation | you | you | you |
 | PRD, HLD and LLD questions | you | you | recommendation adopted as an assumption; one round |
 | Missing requirement, question limit, stuck fix loop, failing QA | you | you | you |
+
+The archive confirmation always asks a person, in every mode. The engine first checks the
+release record (`release.json`, written when the release is approved): the archive refuses a
+feature whose release was not approved, or whose code changed since. Archiving delivers the verified
+branches (or opens pull requests), harvests the run's lessons into `.maestro/memory/`, refreshes
+the living docs under `docs/` and removes the worktrees Maestro created. If you choose "Not now",
+nothing is pushed (push the branches yourself, from the implementation manifest) and the updated
+documents do not reach `docs/`; the worktrees are kept. Archive later with
+`/maestro <feature> .maestro/workflows/archive.yaml`.
 
 Each gate's policy lives in the workflow (`auto:` on the gate), and the engine applies it — the
 lead agent never answers a gate. A gate whose check fails stops the run for you, with the reason;

@@ -358,7 +358,8 @@ class SdlcE2E(unittest.TestCase):
 
     # -- driver ----------------------------------------------------------
 
-    def drive(self, gate_script, max_steps=200, agent_overrides=None, mode=None, inputs=None):
+    def drive(self, gate_script, max_steps=200, agent_overrides=None, mode=None, inputs=None,
+              workflow=".maestro/workflows/sdlc-main.yaml", force=False):
         """Run the pipeline: gate_script maps step path -> list of (option, input) taken
         in order. Gates the run mode lets the engine answer appear in the trace as
         ("auto_gate", step). Returns (final_action, trace)."""
@@ -366,8 +367,8 @@ class SdlcE2E(unittest.TestCase):
         gate_ptr = {}
         overrides = agent_overrides or {}
         with statemod.locked("demo", self.tmp):
-            resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml",
-                              {"feature": "Demo", **(inputs or {})}, self.tmp, mode=mode)
+            resolver.init_run("demo", workflow, {"feature": "Demo", **(inputs or {})}, self.tmp,
+                              force=force, mode=mode)
         for _ in range(max_steps):
             run = resolver.Run("demo", self.tmp)
             answered = resolver.apply_autopilot(run)
@@ -419,6 +420,7 @@ class SdlcE2E(unittest.TestCase):
                                    or "infra_scan.py" in a or "decision_log.py" in a
                                    or "findings.py" in a or "sizing.py" in a
                                    or "greenfield.py" in a or "impact_trace.py" in a
+                                   or "release_record.py" in a
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -432,6 +434,8 @@ class SdlcE2E(unittest.TestCase):
                         decisions = [("approve", None)] * 20
                     if decisions is None and step == "design/hld/hld_mode":
                         decisions = [("guided", None)] * 5
+                    if decisions is None and step == "archive/confirm_archive":
+                        decisions = [("archive", None)]
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -518,7 +522,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/hld/hld_mode",
                                       "design/hld/hld_approval",
                                       "design/lld/lld_scope", "design/lld/lld_approval",
-                                      "delivery/release_approval"])
+                                      "delivery/release_approval", "archive/confirm_archive"])
         self.assertEqual(steps.count("design/lld/author_llds"), 1)
         self.assertEqual(steps.count("design/lld/lld_interview"), 1)
         self.assertLess(steps.index("design/lld/lld_interview"), steps.index("design/lld/author_llds"))
@@ -853,7 +857,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"],
                          ["design/prd/prd_approval", "design/hld/hld_mode",
-                          "design/hld/hld_approval"])
+                          "design/hld/hld_approval", "archive/confirm_archive"])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
                          ["design/lld/lld_scope", "design/lld/lld_approval",
                           "delivery/release_approval"])
@@ -861,7 +865,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([(g["step"], g.get("auto")) for g in gates], [
             ("design/prd/prd_approval", None), ("design/hld/hld_mode", None),
             ("design/hld/hld_approval", None), ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
-            ("delivery/release_approval", "design")])
+            ("delivery/release_approval", "design"), ("archive/confirm_archive", None)])
         # the autopilot LLD approval still records the hash-bound approval delivery checks
         self.assertTrue(os.path.isfile(lld_set.approval_path("demo", self.tmp)))
 
@@ -869,8 +873,9 @@ class SdlcE2E(unittest.TestCase):
         self.prep_tasks_json()
         action, trace = self.drive({}, mode="auto")
         self.assertEqual(action["action"], "done", action)
-        asked = [a for a, _ in trace if a in ("ask_gate", "ask_interview", "ask_interview_batch")]
-        self.assertEqual(asked, [])
+        # the only person: the archive confirmation, which autopilot never answers
+        asked = [t for t in trace if t[0] in ("ask_gate", "ask_interview", "ask_interview_batch")]
+        self.assertEqual(asked, [("ask_gate", "archive/confirm_archive")])
         self.assertIn(("auto_gate", "delivery/release_approval"), trace)
         self.assertIn(("auto_gate", "design/hld/hld_mode"), trace)  # autopilot never brainstorms
         # one autopilot round per stage, straight to the writer
@@ -890,6 +895,44 @@ class SdlcE2E(unittest.TestCase):
         # a release nobody approved is recorded as such; pull-request delivery opens drafts from it
         self.assertEqual(statemod.load("demo", self.tmp)["steps"][
             "delivery/release_approval"]["outputs"]["by"], "autopilot")
+
+    def test_declining_the_archive_delivers_nothing_and_leaves_docs_untouched(self):
+        self.prep_tasks_json()
+        action, trace = self.drive({"archive/confirm_archive": [("skip", None)]}, mode="auto")
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertIn("archive/confirm_archive", steps)
+        self.assertFalse([s for s in steps
+                          if s.startswith(("archive/deliver", "archive/harvest", "archive/cleanup"))])
+        self.assertIn("push the code yourself", self.prompts["archive/confirm_archive"][0])
+        state = statemod.load("demo", self.tmp)
+        self.assertEqual(state["steps"]["archive/confirm_archive"]["outputs"]["choice"], "skip")
+        run_dir = Path(self.tmp, ".maestro/runs/demo")
+        self.assertFalse((run_dir / "delivery.json").exists())
+        self.assertFalse(Path(self.tmp, ".maestro/memory/incoming/demo.json").exists())
+        for repo in ("backend", "frontend"):  # kept: the person pushes from them
+            self.assertTrue(Path(self.tmp, ".maestro/test-worktrees", repo).is_dir())
+        # the approval is on record, so the archive can still run later
+        self.assertEqual(json.loads((run_dir / "release.json").read_text())["approved_by"],
+                         "autopilot")
+
+    def test_a_declined_archive_runs_later_on_its_own(self):
+        self.prep_tasks_json()
+        self.drive({"archive/confirm_archive": [("skip", None)]}, mode="auto")
+        action, trace = self.drive({"confirm_archive": [("archive", None)]},
+                                   workflow=".maestro/workflows/archive.yaml", force=True)
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps[:3], ["check_release", "confirm_archive", "deliver"])
+        self.assertIn("harvest/retrospect", steps)
+        self.assertEqual(steps[-1], "cleanup")
+        delivery = json.loads(Path(self.tmp, ".maestro/runs/demo/delivery.json").read_text())
+        self.assertEqual(len(delivery["repositories"]), 2)
+
+    def test_the_archive_refuses_a_feature_whose_release_was_not_approved(self):
+        action, trace = self.drive({}, workflow=".maestro/workflows/archive.yaml")
+        self.assertEqual(action["action"], "failed", action)
+        self.assertEqual([s for _, s in trace], ["check_release"])
 
     def test_auto_mode_stops_at_hld_approval_while_the_review_still_blocks(self):
         self.prep_tasks_json()

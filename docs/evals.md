@@ -27,7 +27,8 @@ Terraform (infrastructure questions and an infrastructure LLD).
 
 ```bash
 python3 engine/eval_setup.py --case evals/cases/infra-queue --dest /tmp/eval-infra
-# install Maestro into /tmp/eval-infra and run the printed /maestro command (auto mode)
+# install Maestro into /tmp/eval-infra and run the printed /maestro command (auto mode);
+# at the archive confirmation — the one gate auto mode leaves to you — answer "Archive now"
 python3 engine/eval_score.py score --root /tmp/eval-infra --case evals/cases/infra-queue \
     --judge judge.json --out reports/infra-queue.json
 python3 engine/eval_score.py summary --reports reports/*.json --baseline evals/baseline.json

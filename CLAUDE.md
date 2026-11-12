@@ -228,6 +228,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   branches; `pull-request` re-checks each branch is at its verified commit, pushes it (never
   forced) and opens or reuses a pull request with `gh` — a draft when the release gate's `by` is
   `autopilot`. Writes `delivery.json`.
+- **`release_record.py`** — the release record: delivery's `record_release` writes `release.json`
+  (who approved, the manifest's sha256) after the release gate approves; the archive's
+  `check_release` refuses a feature without it or with a manifest changed since, and returns
+  `release_by` for `deliver.py` — so the archive is safe to run later on its own.
 - **`infra_scan.py`** — the workspace's infrastructure level (`none` / `containers` / `iac`, from
   Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless, Ansible, Docker, Compose
   files; overridable in maestro.config.yaml). The HLD stage starts with it: the level decides
@@ -454,7 +458,9 @@ whole suite — the parser underpins everything.
   skill name (`skill: "${inputs.stack}-implement"` replaces the old dispatch glue).
   Model choice: per-node `model:` → workflow `defaults.model` → `haiku`; values pass to
   the harness as-is (haiku/sonnet/opus).
-- Nothing in the golden workflow is a stub. The archive stage's `deliver` step
+- Nothing in the golden workflow is a stub. The archive stage opens with `check_release`
+  (`engine/release_record.py`), then `confirm_archive`, a person-only gate (no `auto:` policy): `skip` ("Not now") ends the stage with nothing pushed and
+  `docs/` untouched; the workflow runs standalone later on the slug (input paths default). Its `deliver` step
   (`engine/deliver.py`) reports the verified branches or, with `delivery.mode: pull-request`,
   pushes them and opens pull requests (draft when autopilot approved the release). Build, lint
   and test are engine-run too: `impl.yaml`'s `verify` step runs `engine/repo_checks.py`, which executes the
