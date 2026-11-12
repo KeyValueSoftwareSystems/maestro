@@ -20,6 +20,11 @@ changes per client — it reads these values.
       branch: sandbox/{slug}
       remove: ./scripts/sandbox rm {slug} -y
 
+A repository's `e2e` record says whether detection found an E2E suite: `{status: verified, ...}`
+(its command is `commands.e2e`) or `{status: none, reason: ...}`. `apply` writes it only after
+engine/e2e_check.py confirmed the proposal; QA writes and runs a suite only when some repository
+has an `e2e` command.
+
 `preflight` checks the file against the repos on disk. Unknown TOP-LEVEL keys are allowed
 (workflows may read their own values through `${config.<path>}`); unknown keys inside the
 sections above are typos and fail.
@@ -48,7 +53,8 @@ CONFIG_VERSION = 1
 COMMANDS = ("setup", "build", "lint", "typecheck", "test", "security", "e2e")
 REQUIRED_COMMANDS = ("build", "test")
 RECOMMENDED_COMMANDS = ("lint", "security", "e2e")
-REPO_KEYS = {"stack", "role", "commands", "timeout_s", "test_patterns"}
+REPO_KEYS = {"stack", "role", "commands", "timeout_s", "test_patterns", "e2e"}
+E2E_STATUSES = ("verified", "none")
 REPO_ROLES = ("app", "infra")
 INFRASTRUCTURE_LEVELS = ("none", "containers", "iac")
 # Paths that count as test files for the test-edit guard (fnmatch; `*` crosses `/`).
@@ -118,12 +124,16 @@ def init(root="."):
 def apply_detected(root, detected):
     """Merge a project-config report into maestro.config.yaml.
 
-    `detected` is {"repos": {name: {"stack", "role", "commands"}}, "worktree": {...}?,
+    `detected` is {"repos": {name: {"stack", "role", "commands", "e2e"?}}, "worktree": {...}?,
     "environment": {...}?}. Missing file is created. Names come from registry.yaml when present,
     plus any name in the report. A stack, role, or command that is already set is left alone;
-    `worktree` and `environment` are each added only when the file has none.
-    -> {"created": bool, "updated": [repo names], "worktree_added": bool, "environment_added": bool}
+    `worktree` and `environment` are each added only when the file has none. A reported `e2e`
+    proposal is checked by e2e_check.verify in the repository on disk and recorded as the repo's
+    `e2e` record (plus `commands.e2e` when verified) unless `commands.e2e` is already set.
+    -> {"created": bool, "updated": [repo names], "worktree_added": bool, "environment_added": bool,
+        "e2e": {repo: "verified: <command>" | "none: <reason>"}}
     """
+    import e2e_check
     if not isinstance(detected, dict):
         raise ConfigError("detected stacks must be a mapping")
     reported = detected.get("repos") or {}
@@ -142,6 +152,8 @@ def apply_detected(root, detected):
         if name not in names:
             names.append(name)
     updated = []
+    paths = dict(codebase_scan.discover_repos(root))
+    e2e_results = {}
     for name in names:
         spec = reported.get(name) if isinstance(reported.get(name), dict) else {}
         entry = repos.get(name) if isinstance(repos.get(name), dict) else {}
@@ -158,10 +170,25 @@ def apply_detected(root, detected):
         incoming = spec.get("commands") or {}
         if isinstance(incoming, dict):
             for key, value in incoming.items():
-                if key in COMMANDS and isinstance(value, str) and value.strip() and not str(
+                # `e2e` is written only from an engine-confirmed proposal (below), never reported.
+                if key in COMMANDS and key != "e2e" and isinstance(value, str) and value.strip() and not str(
                         commands.get(key) or "").strip():
                     commands[key] = value.strip()
                     changed = True
+        proposal = spec.get("e2e")
+        if proposal is not None and not str(commands.get("e2e") or "").strip() and name not in paths:
+            e2e_results[name] = "not checked: not a repository on disk"
+        elif proposal is not None and not str(commands.get("e2e") or "").strip():
+            log = os.path.join(root, ".maestro", "index", "e2e-check", f"{name}.log")
+            record = e2e_check.verify(paths[name], proposal, log)
+            if record["status"] == "verified":
+                commands["e2e"] = record.pop("command")
+                e2e_results[name] = f"verified: {commands['e2e']}"
+            else:
+                e2e_results[name] = f"none: {record['reason']}"
+            if entry.get("e2e") != record:
+                entry["e2e"] = record
+                changed = True
         if commands:
             entry["commands"] = commands
         repos[name] = entry
@@ -178,7 +205,7 @@ def apply_detected(root, detected):
     if created or updated or any(added.values()):
         wf.dump_file(path, config)
     return {"created": created, "updated": updated, "worktree_added": added["worktree"],
-            "environment_added": added["environment"]}
+            "environment_added": added["environment"], "e2e": e2e_results}
 
 
 def sync(root=".", dry_run=False):
@@ -190,7 +217,10 @@ def sync(root=".", dry_run=False):
     registered repo not cloned yet is reported, not added, and a clone the registry does not
     list is still added but reported. Existing entries are never touched. The edit is textual,
     so comments and layout survive.
-    -> {"created", "added", "missing_clones", "unregistered", "needs_commands", "changed"}
+    `needs_e2e` lists every repo on disk without an `e2e` command (never checked, or checked and
+    none found) so the skill can look again; a confirmed command is never re-checked.
+    -> {"created", "added", "missing_clones", "unregistered", "needs_commands", "needs_e2e",
+        "changed"}
     """
     import registry as registry_mod
     discovered = [name for name, _path in codebase_scan.discover_repos(root)]
@@ -203,6 +233,7 @@ def sync(root=".", dry_run=False):
     added = [name for name in discovered if name not in repos]
     needs_commands = [name for name in discovered if any(
         command not in repo_commands(config, name) for command in REQUIRED_COMMANDS)]
+    needs_e2e = [name for name in discovered if "e2e" not in repo_commands(config, name)]
     changed = bool(created or added)
     if changed and not dry_run:
         _write_synced(path, config, added, created)
@@ -212,6 +243,7 @@ def sync(root=".", dry_run=False):
         "missing_clones": [name for name in registered if name not in discovered],
         "unregistered": [name for name in discovered if reg is not None and name not in registered],
         "needs_commands": needs_commands,
+        "needs_e2e": needs_e2e,
         "changed": changed,
         "dry_run": bool(dry_run),
     }
@@ -390,10 +422,26 @@ def check(config, discovered):
                 issues.append(Issue("error", "config-missing-command",
                                     f"no `{command}` command; Maestro cannot verify this repo",
                                     f"{where}.commands.{command}"))
+        record = entry.get("e2e")
+        if record is not None:
+            if not isinstance(record, dict) or record.get("status") not in E2E_STATUSES:
+                issues.append(Issue("error", "config-shape",
+                                    f"must be a mapping with status: {' | '.join(E2E_STATUSES)}",
+                                    f"{where}.e2e"))
+                record = None
+            elif record.get("status") == "verified" and "e2e" not in configured:
+                issues.append(Issue("error", "config-missing-command",
+                                    "e2e status is verified but there is no `e2e` command",
+                                    f"{where}.commands.e2e"))
         for command in RECOMMENDED_COMMANDS:
             if command not in configured:
+                if command == "e2e" and record and record.get("status") == "none":
+                    continue  # checked: this repository has no E2E suite
                 issues.append(Issue("warning", "config-missing-command",
-                                    f"no `{command}` command; that check will be skipped",
+                                    f"no `{command}` command; that check will be skipped"
+                                    if command != "e2e" else
+                                    "no `e2e` command and no E2E check recorded; /maestro-sync "
+                                    "looks for a suite",
                                     f"{where}.commands.{command}"))
     if "environment" in config:
         environment = config["environment"]

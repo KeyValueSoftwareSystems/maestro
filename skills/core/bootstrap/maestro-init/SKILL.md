@@ -41,8 +41,9 @@ inline. Never parallelize these steps because each consumes the previous step's 
    result. It writes `maestro.config.yaml` (registry names when `registry.yaml` exists;
    stack and commands from the detect-stack evidence; the `worktree` commands from a workspace
    sandbox script and the `environment` commands from a workspace infra script when there is
-   one). It does not scan again and does not read the knowledge base. Capture `created` and
-   `updated`, and show the person any worktree or environment commands it set.
+   one; each repo's `e2e` command only after the engine confirmed detect-stack's E2E proposal).
+   It does not scan again and does not read the knowledge base. Capture `created`, `updated`
+   and its `e2e` map, and show the person any worktree or environment commands it set.
 4. **Docs freshness gate** — before authoring, run a **full** (not `--remote-only`) plan:
    `python3 .maestro/engine/workspace_sync.py plan --root . --no-fetch --out .maestro/index/workspace-sync-init-knowledge.json`
    and `python3 .maestro/engine/codebase_scan.py plan --root .`.
@@ -87,7 +88,8 @@ inline. Never parallelize these steps because each consumes the previous step's 
    skipped, whether domain rules were found (and checked), and whether the project-config skill
    created or updated `maestro.config.yaml`.
    Show each repo's `build` and `test` and ask the user to confirm them before a
-   feature run. Then tell them that newly installed skills/agents
+   feature run. Report each confirmed E2E suite; when none was found, say QA will check the
+   test cases directly instead of writing an E2E suite. Then tell them that newly installed skills/agents
    become active after their host reloads the config, and that they can start a feature
    with `/maestro <slug>` or `$maestro <slug>`.
 

@@ -1,6 +1,6 @@
 ---
 name: detect-stack
-description: Scan the codebase to detect its technology stack(s), then install only the matching stack-tagged skills (plus the always-installed core SDLC pack) by running the installer with a --stack filter. Does not write maestro.config.yaml. Front door for /detect-stack.
+description: Scan the codebase to detect its technology stack(s) and each repository's E2E suite (proposed for the engine to confirm), then install only the matching stack-tagged skills (plus the always-installed core SDLC pack) by running the installer with a --stack filter. Does not write maestro.config.yaml. Front door for /detect-stack.
 allowed-tools: Read, Grep, Glob, Bash
 tags: [maestro, bootstrap, install]
 ---
@@ -53,6 +53,36 @@ Emit only these tokens (they match the `stack:` tags on the skills):
    concrete signal for; list that evidence.
 3. **De-duplicate and sort** the tokens.
 
+## E2E suite
+For each repository, find whether it has an end-to-end / UI-journey suite and the command that
+runs it. You only propose; the engine confirms it before it is recorded, so report what you
+found, not what you hope. Look beyond the obvious, for example:
+
+- **Frameworks** (examples, not a complete list): Playwright, Cypress, WebdriverIO, Nightwatch,
+  TestCafe, Puppeteer, Selenium, Cucumber (`*.feature`), Robot Framework, Karate, Appium, Detox,
+  Maestro flows (in the app repo), Espresso (`androidTest/`), XCUITest (`*UITests`), Flutter
+  `integration_test/`, Rails system tests, Laravel Dusk, Go tests behind an `e2e` build tag.
+- **Where**: dependencies and framework config files; `package.json` scripts and Makefile
+  targets; CI jobs (`.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`, …), which usually
+  show the exact command and its environment; monorepo sub-projects (`apps/*-e2e`, packages with
+  their own config); a repository in the workspace that exists only to hold E2E tests.
+- **Not E2E**: unit and component tests, and integration tests that never drive the product
+  the way a user or client does. A config file with no specs is not a suite.
+
+Per repository, report `e2e` as either
+`{"command": <the command that runs the suite, from the repo root>, "list": <the framework's
+list / collect / dry-run command that prints the specs without running them, when it has one —
+e.g. "npx playwright test --list", "npx jest --listTests", "pytest --collect-only -q -m e2e",
+"go test -list . -tags e2e ./e2e/...">, "framework": <name>, "evidence": [<repo-relative files
+that run or define the command: the package.json, Makefile or CI file>]}`
+or `{"command": null, "reason": <one line: what you looked for and did not find>}`.
+Prefer the repository's own script or CI command over a framework default; use a framework
+default (`npx playwright test`) only when its config and specs exist. A list command must not
+install anything. Never invent a command.
+
+When your instruction asks only for the E2E suite of named repositories, scan just those, report
+`repos` with `name` and `e2e`, and skip the stack tokens and the install step.
+
 ## Install step
 1. **Pick harness targets.** Include every already-installed Maestro host you can evidence:
    `.claude/skills/maestro/SKILL.md` ⇒ `claude-code`,
@@ -91,6 +121,6 @@ Do not write `maestro.config.yaml`. `/maestro-init` passes your per-repo result 
 
 ## Output contract
 Return `stacks` (the detected stack tokens, comma-separated), `installed_count` (skills +
-agents installed), `repos` (one entry per repo: `name`, `stacks` for that repo, and the
-`evidence` files you already cited), and `summary` (one line naming the stacks and harness
+agents installed), `repos` (one entry per repo: `name`, `stacks` for that repo, the
+`evidence` files you already cited, and `e2e`, the E2E suite proposal above), and `summary` (one line naming the stacks and harness
 targets). Do not write those fields to `maestro.config.yaml`.

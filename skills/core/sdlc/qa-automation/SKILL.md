@@ -1,6 +1,6 @@
 ---
 name: qa-automation
-description: Author critical-journey E2E / UI-automation tests from the acceptance criteria (not from the implementation), run them in a clean env, and report. Meets QA standards (risk-tiering, isolation, determinism, no weakened assertions). Edits test files only. Front door for /qa-automation.
+description: Author critical-journey E2E / UI-automation tests from the acceptance criteria (not from the implementation) in the project's own E2E framework, run them in a clean env, and report; a project without one gets each case checked directly against the running system, never a new framework. Meets QA standards (risk-tiering, isolation, determinism, no weakened assertions). Edits test files only. Front door for /qa-automation.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write
 tags: [sdlc, qa]
 ---
@@ -20,8 +20,14 @@ catalog, and (for cross-service journeys) the contract — and the artifact path
 Standalone? read them and write to a path you choose (and tell the user where).
 
 ## Steps
-1. **Pick the framework** — default **Playwright** (use the project's existing E2E framework
-   if one is already set up; e.g. Maestro for mobile).
+1. **Use the project's E2E framework, never a new one.** When your instructions name the
+   project's E2E suite (or, standalone, the project already has one: e.g. Playwright, Cypress,
+   WebdriverIO, Maestro for mobile), automate in that framework, reusing its config, fixtures and
+   helpers, without installing packages or browsers. When the project has no E2E framework, do
+   not add one and write no suite: check each case directly against the running system with the
+   tools already there (HTTP requests, the CLI, database queries, the repositories' own test
+   runners), record the observed result as the case's evidence, and skip the `tasks.json` and
+   scenario steps below. The standards below still apply to what you check and how you report.
 2. **Source the journeys.** If `test_cases_path` exists, that catalog is the source of truth —
    automate its cases, preserving each case's ID/traceability, and do not silently drop a case
    (note any you defer and why). Only when no catalog is present do you derive journeys straight
