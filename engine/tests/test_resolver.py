@@ -1312,6 +1312,22 @@ class ResumeTest(Sim):
         kept = [n for n in os.listdir(run_dir) if n.startswith("state.yaml.unreadable-")]
         self.assertEqual(len(kept), 1)
 
+    def test_other_workflow_on_a_live_slug_needs_force_and_keeps_the_old_ledger(self):
+        # A stage workflow started on an existing feature (/maestro <slug> design-lld.yaml).
+        self.start(self.write_wf("w.yaml", BACKEDGE_WF))
+        other = self.write_wf("stage.yaml", BACKEDGE_WF)
+        with self.assertRaises(resolver.RunError) as ctx:
+            resolver.init_run("feat", other, {}, self.tmp)
+        self.assertEqual(ctx.exception.code, 3)
+        self.assertIn("already runs", str(ctx.exception))
+        run_dir = os.path.dirname(statemod.state_path("feat", self.tmp))
+        self.assertEqual([n for n in os.listdir(run_dir) if n.startswith("state.yaml.replaced-")], [])
+        data, created = resolver.init_run("feat", other, {}, self.tmp, force=True)
+        self.assertTrue(created)
+        self.assertEqual(data["workflow"]["file"], other)
+        kept = [n for n in os.listdir(run_dir) if n.startswith("state.yaml.replaced-")]
+        self.assertEqual(len(kept), 1)
+
     def test_reset_all(self):
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))
         self.touch(".maestro/feat/work.md")

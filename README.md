@@ -254,6 +254,16 @@ python3 .maestro/engine/maestroctl.py todo --slug add-phone-otp-login
 
 **Run one phase only:** `/maestro my-feature .maestro/workflows/design.yaml`
 
+**Run one stage on an existing feature:** `/maestro my-feature .maestro/workflows/design-hld.yaml`
+(or `design-contract.yaml`, `design-lld.yaml`) runs that stage with the feature's existing
+documents. If the feature already has a run ledger, Maestro asks first and keeps the old one
+beside the new (`state.yaml.replaced-<time>`).
+
+**Write an HLD or LLD without Maestro:** call the skill with your own inputs, e.g. `/lld-writing`
+(`$lld-writing` in Codex) with the feature, the HLD, contract and decisions files, the
+repositories and where each LLD goes. No queue or validators: a missing blocking decision is asked
+in chat, and a contract change is reported in chat. `/hld-writing` works the same way.
+
 **See where the time goes:** `/maestro my-feature --debug` (new or resumed run) keeps a timing
 profile at `.maestro/runs/my-feature/profile.md`: work, human and idle time per stage and step.
 

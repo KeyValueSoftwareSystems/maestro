@@ -37,6 +37,21 @@ jobs, queues, endpoints and their consumers, `INV-` rules, `CS-` scenarios): nam
 the assessment spells it, where the design handles it, or write "`<item>`: no change needed,
 because …". An item left out is work nobody planned.
 
+## Standalone use
+
+When a person invokes this skill directly (a slash command or `$lld-writing`, no workflow around
+it), their message is the whole brief: take the feature, the HLD, contract and decision files, the
+repositories, and the output path per repository from it. Where it names none, use
+`<repo>.md` under a sensible directory (say where). Everything the workflow would supply but the
+message does not — post-question queue, validators, impact assessment, decision-source fields —
+is simply absent: skip it, never invent one, and still write each LLD in the required shape.
+Treat the person's decision files as confirmed decisions.
+
+If a blocking decision is missing or two inputs conflict, stop and ask in chat with the options
+instead of guessing, and write nothing for the repository it blocks. Report a contract change in
+chat, naming the operation, the change and the repositories it affects, instead of designing
+around it. End with the files written and any such open item.
+
 ## Required document shape
 
 Start with one concise level-1 title containing `LLD`, then these metadata lines:

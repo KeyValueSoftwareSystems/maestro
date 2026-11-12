@@ -219,6 +219,33 @@ Prefer manual control? Every step is also a skill you can invoke on its own — 
 command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
 `$hld-writing`, for example). Same skills, no orchestration.
 
+**One stage under Maestro.** Start a stage's own workflow on an existing feature slug:
+`/maestro <slug> .maestro/workflows/design-hld.yaml`, `design-contract.yaml` or `design-lld.yaml`
+(every repository's LLD). The stage needs the documents before it: the HLD needs
+`requirement/prd.md`; the contract and LLDs also need `hld.md` (on the light path, which has no
+HLD, run `design-lld` with `light=true`). Maestro checks these first and names what is missing.
+A slug that already has a run ledger is replaced only after you confirm, and the old ledger is
+kept beside it as `state.yaml.replaced-<time>`.
+
+**A skill on its own.** Without Maestro, give `/hld-writing` or `/lld-writing` your inputs in the
+message: the feature, the PRD or HLD, contract and decision files, the repositories, the output
+paths, for example
+
+```
+/lld-writing
+Feature: phone-otp-login
+Inputs: HLD at docs/design/hld.md, contract at api/openapi.yaml (if any),
+decisions in docs/design/decisions.md.
+Repositories: auth-service, web-app.
+Write one LLD per repo to docs/design/lld/<repo>.md.
+No post-question queue or validators: if a blocking decision is missing,
+stop and ask me instead of guessing. Report any contract change in chat.
+```
+
+The skill writes the documents in the same required shape, skips the workflow-only pieces
+(question queue, validators, impact trace), stops and asks when a blocking decision is missing,
+and reports a contract change in chat.
+
 ## New products (greenfield)
 
 A workspace with no repositories yet takes the greenfield path. The HLD questions then decide

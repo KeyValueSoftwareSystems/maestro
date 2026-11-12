@@ -229,11 +229,11 @@ def load(slug, root="."):
     return data
 
 
-def quarantine(slug, root="."):
-    """Move an unusable ledger aside (never delete it) and return the new path."""
+def quarantine(slug, root=".", suffix="unreadable"):
+    """Move a ledger aside (never delete it) and return the new path."""
     path = state_path(slug, root)
     stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = f"{path}.unreadable-{stamp}"
+    target = f"{path}.{suffix}-{stamp}"
     os.replace(path, target)
     return target
 

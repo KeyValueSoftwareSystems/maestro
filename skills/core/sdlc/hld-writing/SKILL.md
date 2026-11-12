@@ -34,6 +34,20 @@ jobs, queues, endpoints and their consumers, `INV-` rules, `CS-` scenarios): nam
 the assessment spells it, where the design handles it, or write "`<item>`: no change needed,
 because …". An item left out is work nobody planned.
 
+## Standalone use
+
+When a person invokes this skill directly (a slash command or `$hld-writing`, no workflow around
+it), their message is the whole brief: take the feature, the PRD or requirement, decision and
+architecture files, and the output path from it. Where it names no path, use `hld.md` under a
+sensible directory (say where). Everything the workflow would supply but the message does not —
+post-question queue, deferred-question ledger, validators, impact assessment, infrastructure
+level — is simply absent: skip it, never invent one, and still write the HLD in the required
+shape. Treat the person's decision files as confirmed decisions.
+
+If a blocking architecture decision is missing or two inputs conflict, stop and ask in chat with
+the options instead of guessing, and write nothing. Name any deferred, non-blocking question
+under Open questions. End with the file written and any open item.
+
 ## Required HLD shape
 
 Start with one concise level-1 title containing `HLD`, the workflow-supplied feature slug, and
