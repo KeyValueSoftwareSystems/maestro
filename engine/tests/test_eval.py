@@ -82,14 +82,14 @@ class ScoreTest(unittest.TestCase):
                             "interfaces_changed": True, "verification": "verified",
                             "ac_all_passed": True, "drift_blocking": False,
                             "min_acceptance_criteria": 1, "max_rounds_per_stage": 1,
-                            "max_person_gates": 5})
+                            "max_person_gates": 6})
         code, report = run_quietly(eval_score.main, ["score", "--root", self.root,
                                                      "--case", folder])
         self.assertEqual(code, 0, report)
         metrics = report["metrics"]
         self.assertEqual(metrics["verification"], {"backend": "verified", "frontend": "verified"})
         self.assertEqual(metrics["questions_by_stage"], {"hld": 1, "lld": 1, "prd": 1})
-        self.assertEqual(metrics["person_gates"], 5)  # PRD, HLD, LLD scope, LLD, release
+        self.assertEqual(metrics["person_gates"], 6)  # PRD, HLD mode, HLD, LLD scope, LLD, release
         self.assertTrue(metrics["prd_valid"])
 
     def test_failed_expectations_and_the_judge(self):

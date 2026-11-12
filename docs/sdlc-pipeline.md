@@ -10,7 +10,8 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
 workspace sync → requirement → PRD (summarize context → Grill unclear decisions → write once → validate)
-   → HLD (Grill architecture with options → confirm direction → write once → validate
+   → HLD (brainstorm as a conversation, or Grill architecture with options → confirm direction
+          → write once → validate
           → architecture review by a fresh reviewer → [approve])
    → API contract (only when the HLD lists cross-repo interfaces)
    → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
@@ -116,7 +117,10 @@ repository that owns it. The HLD writer and reviewer draw on the `architecture-p
 and, per detected platform, the `terraform-patterns`, `kubernetes-patterns` and
 `container-patterns` packs (installed by `detect-stack` when the workspace uses them).
 
-The HLD stage follows the same clarify-first shape. It batches only unresolved architecture
+The HLD stage first asks whether you want to brainstorm the architecture. Yes starts an open
+conversation with the architect; when you say you are done it writes the agreed direction,
+decisions and open points to `hld-brainstorm.md`, and once you confirm, the HLD is written from
+them. No (and autopilot) takes the clarify-first shape below. It batches only unresolved architecture
 decisions into native question popups, each with real alternatives and their trade-offs, then asks
 you to confirm the assembled design direction before anything is written (see
 [Interviews are conversations](#interviews-are-conversations)). It keeps decisions in

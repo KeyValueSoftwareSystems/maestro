@@ -36,6 +36,7 @@ def canned_agent_outputs(step, action):
         "normalize_prd": {"summary": "Client PRD restructured; 1 fact to confirm"},
         "impact": {"impact_summary": "backend and frontend change", "repos_csv": "backend,frontend"},
         "prepare_hld_questions": {"summary": "Prepared architecture questions"},
+        "brainstorm_hld": {"summary": "One service owns orders; 1 point open"},
         "write_hld": {"hld_summary": "3 services, 2 new tables", "needs_clarification": False},
         "prepare_lld_questions": {"summary": "Prepared repository design questions"},
         "author_llds": {"summary": "LLDs written", "contract_change_needed": False,
@@ -429,6 +430,8 @@ class SdlcE2E(unittest.TestCase):
                     decisions = gate_script.get(step)
                     if decisions is None and step == "design/lld/lld_approval":
                         decisions = [("approve", None)] * 20
+                    if decisions is None and step == "design/hld/hld_mode":
+                        decisions = [("guided", None)] * 5
                     self.assertTrue(decisions, f"unscripted gate: {step} ({act['prompt'][:80]})")
                     i = gate_ptr.get(step, 0)
                     self.assertLess(i, len(decisions), f"gate {step} asked more than scripted")
@@ -512,7 +515,8 @@ class SdlcE2E(unittest.TestCase):
         # one LLD run: one interview, one write, a readiness check and one human approval,
         # all before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
-        self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/hld/hld_approval",
+        self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/hld/hld_mode",
+                                      "design/hld/hld_approval",
                                       "design/lld/lld_scope", "design/lld/lld_approval",
                                       "delivery/release_approval"])
         self.assertEqual(steps.count("design/lld/author_llds"), 1)
@@ -689,6 +693,17 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps.count("design/hld/prepare_hld_questions"), 1)  # an accepted round goes straight to writing
         self.assertEqual(steps.count("design/hld/validate_hld"), 2)
 
+    def test_hld_brainstorm_writes_the_hld_without_the_question_rounds(self):
+        self.prep_tasks_json()
+        action, trace = self.drive({**self.DESIGN_GATES,
+                                    "design/hld/hld_mode": [("brainstorm", None)],
+                                    "design/hld/brainstorm_confirm": [("more", None), ("create", None)]})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertEqual(steps.count("design/hld/brainstorm_hld"), 2)
+        self.assertNotIn("design/hld/prepare_hld_questions", steps)
+        self.assertLess(steps.index("design/hld/brainstorm_hld"), steps.index("design/hld/write_hld"))
+
     def test_hld_revise_needing_a_decision_falls_back_to_clarification(self):
         self.prep_tasks_json()
         writes = []
@@ -837,14 +852,15 @@ class SdlcE2E(unittest.TestCase):
         }, mode="design")
         self.assertEqual(action["action"], "done", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"],
-                         ["design/prd/prd_approval", "design/hld/hld_approval"])
+                         ["design/prd/prd_approval", "design/hld/hld_mode",
+                          "design/hld/hld_approval"])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
                          ["design/lld/lld_scope", "design/lld/lld_approval",
                           "delivery/release_approval"])
         gates = statemod.load("demo", self.tmp)["gates"]
         self.assertEqual([(g["step"], g.get("auto")) for g in gates], [
-            ("design/prd/prd_approval", None), ("design/hld/hld_approval", None),
-            ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
+            ("design/prd/prd_approval", None), ("design/hld/hld_mode", None),
+            ("design/hld/hld_approval", None), ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
             ("delivery/release_approval", "design")])
         # the autopilot LLD approval still records the hash-bound approval delivery checks
         self.assertTrue(os.path.isfile(lld_set.approval_path("demo", self.tmp)))
@@ -856,6 +872,7 @@ class SdlcE2E(unittest.TestCase):
         asked = [a for a, _ in trace if a in ("ask_gate", "ask_interview", "ask_interview_batch")]
         self.assertEqual(asked, [])
         self.assertIn(("auto_gate", "delivery/release_approval"), trace)
+        self.assertIn(("auto_gate", "design/hld/hld_mode"), trace)  # autopilot never brainstorms
         # one autopilot round per stage, straight to the writer
         steps = [s for _, s in trace]
         for stage in ("prd", "hld", "lld"):
@@ -882,7 +899,8 @@ class SdlcE2E(unittest.TestCase):
                                    agent_overrides={"arch_review": blocked}, mode="auto")
         self.assertEqual(action["action"], "failed", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["design/hld/hld_approval"])
-        self.assertEqual([s for a, s in trace if a == "auto_gate"], ["design/prd/prd_approval"])
+        self.assertEqual([s for a, s in trace if a == "auto_gate"],
+                         ["design/prd/prd_approval", "design/hld/hld_mode"])
 
     def test_acceptance_criteria_are_traced_through_qa_to_the_release_gate(self):
         self.prep_tasks_json()
@@ -1502,6 +1520,8 @@ class SdlcE2E(unittest.TestCase):
                     resolver.record_gate(run, step, "clarify")
                 elif gate == "prd_approval":
                     resolver.record_gate(run, step, "approve")
+                elif gate == "hld_mode":
+                    resolver.record_gate(run, step, "guided")
                 else:
                     self.fail(f"unexpected gate {step}")
             elif action["action"] == "ask_interview":
