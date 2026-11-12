@@ -195,7 +195,9 @@ bootstrap (once/umbrella)  ──►  docs/{technical,functional}/<domain>.md + 
 feature run inits ──► freezes lessons snapshot ──► HLD/design/review steps read docs/ + lessons
         │
         ▼
-release approved ──► ARCHIVAL PHASE (before merge to master):
+release approved ──► a person confirms the archive ("Not now" = none of this until
+                     `/maestro <feature> .maestro/workflows/archive.yaml` is run later)
+                 ──► ARCHIVAL PHASE (before merge to master):
         deliver.py (report verified branches, or push + open pull requests)
           → retrospect skill (refresh docs/ for touched domains + architecture.md;
                           this run → incoming/<slug>.json)
@@ -212,8 +214,9 @@ human merges the pull requests (and commits the refreshed docs/, codebase maps i
   then distills lessons → `incoming/`, and the engine's `mem_consolidate.py` script folds
   them; run by `workflows/retrospect.yaml` (standalone/off-cycle) and inside the archival
   phase.
-- **Archival** — `workflows/archive.yaml` (deliver + harvest), wired as the post-release
-  `archive` phase of `sdlc-main.yaml`. Maestro never merges: it reports the branches or opens
+- **Archival** — `workflows/archive.yaml` (release-record check, a person's confirmation, then
+  deliver + harvest), wired as the post-release `archive` phase of `sdlc-main.yaml` and runnable
+  later on its own when the confirmation was answered "Not now". Maestro never merges: it reports the branches or opens
   pull requests, then harvests. The docs/ refreshes the harvest writes (codebase maps included,
   under `docs/codebase-maps/`) are left as local changes for a person to commit.
 

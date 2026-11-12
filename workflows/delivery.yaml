@@ -382,7 +382,7 @@ nodes:
       Review pack: ${steps.review_pack.outputs.pack_path}
       QA: ${steps.qa.outputs.qa_summary} · ${steps.qa.outputs.e2e_summary}
     options:
-      - {id: approve, label: Approve the release, to: end}
+      - {id: approve, label: Approve the release, to: record_release}
       - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
     # Design and auto modes release only what the engine itself verified (build/lint/test receipts
@@ -394,6 +394,26 @@ nodes:
         - "${steps.finalize_implementation.outputs.verified_ok} == true"
         - "${steps.ac_trace.outputs.all_passed} == true"
         - "${steps.drift_verdict.outputs.blocking} == false"
+
+  # Engine-owned: binds the approval to the manifest as approved (release.json). The archive
+  # refuses to deliver without it, also when a person archives later on its own.
+  - id: record_release
+    type: script
+    label: Record the release approval
+    run:
+      - python3
+      - .maestro/engine/release_record.py
+      - record
+      - --root
+      - .
+      - --slug
+      - "${inputs.slug}"
+      - --manifest
+      - "${steps.finalize_implementation.outputs.manifest_path}"
+      - --by
+      - "${steps.release_approval.outputs.by}"
+    on_fail: abort
+    next: end
 
 outputs:
   design_changed: "${steps.workspace_sync_pre_impl.outputs.changed}"

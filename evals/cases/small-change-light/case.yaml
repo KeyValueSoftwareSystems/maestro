@@ -29,5 +29,5 @@ expect:
   ac_all_passed: true
   drift_blocking: false
   max_fix_rounds: 2
-  max_person_gates: 0
+  max_person_gates: 1  # the archive confirmation: always a person
   judge_min: 3.5

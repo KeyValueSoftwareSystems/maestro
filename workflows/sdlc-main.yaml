@@ -62,16 +62,16 @@ nodes:
   - id: archive
     type: subworkflow
     label: Pull requests and archival
-    # Runs AFTER release approval: delivers the verified branches (or opens pull requests, per
-    # maestro.config.yaml delivery.mode), then folds this run's lessons into memory. A person
-    # merges.
+    # Runs AFTER release approval and only once a person confirms the archive (never autopilot):
+    # delivers the verified branches (or opens pull requests, per maestro.config.yaml
+    # delivery.mode), then folds this run's lessons into memory and the living docs. A person
+    # merges. Declining leaves the push to the person and docs/ unchanged.
     workflow: .maestro/workflows/archive.yaml
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       manifest: "${steps.delivery.outputs.manifest_path}"
       pack: "${steps.delivery.outputs.pack_path}"
-      release_by: "${steps.delivery.outputs.release_by}"
     next: end
 
 outputs:
@@ -79,5 +79,6 @@ outputs:
   contract: "${steps.design.outputs.contract_path}"
   review_pack: "${steps.delivery.outputs.pack_path}"
   implementation_manifest: "${steps.delivery.outputs.manifest_path}"
+  archive: "${steps.archive.outputs.archive}"
   delivery: "${steps.archive.outputs.delivery}"
   pull_requests: "${steps.archive.outputs.pull_requests}"
