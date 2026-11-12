@@ -273,13 +273,11 @@ def cmd_claim(args):
     path = discovered.get(repo)
     if not path:
         return _fail(f"claimed repo {repo!r} is no longer discoverable")
-    stacks, skills = stack_skills.for_repo(args.root, repo)
     # the worktree the engine created for this repo (worktrees.py prepare); empty without one
     worktree, branch = worktrees.for_repo(args.root, args.slug, repo)
     print(json.dumps({"repo": repo, "repo_path": os.path.relpath(path, args.root),
                       "worktree": worktree, "branch": branch,
-                      "done": False, "stacks_csv": ",".join(stacks),
-                      "stack_skills_csv": ",".join(skills)}))
+                      "done": False, **stack_skills.csv_fields(args.root, repo)}))
     return 0
 
 
@@ -459,16 +457,18 @@ def cmd_bugfix_claim(args):
         remaining = doc.get("bugfix_remaining") or []
         if not remaining:
             print(json.dumps({"done": True, "repo": "", "repo_path": "", "branch": "",
-                              "worktree": "", "commit": "", "stack_skills_csv": ""}))
+                              "worktree": "", "commit": "", "stack_skills_csv": "",
+                              "write_skills_csv": "", "review_skills_csv": ""}))
             return 0
         repo = remaining.pop(0)
         doc["bugfix_remaining"] = remaining
         _write(_queue_path(args.slug, args.root), doc)
         entry = (doc.get("implementations") or {})[repo]
-    _stacks, skills = stack_skills.for_repo(args.root, repo)
+    skills = stack_skills.csv_fields(args.root, repo)
+    skills.pop("stacks_csv")
     print(json.dumps({"done": False, "repo": repo, "repo_path": entry["source_path"],
                       "branch": entry["branch"], "worktree": entry["worktree"],
-                      "commit": entry["commit"], "stack_skills_csv": ",".join(skills)}))
+                      "commit": entry["commit"], **skills}))
     return 0
 
 

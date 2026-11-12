@@ -46,6 +46,13 @@ requirements, references, revision feedback, and earlier answers.
 - Resolve one material decision per question. Use a concrete actor, action, state, or failure
   scenario instead of broad prompts.
 - Explain in one short sentence why the answer changes the product.
+- **Write for a quick read.** The person answers many questions in a row, so each must be clear on
+  the first pass: one plain sentence that ends in a question mark, everyday words, the concrete
+  situation first ("When a code expires while the user is typing it, …"). No internal IDs, file
+  paths, field names or acronyms the user has not used; no "and/or", brackets or nested clauses.
+  Keep `title` to a few words naming the decision, `why` to what changes for the product's users,
+  and the recommendation to the answer itself, stated first, with at most one sentence of reason.
+  Option labels are short answers that can be chosen without reading the trade-off.
 - Recommend an answer only when evidence supports it. A recommendation is not confirmed until the
   user accepts it.
 - When the decision is a genuine choice, add up to two `alternatives`, each a short `label` and the

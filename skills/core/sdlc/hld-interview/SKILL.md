@@ -57,6 +57,13 @@ profile, ask infrastructure questions only when the repositories you read define
 
 Architecture is decided with the user, not announced to them.
 
+- **Write for a quick read.** The person answers many questions in a row, so each must be clear on
+  the first pass: one plain sentence that ends in a question mark, everyday words, the concrete
+  situation first ("When a code expires while the user is typing it, …"). No internal IDs, file
+  paths or acronyms the user has not used; no "and/or", brackets or nested clauses. Keep `title`
+  to a few words naming the decision, `why` to what changes for the system or its cost to change,
+  and the recommendation to the answer itself, stated first, with at most one sentence of reason.
+  Option labels are short answers that can be chosen without reading the trade-off.
 - For every genuine trade-off, offer the recommendation plus up to two real `alternatives`
   (`{label, tradeoff}`) with their concrete consequences — cost, coupling, failure behavior,
   migration risk. Never invent a straw option to make the recommendation look good.

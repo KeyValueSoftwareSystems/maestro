@@ -304,7 +304,10 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `scripts/gen_workflow_releases.py` from git history — rerun it after editing `workflows/*`.
 - **`stack_skills.py`** — a repository's stack skills: `repos.<repo>.stack` in maestro.config.yaml
   (one name or `go, db`) selects the installed skills tagged `stack:<name>`; the implementation
-  pool's `claim`/`bugfix-claim` hand them to the implement, review and fix steps as `stack_skills`.
+  pool's `claim`/`bugfix-claim` hand them out by the skill's kind tag: the implement and fix steps
+  get everything except `review` checklists (`write_skills_csv`), the reviewer gets the `review`
+  checklists and `security` skills (`review_skills_csv`; a stack with no checklist gives it the
+  rest). The prompts tell each step to load only the ones covering what the change touches.
 - **`install_skills.py`** — `install.sh`'s skill installer: per host, a stock copy (its hash
   matches `.maestro/skill-manifest.json`) is replaced, an edited one is kept with the new files
   written beside it as `*.upstream`, and a copy from before the manifest is replaced with the old
@@ -447,7 +450,9 @@ whole suite — the parser underpins everything.
   `stacks/<stack>`, plus `maestro`); a new skill goes in the folder matching its role
   (`stacks/<stack>` = its `stack:` tag). Install flattens all of them into the selected host's skills directory,
   so the path is organization only — never reference a skill by folder path, only by `name`.
-- **`skills/maestro/SKILL.md` is the orchestrator's contract.** Its hard rules (never
+- **`skills/maestro/SKILL.md` is the orchestrator's contract.** It stays in the lead's context
+  for the whole run, so keep it short: cases that apply only sometimes (no slug, one stage, an
+  interview discussion, inline mode) live in reference files beside it, read on demand. Its hard rules (never
   edit state, never read artifacts into context, never skip gates, dispatch verbatim)
   are what keep long runs reliable — change them only deliberately.
 - **Workflows name skills directly** (`skill: hld-writing`); placeholders are allowed in the
