@@ -1115,9 +1115,11 @@ class SdlcE2E(unittest.TestCase):
         self.prep_tasks_json()
         config = Path(self.tmp, "maestro.config.yaml")
         config.write_text(config.read_text().replace("  backend:\n", "  backend:\n    stack: go\n"))
-        skill = Path(self.tmp, ".claude/skills/golang-patterns/SKILL.md")
-        skill.parent.mkdir(parents=True)
-        skill.write_text("---\nname: golang-patterns\ndescription: Go.\ntags: [stack:go]\n---\n")
+        for name, tags in (("golang-patterns", "[stack:go, patterns]"),
+                           ("go-review", "[stack:go, review]")):
+            skill = Path(self.tmp, f".claude/skills/{name}/SKILL.md")
+            skill.parent.mkdir(parents=True)
+            skill.write_text(f"---\nname: {name}\ndescription: Go.\ntags: {tags}\n---\n")
         action, _trace = self.drive(dict(self.DESIGN_GATES))
         self.assertEqual(action["action"], "done", action)
         by_repo = {}
@@ -1129,7 +1131,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("stack skills ()", by_repo["frontend"])
         review = next(p[0] for s, p in self.prompts.items()
                       if s.endswith("/impl/review") and "repo_path: codebase/backend" in p[0])
-        self.assertIn("golang-patterns", review)
+        # the reviewer is handed the stack's checklist, not its pattern guide
+        self.assertIn("review skills (go-review)", review)
+        self.assertNotIn("golang-patterns", review)
 
     def test_greenfield_creates_and_scaffolds_the_repositories_the_hld_lists(self):
         self.prep_tasks_json()

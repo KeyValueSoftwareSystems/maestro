@@ -15,7 +15,8 @@ inputs:
   worktree: {type: string, default: "", description: the feature worktree the engine created for this repository (empty - the implementer creates one)}
   branch: {type: string, default: "feature/${inputs.slug}-${inputs.stack}", description: the feature branch checked out in that worktree}
   feature: {type: string, default: "${inputs.slug}"}
-  stack_skills: {type: string, default: "", description: installed stack skills for this repository (stack_skills.py)}
+  stack_skills: {type: string, default: "", description: installed stack skills for the steps that write code (stack_skills.py)}
+  review_skills: {type: string, default: "", description: installed stack skills for the reviewer (stack_skills.py)}
 defaults:
   model: sonnet
   agent: implementer
@@ -79,8 +80,9 @@ nodes:
       permission change, payment logic, production config, secret or dependency upgrade, or a
       design decision that looks wrong), stop and return escalate true with the reason in
       escalation. Honour the person's guidance (the `guidance` input) when there is any.
-      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
-      follow its conventions; when none is listed, follow the repository's own conventions.
+      Apply the repository's stack skills (${inputs.stack_skills}): load only those covering a
+      framework or library this change touches and follow their conventions; when none is listed,
+      follow the repository's own conventions.
     skill: repo-implement
     isolate: worktree
     inputs:
@@ -222,8 +224,9 @@ nodes:
       (mark it "introduced_by_revision": true); anything you could have raised earlier goes to the
       person as late.
       Then overwrite both files.
-      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
-      follow its conventions; when none is listed, follow the repository's own conventions.
+      Apply the repository's review skills (${inputs.review_skills}): load only those covering a
+      framework or library this change touches and check the change against them; when none is
+      listed, review against the repository's own conventions.
     skill: repo-review
     agent: reviewer
     model: opus
@@ -248,7 +251,7 @@ nodes:
       domain_rules_present: "${steps.domain_rules.outputs.present}"
       domain_rules_report: "${steps.domain_rules.outputs.report_path}"
       lessons: "${memory.knowledge.${inputs.stack}-review}"
-      stack_skills: "${inputs.stack_skills}"
+      review_skills: "${inputs.review_skills}"
     outputs: [review_path, blocking, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
@@ -301,8 +304,9 @@ nodes:
       dependency upgrade, or a fix that would weaken a test), make no change and return escalate
       true. Honour the person's guidance (the `guidance` input) when there is any.
       Do NOT loop — the workflow re-invokes you if needed.
-      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
-      follow its conventions; when none is listed, follow the repository's own conventions.
+      Apply the repository's stack skills (${inputs.stack_skills}): load only those covering a
+      framework or library this change touches and follow their conventions; when none is listed,
+      follow the repository's own conventions.
     skill: fix-loop
     inputs:
       slug: "${inputs.slug}"

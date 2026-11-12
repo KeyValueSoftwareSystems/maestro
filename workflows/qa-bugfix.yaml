@@ -46,8 +46,9 @@ nodes:
       Re-run only what proves your fix (the failing test, package or file), never a whole suite:
       the engine re-runs every check after you. Commit the fix on the branch; a round that commits
       nothing goes to a person. Do NOT loop — the workflow re-invokes you if needed.
-      Apply the repository's stack skills (${inputs.stack_skills}): load each installed one and
-      follow its conventions; when none is listed, follow the repository's own conventions.
+      Apply the repository's stack skills (${inputs.stack_skills}): load only those covering a
+      framework or library this change touches and follow their conventions; when none is listed,
+      follow the repository's own conventions.
     skill: fix-loop
     inputs:
       slug: "${inputs.slug}"

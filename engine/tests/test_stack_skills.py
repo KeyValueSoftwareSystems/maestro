@@ -33,6 +33,24 @@ class StackSkillsTest(unittest.TestCase):
                          (["go", "db"], ["golang-patterns", "golang-testing", "postgres-patterns"]))
         self.assertEqual(stack_skills.for_repo(self.root, "web"), (["react"], ["react-patterns"]))
 
+    def test_each_step_gets_only_the_skills_its_job_reads(self):
+        self.skill(".claude/skills", "go-review", "[stack:go, review]")
+        self.skill(".claude/skills", "go-security", "[stack:go, security]")
+        self.skill(".claude/skills", "go-house-rules", "[stack:go]")
+        # go ships a review checklist: the reviewer reads it, security and untagged skills, not
+        # the pattern and testing guides; db ships none, so its guide still reaches the reviewer
+        self.assertEqual(stack_skills.for_repo(self.root, "api", "review")[1],
+                         ["go-house-rules", "go-review", "go-security", "postgres-patterns"])
+        self.assertEqual(stack_skills.for_repo(self.root, "api", "write")[1],
+                         ["go-house-rules", "go-security", "golang-patterns", "golang-testing",
+                          "postgres-patterns"])
+        fields = stack_skills.csv_fields(self.root, "api")
+        self.assertEqual(fields["stacks_csv"], "go,db")
+        self.assertEqual(fields["review_skills_csv"],
+                         "go-house-rules,go-review,go-security,postgres-patterns")
+        self.assertEqual(len(fields["stack_skills_csv"].split(",")), 6)
+        self.assertEqual(stack_skills.csv_fields(self.root, "docs")["write_skills_csv"], "")
+
     def test_no_stack_selects_nothing(self):
         self.assertEqual(stack_skills.for_repo(self.root, "docs"), ([], []))
         self.assertEqual(stack_skills.for_repo(self.root, "unknown"), ([], []))

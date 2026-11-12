@@ -30,36 +30,9 @@ is work the workflow deliberately assigns to this session:
 
 ## Selecting a slug (only when none was given)
 
-Ask the engine what runs exist before deciding whether this is a resume or a new feature:
-
-```bash
-python3 .maestro/engine/maestroctl.py runs        # read-only JSON: [{slug, status, workflow, active, ...}]
-```
-
-When runs exist and the user did not name one explicitly, present the choice with the host's
-native selector: `AskUserQuestion` on Claude Code, or `request_user_input` on Codex when that
-tool is available. Labels are yours, but the slugs come **verbatim** from the engine output —
-never from memory. Label each entry `resume <slug> — <status>`. Show one option per existing run plus
-**"Start a new feature"**. The auto-added *Other* lets the human type a slug directly. If the
-host exposes no selector (for example Codex Default mode), print the same choices as a numbered
-list, explicitly ask for the number or slug, and WAIT; plain text is the required fallback,
-not a failed gate.
-
-- **Resume** → use the chosen slug and continue to Setup (init is a no-op resume).
-- **`status: unreadable`** → the ledger has a git merge conflict or cannot be parsed; show
-  the engine's `problem` text and stop. The human resolves or restores the file; never edit
-  it yourself, and never pass `--force` unless the human explicitly asks to start over.
-- **Start new, description already supplied** → derive a concise kebab-case slug from the
-  description (lowercase ASCII letters and digits, non-alphanumeric runs collapsed to one
-  hyphen, no leading/trailing hyphen), tell the human `Starting <slug> — <description>`, and
-  continue immediately. Do not stop merely to ask the human to reformat words they already
-  supplied. Example: `we need phone OTP and Google auth` → `phone-otp-google-auth`.
-- **Start new, no description supplied** → ask for the one-line feature description only,
-  derive and show the slug using the same rule, then continue immediately. Do not ask a second
-  question for a manually formatted slug.
-
-In both new-feature cases, init with `--input feature="<description verbatim>"`. That
-description is the seed for the workflow's bounded PRD interview when no requirement files exist.
+When the invocation names no slug, read `starting-a-run.md` (in this skill's own folder, beside this file) and follow it before Setup:
+it lists the existing runs to resume and derives a slug for a new feature. With a slug given,
+skip it.
 
 ## Hard rules — read twice
 
@@ -81,6 +54,8 @@ description is the seed for the workflow's bounded PRD interview when no require
    work done that is not.
 5. Pass agent-returned text into `--outputs` VERBATIM as compact JSON. Do not
    reinterpret, merge, or embellish fields.
+6. **The user sees the feature, never the machinery.** Everything you write in chat follows
+   **Talking to the user**: no engine commands, JSON, step ids, or bookkeeping.
 
 ## Setup
 
@@ -112,19 +87,10 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   them — but once they choose, YOU run the command (`python3 .maestro/engine/maestroctl.py rebase
   --slug <slug>` or `... reset --all`) and continue the loop. Do not hand the user a command
   to type: the human supplies decisions, the lead agent runs every `maestroctl` invocation.
-- **One stage on an existing feature** — `/maestro <slug> .maestro/workflows/design-hld.yaml`
-  (or `design-contract.yaml`, `design-lld.yaml`) runs just that stage's own workflow with the
-  feature's existing documents. Before `init`, check with `ls` that the stage's inputs exist and,
-  if one is missing, tell the user which stage produces it and stop: `design-hld` needs
-  `.maestro/runs/<slug>/requirement/prd.md`; `design-contract` and `design-lld` also need `hld.md`
-  (`design-lld` on the light path, which has no HLD, needs only the PRD: pass `light=true`); a
-  contract (`openapi.yaml`) is optional. `archive.yaml` (a feature whose archive was answered
-  "Not now") needs `implementation-manifest.json` and `release.json`, which the full pipeline
-  writes when the release is approved. If `init` exits 3 with "already runs <other workflow>", the slug's
-  ledger belongs to another run: ask the user (native selector) to confirm "run this stage here;
-  the previous ledger is kept beside it as `state.yaml.replaced-<time>`", and only on a yes re-run
-  `init` with `--force`. Never pass `--force` unprompted. The stage ends at its own `done`; its
-  documents stay in the feature folder for the full pipeline to pick up later.
+- **One stage on an existing feature** — when the workflow argument is a single stage
+  (`design-hld.yaml`, `design-contract.yaml`, `design-lld.yaml`, `archive.yaml`), or `init` exits 3
+  with "already runs <other workflow>", read `single-stage.md` (in this skill's own folder, beside
+  this file) before `init`.
 - Ensure the requirement folder exists (`mkdir -p .maestro/runs/<slug>/requirement/`) so the
   user has somewhere to drop files, but do NOT block on it — the **workflow** owns what
   happens next. In the shipped pack, every run builds a **PRD** (`requirement/prd.md`)
@@ -152,7 +118,7 @@ To re-read the current action without claiming anything, use `next --peek`.
 
 The engine runs its own helper scripts (`python3 .maestro/engine/*.py`) inside these calls
 and completes them before answering; they are listed under `auto_scripts` in the returned
-action. Never run or complete those steps yourself — at most mention them in narration.
+action. Never run or complete those steps yourself, and never mention them in chat.
 Likewise, in `design`/`auto` mode the engine records the gates and interviews their policy
 answers and lists them under `autopilot` — a gate with its option and label, an interview with
 how many recommendations it assumed and questions it left open. Tell the user in one line what was
@@ -310,37 +276,10 @@ no native question tool, do not fall back to a chat questionnaire and do not mut
 report the missing capability in one line and stop. When `presentation` is `chat`, use one
 numbered chat message as the compatibility fallback, listing the same options.
 
-**2. Discuss — never in your context.** Take each item where the human chose *Not sure*, asked
-something back, or left a `must_resolve` fact open, one at a time. The reading and reasoning for a
-discussion must never enter your context, so you only relay. Get the engine's brief first:
-
-```bash
-python3 .maestro/engine/maestroctl.py interview-brief --slug <slug> --step <step> \
-    --section <question-id>                # add --mode side for a side chat
-```
-
-*Default — isolated subagent.* Preflight the brief's `skill`, then spawn its `agent_type` with its
-`model` (Claude Code `Task`; Codex native subagent). Send the brief's `prompt` VERBATIM followed by
-the human's message verbatim. Show the human the subagent's reply verbatim, minus its final JSON
-line. Relay each follow-up to the SAME subagent (`SendMessage` on Claude Code); where the host
-cannot continue a subagent, start a fresh one with the brief, the last JSON `summary`, and the new
-message. Never answer from your own reading, never read the evidence yourself, and never
-paraphrase or extend a reply. Keep only each final JSON line (`status`, `candidate`, `summary`);
-let the reply text go.
-
-*Side chat — for a deep dive, or the human's choice.* Offer it whenever the human wants room to
-dig ("take it to a side chat"), and use it always where there is no subagent support (inline
-mode). First record every other clear answer of the round with `interview-record-batch` (a partial
-batch is valid and leaves the rest pending). Then run `interview-brief --mode side` and show the
-human its `side_chat` command for their harness: open a new chat, run it, come back and say
-*continue*. End your turn. On *continue*, call `next`: a question settled in the side chat is gone
-from the served round; one still open is served again — ask whether to discuss it again or answer.
-
-Close each subagent discussion with a native selector: the subagent's `candidate` (when present),
-the recommendation, any served alternative, *Use the recommendation as a working assumption*,
-*Park it as an open item*, *Take it to a side chat*, plus the free-form option. For *I want to raise
-something*, take the point in their words and confirm the exact wording to record; route any
-question it prompts through the same discussion path.
+**2. Discuss — never in your context.** For each item where the human chose *Not sure*, asked
+something back, or left a `must_resolve` fact open, read `interview-discussion.md` (in this skill's own folder, beside this file) and
+follow it: the discussion runs in an isolated `discussant` subagent or a side chat, and you only
+relay. Never answer from your own reading. A round with no such item skips this phase.
 
 **3. Record.** Map only answers the human actually gave. Never infer, silently accept, or drop an
 answer. Record the whole round, discussed items and raised points included, in ONE command:
@@ -440,10 +379,13 @@ parked on `ask_input` across turns until non-blank text is recorded.
 
 ### `done` / `failed`
 
-Stop looping. Report to the user: the outcome, the `outputs` map (done) or `reason`
-(failed), and where the artifacts live (`.maestro/runs/<slug>/`). Suggest
-`python3 .maestro/engine/maestroctl.py status --slug <slug>` for the full step table. The
-final action carries the finished `todo`; mirror it so the task list ends complete.
+Stop looping and close the run in a few plain lines (see **Talking to the user**). On `done`:
+what was delivered — the branches or pull requests from `outputs`, said as sentences, not as a
+field map — and that the feature's documents are in `.maestro/runs/<slug>/`. On `failed`: what
+stopped the run (`reason`, in plain words), what is safe so far, and what the user can do next.
+Offer the full step-by-step status; if they want it, YOU run `maestroctl status --slug <slug>`
+and summarise it. The final action carries the finished `todo`; mirror it so the task list ends
+complete.
 
 ## Resuming a run
 
@@ -468,21 +410,9 @@ the run or end the session yourself, and do not repeat the note at every gate.
 
 ## Harness degradation — inline mode
 
-No subagent tool (Cursor, or a Codex installation with subagents disabled)? Switch to
-**inline mode** and
-tell the user once: *"No subagent support here — running steps inline and sequentially;
-per-step models are ignored (everything runs on this session's model)."*
-
-- Always call `next`/mutating commands with `--serial` so the engine serves parallel
-  branches one step at a time (never expect `run_agents`).
-- For `run_agent`: execute the served prompt YOURSELF — load the named skill and do the
-  work — then call `complete` exactly as a subagent would have been completed.
-- `run_lead`, `ask_interview`, and `ask_interview_batch` behave the same in every harness,
-  except that interview discussions always use the side chat: with no subagent, there is no
-  other way to keep them out of this context.
-- Context discipline still applies: after each inline step, carry forward only the JSON
-  outputs; do not keep artifact contents in mind — re-read from disk in the step that
-  needs them.
+No subagent tool (Cursor, or a Codex installation with subagents disabled)? Read
+`inline-mode.md` (in this skill's own folder, beside this file) once, before the first `next`, and follow it for the whole run: every
+engine call takes `--serial` and you execute each served prompt yourself.
 
 ## Capturing out-of-band input
 
@@ -528,7 +458,38 @@ means nothing moved: keep the list as it is. In a harness without a task list, s
 When the human asks what is happening, `python3 .maestro/engine/maestroctl.py todo --slug <slug>`
 prints the same checklist for the terminal.
 
-## Progress narration
+## Talking to the user
 
-Between dispatches keep the user oriented with one-liners: which step is running, what
-a wave contains, what a gate decided. No artifact contents, no subagent transcripts.
+The user is building a feature, not operating an engine. Write as a senior colleague running the
+project would: friendly, professional, brief. They need three things — what just finished, what
+is happening now, what you need from them.
+
+**Never show the machinery** unless the user asks about it: engine commands and their output
+(`maestroctl`, action names, JSON, exit codes, claims), bookkeeping (the ledger, workflow
+validation, memory and decision-log updates, hashes, the task list refreshing), and internal
+names (step ids, skill names, agent types, models, "subagent", "worker", "dispatch", "wave").
+Name the work instead: *the design review*, not *`arch_review`*. Run engine commands silently,
+with a short plain description where the host shows one ("Check what comes next").
+
+**Speak only when something changed for the user**, in one to three plain sentences:
+
+- *A stage finished* — what is done, what comes next, whether you need them. Stage names come
+  from the `todo` checklist, in plain words: "The high-level design is approved. Next is the
+  detailed design for each repository — I'll come back with a few questions before it is
+  written."
+- *Long work starts* — what is being done: "Writing the detailed designs for the 3 repositories
+  now."
+- *You need them* — one sentence on what the decision is for, then ask.
+- *Something failed or is being redone* — what went wrong and what happens next. Hiding the
+  machinery never means hiding a problem (hard rule 4).
+- *Resuming* — where the feature stands and what happens next.
+
+Routine steps inside a stage get no message; the task list shows progress. No headings, tables,
+emoji, "Step 4/12", narration of your own process, recaps, artifact contents or transcripts.
+
+**Questions are for reading, not decoding.** Show the question, its one-line reason and the
+options — never ids, `topic`, `kind`, `must_resolve` or field names. Keep served wording
+verbatim (it is the recorded decision); put the recommended option first, marked
+*(Recommended)*, with each trade-off as the option's description. Introduce a round once ("A few
+product decisions before I write the PRD — 4 questions."), and afterwards confirm in one line
+what was captured instead of reading the answers back.

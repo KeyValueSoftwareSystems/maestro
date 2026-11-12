@@ -89,7 +89,8 @@ nodes:
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
-              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
+              stack_skills: "${steps.claim.outputs.write_skills_csv}"
+              review_skills: "${steps.claim.outputs.review_skills_csv}"
             next: record
           - id: record
             type: script
@@ -116,7 +117,8 @@ nodes:
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
-              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
+              stack_skills: "${steps.claim.outputs.write_skills_csv}"
+              review_skills: "${steps.claim.outputs.review_skills_csv}"
             next: record
           - id: record
             type: script
@@ -143,7 +145,8 @@ nodes:
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
-              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
+              stack_skills: "${steps.claim.outputs.write_skills_csv}"
+              review_skills: "${steps.claim.outputs.review_skills_csv}"
             next: record
           - id: record
             type: script
@@ -170,7 +173,8 @@ nodes:
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"
               feature: "${inputs.feature}"
-              stack_skills: "${steps.claim.outputs.stack_skills_csv}"
+              stack_skills: "${steps.claim.outputs.write_skills_csv}"
+              review_skills: "${steps.claim.outputs.review_skills_csv}"
             next: record
           - id: record
             type: script
@@ -231,7 +235,7 @@ nodes:
       worktree: "${steps.bugfix_claim.outputs.worktree}"
       commit: "${steps.bugfix_claim.outputs.commit}"
       bug_report: "${steps.qa.outputs.bug_report}"
-      stack_skills: "${steps.bugfix_claim.outputs.stack_skills_csv}"
+      stack_skills: "${steps.bugfix_claim.outputs.write_skills_csv}"
     max_visits: 20
     next: bugfix_record
 

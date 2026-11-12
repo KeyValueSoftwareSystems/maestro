@@ -73,8 +73,17 @@ class InstallTest(unittest.TestCase):
             ), encoding="utf-8") as handle:
                 maestro_skill = handle.read()
             self.assertIn("request_user_input", maestro_skill)
-            self.assertIn("derive a concise kebab-case slug", maestro_skill)
-            self.assertIn("print the same choices as a numbered", maestro_skill)
+            # cases that apply only sometimes are reference files installed beside the skill
+            for reference in ("starting-a-run.md", "single-stage.md",
+                              "interview-discussion.md", "inline-mode.md"):
+                self.assertIn(f"`{reference}`", maestro_skill)
+                self.assertTrue(os.path.isfile(os.path.join(
+                    tmp, ".agents", "skills", "maestro", reference)), reference)
+            with open(os.path.join(tmp, ".agents", "skills", "maestro", "starting-a-run.md"),
+                      encoding="utf-8") as handle:
+                starting = handle.read()
+            self.assertIn("derive a concise kebab-case slug", starting)
+            self.assertIn("print the same choices as a numbered", starting)
             self.assertIn("### Skill preflight", maestro_skill)
             self.assertIn("Do not use `locate`", maestro_skill)
             self.assertIn("cursor remains resumable", maestro_skill)

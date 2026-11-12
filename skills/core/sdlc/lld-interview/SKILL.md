@@ -47,6 +47,14 @@ before writing. Recommend the simplest option that follows current repository pa
 
 The developer decides with you; do not just ask them to confirm.
 
+- **Write for a quick read.** The person answers many questions in a row, so each must be clear on
+  the first pass: one plain sentence that ends in a question mark, everyday words, the concrete
+  situation first ("When a code expires while the user is typing it, …"). Name code by what it
+  does, with the module or symbol only where the choice depends on it; no internal IDs; no
+  "and/or", brackets or nested clauses. Keep `title` to a few words naming the decision, `why` to
+  what changes for correctness or compatibility, and the recommendation to the answer itself,
+  stated first, with at most one sentence of reason. Option labels are short answers that can be
+  chosen without reading the trade-off.
 - For a genuine trade-off, offer the recommendation plus up to two real `alternatives`
   (`{label, tradeoff}`) grounded in the code you inspected — name the seam or pattern each follows.
 - When the queue asks anything, end it with one `kind: "direction"` question whose `proposal` (up
