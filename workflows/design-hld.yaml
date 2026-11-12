@@ -1,4 +1,5 @@
-# Design child: detect workspace infrastructure -> clarify-first architecture interview (infrastructure
+# Design child: detect workspace infrastructure -> the person picks a brainstorm conversation or the
+# clarify-first architecture interview (infrastructure
 # questions only as relevant to that profile) -> one HLD write -> conditional post-check
 # -> architecture review by a fresh reviewer -> human approval. The architect role owns three jobs
 # (the question queue, the HLD itself, and answering review findings); the reviewer role reviews.
@@ -35,7 +36,63 @@ nodes:
     type: script
     label: Find the affected domains' docs
     run: [python3, .maestro/engine/living_docs.py, domains, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]
-    next: prepare_hld_questions
+    next: hld_mode
+
+  # The person chooses how the architecture is shaped: an open conversation, or the structured
+  # question rounds. Only the stage's first pass asks; later clarification goes to the questions.
+  - id: hld_mode
+    type: gate
+    label: Brainstorm the HLD?
+    prompt: |
+      Before the HLD is written: brainstorm the architecture with me as a conversation, or go
+      straight to the structured architecture questions?
+    options:
+      - {id: brainstorm, label: Brainstorm — talk the architecture through first, to: brainstorm_hld}
+      - {id: guided, label: No — ask the architecture questions, to: prepare_hld_questions}
+    auto: {option: guided, modes: [auto]}
+
+  # Architect role, in the lead's session: an open conversation with the person, ended by them.
+  - id: brainstorm_hld
+    type: agent
+    execution: lead
+    label: Brainstorm the architecture
+    instruction: |
+      Brainstorm the architecture for ${inputs.feature} with the person as a conversation. Read the
+      approved requirement in .maestro/runs/${inputs.slug}/requirement/, the decision log at
+      .maestro/runs/${inputs.slug}/decision-log.md, docs/architecture.md and the affected domains'
+      technical docs (${steps.living_domains.outputs.technical_paths}). Infrastructure:
+      ${steps.infra_profile.outputs.summary}. Greenfield: ${inputs.greenfield}.
+      Revision feedback (empty on the first pass): ${inputs.feedback}
+
+      Talk with the person and wait for every reply; do not complete this step until they say
+      they are done. Then write the agreed direction, decisions and open points to
+      .maestro/runs/${inputs.slug}/hld-brainstorm.md. If that file exists from an earlier pass,
+      continue from it and update it in place.
+    skill: hld-brainstorm
+    inputs:
+      feature: "${inputs.feature}"
+      slug: "${inputs.slug}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
+      notes_path: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
+      codebase_lessons: "${memory.knowledge.codebase}"
+    outputs: [summary]
+    artifact: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
+    max_visits: 6
+    next: brainstorm_confirm
+
+  - id: brainstorm_confirm
+    type: gate
+    label: Create the HLD from the brainstorm?
+    prompt: |
+      Brainstorm: ${steps.brainstorm_hld.outputs.summary}
+      Notes: .maestro/runs/${inputs.slug}/hld-brainstorm.md
+
+      Create the HLD from this?
+    options:
+      - {id: create, label: Yes — write the HLD, to: write_hld}
+      - {id: more, label: Keep brainstorming, to: brainstorm_hld}
+      - {id: guided, label: Switch to the architecture questions, to: prepare_hld_questions}
 
   - id: prepare_hld_questions
     type: agent
@@ -193,8 +250,10 @@ nodes:
 
       Otherwise, write the final high-level design from the approved requirement, maintained
       codebase maps, relevant source details, and confirmed architecture decisions at
-      .maestro/runs/${inputs.slug}/hld-context.json. Honour review feedback without mentioning the
-      review: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
+      .maestro/runs/${inputs.slug}/hld-context.json. When the brainstorm notes at
+      .maestro/runs/${inputs.slug}/hld-brainstorm.md exist, their decisions are confirmed too and
+      their open points are yours to design or defer to LLD. Honour review feedback without
+      mentioning the review: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
 
       Write concise, skimmable technical English. Do not reopen settled decisions, invent missing
       facts, repeat the PRD, or drift into endpoint fields, schema columns, file lists, or task-level
@@ -244,6 +303,7 @@ nodes:
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      brainstorm_path: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
       hld_path: ".maestro/runs/${inputs.slug}/hld.md"
       impact_path: ".maestro/runs/${inputs.slug}/impact.json"
       open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
@@ -351,7 +411,8 @@ nodes:
       rollout and observability. When it is none, raise no infrastructure findings beyond what the
       requirement's targets need. Use the architecture-patterns skill and the matching
       infrastructure pack as your reference. The decisions the person confirmed are in
-      .maestro/runs/${inputs.slug}/decision-log.md: a confirmed decision is not a finding unless it
+      .maestro/runs/${inputs.slug}/decision-log.md, and in the brainstorm notes at
+      .maestro/runs/${inputs.slug}/hld-brainstorm.md when they exist: a confirmed decision is not a finding unless it
       breaks a requirement or carries a risk they may not have seen, and then say the finding
       overrides it. Findings need evidence; severity blocking only for must-fix issues.
       Write every finding to .maestro/runs/${inputs.slug}/reviews/architecture-findings.json as well as
@@ -375,6 +436,7 @@ nodes:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
       decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
+      brainstorm_notes: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
       changes_since_last_review: "${steps.arch_scope.outputs.diff_path}"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"

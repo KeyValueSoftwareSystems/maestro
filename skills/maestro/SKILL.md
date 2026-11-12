@@ -238,6 +238,8 @@ whole-repository scan. The action's `model` is ignored because work runs in the 
 session. Return only its requested compact JSON fields and record them with `complete`, just
 like a worker action. If it requires an artifact, write only the served artifact path. On a
 real error or invalid output, use the same single retry then `fail` protocol as `run_agent`.
+When the served prompt asks for a conversation with the person (the HLD brainstorm they chose),
+hold it here: wait for each reply, and `complete` only after the person ends it.
 
 ### `ask_interview`
 
