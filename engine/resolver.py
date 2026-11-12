@@ -374,6 +374,10 @@ def init_run(slug, workflow_file, inputs, root=".", force=False, mode=None):
         # --force restarts the run but keeps the old ledger beside it for recovery.
         statemod.quarantine(slug, root)
         existing = None
+    elif existing is not None and force:
+        # A restart (or a stage workflow started on an existing feature) never destroys the
+        # previous ledger: it stays beside the new one.
+        statemod.quarantine(slug, root, suffix="replaced")
     if existing is not None and not force:
         if existing["workflow"]["file"] != workflow_file:
             raise RunError(

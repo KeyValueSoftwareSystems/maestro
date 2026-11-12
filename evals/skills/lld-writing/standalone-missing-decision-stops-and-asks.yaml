@@ -1,0 +1,21 @@
+skill: lld-writing
+name: standalone-missing-decision-stops-and-asks
+prompt: |
+  /lld-writing
+  Feature: phone-otp-login
+  Inputs: HLD at docs/design/hld.md, contract at api/openapi.yaml (if any),
+  decisions in docs/design/decisions.md.
+  Repositories: auth-service, web-app.
+  Write one LLD per repo to docs/design/lld/<repo>.md.
+  No post-question queue or validators: if a blocking decision is missing,
+  stop and ask me instead of guessing. Report any contract change in chat.
+
+  (You cannot read files here. Facts: the HLD says OTPs are verified by auth-service. The
+  decisions file records nothing about how many wrong OTP attempts lock a number, and the
+  requirement says a locked number must be refused. Reply as you would in chat.)
+must_include:
+  - '(attempt|lock)'
+  - '\?'
+must_not_include:
+  - '"post_question|post-question queue'
+  - '\bTBD\b|\bTODO\b'

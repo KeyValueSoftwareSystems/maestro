@@ -112,6 +112,17 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   them — but once they choose, YOU run the command (`python3 .maestro/engine/maestroctl.py rebase
   --slug <slug>` or `... reset --all`) and continue the loop. Do not hand the user a command
   to type: the human supplies decisions, the lead agent runs every `maestroctl` invocation.
+- **One stage on an existing feature** — `/maestro <slug> .maestro/workflows/design-hld.yaml`
+  (or `design-contract.yaml`, `design-lld.yaml`) runs just that stage's own workflow with the
+  feature's existing documents. Before `init`, check with `ls` that the stage's inputs exist and,
+  if one is missing, tell the user which stage produces it and stop: `design-hld` needs
+  `.maestro/runs/<slug>/requirement/prd.md`; `design-contract` and `design-lld` also need `hld.md`
+  (`design-lld` on the light path, which has no HLD, needs only the PRD: pass `light=true`); a
+  contract (`openapi.yaml`) is optional. If `init` exits 3 with "already runs <other workflow>", the slug's
+  ledger belongs to another run: ask the user (native selector) to confirm "run this stage here;
+  the previous ledger is kept beside it as `state.yaml.replaced-<time>`", and only on a yes re-run
+  `init` with `--force`. Never pass `--force` unprompted. The stage ends at its own `done`; its
+  documents stay in the feature folder for the full pipeline to pick up later.
 - Ensure the requirement folder exists (`mkdir -p .maestro/runs/<slug>/requirement/`) so the
   user has somewhere to drop files, but do NOT block on it — the **workflow** owns what
   happens next. In the shipped pack, every run builds a **PRD** (`requirement/prd.md`)
