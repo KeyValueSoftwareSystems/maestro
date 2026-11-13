@@ -103,6 +103,24 @@ class WorkflowUpgradeTest(unittest.TestCase):
         self.assertEqual(self.read(self.upstream_path("a.yaml")), V2)
         self.assertIn("a.yaml.upstream", out)
 
+    def test_a_kept_edit_naming_the_flat_run_folder_is_told_what_to_rename(self):
+        """The engine reads a run's files from the folders-by-kind layout, so an edited copy
+        that still writes to the flat one would put documents where nothing looks for them."""
+        old = ("nodes:\n  - id: a\n    instruction: write the HLD\n"
+               "    artifact: \".maestro/runs/${inputs.slug}/hld.md\"\n")
+        new = old.replace("/hld.md", "/design/hld.md")
+        self.ship("a.yaml", old)
+        self.ship("b.yaml", old)
+        self.install()
+        self.local("a.yaml", old + "# my note\n")   # edited: kept
+        self.ship("a.yaml", new)
+        self.ship("b.yaml", new)                     # stock: replaced, nothing to say
+        out = self.install()
+        self.assertIn("a.yaml (your edited copy) names 1 run path(s) from the earlier", out)
+        self.assertIn("hld.md  ->  design/hld.md", out)
+        self.assertNotIn("b.yaml (your edited copy)", out)
+        self.assertIn("design/hld.md", self.local("b.yaml"))
+
     def test_edit_kept_silently_when_upstream_unchanged(self):
         self.ship("a.yaml", V1)
         self.install()

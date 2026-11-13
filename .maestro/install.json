@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "repo": "KeyValueSoftwareSystems/maestro",
+  "ref": "main",
+  "commit": "aa0b4c5c3e5c052d6cc2f84c9c8e8109642cb717",
+  "hosts": [
+    "claude-code"
+  ],
+  "stacks": [],
+  "installed_at": "2026-11-12T08:57:10Z"
+}

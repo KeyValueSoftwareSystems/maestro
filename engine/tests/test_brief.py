@@ -22,7 +22,9 @@ inputs:
 nodes:
   - id: draft
     instruction: Draft the design.
-    artifact: ".maestro/runs/${inputs.slug}/design.md"
+    artifact:
+      - ".maestro/runs/${inputs.slug}/design.md"
+      - ".maestro/runs/${inputs.slug}/.engine/queues/draft.json"
     next: approve
   - id: approve
     type: gate
@@ -67,6 +69,9 @@ class BriefTest(unittest.TestCase):
         self.assertIn("Run brief", first["prompt"])
         self.assertIn("- Feature: Report export (`f`)", first["prompt"])
         self.assertIn("- This step: `draft`", first["prompt"])
+        os.makedirs(os.path.join(self.tmp, ".maestro/runs/f/.engine/queues"), exist_ok=True)
+        with open(os.path.join(self.tmp, ".maestro/runs/f/.engine/queues/draft.json"), "w") as fh:
+            fh.write("{}\n")
         with open(os.path.join(self.tmp, ".maestro/runs/f/design.md"), "w") as fh:
             fh.write("design\n")
         self.finish("draft")
@@ -82,6 +87,7 @@ class BriefTest(unittest.TestCase):
         prompt = review["prompt"]
         self.assertIn("- Documents so far", prompt)
         self.assertIn(".maestro/runs/f/design.md (from `draft`)", prompt)
+        self.assertNotIn("queues/draft.json", prompt)  # the engine's working file is not a document
         self.assertIn('`approve` → revise (person) — "split the export worker out"', prompt)
         self.assertIn("`approve` → approve (person)", prompt)
         self.assertIn("the client wants CSV only", prompt)
@@ -90,7 +96,7 @@ class BriefTest(unittest.TestCase):
         summary = self.finish("repair")
         self.assertIn("Documents so far", summary["prompt"])  # minimal again
         self.assertNotIn("Decisions at gates", summary["prompt"])
-        with open(os.path.join(self.tmp, ".maestro/runs/f/run-brief.md")) as fh:
+        with open(os.path.join(self.tmp, ".maestro/runs/f/.engine/run-brief.md")) as fh:
             self.assertIn("Decisions at gates", fh.read())  # the file is always the full brief
         printed = self.ctl("brief", "--slug", "f", "--step", "repair")
         self.assertEqual(printed.strip(), "(this step runs without a brief)")

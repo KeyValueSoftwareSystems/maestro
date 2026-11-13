@@ -12,6 +12,7 @@ import tempfile
 import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+import memory as memorymod  # noqa: E402
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
 
@@ -535,6 +536,12 @@ class InterviewConversationTest(Sim):
         self.assertEqual(by_id["audit-trail"]["discussion"],
                          "Compared 30 vs 90 days against the compliance ask.")
         self.assertEqual(by_id["shape"]["kind"], "direction")
+        # a recommendation that was accepted or assumed IS the answer and is stored once; one
+        # the person did not take stays beside their answer
+        self.assertNotIn("proposal", by_id["shape"])
+        self.assertNotIn("proposal", by_id["data-retention"])
+        for taken_differently in ("retry-policy", "audit-trail", "cutoff"):
+            self.assertEqual(by_id[taken_differently]["proposal"], "Use the recommended behavior.")
         self.assertIn("raised-1", context["rounds"][-1]["question_ids"])
 
     def test_single_record_supports_new_kinds_and_raised_points(self):
@@ -1308,8 +1315,8 @@ class ResumeTest(Sim):
         self._conflict_ledger()
         data, created = resolver.init_run("feat", rel, {}, self.tmp, force=True)
         self.assertTrue(created)
-        run_dir = os.path.dirname(statemod.state_path("feat", self.tmp))
-        kept = [n for n in os.listdir(run_dir) if n.startswith("state.yaml.unreadable-")]
+        kept = [n for n in os.listdir(statemod.ledgers_dir("feat", self.tmp))
+                if n.startswith("unreadable-")]
         self.assertEqual(len(kept), 1)
 
     def test_other_workflow_on_a_live_slug_needs_force_and_keeps_the_old_ledger(self):
@@ -1320,13 +1327,16 @@ class ResumeTest(Sim):
             resolver.init_run("feat", other, {}, self.tmp)
         self.assertEqual(ctx.exception.code, 3)
         self.assertIn("already runs", str(ctx.exception))
-        run_dir = os.path.dirname(statemod.state_path("feat", self.tmp))
-        self.assertEqual([n for n in os.listdir(run_dir) if n.startswith("state.yaml.replaced-")], [])
+        ledgers = statemod.ledgers_dir("feat", self.tmp)
+        self.assertFalse(os.path.isdir(ledgers))
         data, created = resolver.init_run("feat", other, {}, self.tmp, force=True)
         self.assertTrue(created)
         self.assertEqual(data["workflow"]["file"], other)
-        kept = [n for n in os.listdir(run_dir) if n.startswith("state.yaml.replaced-")]
+        kept = [n for n in os.listdir(ledgers) if n.startswith("replaced-")]
         self.assertEqual(len(kept), 1)
+        # the run folder's top level stays the ledger alone: nothing piles up beside it
+        self.assertEqual(sorted(os.listdir(statemod.feature_dir("feat", self.tmp))),
+                         [".engine", "state.yaml"])
 
     def test_reset_all(self):
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))
@@ -1609,8 +1619,15 @@ nodes:
         self.seed("codebase", "X")
         self.start(self.write_wf("m.yaml", self.MEM_WF))
         st = self.state()
-        self.assertEqual(st["memory"]["snapshot"], "memory-snapshot.json")
+        self.assertEqual(st["memory"]["snapshot"], ".engine/memory-snapshot.json")
         self.assertTrue(st["memory"]["sha256"])
+        self.assertTrue(os.path.isfile(memorymod.snapshot_path("feat", self.tmp)))
+
+    def test_a_run_without_lessons_freezes_no_snapshot_file(self):
+        self.start(self.write_wf("m.yaml", self.MEM_WF))
+        self.assertEqual(self.state()["memory"], {})
+        self.assertFalse(os.path.exists(memorymod.snapshot_path("feat", self.tmp)))
+        self.assertIn("absent:", self.nxt()["prompt"])  # an absent domain still renders blank
 
 
 class NotesTest(Sim):

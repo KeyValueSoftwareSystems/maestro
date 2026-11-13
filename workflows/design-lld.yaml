@@ -9,7 +9,7 @@
 #
 # The test cases are written once the LLDs pass the readiness check, not on every revision round:
 # the engine's AC trace checks their coverage, and the person reviews them at approval.
-# One file per repository (lld/<repo>.md) keeps each implementation agent's context to its own
+# One file per repository (design/lld/<repo>.md) keeps each implementation agent's context to its own
 # repository. LLDs implement or call the contract exactly; a repository that needs a contract
 # change reports it, the contract is updated first, and the affected LLDs are revised. Approval
 # records the exact HLD, contract and LLD hashes (lld_set.py), so a later change to any of them
@@ -71,7 +71,7 @@ nodes:
       - --require
       - "${inputs.required_repos}"
       - --impact
-      - ".maestro/runs/${inputs.slug}/impact.json"
+      - ".maestro/runs/${inputs.slug}/design/impact.json"
     on_fail: lld_scope
     next: lld_facts
 
@@ -80,7 +80,7 @@ nodes:
   - id: lld_facts
     type: script
     label: Collect the cited living-doc facts
-    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/requirement/prd.md", --from, ".maestro/runs/${inputs.slug}/hld.md", --repos, "${steps.lld_scope_init.outputs.selected_csv}", --out, ".maestro/runs/${inputs.slug}/design-facts.md"]
+    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/requirement/prd.md", --from, ".maestro/runs/${inputs.slug}/design/hld.md", --repos, "${steps.lld_scope_init.outputs.selected_csv}", --out, ".maestro/runs/${inputs.slug}/.engine/facts/design.md"]
     next: prepare_lld_questions
 
   - id: prepare_lld_questions
@@ -88,10 +88,10 @@ nodes:
     execution: lead
     label: Find material repository design gaps
     instruction: |
-      Build the next focused queue at .maestro/runs/${inputs.slug}/lld-questions.json before writing
+      Build the next focused queue at .maestro/runs/${inputs.slug}/.engine/queues/lld.json before writing
       LLD prose for the repositories in scope: ${steps.lld_scope_init.outputs.selected_csv}. Read the
       approved HLD and its deferred questions, the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml when it exists, confirmed LLD decisions, and for each
+      .maestro/runs/${inputs.slug}/design/openapi.yaml when it exists, confirmed LLD decisions, and for each
       repository its codebase map (docs/codebase-maps/<repo>.md), guidance, manifest, and only the
       source/tests around the affected seam. Do not scan broadly. The living-doc facts the PRD and
       HLD cite are at ${steps.lld_facts.outputs.facts_path}; the domains' technical docs are
@@ -136,9 +136,9 @@ nodes:
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
       decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
       change (ownership, failure handling, rollout). When the impact assessment at
-      .maestro/runs/${inputs.slug}/impact.json says compatibility_risk: true, say under Failure
+      .maestro/runs/${inputs.slug}/design/impact.json says compatibility_risk: true, say under Failure
       and operational behavior which repository ships first so older clients keep working.
-      Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
+      Decision log: .maestro/runs/${inputs.slug}/decisions/decision-log.md (every earlier stage's decisions).
       Never ask a topic already decided there or in this stage's decisions: give every question a
       short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
       `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
@@ -156,15 +156,15 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       repos: "${steps.lld_scope_init.outputs.selected_csv}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      deferred_questions: ".maestro/runs/${inputs.slug}/open-questions.json"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
-      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      deferred_questions: ".maestro/runs/${inputs.slug}/design/open-questions.json"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      decisions_path: ".maestro/runs/${inputs.slug}/decisions/lld.json"
       revision_feedback: "${steps.lld_approval.outputs.feedback} ${inputs.feedback}"
       validator: ".maestro/engine/validate_prd_questions.py"
     outputs: [summary]
-    artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
-    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
+    artifact: ".maestro/runs/${inputs.slug}/.engine/queues/lld.json"
+    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/.engine/queues/lld.json", --decisions, ".maestro/runs/${inputs.slug}/decisions/lld.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decisions", --require-topics, --root, ".", --report]}
     max_visits: 8
     on_exhausted: lld_clarity_limit
     routes:
@@ -178,17 +178,17 @@ nodes:
     context: |
       Feature: ${inputs.feature}
       Repositories: ${steps.lld_scope_init.outputs.selected_csv}
-      Approved HLD: .maestro/runs/${inputs.slug}/hld.md
-    questions_artifact: ".maestro/runs/${inputs.slug}/lld-questions.json"
+      Approved HLD: .maestro/runs/${inputs.slug}/design/hld.md
+    questions_artifact: ".maestro/runs/${inputs.slug}/.engine/queues/lld.json"
     batch_size: 12
     presentation: popup
     discuss:
       inputs:
-        hld: ".maestro/runs/${inputs.slug}/hld.md"
-        contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
+        hld: ".maestro/runs/${inputs.slug}/design/hld.md"
+        contract: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
         codebase_maps: "docs/codebase-maps/<repo>.md for each in-scope repository; cited living-doc facts: ${steps.lld_facts.outputs.facts_path}"
         source: "only the source and tests around the seam this question concerns"
-    artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    artifact: ".maestro/runs/${inputs.slug}/decisions/lld.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
     auto: {modes: [auto]}
     routes:
@@ -220,12 +220,12 @@ nodes:
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
       decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
       change (ownership, failure handling, rollout). When the impact assessment at
-      .maestro/runs/${inputs.slug}/impact.json says compatibility_risk: true, say under Failure
+      .maestro/runs/${inputs.slug}/design/impact.json says compatibility_risk: true, say under Failure
       and operational behavior which repository ships first so older clients keep working.
       Write one concise, buildable LLD per repository in scope, at these paths:
       ${steps.lld_scope_init.outputs.lld_paths_csv}
-      Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/openapi.yaml when it exists,
-      the confirmed decisions at .maestro/runs/${inputs.slug}/lld-context.json, each repository's
+      Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/design/openapi.yaml when it exists,
+      the confirmed decisions at .maestro/runs/${inputs.slug}/decisions/lld.json, each repository's
       guidance and maintained map, the cited living-doc facts and the domains' technical docs (the
       `living_docs` input), and the bounded source/test evidence already inspected. Keep every
       invariant the facts list, check each change scenario they name, and cite those IDs where
@@ -244,11 +244,11 @@ nodes:
       LLD. A claim you could not verify is stated as such or left out. For every "A is serialised
       with B" or "all callers do X" claim, check each caller, not only the one you changed.
 
-      Also write .maestro/runs/${inputs.slug}/lld-post-questions.json as a schema-version-2
+      Also write .maestro/runs/${inputs.slug}/.engine/queues/lld-post.json as a schema-version-2
       post-check. Keep it empty unless synthesis reveals a genuinely new blocking decision; never
       guess. Run the validators and repair deterministic defects inside this same call.
 
-      Deal with every item in the impact assessment at .maestro/runs/${inputs.slug}/impact.json
+      Deal with every item in the impact assessment at .maestro/runs/${inputs.slug}/design/impact.json
       (domains, tables, jobs, queues, endpoints and their consumers, INV rules, CS scenarios) in
       the LLD of the repository that owns it, or write "<item>: no change needed, because …".
       The engine checks this across the LLDs and sends any gap back.
@@ -261,20 +261,20 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
-      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
-      post_questions_path: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      impact_path: ".maestro/runs/${inputs.slug}/design/impact.json"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      decisions_path: ".maestro/runs/${inputs.slug}/decisions/lld.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/.engine/queues/lld-post.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
       living_docs: "${steps.lld_facts.outputs.facts_path}; ${steps.lld_facts.outputs.technical_paths}"
       lessons: "${memory.knowledge.repo-design}"
     outputs: [summary, contract_change_needed, contract_change]
-    artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    artifact: ".maestro/runs/${inputs.slug}/.engine/queues/lld-post.json"
     # The post-check only: an LLD waiting on a contract change cannot pass the LLD validator until
     # that change lands, so LLD validity is checked where every writer's path meets (validate_llds).
-    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/lld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/lld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
+    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/.engine/queues/lld-post.json", --decisions, ".maestro/runs/${inputs.slug}/decisions/lld.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decisions", --require-topics, --root, ".", --report]}
     max_visits: 4
     routes:
       - {when: "${steps.author_llds.outputs.state} == ask", to: lld_post_interview}
@@ -288,16 +288,16 @@ nodes:
     skill: lld-interview
     context: |
       A new blocking decision emerged while connecting the complete LLDs.
-    questions_artifact: ".maestro/runs/${inputs.slug}/lld-post-questions.json"
+    questions_artifact: ".maestro/runs/${inputs.slug}/.engine/queues/lld-post.json"
     batch_size: 12
     presentation: popup
     discuss:
       inputs:
-        hld: ".maestro/runs/${inputs.slug}/hld.md"
-        contract: ".maestro/runs/${inputs.slug}/openapi.yaml"
+        hld: ".maestro/runs/${inputs.slug}/design/hld.md"
+        contract: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
         lld_drafts: "${steps.lld_scope_init.outputs.lld_paths_csv}"
         source: "only the source and tests around the seam this question concerns"
-    artifact: ".maestro/runs/${inputs.slug}/lld-context.json"
+    artifact: ".maestro/runs/${inputs.slug}/decisions/lld.json"
     auto: {modes: [auto]}
     next: author_llds
 
@@ -307,7 +307,7 @@ nodes:
     type: agent
     label: Update the contract for a repository need
     instruction: |
-      Apply the requested change to the contract at .maestro/runs/${inputs.slug}/openapi.yaml
+      Apply the requested change to the contract at .maestro/runs/${inputs.slug}/design/openapi.yaml
       (create it if no contract exists yet). A request below may be one an earlier round already
       applied; apply only what the contract does not already include:
       - from writing the LLDs: ${steps.author_llds.outputs.contract_change}
@@ -316,10 +316,10 @@ nodes:
     skill: api-contract
     inputs:
       slug: "${inputs.slug}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
     outputs: [contract_summary]
-    artifact: ".maestro/runs/${inputs.slug}/openapi.yaml"
+    artifact: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
     fresh: true
     max_visits: 3
     on_exhausted: test_cases
@@ -340,7 +340,7 @@ nodes:
   - id: lld_impact_trace
     type: script
     label: Every impacted item dealt with?
-    run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --docs, "${steps.lld_scope_init.outputs.lld_paths_csv}", --stage, lld, --match, --out, ".maestro/runs/${inputs.slug}/impact-trace.md"]
+    run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --docs, "${steps.lld_scope_init.outputs.lld_paths_csv}", --stage, lld, --match, --out, ".maestro/runs/${inputs.slug}/design/impact-trace.md"]
     max_visits: 12
     on_exhausted: abort
     routes:
@@ -352,7 +352,7 @@ nodes:
     label: Functional test cases
     instruction: |
       Produce the functional test-case catalog for this feature at
-      .maestro/runs/${inputs.slug}/test-cases.md from the requirement's acceptance criteria, the
+      .maestro/runs/${inputs.slug}/design/test-cases.md from the requirement's acceptance criteria, the
       HLD, the contract when it exists, and the repository LLDs — the QA source of truth. If the
       catalog exists from an earlier pass, update in place only the cases the LLD or acceptance
       criteria changes affect; keep every other case and its ID unchanged.
@@ -366,17 +366,18 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
     outputs: [test_cases_path, case_count]
-    artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
+    artifact: ".maestro/runs/${inputs.slug}/design/test-cases.md"
     # Every PRD acceptance criterion is traced by a test case, and no case traces one the PRD lacks.
-    check: {run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]}
+    check: {run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/design/test-cases.md"]}
     next: lld_approval
 
-  # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
-  # stages never re-ask a decided topic and the approval shows every decision.
+  # Engine-owned: render the feature's decision log from every stage's interview record (and
+  # record the points the latest queue settled from evidence), so the approval shows every
+  # decision, the unconfirmed ones first.
   - id: sync_decisions
     type: script
     label: Update the decision log
@@ -386,21 +387,23 @@ nodes:
       - sync
       - --root
       - .
-      - --log
-      - ".maestro/runs/${inputs.slug}/decision-log.json"
+      - --slug
+      - "${inputs.slug}"
+      - --md
+      - ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
       - --stage
-      - "PRD=.maestro/runs/${inputs.slug}/prd-context.json,.maestro/runs/${inputs.slug}/prd-questions.json"
+      - "PRD=.maestro/runs/${inputs.slug}/decisions/prd.json,.maestro/runs/${inputs.slug}/.engine/queues/prd.json"
       - --stage
-      - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
+      - "HLD=.maestro/runs/${inputs.slug}/decisions/hld.json,.maestro/runs/${inputs.slug}/.engine/queues/hld.json"
       - --stage
-      - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+      - "LLD=.maestro/runs/${inputs.slug}/decisions/lld.json,.maestro/runs/${inputs.slug}/.engine/queues/lld.json"
     next: readiness_scope
 
   # Engine-owned: a re-review sees the LLD changes since its last round, not the whole set again.
   - id: readiness_scope
     type: script
     label: What changed since the last readiness check
-    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --name, lld-readiness, --files, "${steps.lld_scope_init.outputs.lld_paths_csv}", --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"]
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, lld-readiness, --files, "${steps.lld_scope_init.outputs.lld_paths_csv}", --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json"]
     next: readiness_review
 
   - id: readiness_review
@@ -410,18 +413,18 @@ nodes:
     instruction: |
       Check that the repository LLDs (${steps.lld_scope_init.outputs.lld_paths_csv}) are ready to
       implement: no design decision left to the implementer, every LLD consistent with the contract
-      at .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and with each other, and every
+      at .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists) and with each other, and every
       acceptance criterion in .maestro/runs/${inputs.slug}/requirement/ covered by an LLD section.
       The test cases are written after this check passes; do not ask for them. Every change in the Infrastructure and operations section of the HLD at
-      .maestro/runs/${inputs.slug}/hld.md (absent on the light path) needs an LLD in the repository
+      .maestro/runs/${inputs.slug}/design/hld.md (absent on the light path) needs an LLD in the repository
       that owns that infrastructure; a missing one is blocking. This is not an architecture review;
       the HLD was reviewed and approved. The decisions the person confirmed are in
-      .maestro/runs/${inputs.slug}/decision-log.md: a confirmed decision is not a finding unless it
+      .maestro/runs/${inputs.slug}/decisions/decision-log.md: a confirmed decision is not a finding unless it
       breaks a requirement, and then say the finding overrides it.
-      Write every finding to .maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json as well as
+      Write every finding to .maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json as well as
       the report (the engine decides from that file; severity blocking only for must-fix). If it
       exists from an earlier round, this is a re-review: read it and the author's resolutions at
-      .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json first. Mark a fixed finding
+      .maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json first. Mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
       reason; keep ids stable and give new findings new ids. ${steps.readiness_scope.outputs.summary}.
       On a re-review the changes since your last round are at
@@ -437,18 +440,18 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
+      decision_log: ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
       changes_since_last_review: "${steps.readiness_scope.outputs.diff_path}"
-      findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json"
     outputs: [review_path, blocking, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/reviews/lld-readiness.md"
-      - ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
+      - ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json"
     fresh: true
     max_visits: 6
     on_exhausted: test_cases
@@ -460,7 +463,7 @@ nodes:
   - id: readiness_verdict
     type: script
     label: Blocking readiness findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json", --previous, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.previous.json", --round, "${steps.readiness_review.visits}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/lld-readiness.baseline.json", --round, "${steps.readiness_review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: test_cases
     routes:
@@ -472,9 +475,10 @@ nodes:
     type: gate
     label: Repository LLD approval
     prompt: |
-      Impact report (read this first): .maestro/runs/${inputs.slug}/impact-trace.md — ${steps.lld_impact_trace.outputs.issues_summary}
+      Impact report (read this first; there is none when no impact assessment ran):
+      ${steps.lld_impact_trace.outputs.report_path} — ${steps.lld_impact_trace.outputs.issues_summary}
       Repository LLDs ready: ${steps.lld_scope_init.outputs.lld_paths_csv}
-      Test cases: .maestro/runs/${inputs.slug}/test-cases.md
+      Test cases: .maestro/runs/${inputs.slug}/design/test-cases.md
       Readiness check: ${steps.readiness_review.outputs.summary}
       Blocking findings (engine): ${steps.readiness_verdict.outputs.summary}
       Escalated by the author: ${steps.readiness_resolution.outputs.escalated_csv} ${steps.readiness_resolution.outputs.summary}
@@ -504,8 +508,8 @@ nodes:
       Make targeted edits to the LLDs at ${steps.lld_scope_init.outputs.lld_paths_csv} for whichever
       of these applies (the test cases are updated after the readiness check, not here):
       - human feedback: ${steps.lld_approval.outputs.feedback}
-      - blocking readiness findings (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json:
-        resolve each one and record it in .maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json as
+      - blocking readiness findings (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json:
+        resolve each one and record it in .maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json as
         {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed (a targeted
         edit; the note says what changed), contested (the finding is wrong; the note gives the
         evidence; never a second time for a finding the reviewer upheld) or escalated (it needs a
@@ -531,12 +535,12 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       lld_paths: "${steps.lld_scope_init.outputs.lld_paths_csv}"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
-      decisions_path: ".maestro/runs/${inputs.slug}/lld-context.json"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      decisions_path: ".maestro/runs/${inputs.slug}/decisions/lld.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       revision_feedback: "${steps.lld_approval.outputs.feedback}"
-      findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json"
       validator_feedback: "${steps.validate_llds.outputs.issues_summary}"
       impact_trace_feedback: "${steps.lld_impact_trace.outputs.issues_summary}"
     outputs: [summary, contract_change_needed, contract_change, needs_clarification]
@@ -552,7 +556,7 @@ nodes:
   - id: readiness_resolution
     type: script
     label: Findings fixed, contested or escalated?
-    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/lld-readiness-resolutions.json"]
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json"]
     max_visits: 10
     on_exhausted: test_cases
     routes:
@@ -569,6 +573,6 @@ nodes:
 
 outputs:
   repos_csv: "${steps.lld_scope_init.outputs.selected_csv}"
-  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+  test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
   readiness_summary: "${steps.readiness_review.outputs.summary}"
   approval_path: "${steps.record_approval.outputs.approval_path}"

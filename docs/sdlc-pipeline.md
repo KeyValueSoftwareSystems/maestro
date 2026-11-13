@@ -125,10 +125,10 @@ them. No (and autopilot) takes the clarify-first shape below. It batches only un
 decisions into native question popups, each with real alternatives and their trade-offs, then asks
 you to confirm the assembled design direction before anything is written (see
 [Interviews are conversations](#interviews-are-conversations)). It keeps decisions in
-`hld-context.json` and writes one short, plain-English HLD. A deterministic validator checks its seven-section structure (including an Interfaces list that decides whether a contract step runs, an Infrastructure and operations section when the workspace defines infrastructure, and a Mermaid diagram whenever the feature crosses repositories or changes infrastructure),
+`decisions/hld.json` and writes one short, plain-English HLD. A deterministic validator checks its seven-section structure (including an Interfaces list that decides whether a contract step runs, an Infrastructure and operations section when the workspace defines infrastructure, and a Mermaid diagram whenever the feature crosses repositories or changes infrastructure),
 readability, repetition, and deferred-question ledger without limiting document length. A second popup appears only when synthesis
 uncovers a genuinely new architecture gap; there is no mandatory model-powered folding pass.
-`open-questions.json` contains only explicitly deferred decisions so another reviewer can see
+`design/open-questions.json` contains only explicitly deferred decisions so another reviewer can see
 what remains open.
 
 From there Maestro starts or resumes the run, dispatches each remaining step with its declared
@@ -140,7 +140,7 @@ behind/diverged, living docs are stale, or an existing feature's pinned commit m
 consolidated gate shows the whole workspace. On approval Maestro uses `--ff-only` semantics
 for clean behind branches, never stashes/rebases/merges dirty or diverged work, refreshes only
 affected knowledge (Sonnet, only when provenance requires it), then pins the exact repository
-SHAs in `.maestro/runs/<slug>/workspace-lock.json`. The same check runs before implementation;
+SHAs in `.maestro/runs/<slug>/.engine/workspace-lock.json`. The same check runs before implementation;
 if code moved after design, the design is regenerated and re-approved before build work starts.
 
 Gate choices that require text are deliberately two-stage. Clicking **Revise** first records
@@ -169,7 +169,7 @@ repository's existing conventions, before any LLD is written, so every repositor
 one version.
 
 All repository LLDs are written in one run: one grouped popup of code-grounded questions across
-the repositories in scope, then one LLD file per repository (`lld/<repo>.md`), so each
+the repositories in scope, then one LLD file per repository (`design/lld/<repo>.md`), so each
 implementation agent later reads only its own repository's design. Each LLD implements or calls
 the contract exactly. If a repository needs something the contract lacks — for example a field
 the frontend needs — the LLD writer reports it, the contract is updated first, and every
@@ -203,7 +203,7 @@ feature branch with a regression test, re-verified by the engine and re-reviewed
 diff), and QA runs again on the new commits — up to three QA rounds, then you decide.
 
 After QA, the engine joins each criterion to its test cases and their QA results (QA records a
-result per case) in `ac-trace.md`: passing only when a case for it ran and every case that ran
+result per case) in `release/ac-trace.md`: passing only when a case for it ran and every case that ran
 passed; otherwise failing or not run. The release gate and the review pack show it.
 
 Then a fresh reviewer compares every verified commit with the approved HLD, contract and LLDs —
@@ -223,10 +223,10 @@ command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
 **One stage under Maestro.** Start a stage's own workflow on an existing feature slug:
 `/maestro <slug> .maestro/workflows/design-hld.yaml`, `design-contract.yaml` or `design-lld.yaml`
 (every repository's LLD). The stage needs the documents before it: the HLD needs
-`requirement/prd.md`; the contract and LLDs also need `hld.md` (on the light path, which has no
+`requirement/prd.md`; the contract and LLDs also need `design/hld.md` (on the light path, which has no
 HLD, run `design-lld` with `light=true`). Maestro checks these first and names what is missing.
 A slug that already has a run ledger is replaced only after you confirm, and the old ledger is
-kept beside it as `state.yaml.replaced-<time>`.
+kept as `.engine/ledgers/replaced-<time>.yaml`.
 
 **A skill on its own.** Without Maestro, give `/hld-writing` or `/lld-writing` your inputs in the
 message: the feature, the PRD or HLD, contract and decision files, the repositories, the output
@@ -246,6 +246,37 @@ stop and ask me instead of guessing. Report any contract change in chat.
 The skill writes the documents in the same required shape, skips the workflow-only pieces
 (question queue, validators, impact trace), stops and asks when a blocking decision is missing,
 and reports a contract change in chat.
+
+## Where a feature's files are
+
+One folder per feature, grouped by kind. Open `requirement/`, `design/`, `decisions/` and
+`reviews/` to read what was asked, designed, decided and found; `.engine/` is the engine's own
+working space.
+
+```
+.maestro/runs/<slug>/
+├── state.yaml      the run ledger (engine only)
+├── requirement/    what was asked: your files, prd.md
+├── design/         what will be built: hld.md, openapi.yaml, lld/<repo>.md, test-cases.md,
+│                   impact.json + impact-trace.md, open-questions.json
+├── decisions/      what was decided: decision-log.md (unconfirmed decisions first) and each
+│                   stage's interview record (prd.json, hld.json, lld.json), hld-brainstorm.md
+├── reviews/        what reviewers found: <name>.md, <name>.findings.json and the author's
+│                   <name>.resolutions.json (architecture, lld-readiness, drift, code-<repo>)
+├── build/          what was built: manifest.json, <repo>/tasks.json, <repo>/verify.json
+├── qa/             how it was tested: the suite, report.md, results.json
+├── release/        what ships: review-pack.md, ac-trace.md, delivery.json
+└── .engine/        question queues, review baselines, sync plans, snapshots, logs, replaced
+                    ledgers, the debug profile
+```
+
+Each fact is stored once. A decision lives in its stage's record, and the decision log is its
+rendering; a re-review compares against one baseline file per review under `.engine/reviews/`
+(the documents as the last round saw them), not copies of the documents.
+
+A run started before this layout is moved into it the next time it is resumed
+(`maestroctl migrate --slug <slug> --dry-run` shows what would move): files are moved, never
+rewritten, so an approved design stays approved.
 
 ## New products (greenfield)
 
@@ -320,15 +351,18 @@ the next gate.
 
 In `auto` mode nobody answers the interviews: each recommendation is recorded as an assumption,
 a question with no grounded recommendation is left open rather than guessed, and each stage asks
-once. Before the review pack, `assumptions.md` lists every assumption, open item and autopilot gate
-decision (including assumptions a person chose in any mode); the pack opens with it.
+once. The decision log opens with every assumption, open item and autopilot gate decision
+(including assumptions a person chose in any mode) under "Not confirmed by a person"; it is
+rendered again before the review pack, which opens with that section.
 
 ## Interviews are conversations
 
 Every PRD, HLD and LLD decision lands in one decision log per feature
-(`.maestro/runs/<slug>/decision-log.md`), shown at each design approval. A later stage never
-re-asks a topic an earlier one decided — the engine checks each question's topic against the log —
-and a decision gets at most one follow-up. Before asking, Maestro records what the requirement,
+(`.maestro/runs/<slug>/decisions/decision-log.md`), shown at each design approval. The log is
+rendered from each stage's interview record beside it (`prd.json`, `hld.json`, `lld.json`), the
+only place a decision is stored. A later stage never
+re-asks a topic an earlier one decided — the engine checks each question's topic against those
+records — and a decision gets at most one follow-up. Before asking, Maestro records what the requirement,
 approved documents, code or docs already settle, citing the source, instead of asking you.
 
 PRD, HLD and LLD questions are not a form to fill in. Each popup question offers:

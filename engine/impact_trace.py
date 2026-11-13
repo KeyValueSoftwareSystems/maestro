@@ -12,7 +12,9 @@ the design itself sets off must be covered too. --out writes the impact report: 
 reason, evidence, consumers and where the design covers it.
 
 Prints one JSON line {valid, item_count, missing_csv, issues_summary, report_path}; always exits 0
-(the workflow routes on `valid`). No usable assessment (greenfield, skipped, no items) is valid.
+(the workflow routes on `valid`). No usable assessment (greenfield, skipped, no items) is valid:
+there is nothing to report, so no report is written (`report_path` is empty and a report an
+earlier assessment left is removed).
 """
 import argparse
 import json
@@ -119,11 +121,17 @@ def cmd_check(args):
     rows, missing, issues, added, skipped = trace(args.root, args.impact, docs, args.stage, args.match)
     report_path = ""
     if args.out:
-        report_path = args.out
         full = args.out if os.path.isabs(args.out) else os.path.join(args.root, args.out)
-        os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
-        with open(full, "w", encoding="utf-8") as fh:
-            fh.write(report(rows, args.stage, added))
+        if skipped:
+            try:
+                os.remove(full)
+            except OSError:
+                pass
+        else:
+            report_path = args.out
+            os.makedirs(os.path.dirname(full) or ".", exist_ok=True)
+            with open(full, "w", encoding="utf-8") as fh:
+                fh.write(report(rows, args.stage, added))
     valid = skipped or not issues
     summary = (issues[0] if skipped else " | ".join(issues[:8]) if issues
                else f"All {len(rows)} impacted items are dealt with in {STAGE_LABEL.get(args.stage, 'the design')}")

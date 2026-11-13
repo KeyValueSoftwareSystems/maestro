@@ -74,6 +74,15 @@ class FindingsTest(unittest.TestCase):
         self.run_cmd("verdict", "--findings", self.f, "--commit", "abc123")
         self.assertFalse(os.path.exists(os.path.join(self.dir, "reviewed.json")))
 
+    def test_the_reviewed_commit_goes_where_the_workflow_says(self):
+        """Every repository's findings share one reviews folder, so each names its own record."""
+        self.write(self.f, {"schema_version": 1, "findings": []})
+        record = os.path.join(self.dir, ".engine", "reviews", "code-api.reviewed.json")
+        self.run_cmd("verdict", "--findings", self.f, "--commit", "abc123", "--reviewed", record)
+        with open(record) as fh:
+            self.assertEqual(json.load(fh)["commit"], "abc123")
+        self.assertFalse(os.path.exists(os.path.join(self.dir, "reviewed.json")))
+
     def test_fix_and_contest_go_to_re_review(self):
         self.write(self.f, {"findings": [finding("F1"), finding("F2"), finding("F3", "minor")]})
         result = self.resolve([{"id": "F1", "resolution": "fixed", "note": "added a queue"},

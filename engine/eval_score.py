@@ -25,6 +25,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ac_trace  # noqa: E402
+import decision_log  # noqa: E402
+import run_layout  # noqa: E402
 import state as statemod  # noqa: E402
 import validate_hld  # noqa: E402
 import validate_prd  # noqa: E402
@@ -57,19 +59,18 @@ def _minutes(state):
 
 def metrics(root, slug):
     state = statemod.load(slug, root) or {}
-    run_dir = statemod.feature_dir(slug, root)
     questions, rounds = {}, {}
-    for name in sorted(os.listdir(run_dir)) if os.path.isdir(run_dir) else []:
-        if name.endswith("-context.json"):
-            doc = _read_json(os.path.join(run_dir, name)) or {}
-            stage = name[:-len("-context.json")]
-            questions[stage] = sum(1 for d in doc.get("decisions") or []
-                                   if isinstance(d, dict) and d.get("source") in ASKED)
-            rounds[stage] = len(doc.get("rounds") or [])
-    prd = os.path.join(run_dir, "requirement", "prd.md")
-    hld = os.path.join(run_dir, "hld.md")
+    for stage, record in decision_log.records_in(
+            run_layout.path(slug, root, run_layout.DECISIONS_DIR)):
+        doc = _read_json(record) or {}
+        stage = stage.lower()
+        questions[stage] = sum(1 for d in doc.get("decisions") or []
+                               if isinstance(d, dict) and d.get("source") in ASKED)
+        rounds[stage] = len(doc.get("rounds") or [])
+    prd = run_layout.path(slug, root, run_layout.PRD)
+    hld = run_layout.path(slug, root, run_layout.HLD)
     infra_level = _outputs(state, "design/hld/infra_profile").get("level") or "none"
-    manifest = _read_json(os.path.join(run_dir, "implementation-manifest.json")) or {}
+    manifest = _read_json(run_layout.path(slug, root, run_layout.MANIFEST)) or {}
     statuses = {r.get("repo"): (r.get("verification") or {}).get("status")
                 for r in manifest.get("repositories") or []}
     steps = state.get("steps") or {}

@@ -21,9 +21,12 @@ not a failed gate.
 - **`status: unreadable`** → the ledger has a git merge conflict or cannot be parsed; show
   the engine's `problem` text and stop. The human resolves or restores the file; never edit
   it yourself, and never pass `--force` unless the human explicitly asks to start over.
-- **Start new, description already supplied** → derive a concise kebab-case slug from the
-  description (lowercase ASCII letters and digits, non-alphanumeric runs collapsed to one
-  hyphen, no leading/trailing hyphen), tell the human `Starting <slug> — <description>`, and
+- **No runs exist, or Start new, description already supplied** →
+  derive a concise kebab-case slug from the description: its two to five key words (drop filler
+  such as "we need", "let users", articles), lowercase ASCII letters and digits joined by single
+  hyphens. Tell the human
+  in one friendly line that you are starting and the short name the feature is saved under
+  ("Starting on phone OTP and Google sign-in — saved as `phone-otp-google-auth`."), and
   continue immediately. Do not stop merely to ask the human to reformat words they already
   supplied. Example: `we need phone OTP and Google auth` → `phone-otp-google-auth`.
 - **Start new, no description supplied** → ask for the one-line feature description only,

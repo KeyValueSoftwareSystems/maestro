@@ -150,7 +150,7 @@ Each service repo stays independent; this is **not** a monorepo. Full walkthroug
 ```
 .maestro/
 ├── workflows/        the workflows you run: the included pipeline and your own
-├── runs/<feature>/   one folder per feature: requirements, every output, saved progress
+├── runs/<feature>/   one folder per feature: requirement/ design/ decisions/ reviews/ build/ qa/ release/
 ├── memory/           lessons learned across features
 └── engine/  ui/      Maestro's program and the visual builder (replaced on upgrade)
 .claude/  .cursor/  or  .agents/     the AI skills (replaced on upgrade)
@@ -228,9 +228,11 @@ and its place in `docs/architecture.md`. Existing entries and other repos' docs 
    want to discuss it.
 4. **Approve at gates.** At each approval point you choose **Approve** or **Revise** (and say what
    to change). Want fewer stops? Say "run it on autopilot" when you start (Maestro then stops only
-   when a check fails, and to confirm the archive), or "only stop for design approval".
-5. **Find the results** in `.maestro/runs/<feature>/`: PRD, designs, API contract, test cases,
-   review reports, and the branches (or pull requests) ready to merge.
+   when a check fails), or "only stop for design approval".
+5. **Find the results** in `.maestro/runs/<feature>/`, one folder per kind: `requirement/` (the
+   PRD), `design/` (HLD, API contract, repository designs, test cases), `decisions/`,
+   `reviews/`, `build/`, `qa/` and `release/` (the review pack and the branches or pull requests
+   ready to merge).
 
 **When the feature spans several repos,** one design covers all of them:
 
@@ -257,7 +259,7 @@ python3 .maestro/engine/maestroctl.py todo --slug add-phone-otp-login
 **Run one stage on an existing feature:** `/maestro my-feature .maestro/workflows/design-hld.yaml`
 (or `design-contract.yaml`, `design-lld.yaml`) runs that stage with the feature's existing
 documents. If the feature already has a run ledger, Maestro asks first and keeps the old one
-beside the new (`state.yaml.replaced-<time>`).
+(`.engine/ledgers/replaced-<time>.yaml`).
 
 **Write an HLD or LLD without Maestro:** call the skill with your own inputs, e.g. `/lld-writing`
 (`$lld-writing` in Codex) with the feature, the HLD, contract and decisions files, the
@@ -265,7 +267,7 @@ repositories and where each LLD goes. No queue or validators: a missing blocking
 in chat, and a contract change is reported in chat. `/hld-writing` works the same way.
 
 **See where the time goes:** `/maestro my-feature --debug` (new or resumed run) keeps a timing
-profile at `.maestro/runs/my-feature/profile.md`: work, human and idle time per stage and step.
+profile at `.maestro/runs/my-feature/.engine/profile.md`: work, human and idle time per stage and step.
 
 What each stage of the included pipeline does: [docs/sdlc-pipeline.md](docs/sdlc-pipeline.md).
 

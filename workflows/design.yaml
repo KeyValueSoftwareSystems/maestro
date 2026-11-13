@@ -77,20 +77,20 @@ nodes:
       evidence. Every later design must deal with each item, so a missed one is missed work. Use
       each repository's codebase map, the domain pages and change scenarios when present, and only
       the source needed to place a change; do not design. Write the assessment to
-      .maestro/runs/${inputs.slug}/impact.json.
+      .maestro/runs/${inputs.slug}/design/impact.json.
     skill: feature-impact
     inputs:
       slug: "${inputs.slug}"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
-      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
+      impact_path: ".maestro/runs/${inputs.slug}/design/impact.json"
       domain_pages: "docs/functional/"
       change_scenarios: "docs/impact/side-effects.yaml"
     outputs: [impact_summary, repos_csv]
-    artifact: ".maestro/runs/${inputs.slug}/impact.json"
+    artifact: ".maestro/runs/${inputs.slug}/design/impact.json"
     fresh: true
     # repos_csv downstream is the engine's validated list, not the agent's claim; the engine also
     # adds every change scenario the PRD triggers, so a rule-driven match never rests on the agent
-    check: {run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md"]}
+    check: {run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md"]}
     max_visits: 3
     on_exhausted: sizing
     # the assessment only narrows the LLD scope: one that never validates is skipped
@@ -105,7 +105,7 @@ nodes:
   - id: sizing
     type: script
     label: How much design?
-    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --impact, ".maestro/runs/${inputs.slug}/impact.json", --hld, ".maestro/runs/${inputs.slug}/hld.md", --path, "${inputs.path}"]
+    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --hld, ".maestro/runs/${inputs.slug}/design/hld.md", --path, "${inputs.path}"]
     routes:
       # a new product always plans its architecture; a path chosen at run start is not asked again
       - {when: "${steps.sizing.outputs.greenfield} == true", to: design_path}
@@ -194,5 +194,5 @@ outputs:
   # empty when the stage did not run (the light path writes no HLD or contract)
   hld_path: "${steps.hld.outputs.hld_path}"
   contract_path: "${steps.contract.outputs.contract_path}"
-  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+  test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
   repos_csv: "${steps.lld.outputs.repos_csv}"

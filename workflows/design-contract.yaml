@@ -21,8 +21,8 @@ nodes:
     label: API contract
     instruction: |
       Define the contract for every interface listed in the Interfaces section of the approved HLD
-      at .maestro/runs/${inputs.slug}/hld.md, as OpenAPI (AsyncAPI or OpenAPI webhooks for
-      events) at .maestro/runs/${inputs.slug}/openapi.yaml. Follow the owning repository's existing
+      at .maestro/runs/${inputs.slug}/design/hld.md, as OpenAPI (AsyncAPI or OpenAPI webhooks for
+      events) at .maestro/runs/${inputs.slug}/design/openapi.yaml. Follow the owning repository's existing
       API conventions; read its codebase map and current routes or schemas. Do not invent an
       interface the HLD does not list. If the contract exists from an earlier pass, update it in
       place and keep unaffected operations unchanged. Honour revision feedback: ${inputs.feedback}
@@ -30,12 +30,12 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
     outputs: [contract_summary]
-    artifact: ".maestro/runs/${inputs.slug}/openapi.yaml"
+    artifact: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
     next: end
 
 outputs:
   contract_summary: "${steps.contract.outputs.contract_summary}"
-  contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+  contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"

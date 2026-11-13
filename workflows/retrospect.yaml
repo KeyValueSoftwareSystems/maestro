@@ -26,21 +26,21 @@ nodes:
   - id: snapshot_maps
     type: script
     label: Snapshot maps before refresh
-    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-map-snapshot.json"]
+    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/map-snapshot.json"]
     on_fail: abort
     next: snapshot_docs
 
   - id: snapshot_docs
     type: script
     label: Snapshot living docs before the refresh
-    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-docs-snapshot.json"]
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json"]
     on_fail: abort
     next: extract_inventory
 
   - id: extract_inventory
     type: script
     label: Extract the workspace inventory (engine)
-    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/retrospect-inventory.md"]
+    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/inventory.md"]
     on_fail: abort
     next: retrospect
 
@@ -51,7 +51,9 @@ nodes:
       Harvest the finished run for feature "${inputs.slug}". Read its ledger
       .maestro/runs/${inputs.slug}/state.yaml (gate decisions + their feedback/guidance text;
       per-step visits/attempts/status showing loops and retries) and the run's review/QA
-      artifacts and design documents under .maestro/runs/${inputs.slug}/. Then do BOTH:
+      artifacts and design documents under .maestro/runs/${inputs.slug}/ (requirement/, design/,
+      decisions/, reviews/, build/, qa/, release/; .engine/ holds only the engine's working
+      files). Then do BOTH:
       1. Add to / refresh the living docs — functional, technical AND architectural — for the
          domains this feature touched, in the shared format (docs-format.md in the
          build-knowledge skill). Functional: the business rules the feature added or changed
@@ -90,17 +92,17 @@ nodes:
     model: sonnet
     inputs:
       slug: "${inputs.slug}"
-      inventory: ".maestro/runs/${inputs.slug}/retrospect-inventory.md"
+      inventory: ".maestro/runs/${inputs.slug}/.engine/retrospect/inventory.md"
     outputs: [incoming_path, lessons_count, summary]
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
     # Regenerates the generated files and blocks, then checks the format, IDs and anchors.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/retrospect-docs-snapshot.json", --report]}
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json", --report]}
     next: stamp_docs
 
   - id: stamp_docs
     type: script
     label: Stamp refreshed docs (engine)
-    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/retrospect-docs-snapshot.json"]
+    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json"]
     on_fail: abort
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
@@ -112,7 +114,7 @@ nodes:
     # Stamp each repo's current HEAD into its map's marker (docs/codebase-maps/<repo>.md) so the
     # NEXT feature refreshes only the diff. Engine-owned (not the skill) so swapping retrospect
     # can't change how incremental tracking works.
-    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/retrospect-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
     on_fail: retrospect
     next: record_knowledge
 

@@ -319,7 +319,8 @@ class AutoScriptTest(Base):
         self.ctl("next", "--slug", "feat")
         reason = self.state()["steps"]["probe"]["reason"]
         self.assertIn("FileNotFoundError: no such dir", reason)
-        log = os.path.join(self.tmp, ".maestro", "runs", "feat", "logs", "probe-visit1.log")
+        log = os.path.join(self.tmp, ".maestro", "runs", "feat", ".engine", "logs", "steps",
+                           "probe-visit1.log")
         self.assertIn(os.path.relpath(log, self.tmp), reason)
         with open(log) as fh:
             text = fh.read()

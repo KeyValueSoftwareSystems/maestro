@@ -12,7 +12,7 @@ Rules:
 
 - If the prompt names a skill, load and follow that installed skill fully —
   it owns the framework choice, tiering and coverage bar.
-- The functional test-case catalog (`.maestro/<slug>/test-cases.md`) is the source of
+- The functional test-case catalog (the path your instructions give) is the source of
   truth for WHAT to test; do not silently drop cases — mark unautomatable ones explicitly.
 - You write and edit TEST code and fixtures only; never product source. Never weaken or
   delete a failing assertion to make a run pass.

@@ -4,6 +4,9 @@
   deliver.py [--root .] --slug S --manifest M [--pack P] [--trace T] [--assumptions A]
              [--release-by person|autopilot]
 
+`--assumptions` is the decision log (its opening "Run mode: …" line is quoted in the pull
+request body); `--trace` the acceptance-criteria trace.
+
 `delivery.mode` in maestro.config.yaml decides (default `branch`):
   branch        nothing leaves the machine: report each repository's verified branch and commit.
   pull-request  per manifest repository: re-check the branch is still at the exact verified
@@ -12,7 +15,7 @@
                 with the GitHub CLI — or reuse the open one for that branch. A release that
                 autopilot approved (--release-by autopilot) opens as a draft: nobody reviewed it.
 
-Writes `.maestro/runs/<slug>/delivery.json` and prints one JSON line:
+Writes `.maestro/runs/<slug>/release/delivery.json` and prints one JSON line:
 {mode, delivered_csv, pr_urls_csv, draft, path, summary}. Exits 1 when a push or pull request
 fails (the workflow asks a person); nothing is force-pushed, ever. MAESTRO_GH overrides the `gh`
 executable (tests); MAESTRO_SIMULATION=1 delivers nothing.
@@ -26,6 +29,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import implementation_pool  # noqa: E402
 import project_config  # noqa: E402
+import run_layout  # noqa: E402
 import state as statemod  # noqa: E402
 
 BODY_LIMIT = 60000  # GitHub caps a pull request body at 65536 characters
@@ -100,8 +104,8 @@ def _pull_request(entry, args, root, delivery, gh, siblings, title):
                            f"{out[-400:]}")
     if out.strip():
         return {"pr_url": out.strip(), "pr": "existing"}
-    body_path = os.path.join(statemod.feature_dir(args.slug, root), "delivery",
-                             f"{entry['repo']}-pr-body.md")
+    body_path = run_layout.path(args.slug, root,
+                                f"{run_layout.PR_BODIES_DIR}/{entry['repo']}.md")
     os.makedirs(os.path.dirname(body_path), exist_ok=True)
     with open(body_path, "w", encoding="utf-8") as fh:
         fh.write(_body(entry, siblings, args, root))
@@ -126,7 +130,7 @@ def deliver(args):
     delivery = config.get("delivery") or {}
     mode = delivery.get("mode") or "branch"
     simulated = os.environ.get("MAESTRO_SIMULATION") == "1"
-    prd = _read(root, os.path.join(statemod.feature_dir(args.slug, root), "requirement", "prd.md"))
+    prd = _read(root, run_layout.path(args.slug, root, run_layout.PRD))
     heading = next((line[2:].strip() for line in prd.splitlines() if line.startswith("# ")), "")
     title = heading.replace(" — PRD", "").replace(" - PRD", "") or args.slug
     gh = os.environ.get("MAESTRO_GH") or "gh"
@@ -155,7 +159,8 @@ def deliver(args):
     draft = mode == "pull-request" and args.release_by == "autopilot"
     record = {"schema_version": 1, "mode": mode, "delivered_at": statemod.now_iso(),
               "simulated": simulated, "draft": draft, "repositories": results}
-    path = os.path.join(statemod.feature_dir(args.slug, root), "delivery.json")
+    path = run_layout.path(args.slug, root, run_layout.DELIVERY)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(record, fh, indent=2)
         fh.write("\n")

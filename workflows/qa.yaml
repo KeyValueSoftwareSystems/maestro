@@ -23,7 +23,7 @@ nodes:
   - id: env_up
     type: script
     label: Start the QA environment
-    run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, "${inputs.implementation_manifest}"]
+    run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, "${inputs.implementation_manifest}", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 1800
     on_fail: ask
     next: e2e_plan
@@ -40,7 +40,7 @@ nodes:
     label: Run the test cases (E2E suite when the project has one)
     brief: full
     instruction: |
-      Test the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
+      Test the functional test-case catalog at .maestro/runs/${inputs.slug}/design/test-cases.md
       (critical journeys first). ${steps.e2e_plan.outputs.summary}.
       Project E2E suite present: ${steps.e2e_plan.outputs.has_e2e}.
       - true: automate the catalog into an executable E2E suite under
@@ -90,7 +90,7 @@ nodes:
   - id: e2e_suite
     type: script
     label: Project e2e suites (engine)
-    run: [python3, .maestro/engine/qa_env.py, e2e, --root, ".", --manifest, "${inputs.implementation_manifest}", --out, ".maestro/runs/${inputs.slug}/qa/e2e-receipt.json"]
+    run: [python3, .maestro/engine/qa_env.py, e2e, --root, ".", --manifest, "${inputs.implementation_manifest}", --out, ".maestro/runs/${inputs.slug}/qa/e2e-receipt.json", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 3600
     max_visits: 6
     on_exhausted: qa_gate
@@ -150,7 +150,7 @@ nodes:
   - id: env_down
     type: script
     label: Stop the QA environment
-    run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, "${inputs.implementation_manifest}"]
+    run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, "${inputs.implementation_manifest}", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 900
     next: end
 

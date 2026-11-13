@@ -65,7 +65,12 @@ def _environment(root):
     return config, config.get("environment") or {}, project_config.DEFAULT_TIMEOUT_S
 
 
-def _log_dir(root, manifest_path):
+def _log_dir(root, manifest_path, logs=None):
+    """Where the environment commands' output goes: `<--logs>/environment`, else
+    `qa/environment` beside the manifest."""
+    if logs:
+        return os.path.join(logs if os.path.isabs(logs) else os.path.join(root, logs),
+                            "environment")
     full = manifest_path if os.path.isabs(manifest_path) else os.path.join(root, manifest_path)
     return os.path.join(os.path.dirname(full), "qa", "environment")
 
@@ -83,7 +88,7 @@ def cmd_up(args):
                           "summary": "No QA environment configured (environment.start); QA uses "
                                      "whatever its suite starts itself"}))
         return 0
-    log_dir = _log_dir(args.root, args.manifest)
+    log_dir = _log_dir(args.root, args.manifest, args.logs)
     for name in ("start", "ready"):
         command = environment.get(name)
         if not command:
@@ -111,7 +116,7 @@ def cmd_down(args):
         return 0
     manifest = _manifest(args.root, args.manifest)
     result = _run(environment["stop"], args.root, timeout,
-                  os.path.join(_log_dir(args.root, args.manifest), "stop.log"),
+                  os.path.join(_log_dir(args.root, args.manifest, args.logs), "stop.log"),
                   code_under_test_env(manifest, args.manifest))
     print(json.dumps({"configured": True, "stopped": result["status"] == "passed",
                       "summary": "QA environment stopped" if result["status"] == "passed"
@@ -152,7 +157,9 @@ def cmd_e2e(args):
     manifest = _manifest(args.root, args.manifest)
     env = code_under_test_env(manifest, args.manifest)
     full_out = args.out if os.path.isabs(args.out) else os.path.join(args.root, args.out)
-    log_dir = os.path.splitext(full_out)[0] + "-logs"
+    log_dir = (os.path.join(args.logs if os.path.isabs(args.logs)
+                            else os.path.join(args.root, args.logs), "e2e") if args.logs
+               else os.path.splitext(full_out)[0] + "-logs")
     checks, unconfigured = [], []
     for entry in manifest.get("repositories") or []:
         repo = entry.get("repo", "")
@@ -195,6 +202,8 @@ def main(argv=None):
         p = sub.add_parser(name)
         p.add_argument("--root", default=".")
         p.add_argument("--manifest", required=name != "plan")
+        p.add_argument("--logs", help="folder for command output (environment/, e2e/); default: "
+                                      "beside the manifest and the receipt")
         if name == "e2e":
             p.add_argument("--out", required=True)
         p.set_defaults(fn=fn)

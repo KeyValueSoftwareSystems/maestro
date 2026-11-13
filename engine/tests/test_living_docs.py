@@ -159,9 +159,21 @@ class FaultInjectionTest(LivingDocsBase):
 
     def test_dangling_id_in_design(self):
         def mutate(root):
-            os.makedirs(os.path.join(root, ".maestro/runs/fee-groups"))
-            open(os.path.join(root, ".maestro/runs/fee-groups/hld.md"), "w").write("Respects PL-CS-007.\n")
+            os.makedirs(os.path.join(root, ".maestro/runs/fee-groups/design"))
+            open(os.path.join(root, ".maestro/runs/fee-groups/design/hld.md"), "w").write("Respects PL-CS-007.\n")
         self.assert_caught(mutate, "ERROR:R2")
+
+    def test_engine_working_copies_in_a_run_are_not_checked_as_documents(self):
+        """A run's .engine/ holds generated copies (cited facts, briefs): a stale ID there is
+        not a citation anyone wrote, and reporting it would repeat the document's own finding."""
+        def mutate(root):
+            os.makedirs(os.path.join(root, ".maestro/runs/fee-groups/.engine/facts"))
+            open(os.path.join(root, ".maestro/runs/fee-groups/.engine/facts/design.md"),
+                 "w").write("Respects PL-CS-007.\n")
+        root = self.copy()
+        mutate(root)
+        report = self.check(root)
+        self.assertFalse([line for line in report.errors if "PL-CS-007" in line], report.errors)
 
     def test_renamed_symbol(self):
         self.assert_caught(lambda r: edit(os.path.join(r, "codebase/cofee-backend/internal/links/link.go"),
@@ -479,6 +491,23 @@ class TeamOwnedTest(LivingDocsBase):
         self.assertFalse(result["valid"])
         self.assertIn("Disable", result["issues_summary"])
         self.assertTrue(living_docs.rules_check(root)["valid"])
+
+    def test_rules_report_is_written_only_when_the_team_has_rules(self):
+        root = self.copy()
+        report = os.path.join(root, ".maestro/runs/f/build/cofee-backend/domain-rules.json")
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            living_docs.main(["rules", "--root", root, "--out", report])
+        self.assertEqual(json.loads(out.getvalue().strip())["report_path"], report)
+        self.assertTrue(os.path.isfile(report))
+        # a workspace without team-owned rules: nothing to report, and no file is left behind
+        empty = tempfile.mkdtemp(dir=self.base)
+        stale = os.path.join(empty, "domain-rules.json")
+        open(stale, "w").write("{}")
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            living_docs.main(["rules", "--root", empty, "--out", stale])
+        result = json.loads(out.getvalue().strip())
+        self.assertEqual((result["present"], result["report_path"]), (False, ""))
+        self.assertFalse(os.path.exists(stale))
 
 
 class ExtractorTest(unittest.TestCase):

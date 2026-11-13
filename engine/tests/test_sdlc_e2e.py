@@ -19,6 +19,7 @@ import state as statemod  # noqa: E402
 import codebase_scan  # noqa: E402
 import living_docs  # noqa: E402
 import lld_set  # noqa: E402
+import run_layout  # noqa: E402
 import workspace_sync  # noqa: E402
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
@@ -145,25 +146,20 @@ class SdlcE2E(unittest.TestCase):
     def write_agent_artifact(self, rel, step):
         full = os.path.join(self.tmp, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
-        if any(rel.endswith(name) for name in (
-                "prd-questions.json", "hld-questions.json", "lld-questions.json")):
-            if rel.endswith("hld-questions.json"):
-                context_name = "hld-context.json"
-            elif rel.endswith("lld-questions.json"):
-                context_name = "lld-context.json"
-            else:
-                context_name = "prd-context.json"
-            decisions = os.path.join(os.path.dirname(full), context_name)
+        queue = rel.split("/.engine/queues/")[-1] if "/.engine/queues/" in rel else ""
+        if queue in ("prd.json", "hld.json", "lld.json"):
+            stage = queue[:-len(".json")]
+            decisions = run_layout.path("demo", self.tmp, run_layout.stage_record(stage))
             questions = [] if os.path.exists(decisions) else [{
                 "id": "conflict-behavior",
-                "topic": context_name.split("-")[0] + "-stale-request-outcome",
+                "topic": stage + "-stale-request-outcome",
                 "title": "Conflicting action",
                 "question": "What should the user see if another action makes this request stale?",
                 "why": "This defines a material failure and recovery path.",
                 "proposal": "Reject the stale request, explain why, and preserve entered data.",
                 "must_resolve": ["visible stale-request outcome", "recovery action"],
             }]
-            if questions and context_name != "prd-context.json":
+            if questions and stage != "prd":
                 questions[0]["kind"] = "direction"
             with open(full, "w") as fh:
                 json.dump({
@@ -175,7 +171,7 @@ class SdlcE2E(unittest.TestCase):
                 },
             }, fh)
             return
-        if rel.endswith("hld-post-questions.json") or rel.endswith("lld-post-questions.json"):
+        if queue in ("hld-post.json", "lld-post.json"):
             with open(full, "w") as fh:
                 json.dump({
                     "schema_version": 2,
@@ -222,7 +218,7 @@ class SdlcE2E(unittest.TestCase):
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")
-        elif rel.endswith("/hld.md"):
+        elif rel.endswith("/design/hld.md"):
             sections = {
                 "Decision summary": "\n".join(
                     f"- Confirmed architecture decision {index}." for index in range(1, 6)
@@ -241,7 +237,7 @@ class SdlcE2E(unittest.TestCase):
                 fh.write("\n\n".join(
                     f"## {heading}\n\n{body}" for heading, body in sections.items()
                 ) + "\n")
-        elif rel.endswith("/test-cases.md"):
+        elif rel.endswith("/design/test-cases.md"):
             with open(full, "w") as fh:
                 fh.write("# Demo test cases\n\n| Criterion | Cases |\n|---|---|\n"
                          "| AC-01 | TC-demo-001 |\n\n## Journey: demo\n\n"
@@ -264,8 +260,8 @@ class SdlcE2E(unittest.TestCase):
         """What a reviewer and its author write beside their reports: the reviewer's findings
         (one open blocking finding exactly when it reports blocking) and the author's resolutions
         (every active blocking finding fixed)."""
-        findings = next((rel for rel in act.get("artifacts", []) if rel.endswith("findings.json")),
-                        None)
+        findings = next((rel for rel in act.get("artifacts", [])
+                         if rel.endswith(".findings.json")), None)
         if findings:
             items = ([{"id": "F1", "severity": "blocking", "area": "fit", "status": "open",
                        "finding": "A requirement has no mechanism.", "evidence": "hld.md"}]
@@ -273,12 +269,12 @@ class SdlcE2E(unittest.TestCase):
             Path(self.tmp, findings).write_text(json.dumps({"schema_version": 1,
                                                             "findings": items}))
         resolutions = next((rel for rel in act.get("artifacts", [])
-                            if rel.endswith("-resolutions.json")), None)
+                            if rel.endswith(".resolutions.json")), None)
         if node == "revise_llds":
-            resolutions = ".maestro/runs/demo/reviews/lld-readiness-resolutions.json"
+            resolutions = ".maestro/runs/demo/reviews/lld-readiness.resolutions.json"
         if node == "fix":
             # the code-review fixer names its resolutions file in the prompt, not as an artifact
-            match = re.search(r"\.maestro/runs/demo/[\w-]+/reviews/resolutions\.json",
+            match = re.search(r"\.maestro/runs/demo/reviews/code-[\w-]+\.resolutions\.json",
                               act.get("prompt", ""))
             resolutions = match.group(0) if match else None
         if resolutions:
@@ -288,7 +284,7 @@ class SdlcE2E(unittest.TestCase):
                  "note": "added the mechanism"}]}))
 
     def write_llds(self, slug="demo"):
-        """What the LLD writer produces: one LLD per selected repository at lld/<repo>.md."""
+        """What the LLD writer produces: one LLD per selected repository (design/lld/<repo>.md)."""
         for repo in lld_set.selected(slug, self.tmp):
             full = lld_set.lld_path(slug, repo, self.tmp)
             os.makedirs(os.path.dirname(full), exist_ok=True)
@@ -415,7 +411,7 @@ class SdlcE2E(unittest.TestCase):
                                    for a in act.get("argv", []))
                             or any("mem_consolidate" in a or "lld_set" in a
                                    or "implementation_pool" in a or "workspace_sync" in a
-                                   or "repo_checks" in a or "assumptions.py" in a
+                                   or "repo_checks" in a
                                    or "prd_source.py" in a or "ac_trace.py" in a
                                    or "qa_env.py" in a or "deliver.py" in a
                                    or "infra_scan.py" in a or "decision_log.py" in a
@@ -482,7 +478,8 @@ class SdlcE2E(unittest.TestCase):
                            "depends_on": [], "reads": [], "writes": [f"src/{stack}/x"],
                            "test": "unit", "standards": [], "needs_human_gate": False}],
             }
-            path = os.path.join(self.tmp, ".maestro", "runs", "demo", stack, "tasks.json")
+            path = os.path.join(self.tmp, ".maestro", "runs", "demo", "build", stack,
+                                "tasks.json")
             os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as fh:
                 json.dump(doc, fh)
@@ -500,9 +497,9 @@ class SdlcE2E(unittest.TestCase):
         }
         action, trace = self.drive(gates)
         self.assertEqual(action["action"], "done", action)
-        self.assertEqual(action["outputs"]["hld"], ".maestro/runs/demo/hld.md")
+        self.assertEqual(action["outputs"]["hld"], ".maestro/runs/demo/design/hld.md")
         self.assertEqual(action["outputs"]["implementation_manifest"],
-                         ".maestro/runs/demo/implementation-manifest.json")
+                         ".maestro/runs/demo/build/manifest.json")
         steps = [s for _, s in trace]
         self.assertIn("workspace_sync_initial/plan", steps)
         self.assertIn("workspace_sync_initial/lock", steps)
@@ -547,14 +544,19 @@ class SdlcE2E(unittest.TestCase):
                          sorted(steps.index(step) for step in order))
         self.assertLess(steps.index("delivery/finalize_implementation"), steps.index("delivery/qa/qa_run"))
         # one decision log across the design stages, shown at each approval
-        log = json.loads(Path(self.tmp, ".maestro/runs/demo/decision-log.json").read_text())
-        self.assertEqual(sorted({e["stage"] for e in log["entries"]}), ["HLD", "LLD", "PRD"])
+        run_dir = Path(self.tmp, ".maestro/runs/demo")
+        log = (run_dir / "decisions/decision-log.md").read_text()
+        for stage in ("## PRD", "## HLD", "## LLD"):
+            self.assertIn(stage, log)
+        # the stage records are the only store: no JSON copy of the log, no separate assumption log
+        self.assertEqual(sorted(p.name for p in (run_dir / "decisions").iterdir()),
+                         ["decision-log.md", "hld.json", "lld.json", "prd.json"])
         self.assertIn("Decisions: 1 decision(s)", self.prompts["design/prd/prd_approval"][0])
         self.assertIn("decision-log.md", self.prompts["design/hld/hld_approval"][0])
         # after release approval: the verified branches are reported (default branch mode:
         # nothing pushed), then lessons are harvested
         self.assertLess(steps.index("archive/deliver"), steps.index("archive/harvest/retrospect"))
-        record = json.loads(Path(self.tmp, ".maestro/runs/demo/delivery.json").read_text())
+        record = json.loads(Path(self.tmp, ".maestro/runs/demo/release/delivery.json").read_text())
         self.assertEqual(record["mode"], "branch")
         self.assertEqual(sorted(r["repo"] for r in record["repositories"]), ["backend", "frontend"])
         self.assertFalse(any(r["pushed"] for r in record["repositories"]))
@@ -635,9 +637,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 4)
         self.assertEqual(trace.count(("ask_gate", "delivery/release_approval")), 2)
         self.assertFalse([step for step in steps if "impl_scope" in step and "init" not in step])
-        queue_path = os.path.join(
-            self.tmp, ".maestro", "runs", "demo", "implementation-repos.json",
-        )
+        queue_path = run_layout.path("demo", self.tmp, run_layout.POOL)
         with open(queue_path, encoding="utf-8") as fh:
             queue = json.load(fh)
         self.assertEqual(queue["deferred"], [])
@@ -801,7 +801,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertLess(steps.index("delivery/bugfix_record"),
                         len(steps) - 1 - steps[::-1].index("delivery/finalize_implementation"))
         # QA re-ran against the fixed commit, verified by the engine at that commit
-        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/implementation-manifest.json")
+        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/build/manifest.json")
                               .read_text())
         backend = next(r for r in manifest["repositories"] if r["repo"] == "backend")
         self.assertEqual(backend["commit"], fixed[0])
@@ -889,10 +889,10 @@ class SdlcE2E(unittest.TestCase):
             self.assertIn(("auto_interview", f"design/{stage}/{stage}_interview"), trace)
             prepare = "prepare_prd" if stage == "prd" else f"prepare_{stage}_questions"
             self.assertEqual(steps.count(f"design/{stage}/{prepare}"), 1)
-        prd_context = json.loads(Path(self.tmp, ".maestro/runs/demo/prd-context.json").read_text())
+        prd_context = json.loads(Path(self.tmp, ".maestro/runs/demo/decisions/prd.json").read_text())
         decision = prd_context["decisions"][0]
         self.assertEqual((decision["source"], decision["by"]), ("assumption", "autopilot"))
-        log = Path(self.tmp, ".maestro/runs/demo/assumptions.md").read_text()
+        log = Path(self.tmp, ".maestro/runs/demo/decisions/decision-log.md").read_text()
         self.assertIn("Run mode: auto. 3 assumptions, 0 left open", log)
         self.assertIn("**PRD · ", log)
         self.assertIn("design/lld/lld_approval → approve (auto mode", log)
@@ -913,7 +913,7 @@ class SdlcE2E(unittest.TestCase):
         state = statemod.load("demo", self.tmp)
         self.assertEqual(state["steps"]["archive/confirm_archive"]["outputs"]["choice"], "skip")
         run_dir = Path(self.tmp, ".maestro/runs/demo")
-        self.assertFalse((run_dir / "delivery.json").exists())
+        self.assertFalse((run_dir / "release/delivery.json").exists())
         self.assertFalse(Path(self.tmp, ".maestro/memory/incoming/demo.json").exists())
         for repo in ("backend", "frontend"):  # kept: the person pushes from them
             self.assertTrue(Path(self.tmp, ".maestro/test-worktrees", repo).is_dir())
@@ -931,7 +931,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(steps[:3], ["check_release", "confirm_archive", "deliver"])
         self.assertIn("harvest/retrospect", steps)
         self.assertEqual(steps[-1], "cleanup")
-        delivery = json.loads(Path(self.tmp, ".maestro/runs/demo/delivery.json").read_text())
+        delivery = json.loads(Path(self.tmp, ".maestro/runs/demo/release/delivery.json").read_text())
         self.assertEqual(len(delivery["repositories"]), 2)
 
     def test_the_archive_refuses_a_feature_whose_release_was_not_approved(self):
@@ -962,13 +962,13 @@ class SdlcE2E(unittest.TestCase):
         self.assertLess(steps.index("design/lld/test_cases#check"),
                         steps.index("design/lld/lld_approval"))
         self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/review_pack"))
-        trace_md = Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text()
+        trace_md = Path(self.tmp, ".maestro/runs/demo/release/ac-trace.md").read_text()
         self.assertIn("1/1 acceptance criteria passing", trace_md)
         self.assertIn("| AC-01 | TC-demo-001 (passed) | passing |", trace_md)
 
     def test_untraced_criterion_sends_the_test_cases_back(self):
         self.prep_tasks_json()
-        catalog = Path(self.tmp, ".maestro/runs/demo/test-cases.md")
+        catalog = Path(self.tmp, ".maestro/runs/demo/design/test-cases.md")
         calls = []
 
         def test_cases():
@@ -998,7 +998,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "failed", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
         self.assertIn("0/1 acceptance criteria passing — AC-01 failing",
-                      Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text())
+                      Path(self.tmp, ".maestro/runs/demo/release/ac-trace.md").read_text())
 
     def test_workspace_without_infrastructure_asks_no_infrastructure_questions(self):
         self.prep_tasks_json()
@@ -1029,11 +1029,11 @@ class SdlcE2E(unittest.TestCase):
     def test_infrastructure_as_code_asks_infrastructure_and_the_hld_must_cover_it(self):
         self.prep_tasks_json()
         self.add_terraform_to_backend()
-        hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
+        hld = Path(self.tmp, ".maestro/runs/demo/design/hld.md")
 
         def write_hld():
             # the writer adds the section the engine now requires for an iac workspace
-            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/write_hld")
+            self.write_agent_artifact(".maestro/runs/demo/design/hld.md", "design/hld/write_hld")
             text = hld.read_text()
             if "## Infrastructure and operations" not in text:
                 hld.write_text(text.replace("## Key decisions", "## Infrastructure and operations"
@@ -1059,11 +1059,11 @@ class SdlcE2E(unittest.TestCase):
     def test_escalated_architecture_finding_goes_to_the_person_at_hld_approval(self):
         self.prep_tasks_json()
         blocked = {"review_path": "reviews/architecture.md", "blocking": True, "summary": "1 blocker"}
-        resolutions = Path(self.tmp, ".maestro/runs/demo/reviews/architecture-resolutions.json")
+        resolutions = Path(self.tmp, ".maestro/runs/demo/reviews/architecture.resolutions.json")
 
         def escalate():
             # the author escalates instead of fixing; the test harness's default would fix it
-            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/revise_from_review")
+            self.write_agent_artifact(".maestro/runs/demo/design/hld.md", "design/hld/revise_from_review")
             return {"hld_summary": "unchanged", "needs_clarification": False}
         gates = {"design/hld/hld_approval": [("reject", None)],
                  "design/prd/prd_approval": [("approve", None)]}
@@ -1168,10 +1168,10 @@ class SdlcE2E(unittest.TestCase):
         if os.path.isfile(provenance):
             os.remove(provenance)
         Path(self.tmp, "maestro.config.yaml").write_text("version: 1\nrepos: {}\n")
-        hld = Path(self.tmp, ".maestro/runs/demo/hld.md")
+        hld = Path(self.tmp, ".maestro/runs/demo/design/hld.md")
 
         def write_hld():
-            self.write_agent_artifact(".maestro/runs/demo/hld.md", "design/hld/write_hld")
+            self.write_agent_artifact(".maestro/runs/demo/design/hld.md", "design/hld/write_hld")
             text = hld.read_text()
             if "## Repositories" not in text:
                 hld.write_text(text.replace("## Proposed design", "## Repositories\n\n"
@@ -1193,7 +1193,7 @@ class SdlcE2E(unittest.TestCase):
                                 "commit", "-qm", "scaffold"], check=True)
                 report["repos"][repo] = {"stack": "python", "commands": {
                     "build": "test -f README.md", "test": "test ! -f BROKEN"}}
-            Path(self.tmp, ".maestro/runs/demo/scaffold.json").write_text(json.dumps(report))
+            Path(self.tmp, ".maestro/runs/demo/build/scaffold.json").write_text(json.dumps(report))
             return {"summary": "backend and frontend scaffolded"}
         action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={
             "write_hld": write_hld, "scaffold": scaffold})
@@ -1206,7 +1206,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual([steps.index(s) for s in order], sorted(steps.index(s) for s in order))
         config = Path(self.tmp, "maestro.config.yaml").read_text()
         self.assertIn("backend", config)
-        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/implementation-manifest.json")
+        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/build/manifest.json")
                               .read_text())
         self.assertEqual({r["repo"]: r["verification"]["status"] for r in manifest["repositories"]},
                          {"backend": "verified", "frontend": "verified"})
@@ -1263,7 +1263,7 @@ class SdlcE2E(unittest.TestCase):
     def test_contract_change_from_an_lld_updates_the_contract_before_the_llds(self):
         """A frontend need the contract lacks: the contract changes first, then the LLDs follow."""
         self.prep_tasks_json()
-        contract = Path(self.tmp, ".maestro", "runs", "demo", "openapi.yaml")
+        contract = Path(self.tmp, ".maestro", "runs", "demo", "design", "openapi.yaml")
         writes = []
 
         def author_llds():
@@ -1420,12 +1420,12 @@ class SdlcE2E(unittest.TestCase):
                                                       "review", "review_verdict"])
         self.assertEqual(slot_steps("slot_2")[-5:], ["verify", "domain_rules", "review_scope",
                                                       "review", "review_verdict"])
-        receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "backend",
+        receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "build", "backend",
                                   "verify.json").read_text())
         self.assertTrue(receipt["passed"])
         self.assertEqual([c["name"] for c in receipt["checks"]], ["build", "lint", "test"])
-        manifest = json.loads(Path(self.tmp, ".maestro", "runs", "demo",
-                                   "implementation-manifest.json").read_text())
+        manifest = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "build",
+                                   "manifest.json").read_text())
         statuses = {r["repo"]: r["verification"]["status"] for r in manifest["repositories"]}
         self.assertEqual(statuses, {"backend": "verified", "frontend": "verified"})
 
@@ -1618,7 +1618,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("project_context", seen)
         self.assertIn("write_prd", seen)
         self.assertEqual(len(interview_sections), 1)
-        context_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "prd-context.json")
+        context_path = os.path.join(self.tmp, ".maestro", "runs", "demo", "decisions",
+                                    "prd.json")
         with open(context_path) as fh:
             context = json.load(fh)
         self.assertEqual(len(context["decisions"]), 1)
