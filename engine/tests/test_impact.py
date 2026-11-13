@@ -35,11 +35,13 @@ class ImpactTest(unittest.TestCase):
                                       {"name": "web", "change": "transfer screen"}]))
         self.assertTrue(result["valid"])
         self.assertEqual((result["repos_csv"], result["count"]), ("backend,web", 2))
-        self.assertIn("interfaces between repositories", result["summary"])
+        self.assertIn("an interface between repositories changes", result["summary"])
+        self.assertEqual((result["interface_change"], result["data_change"]), ("shape", "none"))
 
-    def test_size_must_be_minor_or_major(self):
+    def test_older_format_size_must_be_minor_or_major(self):
         ok = self.check(self.doc([{"name": "web", "change": "x"}], size="Minor"))
-        self.assertEqual((ok["valid"], ok["size"]), (True, "minor"))
+        self.assertTrue(ok["valid"], ok["issues_summary"])
+        self.assertEqual(impact.load(self.root, self.path)[0]["legacy_size"], "minor")
         for bad in ("", "huge", None):
             result = self.check(self.doc([{"name": "web", "change": "x"}], size=bad))
             self.assertFalse(result["valid"])
@@ -79,6 +81,60 @@ class ImpactTest(unittest.TestCase):
                 result = self.check(self.doc([{"name": "web", "change": "x"}], schema_version=2, **extra))
                 self.assertFalse(result["valid"])
                 self.assertIn(issue, result["issues_summary"])
+
+    def facts(self, **overrides):
+        doc = {"schema_version": 3, "repos": [{"name": "backend", "change": "4-digit codes"},
+                                              {"name": "web", "change": "4 input boxes"}],
+               "interface_change": "lockstep", "data_change": "none",
+               "infrastructure_change": False, "compatibility_risk": True,
+               "open_decisions": [{"kind": "rollout", "question": "Ship web first?",
+                                   "evidence": "AC-02"}]}
+        doc.update(overrides)
+        return {k: v for k, v in doc.items() if v is not None}
+
+    def test_v3_records_design_facts_without_a_verdict(self):
+        result = self.check(self.facts())
+        self.assertTrue(result["valid"], result["issues_summary"])
+        self.assertEqual((result["interface_change"], result["data_change"],
+                          result["compatibility_risk"], result["open_decision_count"]),
+                         ("lockstep", "none", True, 0))  # a rollout question is not architecture
+        self.assertIn("changing in step", result["summary"])
+        self.assertIn("no open architecture decisions", result["summary"])
+        loaded = impact.load(self.root, self.path)[0]
+        self.assertIsNone(loaded["legacy_size"])
+        placement = {"kind": "placement", "question": "Which service?", "evidence": "PRD"}
+        self.assertEqual(self.check(self.facts(open_decisions=[placement]))["open_decision_count"], 1)
+
+    def test_v3_facts_are_required_and_checked(self):
+        cases = [
+            (self.facts(interface_change=None), "interface_change must be one of"),
+            (self.facts(data_change="migration"), "data_change must be one of"),
+            (self.facts(compatibility_risk=None), "compatibility_risk must be true or false"),
+            (self.facts(open_decisions=None), "open_decisions must be a list"),
+            (self.facts(open_decisions=[{"kind": "vibes", "question": "q", "evidence": "e"}]),
+             "kind must be one of"),
+            (self.facts(open_decisions=[{"kind": "detail", "question": "q"}]), "evidence is required"),
+            (self.facts(schema_version=4), "schema_version must be 1, 2 or 3"),
+        ]
+        for doc, issue in cases:
+            with self.subTest(issue=issue):
+                result = self.check(doc)
+                self.assertFalse(result["valid"])
+                self.assertIn(issue, result["issues_summary"])
+
+    def test_core_only_keeps_the_facts_when_an_item_list_is_wrong(self):
+        os.makedirs(os.path.join(self.root, "docs", "technical"))
+        with open(os.path.join(self.root, "docs", "technical", "auth.md"), "w") as fh:
+            fh.write("---\ndoc: technical\ndomain: auth\nid_prefix: AU\n---\n")
+        doc = self.facts(domains=[{"name": "authentication", "reason": "r", "evidence": "e"}])
+        self.assertFalse(self.check(doc)["valid"])  # the agent's check stays strict
+        loaded, issues = impact.load(self.root, self.path, core_only=True)
+        self.assertEqual(loaded["repos"], ["backend", "web"])
+        self.assertEqual(loaded["interface_change"], "lockstep")
+        self.assertTrue(any("'authentication' has no docs" in i for i in issues))
+        # a core problem still discards it
+        self.check(self.facts(data_change="x"))
+        self.assertIsNone(impact.load(self.root, self.path, core_only=True)[0])
 
     def test_prd_triggers_scenario_merge(self):
         os.makedirs(os.path.join(self.root, "docs", "impact"))

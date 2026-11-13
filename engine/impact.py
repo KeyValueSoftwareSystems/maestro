@@ -1,27 +1,40 @@
 #!/usr/bin/env python3
 """The feature's impact assessment: which repositories it changes, checked by the engine.
 
-An agent reads the approved PRD and the codebase maps and writes impact.json:
-  {"schema_version": 1,
+An agent reads the approved PRD and the codebase maps and writes impact.json. It records facts,
+never a verdict: the engine (sizing.py) decides the design path from them.
+  {"schema_version": 3,
    "repos": [{"name": "backend", "change": "what changes there, in one line"}],
-   "interfaces_change": true,     # a call or event between repositories is added or changed
-   "data_migration": false,       # stored data changes shape
+   "interface_change": "lockstep", # none | lockstep (repos change together, wire format unchanged)
+                                   # | shape (an endpoint, event, field or enum member added/changed/removed)
+   "data_change": "none",          # none | additive (optional column/field) | reshape (new entity,
+                                   # type change, backfill)
    "infrastructure_change": false,
-   "size": "minor",              # minor | major: a small self-contained change takes the light design path
+   "compatibility_risk": true,     # deployed clients or old app versions break if shipped out of order
+   "open_decisions": [{"question": "...", "kind": "rollout", "evidence": "..."}],
+                                   # kind: placement | integration | data-model | interface | quality
+                                   # (an architecture document answers these) | rollout | detail
    "summary": "one line",
-   # schema_version 2 adds what the feature touches, each item with a reason and its evidence:
+   # what the feature touches, each item with a reason and its evidence:
    "domains": [{"name": "payments", "reason": "...", "evidence": "docs/functional/payments.md"}],
    "tables": [...], "jobs": [...], "queues": [...],       # same item shape
    "endpoints": [{"name": "POST /v1/fee-groups", "reason": "...", "evidence": "...",
                   "consumers": ["web: FeeGroupsScreen"]}],  # consumers also allowed on queues
    "rules": [{"id": "PL-INV-001", ...}], "scenarios": [{"id": "PL-CS-001", ...}]}
-Every repository must be one the workspace has (codebase/* or the root itself). Sizing takes the
-light path for `minor` and the full path for `major`, and the LLD scope defaults to these repositories.
-Rules and scenarios must be defined in the living docs (living_docs.py), domains must have a page.
+Schema versions 1 and 2 (booleans `interfaces_change`, `data_migration` and a `size: minor|major`
+verdict) still load: `interfaces_change` true reads as `shape`, `data_migration` true as `reshape`,
+and the old `size` is kept as `legacy_size` for sizing.
+
+Every repository must be one the workspace has (codebase/* or the root itself); the LLD scope
+defaults to these repositories. Rules and scenarios must be defined in the living docs
+(living_docs.py), domains must have a page. `load(..., core_only=True)` keeps an assessment whose
+repositories and design facts are valid when only those item lists have problems, so a misspelled
+domain never discards what sizing and the LLD scope need.
 
   impact.py validate --root . --impact <impact.json> [--prd <prd.md>]
-Prints one JSON line {valid, repos_csv, count, interfaces_change, data_migration,
-infrastructure_change, item_count, scenarios_csv, issues_summary, summary}; always exits 0.
+Prints one JSON line {valid, repos_csv, count, interface_change, data_change,
+infrastructure_change, compatibility_risk, open_decision_count, item_count, scenarios_csv,
+issues_summary, summary}; always exits 0.
 With --prd, a change scenario (docs/impact/side-effects.yaml) whose `when_changing` names something
 the PRD or the assessment's evidence mentions is added with its rules and `also_impacts` items, so a
 rule-driven match never depends on the agent remembering it (match_scenarios / merge).
@@ -36,8 +49,13 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import living_docs  # noqa: E402
 
-FLAGS = ("interfaces_change", "data_migration", "infrastructure_change")
+LEGACY_FLAGS = ("interfaces_change", "data_migration", "infrastructure_change")
 SIZES = ("minor", "major")
+INTERFACE_CHANGES = ("none", "lockstep", "shape")
+DATA_CHANGES = ("none", "additive", "reshape")
+# open decision kinds: an architecture document answers the blocking ones; the rest an LLD carries
+BLOCKING_KINDS = ("placement", "integration", "data-model", "interface", "quality")
+DECISION_KINDS = BLOCKING_KINDS + ("rollout", "detail")
 # kind -> the key naming an item; rules and scenarios are ids, everything else a name
 KINDS = (("domains", "name"), ("tables", "name"), ("jobs", "name"), ("queues", "name"),
          ("endpoints", "name"), ("rules", "id"), ("scenarios", "id"))
@@ -140,8 +158,11 @@ def merge(doc, scenarios):
     return added
 
 
-def load(root, path):
-    """-> (impact, issues). impact is None when the file is unusable."""
+def load(root, path, core_only=False):
+    """-> (impact, issues). impact is None when the file is unusable.
+
+    core_only: problems in the item lists (domains, tables, ..., rules, scenarios) are returned as
+    issues but do not discard the repositories and design facts."""
     full = path if os.path.isabs(path) else os.path.join(root, path)
     try:
         with open(full, encoding="utf-8") as fh:
@@ -172,20 +193,78 @@ def load(root, path):
             canonical = discovered[name.strip().lower()]
             if canonical not in repos:
                 repos.append(canonical)
-    for flag in FLAGS:
+    version = doc.get("schema_version", 1)
+    if version not in (1, 2, 3):
+        issues.append("schema_version must be 1, 2 or 3")
+        facts = {}
+    elif version == 3:
+        facts = _design_facts(doc, issues)
+    else:
+        facts = _legacy_facts(doc, issues)
+    if issues:
+        return None, issues
+    item_issues = []
+    lists = {kind: _items(doc, kind, item_issues) for kind, _key in KINDS}
+    _check_docs(root, lists, item_issues)
+    if item_issues and not core_only:
+        return None, item_issues
+    return {"repos": repos, **facts, "summary": str(doc.get("summary") or "").strip(),
+            **lists}, item_issues
+
+
+def _design_facts(doc, issues):
+    """The schema-3 design facts sizing decides from; every one is required."""
+    for field, allowed in (("interface_change", INTERFACE_CHANGES), ("data_change", DATA_CHANGES)):
+        value = str(doc.get(field) or "").strip().lower()
+        if value not in allowed:
+            issues.append(f"{field} must be one of {', '.join(allowed)}")
+    for flag in ("infrastructure_change", "compatibility_risk"):
+        if not isinstance(doc.get(flag), bool):
+            issues.append(f"{flag} must be true or false")
+    decisions = []
+    raw = doc.get("open_decisions")
+    if not isinstance(raw, list):
+        issues.append("open_decisions must be a list (empty when nothing is left to decide)")
+        raw = []
+    for index, item in enumerate(raw, 1):
+        where = f"open_decisions[{index}]"
+        if not isinstance(item, dict):
+            issues.append(f"{where} must be an object with question, kind and evidence")
+            continue
+        question = str(item.get("question") or "").strip()
+        kind = str(item.get("kind") or "").strip().lower()
+        if not question:
+            issues.append(f"{where}.question is required, one line")
+        if kind not in DECISION_KINDS:
+            issues.append(f"{where}.kind must be one of {', '.join(DECISION_KINDS)}")
+        if not isinstance(item.get("evidence"), str) or not item["evidence"].strip():
+            issues.append(f"{where}.evidence is required, one line")
+        decisions.append({"question": question, "kind": kind,
+                          "evidence": str(item.get("evidence") or "").strip()})
+    return {"interface_change": str(doc.get("interface_change") or "").strip().lower(),
+            "data_change": str(doc.get("data_change") or "").strip().lower(),
+            "infrastructure_change": doc.get("infrastructure_change") is True,
+            "compatibility_risk": doc.get("compatibility_risk") is True,
+            "open_decisions": decisions, "legacy_size": None}
+
+
+def _legacy_facts(doc, issues):
+    """Schema 1/2 booleans and size, read conservatively as schema-3 facts."""
+    for flag in LEGACY_FLAGS:
         if not isinstance(doc.get(flag), bool):
             issues.append(f"{flag} must be true or false")
     size = str(doc.get("size") or "").strip().lower()
     if size not in SIZES:
         issues.append("size must be minor or major")
-    if doc.get("schema_version", 1) not in (1, 2):
-        issues.append("schema_version must be 1 or 2")
-    lists = {kind: _items(doc, kind, issues) for kind, _key in KINDS}
-    _check_docs(root, lists, issues)
-    if issues:
-        return None, issues
-    return {"repos": repos, "size": size, **{flag: doc[flag] for flag in FLAGS},
-            "summary": str(doc.get("summary") or "").strip(), **lists}, []
+    return {"interface_change": "shape" if doc.get("interfaces_change") else "none",
+            "data_change": "reshape" if doc.get("data_migration") else "none",
+            "infrastructure_change": doc.get("infrastructure_change") is True,
+            "compatibility_risk": False, "open_decisions": [], "legacy_size": size}
+
+
+def blocking_decisions(impact):
+    """The open decisions an architecture document has to answer."""
+    return [d for d in impact.get("open_decisions") or [] if d["kind"] in BLOCKING_KINDS]
 
 
 def _merge_from_prd(root, path, prd):
@@ -209,6 +288,31 @@ def _merge_from_prd(root, path, prd):
     return added
 
 
+def describe(impact):
+    """One line: the repositories and the design facts, in plain words."""
+    repos = impact["repos"]
+    parts = [f"{len(repos)} repositor{'y' if len(repos) == 1 else 'ies'} ({', '.join(repos)})"]
+    interface = impact["interface_change"]
+    if interface == "lockstep":
+        parts.append("changing in step with the interface between them unchanged")
+    elif interface == "shape":
+        parts.append("an interface between repositories changes")
+    if impact["data_change"] == "additive":
+        parts.append("an additive data change")
+    elif impact["data_change"] == "reshape":
+        parts.append("stored data changes shape")
+    if impact["infrastructure_change"]:
+        parts.append("infrastructure changes")
+    if impact["compatibility_risk"]:
+        parts.append("older clients need a ship order")
+    blocking = blocking_decisions(impact)
+    parts.append(f"{len(blocking)} open architecture decision{'s' if len(blocking) != 1 else ''}"
+                 if blocking else "no open architecture decisions")
+    if impact.get("legacy_size"):
+        parts.append(f"called {impact['legacy_size']} by an older-format assessment")
+    return "; ".join(parts)
+
+
 def validate(root, path, prd=None):
     impact, issues = load(root, path)
     added = []
@@ -217,17 +321,12 @@ def validate(root, path, prd=None):
         if added:
             impact, issues = load(root, path)
     if impact is None:
-        return {"valid": False, "repos_csv": "", "count": 0, "size": "",
-                **{flag: False for flag in FLAGS}, "item_count": 0, "scenarios_csv": "",
+        return {"valid": False, "repos_csv": "", "count": 0, "interface_change": "",
+                "data_change": "", "infrastructure_change": False, "compatibility_risk": False,
+                "open_decision_count": 0, "item_count": 0, "scenarios_csv": "",
                 "issues_summary": " | ".join(issues[:8]),
                 "summary": "Impact assessment is not valid"}
-    changes = [label for flag, label in (("interfaces_change", "interfaces between repositories"),
-                                          ("data_migration", "a data migration"),
-                                          ("infrastructure_change", "infrastructure"))
-               if impact[flag]]
-    summary = (f"{impact['size'].capitalize()} change to {len(impact['repos'])} repositor{'y' if len(impact['repos']) == 1 else 'ies'}"
-               f" ({', '.join(impact['repos'])})"
-               + (f"; also {', '.join(changes)}" if changes else ""))
+    summary = describe(impact)
     count = sum(len(impact[kind]) for kind, _k in KINDS)
     scenarios = [i["id"] for i in impact["scenarios"]]
     if count:
@@ -235,7 +334,10 @@ def validate(root, path, prd=None):
     if added:
         summary += f" (engine added scenario{'s' if len(added) > 1 else ''} {', '.join(added)})"
     return {"valid": True, "repos_csv": ",".join(impact["repos"]), "count": len(impact["repos"]),
-            "size": impact["size"], **{flag: impact[flag] for flag in FLAGS},
+            "interface_change": impact["interface_change"], "data_change": impact["data_change"],
+            "infrastructure_change": impact["infrastructure_change"],
+            "compatibility_risk": impact["compatibility_risk"],
+            "open_decision_count": len(blocking_decisions(impact)),
             "item_count": count, "scenarios_csv": ",".join(scenarios),
             "issues_summary": "Impact assessment is valid", "summary": summary}
 

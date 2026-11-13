@@ -2,7 +2,8 @@
 # contract (only when the HLD lists cross-repository interfaces) -> repository LLDs and
 # functional test cases (one run, readiness-checked, approved).
 #
-#   intake -> prd -> hld -> [contract] -> lld
+#   intake -> prd -> [impact -> how much design?] -> hld -> [contract] -> lld
+#   (a contained change takes the light path: prd -> lld, no HLD or contract)
 #
 # Composition: each stage is its own small child workflow (design-intake / -prd / -hld /
 # -contract / -lld), so this file owns only the ordering. Every revision loop stays inside its
@@ -54,9 +55,10 @@ nodes:
       - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: sizing}
       - {to: impact}
 
-  # Which repositories the feature changes, whether it crosses a boundary between them, and whether
-  # it is a minor or a major change. The agent judges; the engine checks the names and the size, and
-  # takes the light design path for minor and the LLD scope from the repositories.
+  # Which repositories the feature changes and the design facts: how the interface between them
+  # and stored data change, infrastructure, older clients, and the architecture questions still
+  # open. The agent records facts, never a verdict; the engine checks them, decides the design
+  # path from them (sizing) and takes the LLD scope from the repositories.
   - id: impact
     type: agent
     label: Impact assessment
@@ -64,9 +66,12 @@ nodes:
     brief: minimal
     instruction: |
       Assess which repositories the approved PRD at
-      .maestro/runs/${inputs.slug}/requirement/prd.md changes, and whether it changes an interface
-      between repositories, stored data (a migration) or infrastructure, and whether it is a minor
-      or a major change. Then list everything it touches (schema_version 2): domains, tables,
+      .maestro/runs/${inputs.slug}/requirement/prd.md changes and record the design facts
+      (schema_version 3): how the interface between repositories changes (none, lockstep or
+      shape), how stored data changes (none, additive or reshape), whether infrastructure changes,
+      whether older deployed clients break if the change ships out of order, and every
+      architecture question the PRD and the code leave open, each with its kind. Record facts,
+      not a verdict: the engine decides how much design follows. Then list everything it touches: domains, tables,
       jobs, queues, endpoints with the screens and clients that call them, the INV rules at risk and
       the CS change scenarios it triggers, each with a one-line reason and a pointer to its
       evidence. Every later design must deal with each item, so a missed one is missed work. Use
@@ -92,15 +97,44 @@ nodes:
     on_fail: sizing
     next: sizing
 
-  # Engine-owned: a feature the impact assessment calls minor skips the HLD and contract
-  # (PRD -> LLD -> readiness -> test cases -> approval); major, the full path. Without a valid
-  # assessment the engine falls back to its rules (few criteria, no non-functional targets, one repo).
+  # Engine-owned: from the assessment's facts, the light path (PRD -> LLD -> readiness -> test
+  # cases -> approval; no HLD or contract) unless an open architecture decision, an interface or
+  # data shape change, infrastructure, "(to confirm)" or an earlier HLD needs the full one. How many
+  # repositories change never decides. Without a valid assessment the engine falls back to its
+  # rules (few criteria, no non-functional targets, one repository).
   - id: sizing
     type: script
-    label: Full or light design?
-    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --impact, ".maestro/runs/${inputs.slug}/impact.json", --path, "${inputs.path}"]
+    label: How much design?
+    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --impact, ".maestro/runs/${inputs.slug}/impact.json", --hld, ".maestro/runs/${inputs.slug}/hld.md", --path, "${inputs.path}"]
     routes:
-      - {when: "${steps.sizing.outputs.path} == light", to: lld}
+      # a new product always plans its architecture; a path chosen at run start is not asked again
+      - {when: "${steps.sizing.outputs.greenfield} == true", to: design_path}
+      - {when: "${steps.sizing.outputs.forced} == true", to: design_path}
+      - {to: how_to_design}
+
+  # The person sees what the engine found, in plain words, and may switch before any design work.
+  - id: how_to_design
+    type: gate
+    label: How much design does this need?
+    prompt: |
+      ${steps.sizing.outputs.explanation}
+
+      Go with that, or choose yourself: plan the architecture first (an architecture document,
+      with the option to talk it through, then a detailed plan per repository), or skip the
+      architecture document and go straight to a detailed plan per repository.
+    options:
+      - {id: accept, label: Go with that, to: design_path}
+      - {id: plan, label: Plan the architecture first, to: design_path}
+      - {id: direct, label: Skip the architecture document — straight to the per-repository plans, to: design_path}
+    auto: {option: accept}
+
+  # Engine-owned: the path the design follows — the sized one, unless the person switched it.
+  - id: design_path
+    type: script
+    label: Design path
+    run: [python3, .maestro/engine/sizing.py, choose, --root, ".", --sized, "${steps.sizing.outputs.path}", --choice, "${steps.how_to_design.outputs.choice}"]
+    routes:
+      - {when: "${steps.design_path.outputs.path} == light", to: lld}
       - {to: hld}
 
   - id: hld
@@ -147,14 +181,14 @@ nodes:
       slug: "${inputs.slug}"
       feature: "${inputs.feature}"
       feedback: "${inputs.feedback}"
-      light: "${steps.sizing.outputs.path}"
+      light: "${steps.design_path.outputs.path}"
       required_repos: "${steps.hld.outputs.infra_repos_csv}"
       impact_repos: "${steps.impact.outputs.repos_csv}"
     on_fail: abort
     next: end
 
 outputs:
-  design_path: "${steps.sizing.outputs.path}"
+  design_path: "${steps.design_path.outputs.path}"
   hld_summary: "${steps.hld.outputs.hld_summary}"
   contract_summary: "${steps.contract.outputs.contract_summary}"
   # empty when the stage did not run (the light path writes no HLD or contract)

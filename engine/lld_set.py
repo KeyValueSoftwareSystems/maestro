@@ -100,7 +100,7 @@ def cmd_init(args):
     if args.choice == "all":
         repos = discovered
     elif args.choice == "impact":
-        assessed = impactmod.load(args.root, args.impact)[0] if args.impact else None
+        assessed = impactmod.load(args.root, args.impact, core_only=True)[0] if args.impact else None
         repos = list(assessed["repos"]) if assessed else list(discovered)
         repos += [r for r in required if r in discovered and r not in repos]
     else:

@@ -196,6 +196,20 @@ class LldSetTest(unittest.TestCase):
                            "--impact", os.path.join(self.run_dir, "missing.json"))
         self.assertEqual((code, out["selected_csv"]), (0, "api,web"))
 
+    def test_impact_scope_survives_a_wrong_item_list(self):
+        # a domain with no doc page fails the agent's check, not the repositories it named
+        os.makedirs(os.path.join(self.root, "docs", "technical"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "technical", "notes.md"), "w") as fh:
+            fh.write("---\ndoc: technical\ndomain: notes\nid_prefix: NT\n---\n")
+        self.write("impact.json", json.dumps({
+            "schema_version": 3, "repos": [{"name": "web", "change": "new screen"}],
+            "interface_change": "none", "data_change": "none", "infrastructure_change": False,
+            "compatibility_risk": False, "open_decisions": [],
+            "domains": [{"name": "billing", "reason": "r", "evidence": "e"}]}))
+        code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "impact",
+                           "--impact", os.path.join(self.run_dir, "impact.json"))
+        self.assertEqual((code, out["selected_csv"]), (0, "web"))
+
     def test_approve_refuses_a_missing_lld(self):
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds(("api",))

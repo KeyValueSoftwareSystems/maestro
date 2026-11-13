@@ -22,8 +22,9 @@ Checking needs no model, so it is cheap to run on every change.
 `evals/cases/<case>/` is one end-to-end feature: `case.yaml` (the requirement, the repositories
 and their commands, the run mode, and what a good run achieves), `workspace/` (fixture
 repositories) and `rubric.md` (what a judge grades). The set covers a small single-repository
-change (the light path), a cross-repository field (contract first) and a background job with
-Terraform (infrastructure questions and an infrastructure LLD).
+change (the light path), two repositories changing in step under an unchanged interface (still
+the light path, with a ship order), a cross-repository field (contract first) and a background
+job with Terraform (infrastructure questions and an infrastructure LLD).
 
 ```bash
 python3 engine/eval_setup.py --case evals/cases/infra-queue --dest /tmp/eval-infra

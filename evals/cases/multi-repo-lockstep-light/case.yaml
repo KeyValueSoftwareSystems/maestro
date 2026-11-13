@@ -1,0 +1,41 @@
+name: multi-repo-lockstep-light
+description: Two repositories change in step under an unchanged interface (a shorter sign-in code); should take the light path despite the repository count, and give a ship order.
+slug: shorter-signin-code
+feature: Shorter sign-in codes
+mode: auto
+path: auto
+requirement: |
+  # Shorter sign-in codes
+
+  People mistype the 5-digit sign-in code we text them. Make the code 4 digits: the service
+  issues and accepts 4-digit codes, and the command-line sign-in asks for and checks 4 digits.
+  Everything else about sign-in stays the same — the same requests, the same responses, codes
+  still work once.
+
+  Non-functional requirements: none beyond the existing service standards.
+repos:
+  auth-api:
+    stack: python
+    commands:
+      build: "python3 -m compileall -q auth"
+      test: "python3 -m unittest discover -s tests -q"
+  auth-cli:
+    stack: python
+    commands:
+      build: "python3 -m compileall -q cli"
+      test: "python3 -m unittest discover -s tests -q"
+expect:
+  status: done
+  design_path: light
+  infra_level: none
+  prd_valid: true
+  min_acceptance_criteria: 2
+  max_acceptance_criteria: 5
+  max_questions: 4
+  max_rounds_per_stage: 1
+  verification: verified
+  ac_all_passed: true
+  drift_blocking: false
+  max_fix_rounds: 2
+  max_person_gates: 1  # the archive confirmation: always a person
+  judge_min: 3.5

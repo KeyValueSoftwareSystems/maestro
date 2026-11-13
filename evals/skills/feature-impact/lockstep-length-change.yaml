@@ -1,0 +1,19 @@
+skill: feature-impact
+name: lockstep-length-change
+prompt: |
+  Write the impact assessment JSON in your reply (you cannot write files), then your last-line JSON.
+  Workspace repositories: backend, web, mobile.
+  Approved PRD: one-time sign-in codes go from 5 digits to 4. AC-01: the backend issues and
+  accepts only 4-digit codes. AC-02: the web sign-in shows 4 input boxes. AC-03: the mobile app
+  shows 4 input boxes. The requests and responses stay the same: POST /otp returns
+  {"code_length": <int>} and POST /otp/verify takes {"code": "<digits>"} as a string.
+  Codebase maps: backend/otp/service.go generates and checks the code (CODE_LENGTH = 5);
+  web/src/SignIn/OtpInput.tsx renders the boxes; mobile/lib/signin/otp_input.dart renders the
+  boxes. Mobile releases reach users over weeks; old builds stay installed.
+must_include:
+  - '"interface_change"\s*:\s*"lockstep"'
+  - '"data_change"\s*:\s*"none"'
+  - '"compatibility_risk"\s*:\s*true'
+must_not_include:
+  - '"kind"\s*:\s*"(placement|integration|data-model|interface|quality)"'
+  - '"size"\s*:'

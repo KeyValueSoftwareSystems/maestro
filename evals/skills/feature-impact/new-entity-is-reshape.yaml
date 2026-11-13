@@ -1,0 +1,17 @@
+skill: feature-impact
+name: new-entity-is-reshape
+prompt: |
+  Write the impact assessment JSON in your reply (you cannot write files), then your last-line JSON.
+  Workspace repositories: backend.
+  Approved PRD: a ticket holder can transfer a ticket to another person; the recipient has 48
+  hours to accept, after which the transfer expires and the ticket stays with the holder.
+  AC-01: a holder starts a transfer. AC-02: the recipient accepts it. AC-03: an unaccepted
+  transfer expires after 48 hours.
+  Codebase map: backend/tickets/model.py has Ticket(id, owner_id); no transfer concept exists;
+  backend/jobs/ runs scheduled jobs. The PRD does not say whether a ticket can be used while a
+  transfer is pending.
+must_include:
+  - '"data_change"\s*:\s*"reshape"'
+  - '"kind"\s*:\s*"(data-model|placement)"'
+must_not_include:
+  - '"size"\s*:'

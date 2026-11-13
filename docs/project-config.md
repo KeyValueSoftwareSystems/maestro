@@ -48,7 +48,7 @@ environment:                    # optional: bring the stack up for QA
 infrastructure:                 # optional; overrides the detected level for HLD questions
   level: iac                    # none | containers | iac
 design:                         # optional
-  light_max_criteria: 5         # most acceptance criteria a light (no HLD) design may have when no impact assessment sizes it (default 5)
+  light_max_criteria: 5         # only without a valid impact assessment: most acceptance criteria a light (no HLD) design may have (default 5)
   sync_restart: always          # always (default) | cited. Pre-implementation sync moved repo commits after the design
                                 # was approved: `always` redoes the design; `cited` redoes it only when a changed file
                                 # is one the design cites or a migration (compares paths in the HLD/LLDs, not behaviour)

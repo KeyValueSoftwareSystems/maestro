@@ -185,11 +185,12 @@ class SdlcE2E(unittest.TestCase):
             return
         if rel.endswith("/impact.json"):  # rewritten on every visit, as `fresh` requires
             with open(full, "w") as fh:
-                json.dump({"schema_version": 1, "repos": [
+                json.dump({"schema_version": 3, "repos": [
                     {"name": "backend", "change": "owns the decision"},
                     {"name": "frontend", "change": "renders it"}],
-                    "interfaces_change": True, "data_migration": False,
-                    "infrastructure_change": False, "size": "major",
+                    "interface_change": "shape", "data_change": "none",
+                    "infrastructure_change": False, "compatibility_risk": False,
+                    "open_decisions": [],
                     "summary": f"two repositories {next(_ARTIFACT_WRITES)}"}, fh)
             return
         if os.path.exists(full):
@@ -432,6 +433,8 @@ class SdlcE2E(unittest.TestCase):
                     decisions = gate_script.get(step)
                     if decisions is None and step == "design/lld/lld_approval":
                         decisions = [("approve", None)] * 20
+                    if decisions is None and step == "design/how_to_design":
+                        decisions = [("accept", None)] * 5
                     if decisions is None and step == "design/hld/hld_mode":
                         decisions = [("guided", None)] * 5
                     if decisions is None and step == "archive/confirm_archive":
@@ -519,7 +522,8 @@ class SdlcE2E(unittest.TestCase):
         # one LLD run: one interview, one write, a readiness check and one human approval,
         # all before any implementation begins
         gate_steps = [s for a, s in trace if a == "ask_gate"]
-        self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/hld/hld_mode",
+        self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/how_to_design",
+                                      "design/hld/hld_mode",
                                       "design/hld/hld_approval",
                                       "design/lld/lld_scope", "design/lld/lld_approval",
                                       "delivery/release_approval", "archive/confirm_archive"])
@@ -859,11 +863,12 @@ class SdlcE2E(unittest.TestCase):
                          ["design/prd/prd_approval", "design/hld/hld_mode",
                           "design/hld/hld_approval", "archive/confirm_archive"])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
-                         ["design/lld/lld_scope", "design/lld/lld_approval",
-                          "delivery/release_approval"])
+                         ["design/how_to_design", "design/lld/lld_scope",
+                          "design/lld/lld_approval", "delivery/release_approval"])
         gates = statemod.load("demo", self.tmp)["gates"]
         self.assertEqual([(g["step"], g.get("auto")) for g in gates], [
-            ("design/prd/prd_approval", None), ("design/hld/hld_mode", None),
+            ("design/prd/prd_approval", None), ("design/how_to_design", "design"),
+            ("design/hld/hld_mode", None),
             ("design/hld/hld_approval", None), ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
             ("delivery/release_approval", "design"), ("archive/confirm_archive", None)])
         # the autopilot LLD approval still records the hash-bound approval delivery checks
@@ -943,7 +948,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "failed", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["design/hld/hld_approval"])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
-                         ["design/prd/prd_approval", "design/hld/hld_mode"])
+                         ["design/prd/prd_approval", "design/how_to_design",
+                          "design/hld/hld_mode"])
 
     def test_acceptance_criteria_are_traced_through_qa_to_the_release_gate(self):
         self.prep_tasks_json()
@@ -1110,6 +1116,24 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual((action["outputs"]["hld"], action["outputs"]["contract"]), (None, None))
         # the approved design is still checked for staleness before delivery
         self.assertIn("delivery/design_check", steps)
+        # a path chosen at run start is not asked again
+        self.assertNotIn("design/how_to_design", steps)
+
+    def test_a_person_can_skip_the_architecture_document(self):
+        # the assessment needs an HLD (an interface changes shape); the person says no
+        self.prep_tasks_json()
+        action, trace = self.drive({"design/prd/prd_approval": [("approve", None)],
+                                    "design/how_to_design": [("direct", None)],
+                                    "design/lld/lld_scope": [("all", None)],
+                                    "delivery/release_approval": [("approve", None)]})
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        self.assertFalse([s for s in steps if s.startswith("design/hld/")])
+        self.assertIn("Design path: light", self.prompts["design/lld/author_llds"][0])
+        sized = statemod.load("demo", self.tmp)["steps"]["design/sizing"]["outputs"]
+        self.assertEqual(sized["path"], "full")
+        self.assertIn("interface between repositories changes shape", sized["explanation"])
+        self.assertTrue(json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())["light"])
 
     def test_each_repository_gets_its_stack_skills(self):
         self.prep_tasks_json()
@@ -1569,6 +1593,8 @@ class SdlcE2E(unittest.TestCase):
                     resolver.record_gate(run, step, "approve")
                 elif gate == "hld_mode":
                     resolver.record_gate(run, step, "guided")
+                elif gate == "how_to_design":
+                    resolver.record_gate(run, step, "accept")
                 else:
                     self.fail(f"unexpected gate {step}")
             elif action["action"] == "ask_interview":
