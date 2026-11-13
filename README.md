@@ -257,7 +257,7 @@ python3 .maestro/engine/maestroctl.py todo --slug add-phone-otp-login
 **Run one phase only:** `/maestro my-feature .maestro/workflows/design.yaml`
 
 **Run one stage on an existing feature:** `/maestro my-feature .maestro/workflows/design-hld.yaml`
-(or `design-contract.yaml`, `design-lld.yaml`) runs that stage with the feature's existing
+(or `design-contract.yaml`, `design-lld.yaml`, `design-tests.yaml`) runs that stage with the feature's existing
 documents. If the feature already has a run ledger, Maestro asks first and keeps the old one
 (`.engine/ledgers/replaced-<time>.yaml`).
 

@@ -445,7 +445,10 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
 
 The shipped design workflow writes every repository's LLD in one run of `design-lld.yaml`: one
 grouped interview, one worker-written file per repository (`design/lld/<repo>.md`), `lld_set.py validate`
-over the whole set, functional test cases, a readiness check, and one approval gate. Approval runs
+over the whole set, a readiness check, and one approval gate. It is the last stage of
+`design-solution.yaml`, which `design.yaml` runs as one branch of a `parallel` node after PRD
+approval; the other branch, `design-tests.yaml`, writes the functional test cases from the PRD at
+the same time. Approval runs
 `lld_set.py approve`, which records the HLD, contract and per-LLD hashes; delivery's first step,
 `lld_set.py verify`, sends a design that changed after approval back through design. Generic
 `parallel` remains useful when independent branches can run at once in one run.
@@ -477,7 +480,8 @@ child at its `start` with fresh child state.
 This is how a large workflow splits into small stages, so no single graph overloads the reader.
 The shipped `sdlc-main.yaml` owns only the stage order and the loops between stages (`design`,
 `delivery`, `archive`); `design.yaml` owns only ordering (`design-intake`, `design-prd`,
-`design-hld`, `design-contract` when the HLD lists interfaces, `design-lld`). Each stage keeps its own back-edges, and each
+then `design-solution` (`design-hld`, `design-contract` when the HLD lists interfaces,
+`design-lld`) beside `design-tests`). Each stage keeps its own back-edges, and each
 stage node sets `on_fail: abort` so a rejection fails the parent exactly as an inline step would.
 
 A human decision that must leave its stage ("send back to design") ends the child through a gate

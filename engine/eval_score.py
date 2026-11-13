@@ -48,6 +48,15 @@ def _outputs(state, path):
     return ((state.get("steps") or {}).get(path) or {}).get("outputs") or {}
 
 
+# design.yaml runs sizing, the HLD, contract and LLDs inside this branch, beside the test cases;
+# runs from before that layout kept them directly under design/
+_SOLUTION = "design/solution_and_tests[solution]/solution/"
+
+
+def _design_outputs(state, rel):
+    return _outputs(state, _SOLUTION + rel) or _outputs(state, "design/" + rel)
+
+
 def _minutes(state):
     try:
         start = datetime.datetime.fromisoformat(state["created_at"].replace("Z", "+00:00"))
@@ -69,7 +78,7 @@ def metrics(root, slug):
         rounds[stage] = len(doc.get("rounds") or [])
     prd = run_layout.path(slug, root, run_layout.PRD)
     hld = run_layout.path(slug, root, run_layout.HLD)
-    infra_level = _outputs(state, "design/hld/infra_profile").get("level") or "none"
+    infra_level = _design_outputs(state, "hld/infra_profile").get("level") or "none"
     manifest = _read_json(run_layout.path(slug, root, run_layout.MANIFEST)) or {}
     statuses = {r.get("repo"): (r.get("verification") or {}).get("status")
                 for r in manifest.get("repositories") or []}
@@ -78,10 +87,10 @@ def metrics(root, slug):
     return {
         "status": (state.get("run") or {}).get("status"),
         "mode": (state.get("run") or {}).get("mode") or "human",
-        "design_path": (_outputs(state, "design/design_path").get("path")
-                        or _outputs(state, "design/sizing").get("path") or "full"),
+        "design_path": (_design_outputs(state, "design_path").get("path")
+                        or _design_outputs(state, "sizing").get("path") or "full"),
         "infra_level": infra_level,
-        "interfaces_changed": _outputs(state, "design/hld/validate_hld").get("interfaces_changed"),
+        "interfaces_changed": _design_outputs(state, "hld/validate_hld").get("interfaces_changed"),
         "questions_asked": sum(questions.values()),
         "questions_by_stage": questions,
         "max_rounds_per_stage": max(rounds.values(), default=0),

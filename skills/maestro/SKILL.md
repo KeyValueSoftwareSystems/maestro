@@ -90,7 +90,7 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   --slug <slug>` or `... reset --all`) and continue the loop. Do not hand the user a command
   to type: the human supplies decisions, the lead agent runs every `maestroctl` invocation.
 - **One stage on an existing feature** — when the workflow argument is a single stage
-  (`design-hld.yaml`, `design-contract.yaml`, `design-lld.yaml`, `archive.yaml`), or `init` exits 3
+  (`design-hld.yaml`, `design-contract.yaml`, `design-lld.yaml`, `design-tests.yaml`, `archive.yaml`), or `init` exits 3
   with "already runs <other workflow>", read `single-stage.md` (in this skill's own folder, beside
   this file) before `init`.
 - Ensure the requirement folder exists (`mkdir -p .maestro/runs/<slug>/requirement/`) so the

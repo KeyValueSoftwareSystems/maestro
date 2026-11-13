@@ -53,10 +53,13 @@ runtime. It ships:
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
-  `delivery` → `archive`; `design` composes `design-intake` /
-  `design-prd` / `design-hld` (with its architecture review) / `scaffold` (greenfield only: create
-  the repositories the HLD lists) / `design-contract` (only when the HLD lists cross-repo
-  interfaces) / `design-lld` (every repo's LLD in one run). A gate decision
+  `delivery` → `archive`; `design` composes `design-intake` / `design-prd`, then a `parallel`
+  node running `design-solution` (impact, sizing, then `design-hld` with its architecture review /
+  `scaffold` (greenfield only: create the repositories the HLD lists) / `design-contract` (only
+  when the HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run)) beside
+  `design-tests` (the functional test cases, from the approved PRD alone; QA takes exact values
+  from the design when it runs them). `todo.py` lists a parallel of single-stage branches as
+  those stages side by side. A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
   `engine/schemas/workflow.schema.json`).
@@ -282,13 +285,13 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
   because …"; gaps go back to the writer. Writes `design/impact-trace.md`, which the HLD and LLD approval
   gates show first. No assessment = valid, and no report is written.
-- **`sizing.py`** — after PRD approval, full or light design (light: PRD → LLD → readiness → test
-  cases → approval; no HLD or contract), decided from a core-valid impact assessment's facts:
+- **`sizing.py`** — after PRD approval, full or light design (light: PRD → LLD → readiness →
+  approval; no HLD or contract), decided from a core-valid impact assessment's facts:
   light unless a blocking open decision, an interface or data shape change, infrastructure, "(to
   confirm)" in the PRD, or an HLD from an earlier pass (`--hld`). Repository count never decides.
   Without an assessment the fallback rules: ≤ `design.light_max_criteria` (default 5) acceptance
   criteria, Non-functional requirements None, a one-repository workspace, no "(to confirm)". It
-  also prints a plain-words `explanation`, which `design.yaml`'s `how_to_design` gate shows (Go
+  also prints a plain-words `explanation`, which `design-solution.yaml`'s `how_to_design` gate shows (Go
   with that / Plan the architecture first / Skip the architecture document; autopilot accepts;
   skipped on greenfield or a run-start `path: full|light`); `sizing.py choose` applies the answer
   as the `design_path` step that routes and feeds the LLD stage. Light approvals bind the PRD hash

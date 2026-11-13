@@ -53,6 +53,7 @@ class DesignPhaseEntryTest(unittest.TestCase):
             (".maestro/workflows/design-hld.yaml", {}, "infra_profile"),
             (".maestro/workflows/design-lld.yaml", {}, "lld_scope_serve"),
             (".maestro/workflows/design-contract.yaml", {}, "contract"),
+            (".maestro/workflows/design-tests.yaml", {}, "test_cases"),
         ]
         for workflow, inputs, expected in cases:
             with self.subTest(workflow=workflow, inputs=inputs):

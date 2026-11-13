@@ -86,6 +86,18 @@ def canned_script(step):
     return 0, "ok"
 
 
+SOLUTION = "design/solution_and_tests[solution]/solution/"
+TESTS = "design/solution_and_tests[tests]/tests/"
+
+
+def stage_path(step):
+    """Design runs the solution design (`design-solution.yaml`: sizing, HLD, contract, LLDs) and
+    the test cases as two branches of one parallel node. Scenarios name a step by its stage path
+    (`design/hld/…`, `design/lld/…`, `design/tests/…`), so gate scripts and trace checks read as
+    the stages do, not as the branch nesting."""
+    return step.replace(SOLUTION, "design/").replace(TESTS, "design/tests/")
+
+
 class SdlcE2E(unittest.TestCase):
     maxDiff = None
 
@@ -370,7 +382,7 @@ class SdlcE2E(unittest.TestCase):
             run = resolver.Run("demo", self.tmp)
             answered = resolver.apply_autopilot(run)
             if answered:
-                trace.extend((f"auto_{item['kind']}", item["step"]) for item in answered)
+                trace.extend((f"auto_{item['kind']}", stage_path(item["step"])) for item in answered)
                 statemod.save("demo", run.state, self.tmp)
             action = resolver.next_action(run)
             kind = action["action"]
@@ -381,7 +393,8 @@ class SdlcE2E(unittest.TestCase):
             else:
                 batch = [action]
             for act in batch:
-                step = act["step"]
+                real = act["step"]
+                step = stage_path(real)
                 # an agent's engine check runs under the agent's step: trace it apart
                 trace.append((act["action"], step + "#check" if act.get("check") else step))
                 if "prompt" in act:
@@ -389,7 +402,7 @@ class SdlcE2E(unittest.TestCase):
                 run = resolver.Run("demo", self.tmp)
                 if act["action"] in ("run_agent", "run_lead"):
                     for rel in act.get("artifacts", []):
-                        self.write_agent_artifact(rel, step)
+                        self.write_agent_artifact(rel, real)
                     node = step.rsplit("/", 1)[-1]
                     if node in ("author_llds", "revise_llds"):
                         self.write_llds()
@@ -398,10 +411,10 @@ class SdlcE2E(unittest.TestCase):
                         override() if callable(override) else override
                     ) or (
                         self.implementation_outputs(act) if node == "implement"
-                        else canned_agent_outputs(step, act)
+                        else canned_agent_outputs(real, act)
                     )
                     self.write_review_files(act, node, outputs)
-                    resolver.complete_step(run, step, outputs=outputs)
+                    resolver.complete_step(run, real, outputs=outputs)
                 elif act["action"] == "run_script":
                     # actually run the real script where it's an engine helper; stub others
                     if ("oq_serve" in step or "validate_tasks" in step
@@ -423,8 +436,8 @@ class SdlcE2E(unittest.TestCase):
                                               text=True, timeout=30)
                         code, out = proc.returncode, proc.stdout
                     else:
-                        code, out = canned_script(step)
-                    resolver.complete_step(run, step, exit_code=code, stdout=out)
+                        code, out = canned_script(real)
+                    resolver.complete_step(run, real, exit_code=code, stdout=out)
                 elif act["action"] == "ask_gate":
                     decisions = gate_script.get(step)
                     if decisions is None and step == "design/lld/lld_approval":
@@ -441,22 +454,22 @@ class SdlcE2E(unittest.TestCase):
                     option, text = decisions[i]
                     gate_ptr[step] = i + 1
                     selected = next(o for o in act["options"] if o["id"] == option)
-                    resolver.record_gate(run, step, option)
+                    resolver.record_gate(run, real, option)
                     if selected.get("input"):
                         self.assertIsNotNone(text, f"{step}/{option} requires scripted input")
                         pending = resolver.next_action(run)
                         self.assertEqual(pending["action"], "ask_input")
                         self.assertEqual(pending["field"], selected["input"])
                         trace.append(("ask_input", step))
-                        resolver.record_gate_input(run, step, text)
+                        resolver.record_gate_input(run, real, text)
                 elif act["action"] == "ask_interview":
                     resolver.record_interview(
-                        run, step, act["section"],
+                        run, real, act["section"],
                         answer=None if act.get("proposal") else f"Confirmed {act['title']}",
                         accept=bool(act.get("proposal")),
                     )
                 elif act["action"] == "ask_interview_batch":
-                    resolver.record_interview_batch(run, step, {
+                    resolver.record_interview_batch(run, real, {
                         question["section"]: (
                             {"accept": True} if question.get("proposal")
                             else {"answer": f"Confirmed {question['title']}"}
@@ -517,7 +530,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("design/prd/write_prd", steps)
         self.assertLess(steps.index("design/prd/write_prd"), steps.index("design/hld/write_hld"))
         # one LLD run: one interview, one write, a readiness check and one human approval,
-        # all before any implementation begins
+        # all before any implementation begins; the test cases have no gate of their own
         gate_steps = [s for a, s in trace if a == "ask_gate"]
         self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/how_to_design",
                                       "design/hld/hld_mode",
@@ -535,13 +548,27 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(sorted(approval["llds"]), ["backend", "frontend"])
         self.assertIsNotNone(approval["contract_sha256"])  # the HLD lists an interface
         # the architecture is reviewed before HLD approval; the contract precedes the LLDs;
-        # the readiness check follows the LLDs, then the test cases; delivery checks staleness first
+        # the readiness check follows the LLDs; delivery checks staleness first
         order = ["design/hld/write_hld", "design/hld/arch_review", "design/contract/contract",
                  "design/lld/author_llds", "design/lld/readiness_review",
-                 "design/lld/test_cases", "design/lld/record_approval",
+                 "design/lld/record_approval",
                  "delivery/design_check", impl_steps[0]]
         self.assertEqual([steps.index(step) for step in order],
                          sorted(steps.index(step) for step in order))
+        # the test cases come from the approved PRD alone, beside the solution design: they start
+        # before the HLD is written, are written once, and are approved before delivery
+        self.assertLess(steps.index("design/prd/prd_approval"), steps.index("design/tests/test_cases"))
+        self.assertLess(steps.index("design/tests/test_cases"), steps.index("design/hld/write_hld"))
+        self.assertLess(steps.index("design/tests/test_cases#check"), steps.index("delivery/design_check"))
+        self.assertEqual(steps.count("design/tests/test_cases"), 1)
+        tests_prompt = self.prompts["design/tests/test_cases"][0]
+        self.assertIn("from the approved PRD at", tests_prompt)
+        self.assertNotIn("- contract_path:", tests_prompt)
+        self.assertNotIn("- hld_path:", tests_prompt)
+        # QA looks the exact values up in the approved design
+        qa_prompt = self.prompts["delivery/qa/qa_run"][0]
+        self.assertIn("- contract_path: .maestro/runs/demo/design/openapi.yaml", qa_prompt)
+        self.assertIn("- lld_dir: .maestro/runs/demo/design/lld", qa_prompt)
         self.assertLess(steps.index("delivery/finalize_implementation"), steps.index("delivery/qa/qa_run"))
         # one decision log across the design stages, shown at each approval
         run_dir = Path(self.tmp, ".maestro/runs/demo")
@@ -866,7 +893,7 @@ class SdlcE2E(unittest.TestCase):
                          ["design/how_to_design", "design/lld/lld_scope",
                           "design/lld/lld_approval", "delivery/release_approval"])
         gates = statemod.load("demo", self.tmp)["gates"]
-        self.assertEqual([(g["step"], g.get("auto")) for g in gates], [
+        self.assertEqual([(stage_path(g["step"]), g.get("auto")) for g in gates], [
             ("design/prd/prd_approval", None), ("design/how_to_design", "design"),
             ("design/hld/hld_mode", None),
             ("design/hld/hld_approval", None), ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
@@ -895,7 +922,7 @@ class SdlcE2E(unittest.TestCase):
         log = Path(self.tmp, ".maestro/runs/demo/decisions/decision-log.md").read_text()
         self.assertIn("Run mode: auto. 3 assumptions, 0 left open", log)
         self.assertIn("**PRD · ", log)
-        self.assertIn("design/lld/lld_approval → approve (auto mode", log)
+        self.assertIn(SOLUTION + "lld/lld_approval → approve (auto mode", log)
         self.assertLess(steps.index("delivery/assumptions"), steps.index("delivery/review_pack"))
         # a release nobody approved is recorded as such; pull-request delivery opens drafts from it
         self.assertEqual(statemod.load("demo", self.tmp)["steps"][
@@ -947,6 +974,8 @@ class SdlcE2E(unittest.TestCase):
                                    agent_overrides={"arch_review": blocked}, mode="auto")
         self.assertEqual(action["action"], "failed", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["design/hld/hld_approval"])
+        # the test cases need only the PRD, so they are written while the HLD is still blocked
+        self.assertIn("design/tests/test_cases#check", [s for _, s in trace])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
                          ["design/prd/prd_approval", "design/how_to_design",
                           "design/hld/hld_mode"])
@@ -956,11 +985,12 @@ class SdlcE2E(unittest.TestCase):
         action, trace = self.drive(dict(self.DESIGN_GATES))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # the catalog is written once the LLDs pass the readiness check
-        self.assertLess(steps.index("design/lld/readiness_review"),
-                        steps.index("design/lld/test_cases"))
-        self.assertLess(steps.index("design/lld/test_cases#check"),
-                        steps.index("design/lld/lld_approval"))
+        # the catalog is written from the PRD and checked by the engine, with no gate
+        self.assertLess(steps.index("design/prd/prd_approval"),
+                        steps.index("design/tests/test_cases"))
+        self.assertLess(steps.index("design/tests/test_cases#check"),
+                        steps.index("delivery/design_check"))
+        self.assertNotIn("ask_gate", [a for a, s in trace if s.startswith("design/tests/")])
         self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/review_pack"))
         trace_md = Path(self.tmp, ".maestro/runs/demo/release/ac-trace.md").read_text()
         self.assertIn("1/1 acceptance criteria passing", trace_md)
@@ -975,7 +1005,7 @@ class SdlcE2E(unittest.TestCase):
             # the first catalog traces a criterion the PRD lacks; the rewrite fixes it
             calls.append(1)
             if len(calls) == 2:  # sent back with the engine's exact finding in its prompt
-                feedback = self.prompts["design/lld/test_cases"][-1]
+                feedback = self.prompts["design/tests/test_cases"][-1]
                 self.assertIn("failed the engine's check", feedback)
                 self.assertIn("criteria the PRD does not have: AC-07", feedback)
                 self.assertIn("no test case traces AC-01", feedback)
@@ -985,10 +1015,9 @@ class SdlcE2E(unittest.TestCase):
             return {"test_cases_path": str(catalog), "case_count": 1}
         action, trace = self.drive(dict(self.DESIGN_GATES), agent_overrides={"test_cases": test_cases})
         self.assertEqual(action["action"], "done", action)
-        lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
-        start = lld.index("test_cases")
-        self.assertEqual(lld[start:start + 5], ["test_cases", "test_cases#check", "test_cases",
-                                                "test_cases#check", "lld_approval"])
+        tests = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/tests/")]
+        self.assertEqual(tests, ["test_cases", "test_cases#check", "test_cases",
+                                 "test_cases#check"])
         self.assertEqual(len(calls), 2)
 
     def test_auto_mode_stops_at_release_when_a_criterion_fails_qa(self):
@@ -1008,7 +1037,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("Infrastructure level none", prepare)
         self.assertIn("ask no infrastructure questions", prepare)
         steps = statemod.load("demo", self.tmp)["steps"]
-        self.assertEqual(steps["design/hld/validate_hld"]["outputs"]["infra_changed"], False)
+        self.assertEqual(steps[SOLUTION + "hld/validate_hld"]["outputs"]["infra_changed"], False)
 
     def add_terraform_to_backend(self):
         """Infrastructure as code inside an app repository, committed and indexed like setUp."""
@@ -1050,7 +1079,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("- iac_repos: backend", prepare)
         self.assertRegex(self.prompts["design/hld/write_hld"][0], r"--infra-level\s+iac")
         self.assertIn("Infrastructure level iac", self.prompts["design/hld/arch_review"][0])
-        outputs = statemod.load("demo", self.tmp)["steps"]["design/hld/validate_hld"]["outputs"]
+        outputs = statemod.load("demo", self.tmp)["steps"][SOLUTION + "hld/validate_hld"]["outputs"]
         self.assertEqual((outputs["valid"], outputs["infra_changed"]), (True, True))
         self.assertEqual(outputs["infra_repos_csv"], "backend")
         # the repository that owns the infrastructure change cannot be dropped from LLD scope
@@ -1108,6 +1137,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertFalse([s for s in steps if s.startswith("design/contract/")])
         self.assertIn("design/lld/readiness_review", steps)
         self.assertIn("Design path: light", self.prompts["design/lld/author_llds"][0])
+        # the light path writes its test cases from the PRD too, beside the LLDs
+        self.assertLess(steps.index("design/tests/test_cases"), steps.index("design/lld/lld_approval"))
+        self.assertLess(steps.index("design/tests/test_cases#check"), steps.index("delivery/design_check"))
         approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
         self.assertTrue(approval["light"])
         self.assertIsNone(approval["hld_sha256"])
@@ -1130,7 +1162,7 @@ class SdlcE2E(unittest.TestCase):
         steps = [s for _, s in trace]
         self.assertFalse([s for s in steps if s.startswith("design/hld/")])
         self.assertIn("Design path: light", self.prompts["design/lld/author_llds"][0])
-        sized = statemod.load("demo", self.tmp)["steps"]["design/sizing"]["outputs"]
+        sized = statemod.load("demo", self.tmp)["steps"][SOLUTION + "sizing"]["outputs"]
         self.assertEqual(sized["path"], "full")
         self.assertIn("interface between repositories changes shape", sized["explanation"])
         self.assertTrue(json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())["light"])
@@ -1220,14 +1252,15 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
-        # the revision round re-checks the LLDs; the test cases are written once, after it
-        self.assertEqual(lld[start:start + 13], ["readiness_review", "readiness_verdict",
+        # the revision round re-checks the LLDs, then they go to approval
+        self.assertEqual(lld[start:start + 12], ["readiness_review", "readiness_verdict",
                                                  "revise_llds", "readiness_resolution",
                                                  "validate_llds", "lld_impact_trace", "sync_decisions",
                                                  "readiness_scope", "readiness_review",
                                                  "readiness_verdict",
-                                                 "test_cases", "test_cases#check", "lld_approval"])
-        self.assertEqual(lld.count("test_cases"), 1)
+                                                 "lld_approval", "record_approval"])
+        # an LLD revision does not rewrite the test cases
+        self.assertEqual([s for _, s in trace].count("design/tests/test_cases"), 1)
 
     def test_readiness_rounds_stop_at_the_limit_and_the_person_decides(self):
         self.prep_tasks_json()
@@ -1242,9 +1275,10 @@ class SdlcE2E(unittest.TestCase):
         # three reviews (reviews.max_rounds default), two revisions, then the person decides
         self.assertEqual(lld.count("readiness_review"), 3)
         self.assertEqual(lld.count("revise_llds"), 2)
-        self.assertEqual(lld[lld.index("test_cases"):][:3],
-                         ["test_cases", "test_cases#check", "lld_approval"])
-        verdict = statemod.load("demo", self.tmp)["steps"]["design/lld/readiness_verdict"]["outputs"]
+        last_verdict = len(lld) - 1 - lld[::-1].index("readiness_verdict")
+        self.assertEqual(lld[last_verdict + 1], "lld_approval")
+        verdict = statemod.load("demo", self.tmp)["steps"][
+            SOLUTION + "lld/readiness_verdict"]["outputs"]
         self.assertEqual((verdict["limit_reached"], verdict["blocking"]), (True, True))
         self.assertIn(("ask_gate", "design/lld/lld_approval"), trace)
 
@@ -1286,6 +1320,8 @@ class SdlcE2E(unittest.TestCase):
                                                 "readiness_resolution", "validate_llds"])
         approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
         self.assertEqual(approval["contract_sha256"], statemod.sha256_file(str(contract)))
+        # the test cases never read the contract, so a contract change does not rewrite them
+        self.assertEqual([s for _, s in trace].count("design/tests/test_cases"), 1)
 
     def test_fix_cycle_runs_when_review_blocks(self):
         self.prep_tasks_json()
@@ -1567,48 +1603,51 @@ class SdlcE2E(unittest.TestCase):
         for _ in range(80):
             run = resolver.Run("demo", self.tmp)
             action = resolver.next_action(run)
-            run = resolver.Run("demo", self.tmp)
-            step = action.get("step")
-            if action["action"] in ("run_agent", "run_lead"):
-                seen.append(step.rsplit("/", 1)[-1])
-                for rel in action.get("artifacts", []):
-                    self.write_agent_artifact(rel, step)
-                node = step.rsplit("/", 1)[-1]
-                if node == "write_hld":
-                    reached_hld = True
-                    outputs = {"hld_summary": "ok", "needs_clarification": False}
-                else:
-                    outputs = canned_agent_outputs(step, action)
-                resolver.complete_step(run, step, outputs=outputs)
-            elif action["action"] == "run_script":
-                proc = subprocess.run(action["argv"], cwd=self.tmp, capture_output=True,
-                                      text=True, timeout=30)
-                resolver.complete_step(run, step, exit_code=proc.returncode,
-                                       stdout=proc.stdout)
-            elif action["action"] == "ask_gate":
-                gate = step.rsplit("/", 1)[-1]  # phase children nest paths: prd/<gate>
-                if gate == "requirement_intake":
-                    resolver.record_gate(run, step, "clarify")
-                elif gate == "prd_approval":
-                    resolver.record_gate(run, step, "approve")
-                elif gate == "hld_mode":
-                    resolver.record_gate(run, step, "guided")
-                elif gate == "how_to_design":
-                    resolver.record_gate(run, step, "accept")
-                else:
-                    self.fail(f"unexpected gate {step}")
-            elif action["action"] == "ask_interview":
-                if step.endswith("prd_interview"):
-                    interview_sections.append(action["section"])
-                resolver.record_interview(run, step, action["section"], accept=True)
-            elif action["action"] == "ask_interview_batch":
-                if step.endswith("prd_interview"):
-                    interview_sections.extend(q["section"] for q in action["questions"])
-                resolver.record_interview_batch(run, step, {
-                    question["section"]: {"accept": True}
-                    for question in action["questions"]
-                })
-            statemod.save("demo", run.state, self.tmp)
+            # the solution design and the test cases run side by side: a wave holds both
+            batch = action["agents"] if action["action"] == "run_agents" else [action]
+            for action in batch:
+                run = resolver.Run("demo", self.tmp)
+                step = action.get("step")
+                if action["action"] in ("run_agent", "run_lead"):
+                    seen.append(step.rsplit("/", 1)[-1])
+                    for rel in action.get("artifacts", []):
+                        self.write_agent_artifact(rel, step)
+                    node = step.rsplit("/", 1)[-1]
+                    if node == "write_hld":
+                        reached_hld = True
+                        outputs = {"hld_summary": "ok", "needs_clarification": False}
+                    else:
+                        outputs = canned_agent_outputs(step, action)
+                    resolver.complete_step(run, step, outputs=outputs)
+                elif action["action"] == "run_script":
+                    proc = subprocess.run(action["argv"], cwd=self.tmp, capture_output=True,
+                                          text=True, timeout=30)
+                    resolver.complete_step(run, step, exit_code=proc.returncode,
+                                           stdout=proc.stdout)
+                elif action["action"] == "ask_gate":
+                    gate = step.rsplit("/", 1)[-1]  # phase children nest paths: prd/<gate>
+                    if gate == "requirement_intake":
+                        resolver.record_gate(run, step, "clarify")
+                    elif gate == "prd_approval":
+                        resolver.record_gate(run, step, "approve")
+                    elif gate == "hld_mode":
+                        resolver.record_gate(run, step, "guided")
+                    elif gate == "how_to_design":
+                        resolver.record_gate(run, step, "accept")
+                    else:
+                        self.fail(f"unexpected gate {step}")
+                elif action["action"] == "ask_interview":
+                    if step.endswith("prd_interview"):
+                        interview_sections.append(action["section"])
+                    resolver.record_interview(run, step, action["section"], accept=True)
+                elif action["action"] == "ask_interview_batch":
+                    if step.endswith("prd_interview"):
+                        interview_sections.extend(q["section"] for q in action["questions"])
+                    resolver.record_interview_batch(run, step, {
+                        question["section"]: {"accept": True}
+                        for question in action["questions"]
+                    })
+                statemod.save("demo", run.state, self.tmp)
             if reached_hld:
                 break
         else:

@@ -4,7 +4,8 @@
   sizing.py [--root .] --prd <prd.md> [--impact <impact.json>] [--hld <hld.md>] [--path auto|full|light]
 
 The light path skips the HLD and the contract: the PRD goes straight to the repository LLD,
-readiness check, test cases and approval. The impact assessment (impact.py) records facts, never a
+readiness check and approval (the test cases are written from the PRD alongside, on either
+path). The impact assessment (impact.py) records facts, never a
 verdict; `auto` (the default) takes the light path unless one of them needs an architecture
 document —
   - an open decision of a blocking kind (placement, integration, data-model, interface, quality),
@@ -177,7 +178,7 @@ def size(root, prd_path, requested="auto", impact_path=None, hld_path=None):
 
 
 def _summary(path, reasons):
-    return ("Light path: PRD → LLD → test cases (no HLD or contract) — " if path == "light"
+    return ("Light path: PRD → LLD (no HLD or contract) — " if path == "light"
             else "Full design path — ") + "; ".join(reasons)
 
 
