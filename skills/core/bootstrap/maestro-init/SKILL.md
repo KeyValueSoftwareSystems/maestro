@@ -52,7 +52,11 @@ inline. Never parallelize these steps because each consumes the previous step's 
    **Skip** step 5 (build-knowledge) when `refresh_needed=false`, maps are not stale, and
    `docs/architecture.md` is present — set `domains_written=0` and note “docs already current”.
    Still run step 6b (`ensure-index-state`) so template-written state gets `docs_sha256`.
-5. **Build the knowledge base (only if stale / missing)** — load and follow the
+5. **Build the knowledge base (only if stale / missing)** — first run
+   `python3 .maestro/engine/docs_rewrite.py check --root . --plan .maestro/index/workspace-sync-init-knowledge.json`;
+   when `needs_approval` is true (verified docs would be rewritten), show its `summary` in ONE
+   AskUserQuestion — **Refresh the docs** or **Keep the docs as they are** (set
+   `domains_written=0`, skip to step 6b) — and wait for the answer. Then load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
    write the per-domain technical + functional docs, the architecture diagram, and a
    codebase map per repo under `docs/codebase-maps/`. Capture `domains_written` and `architecture_path`.
