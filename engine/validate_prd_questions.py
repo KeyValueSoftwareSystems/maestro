@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Validate a feature-specific clarification queue (PRD, HLD or LLD) without using a model.
 
-Besides structure, a schema-version-2 queue is checked against the feature's decision log
-(`--log`, written by decision_log.py) and the stage's own decisions:
+Besides structure, a schema-version-2 queue is checked against the feature's recorded decisions
+(`--log`: the folder that holds every stage's interview record) and the stage's own decisions:
   - every question names a `topic` (with --require-topics); a topic already decided in any stage
     is not asked again unless the question is the single follow-up (`follow_up_of: <id>`) of that
     decision — at most one follow-up per question;
@@ -63,16 +63,28 @@ def _decisions_doc(path):
     return doc
 
 
-def _decided_entries(decisions_doc, log_doc):
-    """Every decision already on record: this stage's decisions plus the feature's decision log."""
+def _log_entries(log_path):
+    """Every stage's recorded decisions: read from the stage records when `log_path` is their
+    folder, or from the JSON copy an earlier workflow keeps (`decision-log.json`)."""
+    if not log_path:
+        return []
+    if Path(log_path).is_dir():
+        try:
+            import decision_log
+        except ImportError:  # imported as part of a package (tests)
+            from . import decision_log
+        return decision_log.entries_in(str(log_path))
+    return [item for item in _decisions_doc(log_path).get("entries") or []
+            if isinstance(item, dict)]
+
+
+def _decided_entries(decisions_doc, log_entries):
+    """Every decision already on record: this stage's decisions plus every stage's."""
     entries = []
     for item in decisions_doc.get("decisions") or []:
         if isinstance(item, dict):
             entries.append({**item, "stage": item.get("stage") or "this stage"})
-    for item in log_doc.get("entries") or []:
-        if isinstance(item, dict):
-            entries.append(item)
-    return entries
+    return entries + list(log_entries)
 
 
 def _source_exists(source, root):
@@ -353,7 +365,7 @@ def validate(path, decisions_path=None, require_version=None, require_direction=
                 if contradictions:
                     errors.append("empty queue cannot declare decision contradictions")
     if schema_version == 2:
-        entries = _decided_entries(decisions_doc, _decisions_doc(log_path))
+        entries = _decided_entries(decisions_doc, _log_entries(log_path))
         doc["_settled_count"] = _validate_topics(
             questions, doc.get("settled"), entries, root, require_topics, errors)
     if require_direction and not questions:
@@ -372,7 +384,8 @@ def main(argv=None):
         "--require-direction", action="store_true",
         help="an empty queue also needs a confirmed kind=direction decision newer than the rest",
     )
-    parser.add_argument("--log", help="the feature's decision log (decision_log.py)")
+    parser.add_argument("--log", help="the folder holding every stage's interview record "
+                                      "(or an earlier workflow's decision-log.json)")
     parser.add_argument("--require-topics", action="store_true",
                         help="every question must name the topic it decides")
     parser.add_argument("--root", help="workspace root that settled sources are relative to")

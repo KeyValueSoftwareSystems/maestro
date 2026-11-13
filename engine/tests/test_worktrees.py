@@ -67,8 +67,9 @@ class WorktreesTest(unittest.TestCase):
             git(repo, "commit", "-q", "-m", "one")
             self.repos[name] = repo
         self.run_dir = statemod.feature_dir(SLUG, self.root)
-        os.makedirs(self.run_dir)
-        with open(os.path.join(self.run_dir, "lld-repos.json"), "w") as fh:
+        os.makedirs(os.path.join(self.run_dir, ".engine"))
+        os.makedirs(os.path.join(self.run_dir, "release"))
+        with open(os.path.join(self.run_dir, ".engine", "lld-scope.json"), "w") as fh:
             json.dump({"selected": list(self.repos)}, fh)
         self.assertEqual(call(pool, "init", "--root", self.root, "--slug", SLUG,
                               "--choice", "all", "--fresh")[0], 0)
@@ -76,7 +77,7 @@ class WorktreesTest(unittest.TestCase):
     def pin(self):
         repos = [{"name": n, "path": os.path.relpath(p, self.root), "commit": git(p, "rev-parse", "HEAD")}
                  for n, p in self.repos.items()]
-        with open(os.path.join(self.run_dir, "workspace-lock.json"), "w") as fh:
+        with open(os.path.join(self.run_dir, ".engine", "workspace-lock.json"), "w") as fh:
             json.dump({"schema_version": 1, "repos": repos}, fh)
         return {r["name"]: r["commit"] for r in repos}
 
@@ -101,7 +102,7 @@ class WorktreesTest(unittest.TestCase):
         return call(worktrees, "remove", "--root", self.root, "--slug", SLUG)
 
     def deliver(self, pushed):
-        with open(os.path.join(self.run_dir, "delivery.json"), "w") as fh:
+        with open(os.path.join(self.run_dir, "release", "delivery.json"), "w") as fh:
             json.dump({"repositories": [{"repo": n, "pushed": pushed} for n in self.repos]}, fh)
 
     # --- the engine's own worktrees -------------------------------------------------------

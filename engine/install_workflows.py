@@ -149,7 +149,27 @@ LABELS = {
 }
 
 
-def report(actions, retired, dry_run, failures):
+def stale_run_paths(root, actions):
+    """-> [(file, [(old, new)])] for each workflow kept with local edits that still names run
+    paths from the earlier flat layout. The engine's helpers read the folders-by-kind layout
+    (run_layout.py), so such a workflow would write documents where nothing looks for them."""
+    import run_layout
+    dest = os.path.join(root, DEST_REL)
+    found = []
+    for name, action, _new in actions:
+        if action not in ("kept", "review"):
+            continue
+        try:
+            text = _read(os.path.join(dest, name)).decode("utf-8", "replace")
+        except OSError:
+            continue
+        paths = run_layout.legacy_paths(text)
+        if paths:
+            found.append((name, paths))
+    return found
+
+
+def report(actions, retired, dry_run, failures, stale=()):
     out = []
     head = "Workflow upgrade plan (dry run — nothing written)" if dry_run else "Workflows"
     out.append(f"  {head}:")
@@ -165,6 +185,14 @@ def report(actions, retired, dry_run, failures):
                    "upstream), then delete it.")
     for rel, errors in failures:
         out.append(f"  ! {rel} fails validation ({len(errors)} error(s)), e.g. {errors[0]}")
+    for name, paths in stale:
+        out.append(f"  ! {name} (your edited copy) names {len(paths)} run path(s) from the earlier "
+                   f"flat run folder. Runs now keep their files in folders by kind and the engine "
+                   f"reads them there, so rename these under .maestro/runs/<slug>/:")
+        for old, new in paths[:20]:
+            out.append(f"      {old}  ->  {new}")
+        if len(paths) > 20:
+            out.append(f"      … and {len(paths) - 20} more")
     print("\n".join(out))
 
 
@@ -186,7 +214,7 @@ def main(argv=None):
     if not args.dry_run:
         apply(actions, manifest_out, root)
         failures = validate_all(root)
-    report(actions, retired, args.dry_run, failures)
+    report(actions, retired, args.dry_run, failures, stale_run_paths(root, actions))
     return 0
 
 

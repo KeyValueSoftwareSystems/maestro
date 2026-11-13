@@ -19,7 +19,7 @@ Commands run through the shell from the workspace root; `{slug}` and `{root}` ar
 and `{repo}`.
 
 Maestro uses only worktrees it created. `prepare` refuses a path that already exists and is not in
-this run's record, `.maestro/runs/<slug>/worktrees.json` (a resumed run or a later delivery pass
+this run's record, `.maestro/runs/<slug>/.engine/worktrees.json` (a resumed run or a later delivery pass
 reuses its own). A new worktree must be clean and at the commit the feature's workspace lock
 pinned, or `prepare` fails before any agent writes code. `implementation_pool.py claim` hands each
 repository its recorded worktree and branch.
@@ -46,6 +46,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import project_config  # noqa: E402
 import repo_checks  # noqa: E402
+import run_layout  # noqa: E402
 import state as statemod  # noqa: E402
 
 SCHEMA_VERSION = 1
@@ -62,7 +63,7 @@ def _simulated():
 
 
 def record_path(root, slug):
-    return os.path.join(statemod.feature_dir(slug, root), "worktrees.json")
+    return run_layout.path(slug, root, run_layout.WORKTREES)
 
 
 def load_record(root, slug):
@@ -117,7 +118,7 @@ def _settings(root):
 
 
 def _selected(root, slug):
-    path = os.path.join(statemod.feature_dir(slug, root), "implementation-repos.json")
+    path = run_layout.path(slug, root, run_layout.POOL)
     try:
         with open(path, encoding="utf-8") as fh:
             doc = json.load(fh)
@@ -128,7 +129,7 @@ def _selected(root, slug):
 
 def _pinned(root, slug):
     """{repo: commit} from the feature's workspace lock, or {} when the run has none."""
-    path = os.path.join(statemod.feature_dir(slug, root), "workspace-lock.json")
+    path = run_layout.path(slug, root, run_layout.WORKSPACE_LOCK)
     try:
         with open(path, encoding="utf-8") as fh:
             doc = json.load(fh)
@@ -245,7 +246,7 @@ def prepare(root, slug):
             record["create_started"] = True
             _save_record(root, slug, record)
             command = _command(settings["create"], root, slug)
-            log = os.path.join(statemod.feature_dir(slug, root), "worktrees", "create.log")
+            log = run_layout.path(slug, root, f"{run_layout.LOGS_DIR}/worktrees/create.log")
             result = repo_checks._run(command, root, project_config.DEFAULT_TIMEOUT_S, log,
                                       {"MAESTRO_SLUG": slug, "MAESTRO_ROOT": root})
             if result["status"] != "passed":
@@ -304,7 +305,7 @@ def for_repo(root, slug, repo):
 
 
 def _pushed(root, slug):
-    path = os.path.join(statemod.feature_dir(slug, root), "delivery.json")
+    path = run_layout.path(slug, root, run_layout.DELIVERY)
     try:
         with open(path, encoding="utf-8") as fh:
             doc = json.load(fh)
@@ -346,7 +347,7 @@ def remove(root, slug):
                     "summary": "Kept the sandbox: its branches were not pushed (delivery.mode "
                                "branch); remove it after merging"}
         command = _command(settings["remove"], root, slug)
-        log = os.path.join(statemod.feature_dir(slug, root), "worktrees", "remove.log")
+        log = run_layout.path(slug, root, f"{run_layout.LOGS_DIR}/worktrees/remove.log")
         result = repo_checks._run(command, root, project_config.DEFAULT_TIMEOUT_S, log,
                                   {"MAESTRO_SLUG": slug, "MAESTRO_ROOT": root})
         if result["status"] != "passed":

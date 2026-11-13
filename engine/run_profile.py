@@ -225,12 +225,13 @@ def render_md(report):
 
 
 def write_files(slug, state, root="."):
-    """Rewrite profile.json and profile.md in the feature folder (debug runs only)."""
+    """Rewrite profile.json and profile.md under the feature folder's .engine/ (debug runs only)."""
     if not enabled(state):
         return None
-    folder = statemod.feature_dir(slug, root)
-    if not os.path.isdir(folder):
+    if not os.path.isdir(statemod.feature_dir(slug, root)):
         return None
+    folder = statemod.engine_dir(slug, root)
+    os.makedirs(folder, exist_ok=True)
     report = build(state)
     with open(os.path.join(folder, "profile.json"), "w", encoding="utf-8") as fh:
         json.dump(report, fh, indent=2)

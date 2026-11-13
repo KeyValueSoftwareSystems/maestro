@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic repo implementation queue and QA handoff manifest.
 
-Design chooses repos in lld-repos.json. `init` selects the repos to implement: the golden workflow
+Design chooses the repos in scope (lld_set.py). `init` selects the repos to implement: the golden workflow
 takes every designed repo afresh (`--choice all --fresh`); `--choice pick` keeps the batching a
 team workflow may want, leaving unselected repos as deferred work. Fixed workflow slots claim the
 selected repos (each with the worktree and branch `worktrees.py prepare` created for it), run the
@@ -22,26 +22,23 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
+import run_layout  # noqa: E402
 import stack_skills  # noqa: E402
 import state as statemod  # noqa: E402
 import worktrees  # noqa: E402
 
 
-def _run_dir(slug, root):
-    return statemod.feature_dir(slug, root)
-
-
 def _queue_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "implementation-repos.json")
+    return run_layout.path(slug, root, run_layout.POOL)
 
 
 def _manifest_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "implementation-manifest.json")
+    return run_layout.path(slug, root, run_layout.MANIFEST)
 
 
 def _receipt_path(slug, repo, root):
     """The engine verify step's receipt for one repository (repo_checks.py --out)."""
-    return os.path.join(_run_dir(slug, root), repo, "verify.json")
+    return run_layout.path(slug, root, run_layout.receipt(repo))
 
 
 def _verification(slug, entry, root):
@@ -89,7 +86,7 @@ def _review(slug, entry, root):
     """Whether the shipped commit was code-reviewed: `reviewed`, `blocking` (findings left open),
     or `not-reviewed` — no review verdict names this commit, e.g. the stack was accepted at the
     escalation gate before review ran, or a later fix was never re-reviewed."""
-    path = os.path.join(_run_dir(slug, root), entry["repo"], "reviews", "reviewed.json")
+    path = run_layout.path(slug, root, run_layout.reviewed(entry["repo"]))
     try:
         record = _read(path)
     except (OSError, ValueError):
@@ -157,7 +154,7 @@ def _fail(message):
 
 
 def _design_selection(slug, root):
-    selection_path = os.path.join(_run_dir(slug, root), "lld-repos.json")
+    selection_path = run_layout.path(slug, root, run_layout.LLD_SCOPE)
     try:
         selection = _read(selection_path)
     except (OSError, ValueError) as exc:

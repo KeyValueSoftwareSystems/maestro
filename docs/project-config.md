@@ -48,7 +48,7 @@ environment:                    # optional: bring the stack up for QA
 infrastructure:                 # optional; overrides the detected level for HLD questions
   level: iac                    # none | containers | iac
 design:                         # optional
-  light_max_criteria: 5         # most acceptance criteria a light (no HLD) design may have when no impact assessment sizes it (default 5)
+  light_max_criteria: 5         # only without a valid impact assessment: most acceptance criteria a light (no HLD) design may have (default 5)
   sync_restart: always          # always (default) | cited. Pre-implementation sync moved repo commits after the design
                                 # was approved: `always` redoes the design; `cited` redoes it only when a changed file
                                 # is one the design cites or a migration (compares paths in the HLD/LLDs, not behaviour)
@@ -100,9 +100,9 @@ adds no framework, and QA results are only what it reports.
 After release approval, `delivery.mode: pull-request` pushes each repository's verified branch
 (never forced; refused if the branch moved off its verified commit) and opens a pull request with
 the GitHub CLI (`gh`, installed and logged in), or reuses the open one. The body carries that
-repository's verification result, the acceptance-criteria trace, the assumptions summary, links
+repository's verification result, the acceptance-criteria trace, the unconfirmed-decisions summary, links
 to the sibling pull requests and the review pack. A release approved on autopilot opens drafts.
-Results land in `.maestro/runs/<slug>/delivery.json`. `branch` (the default) pushes nothing.
+Results land in `.maestro/runs/<slug>/release/delivery.json`. `branch` (the default) pushes nothing.
 
 The engine creates each feature's worktrees before any agent writes code, once per feature
 (`engine/worktrees.py`). Without a `worktree` section it runs `git worktree add` itself: one
@@ -115,7 +115,7 @@ and `{repo}`. Point `environment.start` at the same sandbox (for example
 `./scripts/infra up "$MAESTRO_SLUG"`) and QA builds the code Maestro wrote.
 
 Maestro uses only worktrees it created. A path that already exists and is not in the run's
-record (`.maestro/runs/<slug>/worktrees.json`) is refused, as is a new worktree that is not clean
+record (`.maestro/runs/<slug>/.engine/worktrees.json`) is refused, as is a new worktree that is not clean
 or does not start at the commit the feature's workspace lock pinned. A resumed run or a later
 delivery pass reuses its own. After delivery, the engine removes what it created: its own
 worktrees with `git worktree remove` (the branches stay), a configured sandbox with `remove` only

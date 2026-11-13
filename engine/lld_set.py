@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """The feature's repository LLDs: one file per selected repository, written and approved in one run.
 
-Design writes `.maestro/runs/<slug>/lld/<repo>.md` for every repository selected in
-`lld-repos.json`. This helper owns the deterministic parts: which repositories are in scope, that
+Design writes `.maestro/runs/<slug>/design/lld/<repo>.md` for every repository in the feature's
+scope (`.engine/lld-scope.json`). This helper owns the deterministic parts: which repositories are in scope, that
 every LLD exists and passes the LLD validator, and a hash-bound approval record. The approval
 binds each LLD to the exact HLD and contract it was written against, so a later change to either
 (for example a frontend need that adds a contract field) makes the LLDs stale instead of silently
@@ -13,12 +13,12 @@ Commands
   list     [--root .]                                  discovered repo names
   init     [--root .] --slug S --choice all|pick|impact [--repos-text "a, b"] [--require "a,b"]
            [--impact impact.json]
-           write the selection to lld-repos.json; `pick` fails on an unknown name; `impact` takes
+           write the selection to .engine/lld-scope.json; `pick` fails on an unknown name; `impact` takes
            the repositories the impact assessment names (every repository when it is missing or
            invalid) plus the --require ones
   validate [--root .] --slug S                         every selected LLD exists and validates
-  approve  [--root .] --slug S [--light true]  record lld/approval.json (PRD, HLD, contract, LLD hashes;
-           --light: the light path designs without an HLD)
+  approve  [--root .] --slug S [--light true]  record .engine/lld-approval.json (PRD, HLD, contract,
+           LLD hashes; --light: the light path designs without an HLD)
   verify   [--root .] --slug S                         are the approved LLDs still current?
 
 Every command prints one JSON line. `validate` and `verify` exit 0 so workflows route on fields.
@@ -31,32 +31,29 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import impact as impactmod  # noqa: E402
+import run_layout  # noqa: E402
 import state as statemod  # noqa: E402
 import validate_lld  # noqa: E402
 
 
-def _run_dir(slug, root):
-    return statemod.feature_dir(slug, root)
-
-
 def selection_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "lld-repos.json")
+    return run_layout.path(slug, root, run_layout.LLD_SCOPE)
 
 
 def lld_path(slug, repo, root):
-    return os.path.join(_run_dir(slug, root), "lld", f"{repo}.md")
+    return run_layout.path(slug, root, run_layout.lld(repo))
 
 
 def approval_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "lld", "approval.json")
+    return run_layout.path(slug, root, run_layout.LLD_APPROVAL)
 
 
 def _hld_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "hld.md")
+    return run_layout.path(slug, root, run_layout.HLD)
 
 
 def _contract_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "openapi.yaml")
+    return run_layout.path(slug, root, run_layout.CONTRACT)
 
 
 def _write_json(path, doc):
@@ -100,7 +97,7 @@ def cmd_init(args):
     if args.choice == "all":
         repos = discovered
     elif args.choice == "impact":
-        assessed = impactmod.load(args.root, args.impact)[0] if args.impact else None
+        assessed = impactmod.load(args.root, args.impact, core_only=True)[0] if args.impact else None
         repos = list(assessed["repos"]) if assessed else list(discovered)
         repos += [r for r in required if r in discovered and r not in repos]
     else:
@@ -145,7 +142,7 @@ def cmd_validate(args):
 
 
 def _prd_path(slug, root):
-    return os.path.join(_run_dir(slug, root), "requirement", "prd.md")
+    return run_layout.path(slug, root, run_layout.PRD)
 
 
 def _current_hashes(slug, root, repos):

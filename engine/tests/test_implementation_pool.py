@@ -40,8 +40,8 @@ class ImplementationPoolTest(unittest.TestCase):
         git(self.repo, "add", "README.md")
         git(self.repo, "commit", "-q", "-m", "initial")
         run_dir = os.path.join(self.root, ".maestro", "runs", "feature-x")
-        os.makedirs(run_dir)
-        with open(os.path.join(run_dir, "lld-repos.json"), "w") as fh:
+        os.makedirs(os.path.join(run_dir, ".engine"))
+        with open(os.path.join(run_dir, ".engine", "lld-scope.json"), "w") as fh:
             json.dump({"selected": ["mobile-app"], "remaining": []}, fh)
 
     def create_feature_worktree(self):
@@ -140,12 +140,14 @@ class ImplementationPoolTest(unittest.TestCase):
         worktree, branch, commit = self.create_feature_worktree()
         run("record", "--root", self.root, "--slug", "feature-x", "--repo", "mobile-app",
             "--branch", branch, "--worktree", worktree, "--commit", commit)
-        path = os.path.join(self.root, ".maestro", "runs", "feature-x", "mobile-app", "verify.json")
+        path = os.path.join(self.root, ".maestro", "runs", "feature-x", "build", "mobile-app",
+                            "verify.json")
         os.makedirs(os.path.dirname(path))
         with open(path, "w") as fh:
             json.dump(receipt(commit), fh)
         if reviewed:
-            review = os.path.join(os.path.dirname(path), "reviews", "reviewed.json")
+            review = os.path.join(self.root, ".maestro", "runs", "feature-x", ".engine",
+                                  "reviews", "code-mobile-app.reviewed.json")
             os.makedirs(os.path.dirname(review))
             with open(review, "w") as fh:
                 json.dump(reviewed(commit), fh)
@@ -269,7 +271,7 @@ class ImplementationPoolTest(unittest.TestCase):
         git(web, "add", "README.md")
         git(web, "commit", "-q", "-m", "initial")
         selection_path = os.path.join(
-            self.root, ".maestro", "runs", "feature-x", "lld-repos.json",
+            self.root, ".maestro", "runs", "feature-x", ".engine", "lld-scope.json",
         )
         with open(selection_path, "w") as fh:
             json.dump({"selected": ["mobile-app", "web"], "remaining": []}, fh)
@@ -306,7 +308,7 @@ class ImplementationPoolTest(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(second["selected_csv"], "web")
         with open(os.path.join(
-            self.root, ".maestro", "runs", "feature-x", "implementation-repos.json",
+            self.root, ".maestro", "runs", "feature-x", ".engine", "implementation-pool.json",
         )) as fh:
             queue = json.load(fh)
         self.assertIn("mobile-app", queue["implementations"])

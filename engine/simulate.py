@@ -27,6 +27,7 @@ viewer. Existing slugs are refused unless --force is also supplied.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -39,6 +40,7 @@ import validate as validatemod  # noqa: E402
 import codebase_scan  # noqa: E402
 import living_docs  # noqa: E402
 import lld_set  # noqa: E402
+import run_layout  # noqa: E402
 
 
 def _log(line):
@@ -129,6 +131,31 @@ def _simulated_lld(parent_slug, repo):
     ) + "\n"
 
 
+_RUN_PATH = re.compile(r"^(\.maestro/runs/[^/]+)/(.+)$")
+
+
+def _queue_stage(rel):
+    """`hld` / `hld-post` for a question queue artifact (the layout's `.engine/queues/<stage>.json`,
+    or a `<stage>-questions.json` an older workflow names), else None."""
+    name = os.path.basename(rel)
+    match = _RUN_PATH.match(rel.replace(os.sep, "/"))
+    if match and match.group(2).startswith(run_layout.QUEUES_DIR + "/"):
+        return name[:-len(".json")]
+    for suffix, post in (("-post-questions.json", "-post"), ("-questions.json", "")):
+        if name.endswith(suffix) and name[:-len(suffix)] in ("prd", "hld", "lld"):
+            return name[:-len(suffix)] + post
+    return None
+
+
+def _beside_run(root, rel, layout_rel, sibling):
+    """A file that belongs with artifact `rel`: at its layout path when `rel` is in a run folder
+    that uses the layout's folders, else `sibling` relative to the artifact's own folder."""
+    match = _RUN_PATH.match(rel.replace(os.sep, "/"))
+    if match and match.group(2).split("/")[0] in run_layout.FOLDERS:
+        return os.path.join(root, match.group(1), *layout_rel.split("/"))
+    return os.path.normpath(os.path.join(root, os.path.dirname(rel), sibling))
+
+
 def _stub_agent(root, act, slug=None):
     """Instantly complete a worker or lead step: placeholder text for declared fields,
     a placeholder file for every declared artifact (unless one's already there — respects a
@@ -137,25 +164,21 @@ def _stub_agent(root, act, slug=None):
     for rel in act.get("artifacts", []):
         full = os.path.join(root, rel)
         os.makedirs(os.path.dirname(full), exist_ok=True)
-        if any(rel.endswith(name) for name in (
-                "prd-questions.json", "hld-questions.json", "lld-questions.json")):
-            if rel.endswith("hld-questions.json"):
-                context_name = "hld-context.json"
-            elif rel.endswith("lld-questions.json"):
-                context_name = "lld-context.json"
-            else:
-                context_name = "prd-context.json"
-            context = os.path.join(os.path.dirname(full), context_name)
+        queue_stage = _queue_stage(rel)
+        if queue_stage and not queue_stage.endswith("-post"):
+            # the stage's interview record: present once its first round was answered
+            context = _beside_run(root, rel, run_layout.stage_record(queue_stage),
+                                  f"{queue_stage}-context.json")
             questions = [] if os.path.exists(context) else [{
                 "id": "simulated-failure",
-                "topic": context_name.split("-")[0] + "-simulated-failure",
+                "topic": queue_stage + "-simulated-failure",
                 "title": "Failure behavior",
                 "question": "What should the user see when the simulated action fails?",
                 "why": "This confirms a material user-visible edge case.",
                 "proposal": "Keep their input and show a retry action.",
                 "must_resolve": ["visible failure outcome", "recovery action"],
             }]
-            if questions and context_name != "prd-context.json":
+            if questions and queue_stage != "prd":
                 # HLD/LLD queues close only after the human confirms the assembled direction.
                 questions[0]["kind"] = "direction"
             with open(full, "w", encoding="utf-8") as fh:
@@ -169,7 +192,7 @@ def _stub_agent(root, act, slug=None):
                 }, fh, indent=2)
                 fh.write("\n")
             continue
-        if rel.endswith("hld-post-questions.json") or rel.endswith("lld-post-questions.json"):
+        if queue_stage:  # a post-check queue: empty unless synthesis found a new gap
             with open(full, "w", encoding="utf-8") as fh:
                 json.dump({
                     "schema_version": 2,
@@ -182,11 +205,11 @@ def _stub_agent(root, act, slug=None):
             # every repository the workspace has; unique per write for the `fresh` check
             names = [name for name, _path in codebase_scan.discover_repos(root)]
             with open(full, "w", encoding="utf-8") as fh:
-                json.dump({"schema_version": 1,
+                json.dump({"schema_version": 3,
                            "repos": [{"name": name, "change": "simulated change"} for name in names],
-                           "interfaces_change": len(names) > 1, "data_migration": False,
-                           "size": "minor" if len(names) == 1 else "major",
-                           "infrastructure_change": False,
+                           "interface_change": "shape" if len(names) > 1 else "none",
+                           "data_change": "none", "infrastructure_change": False,
+                           "compatibility_risk": False, "open_decisions": [],
                            "summary": f"[simulated] {time.time_ns()}"}, fh, indent=2)
                 fh.write("\n")
             continue
@@ -228,13 +251,13 @@ def _stub_agent(root, act, slug=None):
                     fh.write("\n")
             elif rel.endswith("/test-cases.md"):
                 # one case per PRD criterion, so the engine's acceptance-criteria trace holds
-                prd = os.path.join(os.path.dirname(full), "requirement", "prd.md")
+                prd = _beside_run(root, rel, run_layout.PRD, "requirement/prd.md")
                 with open(full, "w", encoding="utf-8") as fh:
                     fh.write("# [simulated] test cases\n\n" + "".join(
                         f"### TC-sim-{index:03d} — simulated case\n\n- **Traces:** {ac}\n\n"
                         for index, ac in enumerate(ac_trace.prd_criteria(prd), 1)))
             elif rel.endswith("/qa/results.json"):
-                cases = os.path.join(os.path.dirname(os.path.dirname(full)), "test-cases.md")
+                cases = _beside_run(root, rel, run_layout.TEST_CASES, "../test-cases.md")
                 with open(full, "w", encoding="utf-8") as fh:
                     json.dump({"schema_version": 1, "cases": [
                         {"id": case, "status": "passed", "note": "simulated"}

@@ -13,7 +13,7 @@ from contextlib import redirect_stderr, redirect_stdout
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
-import assumptions  # noqa: E402
+import decision_log  # noqa: E402
 import maestroctl  # noqa: E402
 import resolver  # noqa: E402
 import state as statemod  # noqa: E402
@@ -249,7 +249,17 @@ class InterviewAutopilotTest(unittest.TestCase):
         self.assertEqual(action["action"], "ask_interview")
         self.assertNotIn("autopilot", action)
 
-    def test_assumption_log_lists_guesses_open_items_and_autopilot_gates(self):
+    def decision_log(self, *stages):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            decision_log.main(["sync", "--root", self.tmp, "--slug", "f", "--md",
+                               "ctx/decision-log.md",
+                               *[arg for stage in stages for arg in ("--stage", stage)]])
+        result = json.loads(out.getvalue())
+        with open(os.path.join(self.tmp, result["path"])) as fh:
+            return result, fh.read()
+
+    def test_decision_log_opens_with_guesses_open_items_and_autopilot_gates(self):
         self.ctl("init", "--slug", "f", "--workflow", "ask.yaml", "--mode", "auto")
         self.ctl("next", "--slug", "f")
         state = statemod.load("f", self.tmp)
@@ -257,29 +267,28 @@ class InterviewAutopilotTest(unittest.TestCase):
                                "at": "2026-11-02T10:00:00Z"})
         state["gates"].append({"step": "prd", "option": "approve", "at": "2026-11-02T09:00:00Z"})
         statemod.save("f", state, self.tmp)
-        out = io.StringIO()
-        with redirect_stdout(out):
-            assumptions.main(["render", "--root", self.tmp, "--slug", "f",
-                              "--decisions", "ctx/demo-context.json",
-                              "--decisions", "ctx/missing-context.json"])
-        result = json.loads(out.getvalue())
-        self.assertEqual(result["summary"], "1 assumption, 1 left open, 1 autopilot gate decision")
-        with open(os.path.join(self.tmp, result["path"])) as fh:
-            log = fh.read()
+        result, log = self.decision_log("DEMO=ctx/demo-context.json",
+                                        "LATER=ctx/missing-context.json")
+        self.assertEqual(result["unconfirmed_summary"],
+                         "1 assumption, 1 left open, 1 autopilot gate decision")
+        self.assertEqual((result["assumption_count"], result["open_count"],
+                          result["autopilot_gate_count"]), (1, 1, 1))
+        # what nobody confirmed comes before the per-stage list, in one file
+        self.assertLess(log.index("## Not confirmed by a person"), log.index("## DEMO"))
+        self.assertIn("Run mode: auto. 1 assumption, 1 left open, 1 autopilot gate decision.", log)
         self.assertIn("- **DEMO · Retention** (autopilot): Keep 30 days", log)
         self.assertIn("- **DEMO · Data owner** (autopilot): Left open on autopilot", log)
         self.assertIn("- release → approve (auto mode", log)
         self.assertNotIn("- prd →", log)  # a person's gate choice is not an assumption
 
-    def test_empty_log_says_everything_was_confirmed(self):
+    def test_log_without_guesses_says_everything_was_confirmed(self):
         self.ctl("init", "--slug", "f", "--workflow", "ask.yaml")
-        out = io.StringIO()
-        with redirect_stdout(out):
-            assumptions.main(["render", "--root", self.tmp, "--slug", "f"])
-        result = json.loads(out.getvalue())
+        result, log = self.decision_log()
         self.assertEqual(result["assumption_count"], 0)
-        with open(os.path.join(self.tmp, result["path"])) as fh:
-            self.assertIn("confirmed by a person", fh.read())
+        self.assertEqual(result["unconfirmed_summary"],
+                         "No assumptions, open items or autopilot decisions")
+        self.assertIn("confirmed by a person", log)
+        self.assertNotIn("## Not confirmed", log)
 
 
 class RunModeResolverTest(unittest.TestCase):

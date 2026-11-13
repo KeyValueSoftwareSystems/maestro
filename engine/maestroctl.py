@@ -23,8 +23,12 @@ The lead agent's whole protocol:
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, todo, brief, profile (a debug run's timing), reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
-rebase, graph, runs, and note.
+rebase, migrate, graph, runs, and note.
 `next --peek` re-reads without claiming or running.
+
+A run's files are grouped by kind under .maestro/runs/<slug>/ (run_layout.py). `init` and `rebase`
+move a run written under the earlier flat layout into it; `migrate --slug S [--dry-run]` does
+only that. Every other command refuses such a run until it is migrated.
 
 Every serving command (next, complete, gate-record, ...) first runs pending ENGINE-OWNED script
 steps itself — argv `python3 .maestro/engine/<script>.py ...` — and completes them, so the lead
@@ -51,6 +55,7 @@ import time
 
 import brief as briefmod
 import resolver
+import run_layout
 import run_profile
 import state as statemod
 import todo as todomod
@@ -110,6 +115,11 @@ def cmd_init(args):
                 "every repository); fix maestro.config.yaml or start in human or design mode",
                 code=3)
     with statemod.locked(args.slug, args.root):
+        # A run from before the folders-by-kind layout is moved into it first, so the workflow's
+        # paths and the engine's find its documents (also when --force starts a new ledger).
+        migrated = run_layout.migrate(args.slug, args.root)
+        if migrated["migrated"]:  # said now: init may still stop on a changed workflow (rebase)
+            print(_migration_note(migrated), file=sys.stderr)
         data, created = resolver.init_run(args.slug, args.workflow, inputs, args.root,
                                           force=args.force, mode=args.mode)
         if not created:
@@ -130,9 +140,17 @@ def cmd_init(args):
         "status": data["run"]["status"],
         "mode": resolver.run_mode(data),
         **({"debug": True} if run_profile.enabled(data) else {}),
+        **({"migrated": _migration_note(migrated)} if migrated["migrated"] else {}),
         "todo": todomod.flat(todo),
     })
     return 0
+
+
+def _migration_note(report):
+    return (f"moved this run's files into the folders-by-kind layout: {len(report['moved'])} "
+            f"moved, {len(report['removed'])} derived or duplicate removed"
+            + (f", {len(report['kept'])} left in place (their new path was taken): "
+               + ", ".join(report["kept"][:8]) if report["kept"] else ""))
 
 
 MAX_AUTO_SCRIPTS = 200  # backstop; script visit caps bound real loops long before this
@@ -178,8 +196,8 @@ def _run_engine_script(action, root, log_path=None):
 
 def _script_log(args, step, visits):
     safe = re.sub(r"[^A-Za-z0-9._-]+", "_", step).strip("_")
-    return os.path.join(statemod.feature_dir(args.slug, args.root), "logs",
-                        f"{safe}-visit{visits or 1}.log")
+    return run_layout.path(args.slug, args.root,
+                           f"{run_layout.LOGS_DIR}/steps/{safe}-visit{visits or 1}.log")
 
 
 def _serve_action(args, peek=False):
@@ -395,10 +413,26 @@ def cmd_reset(args):
 
 
 def cmd_rebase(args):
-    def fn(run):
+    with statemod.locked(args.slug, args.root):
+        # upgraded workflows name the folders-by-kind layout: bring an earlier run's files along
+        migrated = run_layout.migrate(args.slug, args.root)
+        run = resolver.Run(args.slug, args.root)
         resolver.rebase(run)
+        statemod.save(args.slug, run.state, args.root)
+    if migrated["migrated"]:
+        print(_migration_note(migrated), file=sys.stderr)
+    return _serve(args)
 
-    return _mutate(args, fn)
+
+def cmd_migrate(args):
+    """Move a run written under the earlier flat layout into the folders-by-kind one."""
+    if args.dry_run:
+        report = run_layout.migrate(args.slug, args.root, dry_run=True, force=args.force)
+    else:
+        with statemod.locked(args.slug, args.root):
+            report = run_layout.migrate(args.slug, args.root, force=args.force)
+    _print(report)
+    return 0
 
 
 def cmd_note(args):
@@ -535,8 +569,8 @@ def build_parser():
                    help="who answers gates: human (default, every gate), design or auto "
                         "(each gate's auto: policy); on a resumed run, switches the mode")
     p.add_argument("--debug", action="store_true",
-                   help="record every step visit's timing (profile.md in the feature folder); "
-                        "on a resumed run, from now on")
+                   help="record every step visit's timing (.engine/profile.md in the feature "
+                        "folder); on a resumed run, from now on")
     p.set_defaults(fn=cmd_init)
 
     p = sub.add_parser("next", help="serve the next action as JSON (claims workers, runs "
@@ -677,6 +711,14 @@ def build_parser():
 
     p = sub.add_parser("runs", help="list every run under .maestro/runs/ as JSON (read-only)")
     p.set_defaults(fn=cmd_runs)
+
+    p = sub.add_parser("migrate", help="move a run from the earlier flat folder layout into the "
+                                       "folders-by-kind one (init and rebase do this themselves)")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--dry-run", action="store_true", help="report what would move; change nothing")
+    p.add_argument("--force", action="store_true",
+                   help="also when the folder has no readable ledger saying it is an earlier run")
+    p.set_defaults(fn=cmd_migrate)
 
     p = sub.add_parser(
         "interview-brief",

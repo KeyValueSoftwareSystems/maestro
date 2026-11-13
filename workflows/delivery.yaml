@@ -1,6 +1,7 @@
 # Child of sdlc-main: design staleness check -> implement every designed repository -> verified
 # test context -> QA (product bugs: fix the named repos, rebuild the manifest, QA again) ->
-# acceptance-criteria trace -> design-vs-code drift check -> assumption log -> review pack ->
+# acceptance-criteria trace -> design-vs-code drift check -> decision log (unconfirmed decisions
+# first) -> review pack ->
 # release approval. It decides; the parent acts. Leaving for a
 # design revision (the approved design changed, the workspace moved since the design was
 # grounded, or the human sent the release back) ends the child and is reported in its outputs:
@@ -259,11 +260,11 @@ nodes:
       - --prd
       - ".maestro/runs/${inputs.slug}/requirement/prd.md"
       - --test-cases
-      - ".maestro/runs/${inputs.slug}/test-cases.md"
+      - ".maestro/runs/${inputs.slug}/design/test-cases.md"
       - --results
       - "${steps.qa.outputs.qa_results}"
       - --out
-      - ".maestro/runs/${inputs.slug}/ac-trace.md"
+      - ".maestro/runs/${inputs.slug}/release/ac-trace.md"
     on_fail: abort
     next: drift_check
 
@@ -278,24 +279,24 @@ nodes:
       Compare the implemented code with the approved design before release. For every repository
       in ${steps.finalize_implementation.outputs.manifest_path}, read the diff from where its
       branch left the main line to its listed commit, in its listed worktree, and check it against
-      .maestro/runs/${inputs.slug}/hld.md (absent on the light path), the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and its LLD at
-      .maestro/runs/${inputs.slug}/lld/<repo>.md: contract, design decisions, data and migrations,
+      .maestro/runs/${inputs.slug}/design/hld.md (absent on the light path), the contract at
+      .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists) and its LLD at
+      .maestro/runs/${inputs.slug}/design/lld/<repo>.md: contract, design decisions, data and migrations,
       infrastructure changes, and scope. Write the report and every finding to
-      .maestro/runs/${inputs.slug}/reviews/drift-findings.json; equivalent detail the design left open is not drift.
+      .maestro/runs/${inputs.slug}/reviews/drift.findings.json; equivalent detail the design left open is not drift.
     skill: design-drift
     agent: reviewer
     model: sonnet
     inputs:
       slug: "${inputs.slug}"
       manifest_path: "${steps.finalize_implementation.outputs.manifest_path}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
-      findings_path: ".maestro/runs/${inputs.slug}/reviews/drift-findings.json"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/drift.findings.json"
     outputs: [review_path, blocking, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/reviews/drift.md"
-      - ".maestro/runs/${inputs.slug}/reviews/drift-findings.json"
+      - ".maestro/runs/${inputs.slug}/reviews/drift.findings.json"
     fresh: true
     max_visits: 4
     next: drift_verdict
@@ -303,7 +304,7 @@ nodes:
   - id: drift_verdict
     type: script
     label: Blocking drift?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/drift-findings.json"]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/drift.findings.json"]
     max_visits: 6
     on_exhausted: assumptions
     routes:
@@ -311,24 +312,27 @@ nodes:
       - {to: assumptions}
 
   # Every decision nobody confirmed — interview assumptions, items left open, gates answered on
-  # autopilot — in one file the review pack shows first.
+  # autopilot — opens the feature's decision log, which the review pack shows first. Rendered
+  # again here because the gates answered since the design stages belong in it.
   - id: assumptions
     type: script
     label: Collect assumptions and autopilot decisions
     run:
       - python3
-      - .maestro/engine/assumptions.py
-      - render
+      - .maestro/engine/decision_log.py
+      - sync
       - --root
       - .
       - --slug
       - "${inputs.slug}"
-      - --decisions
-      - ".maestro/runs/${inputs.slug}/prd-context.json"
-      - --decisions
-      - ".maestro/runs/${inputs.slug}/hld-context.json"
-      - --decisions
-      - ".maestro/runs/${inputs.slug}/lld-context.json"
+      - --md
+      - ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
+      - --stage
+      - "PRD=.maestro/runs/${inputs.slug}/decisions/prd.json,.maestro/runs/${inputs.slug}/.engine/queues/prd.json"
+      - --stage
+      - "HLD=.maestro/runs/${inputs.slug}/decisions/hld.json,.maestro/runs/${inputs.slug}/.engine/queues/hld.json"
+      - --stage
+      - "LLD=.maestro/runs/${inputs.slug}/decisions/lld.json,.maestro/runs/${inputs.slug}/.engine/queues/lld.json"
     on_fail: abort
     next: review_pack
 
@@ -339,15 +343,18 @@ nodes:
     instruction: |
       Assemble the release review pack for this feature: what was built (per stack),
       review outcomes, QA results, open risks, and how to verify locally. Open the pack with the
-      assumption log (${steps.assumptions.outputs.path}: ${steps.assumptions.outputs.summary}),
-      listing every assumption and open item as written. Then show the acceptance-criteria trace
+      unconfirmed decisions: the "Not confirmed by a person" section of the decision log
+      (${steps.assumptions.outputs.path}: ${steps.assumptions.outputs.unconfirmed_summary}),
+      listing every assumption, open item and autopilot gate decision as written. Then show the
+      acceptance-criteria trace
       (${steps.ac_trace.outputs.path}: ${steps.ac_trace.outputs.summary}) as written: each
       criterion with its test cases and result, and the drift check
       (${steps.drift_verdict.outputs.summary}; reviews/drift.md). Read only these
-      inputs: assumptions.md, ac-trace.md, reviews/drift.md, implementation-manifest.json, each repo's <repo>/reviews/summary.md,
+      inputs: decisions/decision-log.md, release/ac-trace.md, reviews/drift.md, build/manifest.json, each
+      repository's code review reviews/code-<repo>.md,
       reviews/architecture.md (the HLD review), reviews/lld-readiness.md, and qa/report.md under
       .maestro/runs/${inputs.slug}/ — summarize them; do not re-read the design documents or
-      source. The pack is what the human reads at the release gate. Treat implementation-manifest.json as the source of truth for every
+      source. The pack is what the human reads at the release gate. Treat build/manifest.json as the source of truth for every
       repository's exact branch, worktree, and commit; include all of them in the pack.
       Each repository's `verification` in the manifest is the engine's own evidence: its status
       (verified, failed, stale, missing), the receipt it ran, and the existing test files the
@@ -364,7 +371,7 @@ nodes:
       assumptions_path: "${steps.assumptions.outputs.path}"
       ac_trace_path: "${steps.ac_trace.outputs.path}"
     outputs: [pack_path, recommendation, summary]
-    artifact: ".maestro/runs/${inputs.slug}/review-pack.md"
+    artifact: ".maestro/runs/${inputs.slug}/release/review-pack.md"
     fresh: true
     next: release_approval
 
@@ -376,7 +383,7 @@ nodes:
       Engine verification (build/lint/test receipts): ${steps.finalize_implementation.outputs.verification_summary}
       Acceptance criteria: ${steps.ac_trace.outputs.summary} (${steps.ac_trace.outputs.path})
       Design drift (engine): ${steps.drift_verdict.outputs.summary} (.maestro/runs/${inputs.slug}/reviews/drift.md)
-      Unconfirmed decisions: ${steps.assumptions.outputs.summary} (${steps.assumptions.outputs.path})
+      Unconfirmed decisions: ${steps.assumptions.outputs.unconfirmed_summary} (${steps.assumptions.outputs.path})
       Recommendation: ${steps.review_pack.outputs.recommendation}
       ${steps.review_pack.outputs.summary}
       Review pack: ${steps.review_pack.outputs.pack_path}

@@ -285,7 +285,7 @@ to the writer instead of preparing another queue.
   sections:
     - {id: users, title: Users and jobs, proposal: "${steps.proposals.outputs.users}"}
     - {id: scope, title: Functional scope, prompt: "What behavior is in scope?"}
-  artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+  artifact: ".maestro/runs/${inputs.slug}/decisions/prd.json"
   next: write_prd
 ```
 
@@ -297,27 +297,30 @@ proposal (up to 150 words) summarises the whole intended design for the human to
 challenge. `audit.unresolved` and `audit.contradictions` explain why another round exists. A question may
 name the `topic` it decides and, to refine a recorded answer, `follow_up_of` that decision's id;
 a queue may list `settled` points (`{topic, title, decision, source}`) the evidence already answers
-— the engine records those as `evidence` decisions. With `--log` (the feature's decision log),
-`--require-topics` and `--root`, the validator refuses a decided topic unless it is that
-decision's one follow-up, and a `settled` source that does not exist. Both
+— the engine records those as `evidence` decisions. With `--log` (the folder holding every
+stage's decision artifact), `--require-topics` and `--root`, the validator refuses a decided topic
+unless it is that decision's one follow-up, and a `settled` source that does not exist. Both
 arrays must be empty before an empty queue may declare the interview clear. With
 `validate_prd_questions.py --require-direction` (the shipped HLD and LLD queues), an empty queue
 in a stage where the human answered anything also needs a confirmed `direction` decision no older
 than any other decision, so a design document is never written from answers the human has not seen
 assembled. A stage whose points were all settled by evidence asks nothing and needs no direction. The engine appends each completed queue, including its
-resolution facts, to the cumulative decision artifact. Schema version 1 remains readable so an
-installed run can be upgraded in place.
+resolution facts, to the cumulative decision artifact, the only place a decision is stored: an
+accepted or assumed recommendation is kept once, as the `answer` (a `proposal` left in a
+decision is one the person did not take), and `decision_log.py sync` renders the artifacts of
+every stage into one readable log, adding the `settled` points of a queue that asked nothing.
+Schema version 1 remains readable so an installed run can be upgraded in place.
 
 ```yaml
 - id: clarify_edges
   type: interview
-  questions_artifact: ".maestro/runs/${inputs.slug}/prd-questions.json"
+  questions_artifact: ".maestro/runs/${inputs.slug}/.engine/queues/prd.json"
   batch_size: 12
   presentation: popup
   discuss:                 # optional: evidence an isolated discussion may read
     inputs:
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-  artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
+  artifact: ".maestro/runs/${inputs.slug}/decisions/prd.json"
   next: find_more_gaps
 ```
 
@@ -338,9 +341,10 @@ the loop at one round, route on the mode:
     - {to: prepare_prd_questions}
 ```
 
-`engine/assumptions.py render` collects every assumption, deferred item and autopilot gate
-decision of a run into `assumptions.md`; the shipped delivery stage writes it before the review
-pack.
+`engine/decision_log.py sync --slug <slug>` opens the feature's decision log with every
+assumption, deferred item and autopilot gate decision of the run ("Not confirmed by a person");
+the shipped design stages render it before each approval and the delivery stage again before the
+review pack.
 
 The shipped design workflow checks an existing PRD with `validate_prd.py --compatible`, which
 accepts common equivalent headings for its fast path. When that fails, `prd_source.py` decides
@@ -440,7 +444,7 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
 ```
 
 The shipped design workflow writes every repository's LLD in one run of `design-lld.yaml`: one
-grouped interview, one worker-written file per repository (`lld/<repo>.md`), `lld_set.py validate`
+grouped interview, one worker-written file per repository (`design/lld/<repo>.md`), `lld_set.py validate`
 over the whole set, a readiness check, and one approval gate. It is the last stage of
 `design-solution.yaml`, which `design.yaml` runs as one branch of a `parallel` node after PRD
 approval; the other branch, `design-tests.yaml`, writes the functional test cases from the PRD at
@@ -548,8 +552,11 @@ file + sha256 (edits mid-run halt with instructions to `rebase`), inputs, run st
 interview answers, append-only gate decision history, and parallel-branch bookkeeping.
 
 `version` is the serialization contract; `run_format` records the shipped workflow layout the
-run was created under. A ledger the engine cannot read (conflict markers, parse error) is never
-overwritten: commands refuse with a fix-it message and `init --force` keeps the old file aside.
+run was created under (4: the run folder is grouped by kind, `engine/run_layout.py`; `init`,
+`rebase` and `migrate` move a format-3 run into it, and other commands refuse one until then).
+A ledger the engine cannot read (conflict markers, parse error) is never
+overwritten: commands refuse with a fix-it message and `init --force` keeps the old file under
+`.engine/ledgers/`, as it does a ledger it replaces.
 
 Resume: `done` steps are skipped only while their artifacts still exist non-empty on disk;
 interrupted (`running`) steps are re-served; gates always re-ask.

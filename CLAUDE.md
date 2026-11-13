@@ -48,7 +48,7 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · reclaim · rebase · status · todo · brief · profile · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · reclaim · rebase · migrate · status · todo · brief · profile · graph · note`. The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
@@ -125,7 +125,21 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `complete_step`, `record_gate`, `init` live here too.
 - **`state.py`** — the ledger: load/save with `fcntl` lock + atomic tmp/rename, `step_entry`,
   step wall-clock timing, `sha256_file`, `new_state`. The ONLY writer of
-  `.maestro/runs/<slug>/state.yaml`.
+  `.maestro/runs/<slug>/state.yaml`. The lock and the ledgers an `init --force` replaced live
+  under the run's `.engine/` (`state.lock`, `ledgers/`), so the ledger is the only file at the
+  top of a run folder.
+- **`run_layout.py`** — where a run keeps its files, one folder per kind: `requirement/` (the
+  request, `prd.md`), `design/` (`hld.md`, `openapi.yaml`, `lld/<repo>.md`, `test-cases.md`,
+  impact), `decisions/` (the decision log and each stage's interview record), `reviews/`
+  (`<name>.md` + `<name>.findings.json` + the author's `<name>.resolutions.json`), `build/`
+  (`manifest.json`, `<repo>/tasks.json` + `verify.json`), `qa/`, `release/` (`review-pack.md`,
+  `ac-trace.md`, `delivery.json`) and `.engine/` (queues, review baselines, sync plans,
+  snapshots, logs: nothing written for reading). Workflows name these paths on their nodes; the
+  helpers with a default take it from here, and `test_run_layout.py` holds the shipped workflows
+  to it. `migrate` (run by `init` and `rebase` on a `run_format` 3 ledger, or `maestroctl
+  migrate`) moves a flat-layout run in: files move and are never rewritten (approved hashes
+  hold), the ledger and the engine's JSON records get their paths updated, `legacy_paths`
+  tells `install_workflows.py` which run paths an edited workflow must rename.
 - **`todo.py`** — the run's todo list, read-only: stages (subworkflow/parallel nodes) in order,
   the running stage expanded, optional stages only once entered, plus what the run is doing or
   waiting on the human for. `maestroctl todo` prints it; `init` and any `next` whose picture
@@ -144,7 +158,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   deterministic PRD, HLD, and repository LLD structure, acceptance-ID, readability, question-queue,
   and deferred-ledger checks. They never make product or architecture decisions.
 - **`lld_set.py`** — the feature's repository LLDs, one file per selected repo
-  (`lld/<repo>.md`), written and approved in one run: scope (`lld-repos.json`), validate the whole
+  (`design/lld/<repo>.md`), written and approved in one run: scope (`.engine/lld-scope.json`), validate the whole
   set, record a hash-bound approval (HLD, contract and each LLD), and `verify` at the start of
   delivery so a design that changed after approval goes back through design instead of being
   built stale.
@@ -152,8 +166,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
   supports batches with deferred repos for team workflows. Builds the QA/release manifest only
   from exact verified worktree commits, with each repo's verify receipt and status attached, and
-  whether that exact commit was code-reviewed (`reviews/reviewed.json`, written by `findings.py
-  verdict --commit`); a commit accepted at the escalation gate before review shows
+  whether that exact commit was code-reviewed (`.engine/reviews/code-<repo>.reviewed.json`, written by
+  `findings.py verdict --commit --reviewed`); a commit accepted at the escalation gate before review shows
   `not-reviewed`, and autopilot will not release it.
   `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
   in its worktree) and `record --from-worktree` records the fixed HEAD.
@@ -161,7 +175,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   writes code: `prepare` runs `worktree.create` from maestro.config.yaml once per feature (e.g. the
   workspace template's sandbox command) and finds each repo at `worktree.path`, or adds its own at
   `.maestro/worktrees/<slug>/<repo>`; it uses only worktrees this run created (record:
-  `worktrees.json`), new ones must be clean and at the feature lock's commit. `claim` hands each
+  `.engine/worktrees.json`), new ones must be clean and at the feature lock's commit. `claim` hands each
   repo its worktree + branch. `remove` (archive, never fails) removes only what Maestro created —
   a configured sandbox only once delivery pushed its branches.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
@@ -197,31 +211,36 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   re-review and not `introduced_by_revision` as `late`; workflows route on `revise` (blocking,
   valid, under the limit), so a limit or a late finding goes to the person, never another round.
 - **`review_scope.py`** — before each review, `prepare` writes the diff of the reviewed documents
-  since the last round (`<name>.diff`, from a kept copy) and keeps the previous round's findings
-  (`<name>-findings.previous.json`) for `verdict --previous`; a re-review checks the changes, not
-  the whole document again.
+  since the last round (`<name>.diff`) and keeps one baseline file per review
+  (`.engine/reviews/<name>.baseline.json`: each document's text as that round saw it, and the
+  ids of the findings it raised, read by `verdict --previous`); a re-review checks the changes,
+  not the whole document again. No copies of the documents are kept as files.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
 - **`run_profile.py`** — debug-mode timing (`init --debug`, off by default): every step visit is
   kept under the ledger's `profile.visits` (resolver `_finish_visit`; serving calls stamp
   `served_at_ms`), split into queued, work (agents, scripts) and human (gates, interviews) time,
-  plus idle stretches; serving calls rewrite `profile.md`/`profile.json`, `maestroctl profile`
+  plus idle stretches; serving calls rewrite `.engine/profile.md`/`profile.json`, `maestroctl profile`
   prints it. Named `run_profile` so it never shadows the stdlib `profile` module.
 - **`brief.py`** — the run brief inlined into every agent prompt by `render_agent_prompt`, at the
   node's `brief:` level (`defaults.brief`, else `minimal`): `minimal` = feature, run mode, this
   step, documents earlier steps produced; `full` adds stages, gate decisions with feedback and
-  mid-run notes; `none` = nothing. Serving calls keep `run-brief.md` current; `maestroctl brief`
-  prints it.
-- **`decision_log.py`** — the feature's one decision log: `sync` rebuilds
-  `decision-log.json`/`.md` from every stage's interview decisions plus the latest queues'
-  `settled` (evidence-cited) points; each design stage runs it before its review/approval.
-  `validate_prd_questions.py --log --require-topics --root` refuses a question on an already
-  decided topic (any stage) unless it is that decision's single `follow_up_of`, and checks every
-  `settled` source exists.
+  mid-run notes; `none` = nothing. A step's working files under `.engine/` are not listed as
+  documents. Serving calls keep `.engine/run-brief.md` current; `maestroctl brief` prints it.
+- **`decision_log.py`** — the feature's one decision log. Each stage's interview record
+  (`decisions/<stage>.json`, written by its interview node) is the only store of a decision;
+  `sync` renders them into `decisions/decision-log.md` and adds a queue's `settled`
+  (evidence-cited) points to its stage's record when no interview ran. With `--slug` the log
+  opens with what nobody confirmed (assumptions, items left open, gates answered on autopilot),
+  so there is no separate assumption log: each design stage runs it before its review/approval,
+  delivery again before the review pack (which shows that section first).
+  `validate_prd_questions.py --log <the records' folder> --require-topics --root` refuses a
+  question on an already decided topic (any stage) unless it is that decision's single
+  `follow_up_of`, and checks every `settled` source exists.
 - **`ac_trace.py`** — the acceptance-criteria trace: `design` checks every PRD `AC-xx` is traced
   by a test case (`### TC-…` blocks) and none is unknown; `qa` joins criteria → cases → QA's
-  `qa/results.json` into `ac-trace.md` with `all_passed`, which the release autopilot requires.
+  `qa/results.json` into `release/ac-trace.md` with `all_passed`, which the release autopilot requires.
 - **`qa_env.py`** — QA's environment and the project's own e2e suites from maestro.config.yaml:
   `plan` (`has_e2e`: some repo has an `e2e` command — QA writes a suite in that framework only
   then, else checks cases directly and adds no framework), `up` (environment.start + ready),
@@ -248,34 +267,38 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   each build and test once, stamps each codebase map in `docs/codebase-maps/`). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
-  `feature-impact` agent right after PRD approval): the repositories the feature changes and
-  whether it changes an interface between them, stored data or infrastructure, and a `size` of
-  `minor` or `major`; schema 2 also lists every domain, table, job, queue, endpoint (with its
-  consumers), `INV` rule and `CS` scenario it touches, each with a reason and evidence. `validate`
-  checks every name is a discovered repository, the size, and that rules/scenarios/domains exist in
-  the living docs (`living_docs.py`); with `--prd` it adds every change scenario whose `when_changing` the PRD names
-  (`match_scenarios`/`merge`: the scenario, its rules and `also_impacts` items). Sizing and the LLD
-  scope (`lld_set.py init --choice impact`, the scope gate's autopilot answer) read it. Skipped on
-  greenfield.
+  `feature-impact` agent right after PRD approval): facts, never a verdict. Schema 3: the
+  repositories it changes, `interface_change` (`none`/`lockstep`/`shape`), `data_change`
+  (`none`/`additive`/`reshape`), `infrastructure_change`, `compatibility_risk`, and
+  `open_decisions` (`{question, kind, evidence}`; the engine owns the kinds — `placement`,
+  `integration`, `data-model`, `interface`, `quality` block the light path, `rollout`/`detail` do
+  not); it also lists every domain, table, job, queue, endpoint (with its consumers), `INV` rule
+  and `CS` scenario it touches, each with a reason and evidence. Schemas 1/2 (booleans + `size`)
+  still load, read conservatively. `validate` checks every name is a discovered repository, the
+  facts, and that rules/scenarios/domains exist in the living docs (`living_docs.py`); with
+  `--prd` it adds every change scenario whose `when_changing` the PRD names
+  (`match_scenarios`/`merge`). `load(core_only=True)` — what sizing and the LLD scope
+  (`lld_set.py init --choice impact`) use — keeps the repositories and facts when only the item
+  lists are wrong. Skipped on greenfield.
 - **`impact_trace.py`** — the impact trace: `check --stage hld|lld` requires every impacted item
   to be named in the HLD (a `write_hld`/`revise_from_review` check) or the LLDs (`lld_impact_trace`
   node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
-  because …"; gaps go back to the writer. Writes `impact-trace.md`, which the HLD and LLD approval
-  gates show first. No assessment = valid.
-- **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
-  `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
-  without one: `auto` takes the light path
-  (PRD → LLD → readiness → approval; no HLD or contract) only for ≤
-  `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
-  exactly one repository changed and no interface or infrastructure change (from `--impact`;
-  without one, the workspace must hold one repository) and no "(to confirm)"; the run input
-  `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
+  because …"; gaps go back to the writer. Writes `design/impact-trace.md`, which the HLD and LLD approval
+  gates show first. No assessment = valid, and no report is written.
+- **`sizing.py`** — after PRD approval, full or light design (light: PRD → LLD → readiness →
+  approval; no HLD or contract), decided from a core-valid impact assessment's facts:
+  light unless a blocking open decision, an interface or data shape change, infrastructure, "(to
+  confirm)" in the PRD, or an HLD from an earlier pass (`--hld`). Repository count never decides.
+  Without an assessment the fallback rules: ≤ `design.light_max_criteria` (default 5) acceptance
+  criteria, Non-functional requirements None, a one-repository workspace, no "(to confirm)". It
+  also prints a plain-words `explanation`, which `design-solution.yaml`'s `how_to_design` gate shows (Go
+  with that / Plan the architecture first / Skip the architecture document; autopilot accepts;
+  skipped on greenfield or a run-start `path: full|light`); `sizing.py choose` applies the answer
+  as the `design_path` step that routes and feeds the LLD stage. Light approvals bind the PRD hash
+  instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document, any office/PDF file or a Jira XML export; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.
-- **`assumptions.py`** — the assumption log: every interview assumption, deferred item and gate
-  answered on autopilot, from the decision files and the ledger, rendered to `assumptions.md`
-  before the review pack (which shows it first).
 - **`entry_serve.py`** — a route-only `script` node: its `routes:` branch on values already known
   (inputs or earlier outputs), e.g. workspace sync's "keep current commits; refresh stale docs".
   Does no work, never fails.
@@ -474,7 +497,10 @@ whole suite — the parser underpins everything.
   and test are engine-run too: `impl.yaml`'s `verify` step runs `engine/repo_checks.py`, which executes the
   project's commands from `maestro.config.yaml` and fails closed when they are missing.
 - `.maestro/runs/<slug>/` holds a feature's requirement input **and** all generated
-  artifacts + the state ledger. Git-tracked on purpose.
+  artifacts + the state ledger. Git-tracked on purpose. Its layout is `engine/run_layout.py`:
+  a new run file goes in the folder of its kind (an engine working file under `.engine/`),
+  never at the top, and a fact is stored once (render a view from its record; do not write a
+  second copy).
 - `install.sh` uses `set -uo pipefail` (not `-e`) on purpose — one failed skill
   install must not abort the rest.
 

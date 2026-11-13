@@ -28,7 +28,7 @@ nodes:
     label: Functional test cases
     instruction: |
       Produce the functional test-case catalog for this feature at
-      .maestro/runs/${inputs.slug}/test-cases.md, the QA source of truth, from the approved PRD at
+      .maestro/runs/${inputs.slug}/design/test-cases.md, the QA source of truth, from the approved PRD at
       .maestro/runs/${inputs.slug}/requirement/prd.md alone. Every acceptance criterion needs at
       least one case; trace no criterion the PRD does not have. State each expected result as the
       behaviour a user or client observes, in the PRD's terms; do not read the HLD, contract or
@@ -47,13 +47,13 @@ nodes:
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
       revision_feedback: "${inputs.feedback}"
     outputs: [test_cases_path, case_count]
-    artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
+    artifact: ".maestro/runs/${inputs.slug}/design/test-cases.md"
     # Every PRD acceptance criterion is traced by a test case, and no case traces one the PRD lacks.
-    check: {run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]}
+    check: {run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/design/test-cases.md"]}
     # a trace the writer cannot fix stops for the person, with the engine's report
     on_fail: ask
     next: end
 
 outputs:
-  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+  test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
   case_count: "${steps.test_cases.outputs.case_count}"

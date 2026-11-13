@@ -114,6 +114,13 @@ class Run:
             raise RunError(_unusable_ledger_message(slug, root, problem[1]), code=3)
         if self.state is None:
             raise RunError(f"no run found for slug {slug!r} — run `init` first", code=3)
+        if (self.state.get("run_format") or 0) < statemod.RUN_FORMAT_VERSION:
+            # its files sit where the earlier flat layout put them; the workflows and the
+            # engine's helpers now look in the folders-by-kind layout (run_layout.py)
+            raise RunError(
+                f"run {slug!r} was written under an earlier run-folder layout. Run "
+                f"`maestroctl migrate --slug {slug}` (or resume it with `init`, which does the "
+                f"same), then retry.", code=3)
         self._wf_cache = {}
         self._memory_cache = None
 
@@ -339,7 +346,8 @@ def _unusable_ledger_message(slug, root, detail):
     return (
         f"run ledger {path} {detail}. Maestro will not overwrite it. Resolve the conflict, "
         f"or restore the file from git (`git checkout -- {path}`), then retry. "
-        f"`init --force` starts the run over and keeps the old file beside it."
+        f"`init --force` starts the run over and keeps the old file under "
+        f"{statemod.ENGINE_DIR}/ledgers/."
     )
 
 
@@ -425,10 +433,11 @@ def init_run(slug, workflow_file, inputs, root=".", force=False, mode=None):
     # Freeze the memory knowledge snapshot for this run — read ONCE here, never re-read
     # live (keeps the run reproducible and immune to concurrent consolidation elsewhere).
     snap_path = memorymod.write_snapshot(slug, root, memorymod.read_knowledge(root))
-    data["memory"] = {
-        "snapshot": os.path.basename(snap_path),
-        "sha256": statemod.sha256_file(snap_path),
-    }
+    if snap_path:  # no lessons yet: nothing to freeze, no file
+        data["memory"] = {
+            "snapshot": memorymod.SNAPSHOT,
+            "sha256": statemod.sha256_file(snap_path),
+        }
     run = Run(slug, root, state_data=data)
     frame = run.main_frame()
     _enter(run, frame, wf_start(workflow))
@@ -1163,12 +1172,16 @@ def _interview_sections(run, frame, node):
             decisions_rel if os.path.isabs(decisions_rel)
             else os.path.join(run.root, decisions_rel)
         )
-        # the feature's decision log sits beside the stage's decisions: a question may follow up
-        # an earlier stage's decision, which the question step's check accepted against that log
-        log_full = os.path.join(os.path.dirname(decisions_full), "decision-log.json")
+        # A workflow that keeps a feature decision log (decision_log.py sync) has it beside
+        # this stage's record, with the other stages' records: a question may follow up an
+        # earlier stage's decision, which the question step's check accepted against them.
+        # (`decision-log.json` is the copy an older workflow keeps.)
+        folder = os.path.dirname(decisions_full)
+        log_full = os.path.join(folder, "decision-log.json")
+        if not os.path.isfile(log_full):
+            log_full = folder if os.path.isfile(os.path.join(folder, "decision-log.md")) else None
         errors, _warnings, document = prdqmod.validate(
-            questions_full, decisions_path=decisions_full,
-            log_path=log_full if os.path.isfile(log_full) else None,
+            questions_full, decisions_path=decisions_full, log_path=log_full,
         )
         if errors:
             raise RunError(
@@ -1674,6 +1687,10 @@ def _write_interview_artifact(run, frame, node, path, sections, answers, turns, 
             "source": turn.get("source", "user-answer"),
             "confirmed_at": turn.get("confirmed_at", now),
         }
+        # An accepted or assumed recommendation IS the answer: keep the text once. A `proposal`
+        # left in the record is therefore always one the person did not take.
+        if decision["proposal"] and decision["proposal"] == decision["answer"]:
+            del decision["proposal"]
         for key in ("topic", "follow_up_of"):
             if section.get(key):
                 decision[key] = section[key]

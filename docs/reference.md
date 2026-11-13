@@ -30,6 +30,7 @@ Maestro isn't trying to replace a durable production orchestrator or an autonomo
 
 - **`workflow.yaml`** — the graph: 6 node types (`agent`, `interview`, `gate`, `script`, `parallel`, `subworkflow`), per-node routes with tiny conditions, and **back-edges for loops** (an arrow to any earlier step; the engine cascade-resets downstream work and enforces a per-node visit cap so loops can't run away). Spec: [docs/workflow-spec.md](workflow-spec.md).
 - **`.maestro/runs/<slug>/state.yaml`** — the run ledger. Only the engine writes it. Resume, revise-cascades, gate history, parallel-join bookkeeping all live here.
+- **`.maestro/runs/<slug>/`** — the feature's files, one folder per kind (`requirement/`, `design/`, `decisions/`, `reviews/`, `build/`, `qa/`, `release/`), with the engine's working files under `.engine/`: see [Where a feature's files are](sdlc-pipeline.md#where-a-features-files-are).
 - **The lead agent never interprets the graph.** The deterministic resolver serves one fully-rendered action at a time; the LLM just dispatches it. That's what makes an LLM-driven orchestrator reliable — and it's all plain, tested Python (see [CONTRIBUTING.md](../CONTRIBUTING.md); no LLM in the loop).
 - **Agent steps are instruction-first**: write what the step should do; optionally pin a skill and model. Worker execution is the default; `execution: lead` keeps small context-continuous steps in the current session. Claude Code and Codex run independent worker steps with native subagents; Cursor uses the same engine inline and sequentially.
 
@@ -111,7 +112,7 @@ decides which gates the engine answers itself from each gate's `auto:` policy �
 [Run modes](sdlc-pipeline.md#run-modes). `status` shows the mode and marks autopilot decisions.
 
 **Debug profile.** `init --debug` (on a new or a resumed run) records every visit of every step
-and keeps `.maestro/runs/<slug>/profile.md` and `profile.json` current: per stage and step, the
+and keeps `.maestro/runs/<slug>/.engine/profile.md` and `profile.json` current: per stage and step, the
 visits, work time (agents, scripts), human time (gates, interviews), queued time (ready but not yet
 picked up) and idle stretches when nothing ran and nobody was asked. `profile --slug <slug>`
 prints it. Off by default: a normal run keeps only each step's last visit.
@@ -180,6 +181,12 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
   A workflow that changes still halts an in-flight run until `maestroctl rebase --slug <slug>`.
   On the next `/maestro` resume, an old run is detected and
   upgraded once only after your confirmation.
+- **Runs from before the folders-by-kind layout** (flat run folders, ledger `run_format` 3) are
+  moved into it by `init` and `rebase`, or by hand with
+  `python3 .maestro/engine/maestroctl.py migrate --slug <slug>` (`--dry-run` lists what would
+  move). Files are moved, never rewritten, so approvals and receipts keep their hashes; the
+  ledger's recorded paths follow. A workflow you edited and kept still names the old paths: the
+  installer lists each one with its new place, since the engine now reads the new ones.
 - **Uninstall:** delete the installed dirs (`.claude/skills|commands|agents`, `.cursor/…`,
   `.agents/skills/`, `.maestro/engine/`, `.maestro/ui/`). Keep `.maestro/runs/<slug>/` —
   that's your work.

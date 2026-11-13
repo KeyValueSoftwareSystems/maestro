@@ -3,7 +3,7 @@
 
   greenfield.py check     [--root .]
       {greenfield, repo_count} — greenfield when no repository is discovered.
-  greenfield.py create    [--root .] --hld <hld.md>
+  greenfield.py create    [--root .] --hld <hld.md> [--plan <plan.json>]
       creates `codebase/<name>` for every repository the approved HLD's Repositories section lists
       (`name` (stack): purpose): git init and an empty first commit; existing ones are left alone.
       {repos_csv, created_csv, plan_path}
@@ -70,7 +70,9 @@ def cmd_create(args):
                             "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL",
                                                                   "maestro@localhost")})
         created.append(name)
-    plan = os.path.join(os.path.dirname(args.hld), "greenfield-plan.json")
+    # the repositories planned: --plan, else greenfield-plan.json beside the HLD
+    plan = args.plan or os.path.join(os.path.dirname(args.hld), "greenfield-plan.json")
+    os.makedirs(os.path.dirname(os.path.abspath(plan)), exist_ok=True)
     with open(plan, "w", encoding="utf-8") as fh:
         json.dump({"repos": [{"name": n, "stack": s} for n, s in planned]}, fh, indent=2)
     return _out({"repos_csv": ",".join(n for n, _s in planned), "created_csv": ",".join(created),
@@ -160,6 +162,7 @@ def main(argv=None):
     p = sub.add_parser("create")
     p.add_argument("--root", default=".")
     p.add_argument("--hld", required=True)
+    p.add_argument("--plan", help="where to write the planned repositories")
     p.set_defaults(fn=cmd_create)
     p = sub.add_parser("configure")
     p.add_argument("--root", default=".")

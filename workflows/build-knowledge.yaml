@@ -22,7 +22,7 @@ nodes:
     type: script
     label: Check living-docs + map freshness
     # Combined docs/provenance.yaml + codebase-map gate (no network). refresh_needed false → skip authoring.
-    run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json", --no-fetch]
+    run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/plan.json", --no-fetch]
     routes:
       - {when: "${steps.plan_freshness.outputs.refresh_needed} == true", to: docs_impact}
       - {to: already_fresh}
@@ -32,7 +32,7 @@ nodes:
     label: Will the refresh rewrite verified docs?
     # Counts the docs a person verified (a rewrite resets them to draft) and writes the 3-line
     # overview the gate shows. No verified docs (first build, or all drafts) → no gate.
-    run: [python3, .maestro/engine/docs_rewrite.py, check, --root, ., --plan, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json"]
+    run: [python3, .maestro/engine/docs_rewrite.py, check, --root, ., --plan, ".maestro/runs/${inputs.slug}/.engine/knowledge/plan.json"]
     routes:
       - {when: "${steps.docs_impact.outputs.needs_approval} == true", to: rewrite_gate}
       - {to: plan_maps}
@@ -76,7 +76,7 @@ nodes:
   - id: snapshot_maps
     type: script
     label: Snapshot maps before refresh
-    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json"]
+    run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/map-snapshot.json"]
     on_fail: abort
     next: snapshot_docs
 
@@ -84,7 +84,7 @@ nodes:
     type: script
     label: Snapshot living docs before writing
     # Lets stamp_docs mark exactly the docs this run wrote or changed.
-    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/docs-snapshot.json"]
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json"]
     on_fail: abort
     next: extract_inventory
 
@@ -93,7 +93,7 @@ nodes:
     label: Extract the workspace inventory (engine)
     # Endpoints, calls, events, jobs, tables and config read from code and contracts (no LLM),
     # so the writer sees them without grepping and never restates them.
-    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/workspace-inventory.md"]
+    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/inventory.md"]
     on_fail: abort
     next: build
 
@@ -141,19 +141,19 @@ nodes:
       those. Re-run = refresh in place; keep IDs stable and human edits intact.
     skill: build-knowledge
     inputs:
-      inventory: ".maestro/runs/${inputs.slug}/workspace-inventory.md"
+      inventory: ".maestro/runs/${inputs.slug}/.engine/knowledge/inventory.md"
     outputs: [domains_written, architecture_path, summary]
     artifact: "docs/architecture.md"
     # Regenerates the generated files and blocks, then checks the format, IDs and anchors; a
     # failure sends the report back to this agent.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/docs-snapshot.json", --report]}
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json", --report]}
     next: stamp_docs
 
   - id: stamp_docs
     type: script
     label: Stamp written docs (engine)
     # verified_at = each repo's HEAD, status back to draft, only on docs this run changed.
-    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/docs-snapshot.json"]
+    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json"]
     on_fail: abort
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
@@ -165,7 +165,7 @@ nodes:
     # Stamp each repo's current HEAD into its map's marker (docs/codebase-maps/<repo>.md), so the next
     # build-knowledge / retrospect run refreshes only the diff. Owned by the engine, not the
     # skill — swapping build-knowledge can't change how incremental tracking works.
-    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/codebase-map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
+    run: [python3, .maestro/engine/codebase_scan.py, record, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/knowledge/map-snapshot.json", --snapshot-sha256, "${steps.snapshot_maps.outputs.snapshot_sha256}"]
     on_fail: build
     next: record_knowledge
 

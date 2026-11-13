@@ -74,7 +74,7 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   `maestroctl preflight` passes — relay that. To take over or hand back a running feature,
   re-run `init` with the new `--mode`; it applies from the next gate.
 - **Debug** — `--debug` records a timing profile of every step visit (work, human and idle time)
-  in the feature folder's `profile.md`. Pass it only when the user asks to debug or profile the
+  in the feature folder's `.engine/profile.md`. Pass it only when the user asks to debug or profile the
   run; on a running feature, re-run `init --debug` and it records from then on. `maestroctl
   profile --slug <slug>` prints it; never read or edit the profile in place of the engine's
   actions. A step open for an hour or more is listed as a suspect long visit: the engine cannot
@@ -82,6 +82,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
 - `init` is safe when the run already exists (that IS the resume path — say "resuming" and
   continue); it only releases worker claims left by an interrupted session. Its output carries
   `todo`, the run's stage checklist: put it in your task list now (see **Task list**).
+- If `init` or `rebase` reports `migrated`, say once, in one line, that the feature's files were
+  moved into folders by kind (nothing rewritten), then continue.
 - If it exits 3 with a "workflow changed" message: STOP and ask the user to DECIDE between
   "accept the edit and continue" and "start over (discards all progress)". Never pick for
   them — but once they choose, YOU run the command (`python3 .maestro/engine/maestroctl.py rebase
@@ -242,8 +244,9 @@ python3 .maestro/engine/maestroctl.py interview-record --slug <slug> --step <ste
 ```
 
 If the reply is ambiguous, ask a short follow-up and do not record it. Each successful record
-returns the next action, so continue immediately. The engine ledger and generated
-`prd-context.json` are the durable source of truth; do not maintain a competing draft.
+returns the next action, so continue immediately. The engine ledger and the generated
+interview record (the path the interview node names, `decisions/prd.json` in the shipped
+pack) are the durable source of truth; do not maintain a competing draft.
 
 Exception: when an LLD interview reply explicitly changes an approved PRD or HLD decision, record
 the answer normally, but before acting on the returned next action follow **Capturing out-of-band
@@ -338,8 +341,11 @@ Ask the human for the CHOICE ONLY. Use the host-native selector when available:
 `AskUserQuestion` on Claude Code, or `request_user_input` on Codex. Use the action's option
 labels verbatim. If the current host/mode exposes neither selector, print the prompt + numbered
 options in chat, explicitly ask for the number or option label, and WAIT for a reply — never
-guess, never default, re-ask on ambiguity. Then record the choice WITHOUT `--input`, even when
-that option advertises an `input` field:
+guess, never default, re-ask on ambiguity. The served `prompt` is written for you, not for the
+human: put the decision to them in plain words (**Talking to the user**) — what happened, what
+each choice leads to, every fact the choice depends on — without its step ids, file names,
+config keys or engine terms. Only the option labels stay verbatim. Then record the choice
+WITHOUT `--input`, even when that option advertises an `input` field:
 
 ```bash
 python3 .maestro/engine/maestroctl.py gate-record --slug <slug> --step <step> \
@@ -381,7 +387,8 @@ parked on `ask_input` across turns until non-blank text is recorded.
 
 Stop looping and close the run in a few plain lines (see **Talking to the user**). On `done`:
 what was delivered — the branches or pull requests from `outputs`, said as sentences, not as a
-field map — and that the feature's documents are in `.maestro/runs/<slug>/`. On `failed`: what
+field map — and that the feature's documents are in `.maestro/runs/<slug>/` (its
+`requirement/`, `design/`, `decisions/`, `reviews/` and `release/` folders). On `failed`: what
 stopped the run (`reason`, in plain words), what is safe so far, and what the user can do next.
 Offer the full step-by-step status; if they want it, YOU run `maestroctl status --slug <slug>`
 and summarise it. The final action carries the finished `todo`; mirror it so the task list ends

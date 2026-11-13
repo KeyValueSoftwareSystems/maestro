@@ -20,7 +20,7 @@ nodes:
   - id: create
     type: script
     label: Create the repositories the HLD lists
-    run: [python3, .maestro/engine/greenfield.py, create, --root, ".", --hld, ".maestro/runs/${inputs.slug}/hld.md"]
+    run: [python3, .maestro/engine/greenfield.py, create, --root, ".", --hld, ".maestro/runs/${inputs.slug}/design/hld.md", --plan, ".maestro/runs/${inputs.slug}/.engine/greenfield-plan.json"]
     on_fail: abort
     next: scaffold
 
@@ -29,23 +29,23 @@ nodes:
     label: Scaffold the new repositories
     instruction: |
       Scaffold each new repository (${steps.create.outputs.repos_csv}) under codebase/ from the
-      approved HLD at .maestro/runs/${inputs.slug}/hld.md: the stack's layout, a passing build and
+      approved HLD at .maestro/runs/${inputs.slug}/design/hld.md: the stack's layout, a passing build and
       trivial test, lint, a README, CI, a container image when the HLD deploys it, starting
       infrastructure definitions when it names a platform, and each repository's codebase map at
       docs/codebase-maps/<repo>.md. Write no
       feature behaviour. Commit each skeleton on its default branch. Write the report with each
-      repository's stack and commands to .maestro/runs/${inputs.slug}/scaffold.json.
+      repository's stack and commands to .maestro/runs/${inputs.slug}/build/scaffold.json.
       If the engine's check failed, fix exactly what it reports.
     skill: repo-scaffold
     inputs:
       slug: "${inputs.slug}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
       repos: "${steps.create.outputs.repos_csv}"
-      report_path: ".maestro/runs/${inputs.slug}/scaffold.json"
+      report_path: ".maestro/runs/${inputs.slug}/build/scaffold.json"
     outputs: [summary]
-    artifact: ".maestro/runs/${inputs.slug}/scaffold.json"
+    artifact: ".maestro/runs/${inputs.slug}/build/scaffold.json"
     # Engine-owned: the commands go into maestro.config.yaml and must actually pass once.
-    check: {run: [python3, .maestro/engine/greenfield.py, configure, --root, ".", --scaffold, ".maestro/runs/${inputs.slug}/scaffold.json"], timeout: 1800, attempts: 4}
+    check: {run: [python3, .maestro/engine/greenfield.py, configure, --root, ".", --scaffold, ".maestro/runs/${inputs.slug}/build/scaffold.json"], timeout: 1800, attempts: 4}
     max_visits: 3
     next: record_knowledge
 
@@ -54,7 +54,7 @@ nodes:
   - id: record_knowledge
     type: script
     label: Record the new repositories' knowledge
-    run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ".", --evidence, ".maestro/runs/${inputs.slug}/scaffold.json"]
+    run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ".", --evidence, ".maestro/runs/${inputs.slug}/build/scaffold.json"]
     on_fail: abort
     next: pin
 
@@ -63,7 +63,7 @@ nodes:
   - id: pin
     type: script
     label: Pin the new repositories
-    run: [python3, .maestro/engine/workspace_sync.py, lock, --root, ".", --out, ".maestro/runs/${inputs.slug}/workspace-lock.json"]
+    run: [python3, .maestro/engine/workspace_sync.py, lock, --root, ".", --out, ".maestro/runs/${inputs.slug}/.engine/workspace-lock.json"]
     on_fail: abort
     next: end
 

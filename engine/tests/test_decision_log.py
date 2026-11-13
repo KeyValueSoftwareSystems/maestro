@@ -27,38 +27,44 @@ class DecisionLogTest(unittest.TestCase):
         self.run_dir = os.path.join(self.root, ".maestro", "runs", "demo")
         os.makedirs(os.path.join(self.run_dir, "requirement"))
         self.write("requirement/prd.md", "# Demo — PRD\n")
-        self.write("prd-context.json", {"decisions": [
+        self.write("decisions/prd.json", {"decisions": [
             {"id": "retention", "topic": "export-retention", "title": "Retention",
              "answer": "Keep exports 30 days", "source": "accepted-proposal"},
             {"id": "owner", "topic": "data-owner", "title": "Owner",
              "answer": "Billing owns exports", "source": "assumption", "by": "autopilot"}]})
-        self.write("prd-questions.json", {"schema_version": 2, "questions": [],
-                                          "audit": {"unresolved": [], "contradictions": []},
-                                          "settled": [{"topic": "export-format", "title": "Format",
-                                                       "decision": "CSV only",
-                                                       "source": ".maestro/runs/demo/requirement/prd.md#Functional scope"}]})
+        self.write(".engine/queues/prd.json", {
+            "schema_version": 2, "questions": [],
+            "audit": {"unresolved": [], "contradictions": []},
+            "settled": [{"topic": "export-format", "title": "Format", "decision": "CSV only",
+                         "source": ".maestro/runs/demo/requirement/prd.md#Functional scope"}]})
 
     def write(self, rel, doc):
         path = os.path.join(self.run_dir, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as fh:
             fh.write(doc if isinstance(doc, str) else json.dumps(doc))
         return path
 
-    def sync(self):
+    def read(self, rel):
+        with open(os.path.join(self.run_dir, rel)) as fh:
+            return json.load(fh)
+
+    def sync(self, *extra):
         out = io.StringIO()
         with redirect_stdout(out):
-            decision_log.main(["sync", "--root", self.root, "--log",
-                               ".maestro/runs/demo/decision-log.json", "--stage",
-                               "PRD=.maestro/runs/demo/prd-context.json,"
-                               ".maestro/runs/demo/prd-questions.json", "--stage",
-                               "HLD=.maestro/runs/demo/hld-context.json"])
+            decision_log.main(["sync", "--root", self.root, "--md",
+                               ".maestro/runs/demo/decisions/decision-log.md", "--stage",
+                               "PRD=.maestro/runs/demo/decisions/prd.json,"
+                               ".maestro/runs/demo/.engine/queues/prd.json", "--stage",
+                               "HLD=.maestro/runs/demo/decisions/hld.json", *extra])
         return json.loads(out.getvalue())
 
     def validate(self, doc, decisions=None):
-        queue = self.write("hld-questions.json", {"schema_version": 2, "audit": {
+        queue = self.write(".engine/queues/hld.json", {"schema_version": 2, "audit": {
             "unresolved": ["gap"], "contradictions": []}, **doc})
+        # the feature's decisions: the folder that holds every stage's record
         errors, _, out = vq.validate(queue, decisions_path=decisions,
-                                     log_path=os.path.join(self.run_dir, "decision-log.json"),
+                                     log_path=os.path.join(self.run_dir, "decisions"),
                                      require_topics=True, root=self.root)
         return errors, out
 
@@ -73,6 +79,52 @@ class DecisionLogTest(unittest.TestCase):
         self.assertIn("**Owner** [ASSUMED — unconfirmed (autopilot)]: Billing owns exports", md)
         self.assertIn("[settled by evidence]: CSV only — source: "
                       "`.maestro/runs/demo/requirement/prd.md#Functional scope`", md)
+
+    def test_the_stage_records_are_the_only_store(self):
+        """No JSON copy of the log: the records hold every decision, the log is their rendering,
+        and a point the queue settled from evidence (no interview ran) is added to the record."""
+        result = self.sync()
+        self.assertEqual(result["path"], result["md_path"])
+        self.assertEqual(sorted(os.listdir(os.path.join(self.run_dir, "decisions"))),
+                         ["decision-log.md", "prd.json"])
+        settled = self.read("decisions/prd.json")["decisions"][-1]
+        self.assertEqual((settled["id"], settled["source"], settled["answer"]),
+                         ("settled-export-format", "evidence", "CSV only"))
+        self.assertEqual(settled["evidence"],
+                         ".maestro/runs/demo/requirement/prd.md#Functional scope")
+        before = self.read("decisions/prd.json")
+        self.assertEqual(self.sync()["count"], 3)  # syncing again adds nothing twice
+        self.assertEqual(self.read("decisions/prd.json"), before)
+        # a later queue that no longer lists the point does not un-decide it
+        self.write(".engine/queues/prd.json", {"schema_version": 2, "questions": [],
+                                               "audit": {"unresolved": [], "contradictions": []}})
+        self.assertEqual(self.sync()["settled"], 1)
+
+    def test_a_stage_that_only_settled_points_gets_a_record(self):
+        os.remove(os.path.join(self.run_dir, "decisions", "prd.json"))
+        self.assertEqual(self.sync()["count"], 1)
+        record = self.read("decisions/prd.json")
+        self.assertEqual([d["source"] for d in record["decisions"]], ["evidence"])
+        self.assertEqual(record["rounds"], [])  # nothing was asked
+
+    def test_an_earlier_workflow_still_gets_its_json_copy(self):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            decision_log.main(["sync", "--root", self.root, "--log",
+                               ".maestro/runs/demo/decision-log.json", "--stage",
+                               "PRD=.maestro/runs/demo/decisions/prd.json"])
+        result = json.loads(out.getvalue())
+        self.assertEqual(result["path"], ".maestro/runs/demo/decision-log.json")
+        self.assertEqual(result["md_path"], ".maestro/runs/demo/decision-log.md")
+        entries = self.read("decision-log.json")["entries"]
+        self.assertEqual([e["id"] for e in entries], ["retention", "owner"])
+        errors, _, _ = vq.validate(
+            self.write("q.json", {"schema_version": 2, "questions": [
+                question("keep-days", "export-retention")],
+                "audit": {"unresolved": ["gap"], "contradictions": []}}),
+            log_path=os.path.join(self.run_dir, "decision-log.json"), require_topics=True,
+            root=self.root)
+        self.assertTrue(any("already decided (PRD: retention)" in e for e in errors), errors)
 
     def test_a_later_stage_cannot_reask_a_decided_topic(self):
         self.sync()
@@ -93,7 +145,7 @@ class DecisionLogTest(unittest.TestCase):
         errors, _ = self.validate({"questions": [follow]})
         self.assertEqual(errors, [])
         # once the follow-up is recorded, a second one is refused
-        hld = self.write("hld-context.json", {"decisions": [
+        hld = self.write("decisions/hld.json", {"decisions": [
             {"id": "retention-legal", "topic": "export-retention", "follow_up_of": "retention",
              "answer": "30 days unless legal hold", "source": "user-answer"}]})
         again = question("retention-again", "export-retention", follow_up_of="retention")

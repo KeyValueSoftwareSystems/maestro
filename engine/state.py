@@ -1,5 +1,8 @@
 """Per-feature run ledger: .maestro/runs/<slug>/state.yaml.
 
+The ledger is the only engine file at the top of a run folder; its lock and the ledgers an
+`init --force` replaced live under `.engine/` there (run_layout.py describes the whole folder).
+
 Only engine code writes this file — the lead agent never edits it (LLMs corrupt
 hand-edited state). Writes go through an fcntl lock plus tmp+rename, both carried over
 from the v1 workflows/state.py. Read-only callers fail soft on a corrupt ledger (treated as
@@ -85,11 +88,14 @@ _LOCK_WARNED = False
 
 MAESTRO_DIR = ".maestro"
 RUNS_DIR = "runs"          # per-slug run ledgers live under .maestro/runs/<slug>/
+ENGINE_DIR = ".engine"     # the engine's working files inside a run folder (run_layout.py)
 STATE_VERSION = 1
 # Semantic run layout.  Unlike STATE_VERSION (the YAML serialization contract), this marker
-# records which shipped workflow layout a ledger was created under, so a future layout change
-# can recognise older runs. 3: sdlc-main and design.yaml use small stage children.
-RUN_FORMAT_VERSION = 3
+# records which shipped workflow layout a ledger was created under, so a layout change can
+# recognise older runs. 3: sdlc-main and design.yaml use small stage children. 4: the run folder
+# is grouped by kind (requirement/ design/ decisions/ reviews/ build/ qa/ release/ .engine/);
+# run_layout.migrate moves a format-3 run into it.
+RUN_FORMAT_VERSION = 4
 
 # A slug becomes a directory name under .maestro/runs/; keep it a single safe path segment so
 # a stray `/` or `..` can never scatter state outside the feature folder.
@@ -110,6 +116,19 @@ def feature_dir(slug, root="."):
 
 def state_path(slug, root="."):
     return os.path.join(feature_dir(slug, root), "state.yaml")
+
+
+def engine_dir(slug, root="."):
+    return os.path.join(feature_dir(slug, root), ENGINE_DIR)
+
+
+def lock_path(slug, root="."):
+    return os.path.join(engine_dir(slug, root), "state.lock")
+
+
+def ledgers_dir(slug, root="."):
+    """Where a ledger that was replaced or could not be read is kept (never deleted)."""
+    return os.path.join(engine_dir(slug, root), "ledgers")
 
 
 def now_iso():
@@ -230,10 +249,17 @@ def load(slug, root="."):
 
 
 def quarantine(slug, root=".", suffix="unreadable"):
-    """Move a ledger aside (never delete it) and return the new path."""
+    """Move a ledger aside (never delete it) and return the new path:
+    `.engine/ledgers/<suffix>-<time>.yaml`."""
     path = state_path(slug, root)
     stamp = _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    target = f"{path}.{suffix}-{stamp}"
+    folder = ledgers_dir(slug, root)
+    os.makedirs(folder, exist_ok=True)
+    target = os.path.join(folder, f"{suffix}-{stamp}.yaml")
+    number = 1
+    while os.path.exists(target):  # two restarts within one second
+        number += 1
+        target = os.path.join(folder, f"{suffix}-{stamp}-{number}.yaml")
     os.replace(path, target)
     return target
 
@@ -311,9 +337,8 @@ def locked(slug, root="."):
         print("warning: no file locking on this platform — do not run two maestro "
               "commands on the same slug at once", file=sys.stderr)
         _LOCK_WARNED = True
-    directory = feature_dir(slug, root)
-    os.makedirs(directory, exist_ok=True)
-    lock_file = os.path.join(directory, "state.yaml.lock")
+    lock_file = lock_path(slug, root)
+    os.makedirs(os.path.dirname(lock_file), exist_ok=True)
     fh = open(lock_file, "a+")
     try:
         _lock_fh(fh)
