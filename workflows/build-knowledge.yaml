@@ -24,8 +24,32 @@ nodes:
     # Combined docs/provenance.yaml + codebase-map gate (no network). refresh_needed false → skip authoring.
     run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json", --no-fetch]
     routes:
-      - {when: "${steps.plan_freshness.outputs.refresh_needed} == true", to: plan_maps}
+      - {when: "${steps.plan_freshness.outputs.refresh_needed} == true", to: docs_impact}
       - {to: already_fresh}
+
+  - id: docs_impact
+    type: script
+    label: Will the refresh rewrite verified docs?
+    # Counts the docs a person verified (a rewrite resets them to draft) and writes the 3-line
+    # overview the gate shows. No verified docs (first build, or all drafts) → no gate.
+    run: [python3, .maestro/engine/docs_rewrite.py, check, --root, ., --plan, ".maestro/runs/${inputs.slug}/knowledge-freshness-plan.json"]
+    routes:
+      - {when: "${steps.docs_impact.outputs.needs_approval} == true", to: rewrite_gate}
+      - {to: plan_maps}
+
+  - id: rewrite_gate
+    type: gate
+    label: Approve rewriting verified docs
+    # Person only: no `auto:` policy, so autopilot stops here too.
+    prompt: |
+      The knowledge refresh will edit docs under docs/ that a person has verified.
+
+      ${steps.docs_impact.outputs.summary}
+
+      Review with `git diff docs/` afterwards; commit docs/ first if you want a clean baseline.
+    options:
+      - {id: approve, label: Approve — refresh the docs, to: plan_maps}
+      - {id: keep, label: Keep the docs as they are, to: end}
 
   - id: already_fresh
     type: script
