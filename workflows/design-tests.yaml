@@ -1,0 +1,77 @@
+# Design child: the functional test-case catalog, the QA source of truth.
+#
+#   write test cases (AC trace) -> approval
+#
+# Black-box and from the approved PRD alone: its acceptance criteria decide which cases exist
+# (each case names the criteria it verifies; the engine checks every criterion is covered and none
+# is invented) and what each case should observe, in the PRD's own terms. The cases read no
+# design document, so design.yaml runs this stage beside the solution design and a design revision
+# never rewrites them. QA takes the exact values to check (status codes, messages, fields) from the
+# approved contract, HLD or LLDs when it runs each case.
+version: 1
+name: design-tests
+title: Functional test cases
+description: Write and approve the functional test-case catalog from the PRD's acceptance criteria.
+inputs:
+  slug: {type: string, required: true, description: kebab-case feature id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  feedback: {type: string, default: "", description: revision note from the release gate (empty on first pass)}
+defaults:
+  model: opus
+  agent: qa
+  max_visits: 10
+start: test_cases
+nodes:
+  - id: test_cases
+    type: agent
+    label: Functional test cases
+    instruction: |
+      Produce the functional test-case catalog for this feature at
+      .maestro/runs/${inputs.slug}/test-cases.md, the QA source of truth, from the approved PRD at
+      .maestro/runs/${inputs.slug}/requirement/prd.md alone. Every acceptance criterion needs at
+      least one case; trace no criterion the PRD does not have. State each expected result as the
+      behaviour a user or client observes, in the PRD's terms; do not read the HLD, contract or
+      LLDs (they are being written at the same time) and do not invent status codes, error codes
+      or field names the PRD does not state. QA looks those up in the approved design.
+      Revision note: ${inputs.feedback}
+      Person's feedback: ${steps.test_cases_approval.outputs.feedback}
+      If the catalog exists from an earlier pass, update in place only the cases the PRD, the
+      revision note or the feedback change; keep every other case and its ID unchanged.
+      Start each case with a heading whose first word is its ID (`### TC-${inputs.slug}-001 — title`)
+      and name in its body every PRD criterion it verifies exactly as the PRD writes it (AC-01).
+      The engine checks this after you.
+    skill: functional-testcases
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      revision_feedback: "${inputs.feedback}"
+      approval_feedback: "${steps.test_cases_approval.outputs.feedback}"
+    outputs: [test_cases_path, case_count]
+    artifact: ".maestro/runs/${inputs.slug}/test-cases.md"
+    # Every PRD acceptance criterion is traced by a test case, and no case traces one the PRD lacks.
+    check: {run: [python3, .maestro/engine/ac_trace.py, design, --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --test-cases, ".maestro/runs/${inputs.slug}/test-cases.md"]}
+    # a trace the writer cannot fix goes to the person, with the engine's report
+    on_fail: test_cases_approval
+    next: test_cases_approval
+
+  - id: test_cases_approval
+    type: gate
+    label: Test case approval
+    prompt: |
+      Test cases: .maestro/runs/${inputs.slug}/test-cases.md (${steps.test_cases.outputs.case_count} cases)
+      Acceptance-criteria trace (engine): ${steps.test_cases.outputs.issues_summary}
+
+      QA tests the implementation against these cases.
+    options:
+      - {id: approve, label: Approve the test cases, to: end}
+      - {id: revise, label: Request changes, to: test_cases, input: feedback}
+      - {id: reject, label: Reject — abort the run, to: abort}
+    # Design and auto modes approve a catalog that traces every acceptance criterion.
+    auto:
+      option: approve
+      when: ["${steps.test_cases.outputs.valid} == true"]
+
+outputs:
+  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+  case_count: "${steps.test_cases.outputs.case_count}"

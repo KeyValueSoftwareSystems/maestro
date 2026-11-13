@@ -1,18 +1,19 @@
-# Design phase: requirement -> PRD -> HLD (reviewed by a fresh architect, then approved) ->
-# contract (only when the HLD lists cross-repository interfaces) -> repository LLDs and
-# functional test cases (one run, readiness-checked, approved).
+# Design phase: requirement -> PRD, then two stages at the same time: the solution design
+# (impact, sizing, HLD, contract, repository LLDs) and the functional test cases.
 #
-#   intake -> prd -> hld -> [contract] -> lld
+#   intake -> prd -> ( solution || tests )
 #
-# Composition: each stage is its own small child workflow (design-intake / -prd / -hld /
-# -contract / -lld), so this file owns only the ordering. Every revision loop stays inside its
-# stage. The contract comes before the LLDs so every repository builds against one version of
-# it; the HLD validator's `interfaces_changed` decides whether it runs. Each stage node sets
-# `on_fail: abort`, so a rejection inside a stage fails this workflow.
+# Composition: each stage is its own small child workflow (design-intake / -prd / -solution /
+# -tests), so this file owns only the ordering. The test cases are black-box and come from the
+# approved PRD alone: which cases exist and what each should observe. They need nothing the
+# solution design writes, so they are written beside it, and a design revision never rewrites
+# them; QA takes the exact values to check (status codes, messages, fields) from the approved
+# design when it runs them. Each stage node sets `on_fail: abort`, so a rejection inside a stage
+# fails this workflow.
 version: 1
 name: design
 title: Design
-description: Design a feature end-to-end, from requirement folder to approved repository designs.
+description: Design a feature end-to-end, from requirement folder to approved repository designs and test cases.
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
@@ -42,123 +43,52 @@ nodes:
       project_context: "${steps.intake.outputs.project_context}"
       references: "${steps.intake.outputs.references}"
     on_fail: abort
-    next: greenfield_check
+    next: solution_and_tests
 
-  # Engine-owned: no repository in the workspace yet means the HLD decides which to create and a
-  # scaffold stage builds them before the contract and LLDs.
-  - id: greenfield_check
-    type: script
-    label: Existing code or a new product?
-    run: [python3, .maestro/engine/greenfield.py, check, --root, "."]
-    routes:
-      - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: sizing}
-      - {to: impact}
-
-  # Which repositories the feature changes, whether it crosses a boundary between them, and whether
-  # it is a minor or a major change. The agent judges; the engine checks the names and the size, and
-  # takes the light design path for minor and the LLD scope from the repositories.
-  - id: impact
-    type: agent
-    label: Impact assessment
-    model: sonnet
-    brief: minimal
-    instruction: |
-      Assess which repositories the approved PRD at
-      .maestro/runs/${inputs.slug}/requirement/prd.md changes, and whether it changes an interface
-      between repositories, stored data (a migration) or infrastructure, and whether it is a minor
-      or a major change. Then list everything it touches (schema_version 2): domains, tables,
-      jobs, queues, endpoints with the screens and clients that call them, the INV rules at risk and
-      the CS change scenarios it triggers, each with a one-line reason and a pointer to its
-      evidence. Every later design must deal with each item, so a missed one is missed work. Use
-      each repository's codebase map, the domain pages and change scenarios when present, and only
-      the source needed to place a change; do not design. Write the assessment to
-      .maestro/runs/${inputs.slug}/impact.json.
-    skill: feature-impact
-    inputs:
-      slug: "${inputs.slug}"
-      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
-      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
-      domain_pages: "docs/functional/"
-      change_scenarios: "docs/impact/side-effects.yaml"
-    outputs: [impact_summary, repos_csv]
-    artifact: ".maestro/runs/${inputs.slug}/impact.json"
-    fresh: true
-    # repos_csv downstream is the engine's validated list, not the agent's claim; the engine also
-    # adds every change scenario the PRD triggers, so a rule-driven match never rests on the agent
-    check: {run: [python3, .maestro/engine/impact.py, validate, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md"]}
-    max_visits: 3
-    on_exhausted: sizing
-    # the assessment only narrows the LLD scope: one that never validates is skipped
-    on_fail: sizing
-    next: sizing
-
-  # Engine-owned: a feature the impact assessment calls minor skips the HLD and contract
-  # (PRD -> LLD -> readiness -> test cases -> approval); major, the full path. Without a valid
-  # assessment the engine falls back to its rules (few criteria, no non-functional targets, one repo).
-  - id: sizing
-    type: script
-    label: Full or light design?
-    run: [python3, .maestro/engine/sizing.py, --root, ".", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md", --impact, ".maestro/runs/${inputs.slug}/impact.json", --path, "${inputs.path}"]
-    routes:
-      - {when: "${steps.sizing.outputs.path} == light", to: lld}
-      - {to: hld}
-
-  - id: hld
-    type: subworkflow
-    label: HLD and architecture review
-    workflow: .maestro/workflows/design-hld.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      feedback: "${inputs.feedback}"
-      greenfield: "${steps.greenfield_check.outputs.greenfield}"
-    on_fail: abort
-    routes:
-      - {when: "${steps.greenfield_check.outputs.greenfield} == true", to: scaffold}
-      - {when: "${steps.hld.outputs.interfaces_changed} == true", to: contract}
-      - {to: lld}
-
-  - id: scaffold
-    type: subworkflow
-    label: Scaffold the new repositories
-    workflow: .maestro/workflows/scaffold.yaml
-    inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
-    on_fail: abort
-    routes:
-      - {when: "${steps.hld.outputs.interfaces_changed} == true", to: contract}
-      - {to: lld}
-
-  - id: contract
-    type: subworkflow
-    label: API contract
-    workflow: .maestro/workflows/design-contract.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      feedback: "${inputs.feedback}"
-    on_fail: abort
-    next: lld
-
-  - id: lld
-    type: subworkflow
-    label: Repository LLDs and test cases
-    workflow: .maestro/workflows/design-lld.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      feedback: "${inputs.feedback}"
-      light: "${steps.sizing.outputs.path}"
-      required_repos: "${steps.hld.outputs.infra_repos_csv}"
-      impact_repos: "${steps.impact.outputs.repos_csv}"
+  # The solution design and the test cases both start from the approved PRD, each with its own
+  # approvals; delivery starts when both are done.
+  - id: solution_and_tests
+    type: parallel
+    label: Solution design and test cases
+    join: all
+    on_branch_fail: fail_all
+    branches:
+      - id: solution
+        start: solution
+        steps:
+          - id: solution
+            type: subworkflow
+            label: Solution design
+            workflow: .maestro/workflows/design-solution.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              feature: "${inputs.feature}"
+              feedback: "${inputs.feedback}"
+              path: "${inputs.path}"
+            on_fail: abort
+            next: end
+      - id: tests
+        start: tests
+        steps:
+          - id: tests
+            type: subworkflow
+            label: Functional test cases
+            workflow: .maestro/workflows/design-tests.yaml
+            inputs:
+              slug: "${inputs.slug}"
+              feature: "${inputs.feature}"
+              feedback: "${inputs.feedback}"
+            on_fail: abort
+            next: end
     on_fail: abort
     next: end
 
 outputs:
-  design_path: "${steps.sizing.outputs.path}"
-  hld_summary: "${steps.hld.outputs.hld_summary}"
-  contract_summary: "${steps.contract.outputs.contract_summary}"
+  design_path: "${steps.solution_and_tests.branches.solution.outputs.design_path}"
+  hld_summary: "${steps.solution_and_tests.branches.solution.outputs.hld_summary}"
+  contract_summary: "${steps.solution_and_tests.branches.solution.outputs.contract_summary}"
   # empty when the stage did not run (the light path writes no HLD or contract)
-  hld_path: "${steps.hld.outputs.hld_path}"
-  contract_path: "${steps.contract.outputs.contract_path}"
-  test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
-  repos_csv: "${steps.lld.outputs.repos_csv}"
+  hld_path: "${steps.solution_and_tests.branches.solution.outputs.hld_path}"
+  contract_path: "${steps.solution_and_tests.branches.solution.outputs.contract_path}"
+  test_cases_path: "${steps.solution_and_tests.branches.tests.outputs.test_cases_path}"
+  repos_csv: "${steps.solution_and_tests.branches.solution.outputs.repos_csv}"

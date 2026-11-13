@@ -53,10 +53,13 @@ runtime. It ships:
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
-  `delivery` → `archive`; `design` composes `design-intake` /
-  `design-prd` / `design-hld` (with its architecture review) / `scaffold` (greenfield only: create
-  the repositories the HLD lists) / `design-contract` (only when the HLD lists cross-repo
-  interfaces) / `design-lld` (every repo's LLD in one run). A gate decision
+  `delivery` → `archive`; `design` composes `design-intake` / `design-prd`, then a `parallel`
+  node running `design-solution` (impact, sizing, then `design-hld` with its architecture review /
+  `scaffold` (greenfield only: create the repositories the HLD lists) / `design-contract` (only
+  when the HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run)) beside
+  `design-tests` (the functional test cases, from the approved PRD alone; QA takes exact values
+  from the design when it runs them). `todo.py` lists a parallel of single-stage branches as
+  those stages side by side. A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
   `engine/schemas/workflow.schema.json`).
@@ -262,7 +265,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
   `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
   without one: `auto` takes the light path
-  (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
+  (PRD → LLD → readiness → approval; no HLD or contract) only for ≤
   `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
   exactly one repository changed and no interface or infrastructure change (from `--impact`;
   without one, the workspace must hold one repository) and no "(to confirm)"; the run input

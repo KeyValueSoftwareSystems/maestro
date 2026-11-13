@@ -10,12 +10,14 @@ pack) — a full AI-SDLC pipeline you can run today and fork into your own:
 
 ```
 workspace sync → requirement → PRD (summarize context → Grill unclear decisions → write once → validate)
-   → HLD (brainstorm as a conversation, or Grill architecture with options → confirm direction
-          → write once → validate
-          → architecture review by a fresh reviewer → [approve])
-   → API contract (only when the HLD lists cross-repo interfaces)
-   → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
-          → readiness check → functional test cases (every AC traced) → [approve])
+   → solution design:
+       HLD (brainstorm as a conversation, or Grill architecture with options → confirm direction
+            → write once → validate
+            → architecture review by a fresh reviewer → [approve])
+       → API contract (only when the HLD lists cross-repo interfaces)
+       → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
+            → readiness check → [approve])
+     ‖ functional test cases, at the same time, from the PRD alone (every AC traced → [approve])
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
@@ -65,10 +67,11 @@ my-feature · sdlc-main · running
 [>] Design phase
     [x] Requirement and context
     [x] PRD
-    [?] HLD
-          ↳ waiting on you: HLD approval
-    [ ] Repository LLDs
-    [ ] API contract and test cases
+    [>] Solution design
+        [?] HLD
+              ↳ waiting on you: [solution] HLD approval
+        [ ] Repository LLDs
+    [x] Functional test cases
 [ ] Design review
 [ ] Implementation, QA and release
 [ ] Pull requests and archival
@@ -175,10 +178,17 @@ the contract exactly. If a repository needs something the contract lacks — for
 the frontend needs — the LLD writer reports it, the contract is updated first, and every
 affected LLD is revised. Then a readiness check by a fresh reviewer: no design decision left to
 the implementer, every LLD consistent with the contract and with each other, every acceptance
-criterion covered by an LLD. Once the LLDs pass it, the functional test cases are written once
-(not on every revision round); the engine checks that every PRD acceptance criterion (`AC-xx`) is
-traced by at least one case and that no case traces a criterion the PRD lacks, and sends the
-catalog back with the exact gaps otherwise. One approval covers all of them.
+criterion covered by an LLD. One approval covers every LLD.
+
+The functional test cases are their own stage (`design-tests.yaml`), written from the approved
+PRD alone, at the same time as the solution design, on both the full and the light path. They
+are black-box: the acceptance criteria decide which cases exist and what each should observe, in
+the PRD's terms, with no status codes or field names the PRD does not state. So a design change
+never rewrites them. The engine checks that every PRD acceptance criterion (`AC-xx`) is traced by
+at least one case and that no case traces a criterion the PRD lacks, and sends the catalog back
+with the exact gaps otherwise; then the catalog has its own approval. QA takes the exact values to
+check (status codes, error codes, fields, messages) from the approved contract, HLD and LLDs when
+it runs each case (on the light path, the LLDs alone); a design that cannot meet a case fails it.
 
 Approval records the exact HLD, contract and LLD hashes. Delivery starts by checking them: a
 design that changed after approval goes back through design instead of being built stale.
@@ -221,10 +231,11 @@ command in Claude Code/Cursor or mention it with `$` in Codex (`/hld-writing` or
 `$hld-writing`, for example). Same skills, no orchestration.
 
 **One stage under Maestro.** Start a stage's own workflow on an existing feature slug:
-`/maestro <slug> .maestro/workflows/design-hld.yaml`, `design-contract.yaml` or `design-lld.yaml`
-(every repository's LLD). The stage needs the documents before it: the HLD needs
-`requirement/prd.md`; the contract and LLDs also need `hld.md` (on the light path, which has no
-HLD, run `design-lld` with `light=true`). Maestro checks these first and names what is missing.
+`/maestro <slug> .maestro/workflows/design-hld.yaml`, `design-contract.yaml`, `design-lld.yaml`
+(every repository's LLD) or `design-tests.yaml` (the functional test cases). The stage needs the
+documents before it: the HLD and the test cases need `requirement/prd.md`; the contract and LLDs
+also need `hld.md` (on the light path, which has no HLD, run `design-lld` with `light=light`).
+Maestro checks these first and names what is missing.
 A slug that already has a run ledger is replaced only after you confirm, and the old ledger is
 kept beside it as `state.yaml.replaced-<time>`.
 
@@ -264,8 +275,8 @@ After PRD approval an impact assessment (skill `feature-impact`) names the repos
 feature changes and whether it changes an interface between them, stored data or infrastructure;
 the engine checks every name is a repository the workspace has. The assessment also classifies
 the feature `minor` or `major`, and the engine follows it: a `minor` feature skips the HLD and the API contract: PRD → repository LLD (which carries the
-ownership, failure and rollout notes an HLD would) → readiness check → test cases → approval →
-delivery. Without a valid assessment (a new product skips it) the engine falls back to rules — at
+ownership, failure and rollout notes an HLD would) → readiness check → approval → delivery, with
+the test cases written from the PRD alongside, as on the full path. Without a valid assessment (a new product skips it) the engine falls back to rules — at
 most five acceptance criteria (`design.light_max_criteria` in maestro.config.yaml), no
 non-functional targets, one repository, nothing left "(to confirm)". Everything
 else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
@@ -283,6 +294,7 @@ for design approval"). The mode decides who answers each gate:
 | HLD approval | you | you | approved if the architecture review has no blocking findings |
 | LLD scope | you | the repositories the impact assessment names (plus infrastructure owners) | same |
 | LLD approval | you | approved if the readiness check passes | same |
+| Test case approval | you | approved if every acceptance criterion is traced by a test case | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
 | Release | you | approved if the engine verified every repository and every acceptance criterion passes QA | same |
 | Archive confirmation | you | you | you |

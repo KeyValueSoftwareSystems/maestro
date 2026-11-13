@@ -10,9 +10,12 @@ into small stage children is what makes this list readable: `sdlc-main` shows de
 review -> delivery -> archive, and the running stage expands one level (design: intake -> PRD ->
 map -> HLD -> LLDs -> contract). A stage is listed when it is on the workflow's normal path or
 has been entered, so optional stages (a scoped architecture revision) appear
-only once they actually run. The step the run is on is reported as a `now` line under the
-innermost stage that contains it, marked `waiting` when it needs the human (a gate, an
-interview, an exhausted-loop or failure question).
+only once they actually run. A parallel node whose every branch is a single subworkflow (design's
+solution design beside its test cases) is listed as those stages, side by side, so both stay
+visible; a parallel with longer branches (the implementation pool's claim loop) is one stage.
+The step the run is on is reported as a `now` line under the innermost stage that contains it,
+marked `waiting` when it needs the human (a gate, an interview, an exhausted-loop or failure
+question).
 
     build(run)  -> {"slug", "workflow", "status", "items": [...], "now": [...]}
     flat(todo)  -> [{"content", "status"}]   harness task-list shape (pending/in_progress/completed)
@@ -101,11 +104,23 @@ def _owns(path, cursor):
     return cursor.startswith(path + "/") or cursor.startswith(path + "[")
 
 
+def _branch_frames(frame, node):
+    """One frame per branch when every branch of parallel `node` is a single subworkflow stage."""
+    branches = node.get("branches") or []
+    if not branches or any(len(b.get("steps") or []) != 1
+                           or resolver.ntype(b["steps"][0]) != "subworkflow" for b in branches):
+        return []
+    return [resolver.Frame("branch", frame.prefix + f"{node['id']}[{b['id']}]/", frame.workflow,
+                           {b["steps"][0]["id"]: b["steps"][0]}, b["start"], frame.inputs,
+                           parent=frame, parent_node=node)
+            for b in branches]
+
+
 def _stages(run, frame, cursors):
     """Stage items of `frame`; returns (items, cursors not claimed by any stage here)."""
     on_path = _normal_path(frame)
     items, claimed = [], set()
-    for node in frame.workflow["nodes"]:
+    for node in frame.nodes.values():
         if resolver.ntype(node) not in STAGE_TYPES:
             continue
         path = frame.path(node["id"])
@@ -114,6 +129,14 @@ def _stages(run, frame, cursors):
             continue
         mine = [c for c in cursors if _owns(path, c) or c == path]
         claimed.update(mine)
+        branch_frames = _branch_frames(frame, node) if resolver.ntype(node) == "parallel" else []
+        if branch_frames:  # side-by-side stages: list each branch's stage in its place
+            loose = mine
+            for bframe in branch_frames:
+                branch_items, loose = _stages(run, bframe, loose)
+                items.extend(branch_items)
+            claimed.difference_update(loose)
+            continue
         children, now = [], []
         if entry and entry.get("status") == "running" and resolver.ntype(node) == "subworkflow" \
                 and path in run.state["frames"]:

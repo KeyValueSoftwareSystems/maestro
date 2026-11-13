@@ -64,7 +64,7 @@ class SyncTest(unittest.TestCase):
         import tempfile
         for name in ("sdlc-main", "delivery", "design",
                      "design-intake", "design-prd", "design-hld", "design-lld",
-                     "design-contract", "impl", "qa"):
+                     "design-contract", "design-tests", "impl", "qa"):
             path = os.path.join(ROOT, "workflows", f"{name}.yaml")
             with open(path, encoding="utf-8") as fh:
                 original_text = fh.read()

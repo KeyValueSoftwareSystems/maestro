@@ -42,6 +42,13 @@ nodes:
     instruction: |
       Test the functional test-case catalog at .maestro/runs/${inputs.slug}/test-cases.md
       (critical journeys first). ${steps.e2e_plan.outputs.summary}.
+      The catalog states each expected result in the PRD's terms. Take the exact values to assert
+      (status codes, error codes, field names, messages, limits) from the approved design: the
+      contract at .maestro/runs/${inputs.slug}/openapi.yaml and the HLD at
+      .maestro/runs/${inputs.slug}/hld.md when they exist, and the repository LLDs in
+      .maestro/runs/${inputs.slug}/lld/ (the only source on the light path, which has neither).
+      Where the design cannot meet a case's expected behaviour, the case fails: never bend the case
+      to the design.
       Project E2E suite present: ${steps.e2e_plan.outputs.has_e2e}.
       - true: automate the catalog into an executable E2E suite under
         .maestro/runs/${inputs.slug}/qa/ in that framework, reusing its config, fixtures and
@@ -74,6 +81,10 @@ nodes:
       feature: "${inputs.feature}"
       implementation_manifest: "${inputs.implementation_manifest}"
       implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
+      test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
+      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      lld_dir: ".maestro/runs/${inputs.slug}/lld"
     outputs: [passed, failed_count, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/qa/report.md"

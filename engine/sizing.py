@@ -4,7 +4,7 @@
   sizing.py [--root .] --prd <prd.md> [--impact <impact.json>] [--path auto|full|light]
 
 The light path skips the HLD and the contract: the PRD goes straight to the repository LLD,
-readiness check, test cases and approval. `auto` (the default) takes it when the impact
+readiness check and approval (the test cases are written from the PRD alongside, on either path). `auto` (the default) takes it when the impact
 assessment (impact.py) classifies the feature `minor`, and the full path for `major`. Without a
 valid assessment (a new product skips it, or it never validated) it falls back to the rules, all
 of which must hold —
@@ -92,7 +92,7 @@ def main(argv=None):
     args = parser.parse_args(argv)
     requested = args.path if args.path in PATHS else "auto"
     path, reasons = size(args.root, args.prd, requested, args.impact or None)
-    summary = ("Light path: PRD → LLD → test cases (no HLD or contract) — " if path == "light"
+    summary = ("Light path: PRD → LLD (no HLD or contract) — " if path == "light"
                else "Full design path — ") + "; ".join(reasons)
     print(json.dumps({"path": path, "reasons": "; ".join(reasons), "summary": summary}))
     return 0

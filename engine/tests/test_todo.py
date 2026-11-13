@@ -75,15 +75,18 @@ class SdlcTodoTest(unittest.TestCase):
             "[>] Design phase",
             "    [x] Requirement and context",
             "    [x] PRD",
-            "    [?] HLD and architecture review",
-            "          ↳ waiting on you: HLD approval",
-            "    [ ] Repository LLDs and test cases",
+            "    [>] Solution design",
+            "        [?] HLD and architecture review",
+            "              ↳ waiting on you: [solution] HLD approval",
+            "        [ ] Repository LLDs",
+            "    [x] Functional test cases",
             "[ ] Implementation, QA and release",
             "[ ] Pull requests and archival",
         ])
         tasks = todo.flat(built)
-        self.assertIn({"content": "Design phase › HLD and architecture review — waiting on you: "
-                                  "HLD approval",
+        # the solution design and the test cases run side by side, each listed as its own stage
+        self.assertIn({"content": "Design phase › Solution design › HLD and architecture review — "
+                                  "waiting on you: [solution] HLD approval",
                        "status": "in_progress"}, tasks)
         self.assertEqual(tasks[0], {"content": "Workspace sync (feature start)",
                                     "status": "completed"})

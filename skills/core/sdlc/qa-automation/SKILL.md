@@ -16,7 +16,8 @@ assertions** to make a test pass.
 
 ## Inputs
 Your instructions name what to read — the acceptance criteria, the functional test-case
-catalog, and (for cross-service journeys) the contract — and the artifact path to write.
+catalog, and the approved design (contract, HLD and per-repository designs, whichever exist) —
+and the artifact path to write.
 Standalone? read them and write to a path you choose (and tell the user where).
 
 ## Steps
@@ -30,8 +31,11 @@ Standalone? read them and write to a path you choose (and tell the user where).
    scenario steps below. The standards below still apply to what you check and how you report.
 2. **Source the journeys.** If `test_cases_path` exists, that catalog is the source of truth —
    automate its cases, preserving each case's ID/traceability, and do not silently drop a case
-   (note any you defer and why). Only when no catalog is present do you derive journeys straight
-   from the acceptance criteria. Either way: rank by risk and scope to the default tier —
+   (note any you defer and why). A case states its expected result in the requirement's terms;
+   take the exact values to assert (status codes, error codes, field names, messages, limits)
+   from the approved design. When the design and a case disagree, the case is the requirement:
+   it fails, and you never rewrite it to match the design. Only when no catalog is present do
+   you derive journeys straight from the acceptance criteria. Either way: rank by risk and scope to the default tier —
    **critical-journeys-only**; pick the critical
    ones and the highest-value negative paths; state what is out of scope.
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
