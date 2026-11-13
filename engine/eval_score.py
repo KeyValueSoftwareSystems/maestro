@@ -77,7 +77,8 @@ def metrics(root, slug):
     return {
         "status": (state.get("run") or {}).get("status"),
         "mode": (state.get("run") or {}).get("mode") or "human",
-        "design_path": _outputs(state, "design/sizing").get("path") or "full",
+        "design_path": (_outputs(state, "design/design_path").get("path")
+                        or _outputs(state, "design/sizing").get("path") or "full"),
         "infra_level": infra_level,
         "interfaces_changed": _outputs(state, "design/hld/validate_hld").get("interfaces_changed"),
         "questions_asked": sum(questions.values()),

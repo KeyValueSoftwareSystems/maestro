@@ -261,16 +261,29 @@ repositories exactly as on existing code.
 ## Light path for small changes
 
 After PRD approval an impact assessment (skill `feature-impact`) names the repositories the
-feature changes and whether it changes an interface between them, stored data or infrastructure;
-the engine checks every name is a repository the workspace has. The assessment also classifies
-the feature `minor` or `major`, and the engine follows it: a `minor` feature skips the HLD and the API contract: PRD → repository LLD (which carries the
+feature changes and records the design facts, never a verdict: how the interface between
+repositories changes (`none`, `lockstep` — they change together under the same wire format —
+or `shape`), how stored data changes (`none`, `additive`, `reshape`), whether infrastructure
+changes, whether older deployed clients break if it ships out of order, and every architecture
+question still open, each with a kind. The engine checks every name and fact, then decides: the
+light path skips the HLD and the API contract — PRD → repository LLD (which carries the
 ownership, failure and rollout notes an HLD would) → readiness check → test cases → approval →
-delivery. Without a valid assessment (a new product skips it) the engine falls back to rules — at
+delivery — unless an open question needs an architecture answer (`placement`, `integration`,
+`data-model`, `interface`, `quality`), an interface or stored data changes shape, infrastructure
+changes, the PRD still has "(to confirm)" marks, or an HLD exists from an earlier pass. How many
+repositories change never decides: shortening a one-time password across backend, web and mobile
+is a light change; adding an enum member a client must render is not.
+
+The person then sees what the engine found in plain words ("backend, web and mobile change in
+step… Next: a detailed plan for each repository") and answers *Go with that*, *Plan the
+architecture first* or *Skip the architecture document*; the `design` and `auto` modes go with the
+engine. Without a valid assessment (a new product skips it) the engine falls back to rules — at
 most five acceptance criteria (`design.light_max_criteria` in maestro.config.yaml), no
-non-functional targets, one repository, nothing left "(to confirm)". Everything
-else takes the full path. Start a run with `path: full` or `path: light` to choose yourself
-(`init --input path=light`). The approval binds the PRD's hash, so a PRD edited after approval is
-still caught before delivery.
+non-functional targets, one repository, nothing left "(to confirm)". Start a run with
+`path: full` or `path: light` to choose up front (`init --input path=light`); it is not asked
+again. The approval binds the PRD's hash, so a PRD edited after approval is still caught before
+delivery. When older clients are at risk the LLD writer is told to give the ship order; that is
+guidance the readiness review checks, not an engine guarantee.
 
 ## Run modes
 

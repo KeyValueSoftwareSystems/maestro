@@ -182,11 +182,11 @@ def _stub_agent(root, act, slug=None):
             # every repository the workspace has; unique per write for the `fresh` check
             names = [name for name, _path in codebase_scan.discover_repos(root)]
             with open(full, "w", encoding="utf-8") as fh:
-                json.dump({"schema_version": 1,
+                json.dump({"schema_version": 3,
                            "repos": [{"name": name, "change": "simulated change"} for name in names],
-                           "interfaces_change": len(names) > 1, "data_migration": False,
-                           "size": "minor" if len(names) == 1 else "major",
-                           "infrastructure_change": False,
+                           "interface_change": "shape" if len(names) > 1 else "none",
+                           "data_change": "none", "infrastructure_change": False,
+                           "compatibility_risk": False, "open_decisions": [],
                            "summary": f"[simulated] {time.time_ns()}"}, fh, indent=2)
                 fh.write("\n")
             continue

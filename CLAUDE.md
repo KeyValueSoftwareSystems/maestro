@@ -245,28 +245,35 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   each build and test once, stamps each codebase map in `docs/codebase-maps/`). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
 - **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
-  `feature-impact` agent right after PRD approval): the repositories the feature changes and
-  whether it changes an interface between them, stored data or infrastructure, and a `size` of
-  `minor` or `major`; schema 2 also lists every domain, table, job, queue, endpoint (with its
-  consumers), `INV` rule and `CS` scenario it touches, each with a reason and evidence. `validate`
-  checks every name is a discovered repository, the size, and that rules/scenarios/domains exist in
-  the living docs (`living_docs.py`); with `--prd` it adds every change scenario whose `when_changing` the PRD names
-  (`match_scenarios`/`merge`: the scenario, its rules and `also_impacts` items). Sizing and the LLD
-  scope (`lld_set.py init --choice impact`, the scope gate's autopilot answer) read it. Skipped on
-  greenfield.
+  `feature-impact` agent right after PRD approval): facts, never a verdict. Schema 3: the
+  repositories it changes, `interface_change` (`none`/`lockstep`/`shape`), `data_change`
+  (`none`/`additive`/`reshape`), `infrastructure_change`, `compatibility_risk`, and
+  `open_decisions` (`{question, kind, evidence}`; the engine owns the kinds — `placement`,
+  `integration`, `data-model`, `interface`, `quality` block the light path, `rollout`/`detail` do
+  not); it also lists every domain, table, job, queue, endpoint (with its consumers), `INV` rule
+  and `CS` scenario it touches, each with a reason and evidence. Schemas 1/2 (booleans + `size`)
+  still load, read conservatively. `validate` checks every name is a discovered repository, the
+  facts, and that rules/scenarios/domains exist in the living docs (`living_docs.py`); with
+  `--prd` it adds every change scenario whose `when_changing` the PRD names
+  (`match_scenarios`/`merge`). `load(core_only=True)` — what sizing and the LLD scope
+  (`lld_set.py init --choice impact`) use — keeps the repositories and facts when only the item
+  lists are wrong. Skipped on greenfield.
 - **`impact_trace.py`** — the impact trace: `check --stage hld|lld` requires every impacted item
   to be named in the HLD (a `write_hld`/`revise_from_review` check) or the LLDs (`lld_impact_trace`
   node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
   because …"; gaps go back to the writer. Writes `impact-trace.md`, which the HLD and LLD approval
   gates show first. No assessment = valid.
-- **`sizing.py`** — after PRD approval, full or light design: with a valid impact assessment,
-  `minor` is light and `major` is full (authoritative); the rest of this entry is the fallback
-  without one: `auto` takes the light path
-  (PRD → LLD → readiness → test cases → approval; no HLD or contract) only for ≤
-  `design.light_max_criteria` (default 5) acceptance criteria, Non-functional requirements None,
-  exactly one repository changed and no interface or infrastructure change (from `--impact`;
-  without one, the workspace must hold one repository) and no "(to confirm)"; the run input
-  `path: full|light` forces it. Light approvals bind the PRD hash instead of an HLD.
+- **`sizing.py`** — after PRD approval, full or light design (light: PRD → LLD → readiness → test
+  cases → approval; no HLD or contract), decided from a core-valid impact assessment's facts:
+  light unless a blocking open decision, an interface or data shape change, infrastructure, "(to
+  confirm)" in the PRD, or an HLD from an earlier pass (`--hld`). Repository count never decides.
+  Without an assessment the fallback rules: ≤ `design.light_max_criteria` (default 5) acceptance
+  criteria, Non-functional requirements None, a one-repository workspace, no "(to confirm)". It
+  also prints a plain-words `explanation`, which `design.yaml`'s `how_to_design` gate shows (Go
+  with that / Plan the architecture first / Skip the architecture document; autopilot accepts;
+  skipped on greenfield or a run-start `path: full|light`); `sizing.py choose` applies the answer
+  as the `design_path` step that routes and feeds the LLD stage. Light approvals bind the PRD hash
+  instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document, any office/PDF file or a Jira XML export; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.

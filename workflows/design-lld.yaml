@@ -135,7 +135,9 @@ nodes:
       Validate it before completing.
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
       decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
-      change (ownership, failure handling, rollout).
+      change (ownership, failure handling, rollout). When the impact assessment at
+      .maestro/runs/${inputs.slug}/impact.json says compatibility_risk: true, say under Failure
+      and operational behavior which repository ships first so older clients keep working.
       Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
       Never ask a topic already decided there or in this stage's decisions: give every question a
       short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
@@ -217,7 +219,9 @@ nodes:
     instruction: |
       Design path: ${inputs.light}. On the light path there is no HLD or contract: ground every
       decision in the approved PRD and the code, and put in the LLD what an HLD would hold for this
-      change (ownership, failure handling, rollout).
+      change (ownership, failure handling, rollout). When the impact assessment at
+      .maestro/runs/${inputs.slug}/impact.json says compatibility_risk: true, say under Failure
+      and operational behavior which repository ships first so older clients keep working.
       Write one concise, buildable LLD per repository in scope, at these paths:
       ${steps.lld_scope_init.outputs.lld_paths_csv}
       Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/openapi.yaml when it exists,

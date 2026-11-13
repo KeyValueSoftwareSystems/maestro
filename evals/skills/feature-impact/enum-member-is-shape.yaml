@@ -1,0 +1,15 @@
+skill: feature-impact
+name: enum-member-is-shape
+prompt: |
+  Write the impact assessment JSON in your reply (you cannot write files), then your last-line JSON.
+  Workspace repositories: orders-api, orders-web.
+  Approved PRD: orders can now be "on_hold". AC-01: support can put an order on hold. AC-02: the
+  order list shows on-hold orders with an amber badge.
+  Codebase maps: orders-api/orders/status.py defines OrderStatus = pending | paid | shipped and
+  GET /orders returns it as `status`; orders-web/src/OrderBadge.tsx maps each status to a badge.
+  Stored status is a text column; no new column is needed.
+must_include:
+  - '"interface_change"\s*:\s*"shape"'
+must_not_include:
+  - '"interface_change"\s*:\s*"(none|lockstep)"'
+  - '"size"\s*:'
