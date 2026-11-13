@@ -224,7 +224,7 @@ class WorkspaceSyncTest(unittest.TestCase):
             with open(os.path.join(self.tmp, "maestro.config.yaml"), "w") as fh:
                 fh.write(f"version: 1\ndesign:\n  sync_restart: {policy}\n")
         if design:
-            lld = os.path.join(self.tmp, ".maestro", "runs", "f", "lld")
+            lld = os.path.join(self.tmp, ".maestro", "runs", "f", "design", "lld")
             os.makedirs(lld)
             with open(os.path.join(lld, "backend.md"), "w") as fh:
                 fh.write("The shift calls `src/handler.go:10-40` and README.md.\n")

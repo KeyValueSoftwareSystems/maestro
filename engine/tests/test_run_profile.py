@@ -67,7 +67,7 @@ class RunProfileTest(unittest.TestCase):
         self.assertEqual(action["action"], "done")
 
     def feature_file(self, name):
-        return os.path.join(statemod.feature_dir("f", self.tmp), name)
+        return os.path.join(statemod.engine_dir("f", self.tmp), name)
 
     def test_off_by_default(self):
         started = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml")

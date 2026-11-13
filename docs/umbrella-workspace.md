@@ -81,7 +81,7 @@ my-project/                 ← umbrella repo (git init once; run Maestro here)
   the run ledger (`.maestro/runs/<slug>/`) is tracked and a run resumes on any machine.
 
 - **One LLD per repository.** After the HLD is approved, Maestro writes one LLD per repository in
-  scope (`.maestro/runs/<slug>/lld/<repo>.md`) in a single run with one approval. Approval binds
+  scope (`.maestro/runs/<slug>/design/lld/<repo>.md`) in a single run with one approval. Approval binds
   them to the exact HLD and contract, so a later change to either sends the design back before
   anything is built.
 
@@ -163,7 +163,7 @@ repo's current branch in parallel (only that branch, no tags; git never prompts,
 remote fails within seconds and is reported). Current workspaces continue silently. Otherwise one gate
 summarizes behind, dirty or diverged repos and stale knowledge; approved clean updates are
 fast-forward-only, affected docs are refreshed once, and exact commits are pinned in the run's
-`workspace-lock.json`. A repo with local changes is never updated automatically.
+`.engine/workspace-lock.json`. A repo with local changes is never updated automatically.
 
 > Release ordering: **approve release → confirm the archive → archival (harvest lessons into memory + publish
 > curated docs) → merge the feature branch to master.** Archival is the last automated phase;

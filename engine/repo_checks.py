@@ -337,7 +337,7 @@ def _report(receipt, root, full_out, unchanged=False):
     return 0
 
 
-def run_checks(root, repo, worktree, out, base_repo=None, reuse_key=""):
+def run_checks(root, repo, worktree, out, base_repo=None, reuse_key="", logs=None):
     # Absolute from here on: the baseline checkout is made with `git -C <base repo>`, which would
     # resolve a relative path inside that repository instead of under the workspace.
     root = os.path.abspath(root)
@@ -365,7 +365,9 @@ def run_checks(root, repo, worktree, out, base_repo=None, reuse_key=""):
     if earlier:
         return _report(earlier, root, full_out, unchanged=True)
     clean = _clean(full_worktree)
-    log_dir = os.path.splitext(full_out)[0] + "-logs"
+    # each check's full output: --logs, else `<receipt name>-logs/` beside the receipt
+    log_dir = ((logs if os.path.isabs(logs) else os.path.join(root, logs)) if logs
+               else os.path.splitext(full_out)[0] + "-logs")
     full_base = None
     if base_repo:
         full_base = base_repo if os.path.isabs(base_repo) else os.path.join(root, base_repo)
@@ -439,6 +441,7 @@ def main(argv=None):
     parser.add_argument("--base-repo", help="main checkout the branch started from (test-edit guard)")
     parser.add_argument("--reuse-key", default="",
                         help="reuse an unchanged receipt written with the same key")
+    parser.add_argument("--logs", help="folder for each check's log (default: <out>-logs/)")
     args = parser.parse_args(argv)
     if os.environ.get("MAESTRO_SIMULATION") == "1":
         print(json.dumps({"passed": True, "failed_checks": "", "pre_existing_csv": "",
@@ -448,7 +451,7 @@ def main(argv=None):
                           "summary": f"{args.repo}: [simulated] checks passed"}))
         return 0
     return run_checks(args.root, args.repo, args.worktree, args.out, args.base_repo,
-                      args.reuse_key)
+                      args.reuse_key, args.logs)
 
 
 if __name__ == "__main__":

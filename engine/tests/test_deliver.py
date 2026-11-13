@@ -58,10 +58,12 @@ class DeliverTest(unittest.TestCase):
         run_dir = os.path.join(self.root, ".maestro", "runs", "demo")
         os.makedirs(os.path.join(run_dir, "requirement"))
         write(os.path.join(run_dir, "requirement", "prd.md"), "# Report export — PRD\n")
-        write(os.path.join(run_dir, "ac-trace.md"), 
+        os.makedirs(os.path.join(run_dir, "release"))
+        os.makedirs(os.path.join(run_dir, "build"))
+        write(os.path.join(run_dir, "release", "ac-trace.md"),
             "# Acceptance-criteria trace\n\n3/3 acceptance criteria passing.\n")
-        write(os.path.join(run_dir, "review-pack.md"), "# Pack\n\nReady.\n")
-        self.manifest = os.path.join(run_dir, "implementation-manifest.json")
+        write(os.path.join(run_dir, "release", "review-pack.md"), "# Pack\n\nReady.\n")
+        self.manifest = os.path.join(run_dir, "build", "manifest.json")
         with open(self.manifest, "w") as fh:
             json.dump({"repositories": [{
                 "repo": "backend", "branch": self.branch, "worktree": os.path.realpath(self.worktree),
@@ -85,8 +87,8 @@ class DeliverTest(unittest.TestCase):
         try:
             with redirect_stdout(out), redirect_stderr(err):
                 code = deliver.main(["--root", self.root, "--slug", "demo", "--manifest",
-                                     self.manifest, "--pack", ".maestro/runs/demo/review-pack.md",
-                                     "--trace", ".maestro/runs/demo/ac-trace.md", *extra])
+                                     self.manifest, "--pack", ".maestro/runs/demo/release/review-pack.md",
+                                     "--trace", ".maestro/runs/demo/release/ac-trace.md", *extra])
         finally:
             os.environ.clear()
             os.environ.update(saved)
@@ -117,7 +119,7 @@ class DeliverTest(unittest.TestCase):
         self.assertIn("--title Report export (backend)", create)
         self.assertIn("--base main", create)
         self.assertNotIn("--draft", create)
-        with open(os.path.join(self.root, ".maestro/runs/demo/delivery/backend-pr-body.md")) as fh:
+        with open(os.path.join(self.root, ".maestro/runs/demo/.engine/pr-bodies/backend.md")) as fh:
             body = fh.read()
         self.assertIn("Engine verification: verified", body)
         self.assertIn("Acceptance criteria: 3/3 acceptance criteria passing.", body)

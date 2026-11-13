@@ -27,7 +27,7 @@ nodes:
   - id: infra_profile
     type: script
     label: Detect workspace infrastructure
-    run: [python3, .maestro/engine/infra_scan.py, --root, ".", --out, ".maestro/runs/${inputs.slug}/infra-profile.json"]
+    run: [python3, .maestro/engine/infra_scan.py, --root, ".", --out, ".maestro/runs/${inputs.slug}/.engine/infra-profile.json"]
     next: living_domains
 
   # Engine-owned: the living-doc domains of the repositories the impact assessment names, so the
@@ -35,7 +35,7 @@ nodes:
   - id: living_domains
     type: script
     label: Find the affected domains' docs
-    run: [python3, .maestro/engine/living_docs.py, domains, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json"]
+    run: [python3, .maestro/engine/living_docs.py, domains, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json"]
     next: hld_mode
 
   # The person chooses how the architecture is shaped: an open conversation, or the structured
@@ -59,25 +59,25 @@ nodes:
     instruction: |
       Brainstorm the architecture for ${inputs.feature} with the person as a conversation. Read the
       approved requirement in .maestro/runs/${inputs.slug}/requirement/, the decision log at
-      .maestro/runs/${inputs.slug}/decision-log.md, docs/architecture.md and the affected domains'
+      .maestro/runs/${inputs.slug}/decisions/decision-log.md, docs/architecture.md and the affected domains'
       technical docs (${steps.living_domains.outputs.technical_paths}). Infrastructure:
       ${steps.infra_profile.outputs.summary}. Greenfield: ${inputs.greenfield}.
       Revision feedback (empty on the first pass): ${inputs.feedback}
 
       Talk with the person and wait for every reply; do not complete this step until they say
       they are done. Then write the agreed direction, decisions and open points to
-      .maestro/runs/${inputs.slug}/hld-brainstorm.md. If that file exists from an earlier pass,
+      .maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md. If that file exists from an earlier pass,
       continue from it and update it in place.
     skill: hld-brainstorm
     inputs:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
-      notes_path: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
+      decision_log: ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
+      notes_path: ".maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md"
       codebase_lessons: "${memory.knowledge.codebase}"
     outputs: [summary]
-    artifact: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
+    artifact: ".maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md"
     max_visits: 6
     next: brainstorm_confirm
 
@@ -86,7 +86,7 @@ nodes:
     label: Create the HLD from the brainstorm?
     prompt: |
       Brainstorm: ${steps.brainstorm_hld.outputs.summary}
-      Notes: .maestro/runs/${inputs.slug}/hld-brainstorm.md
+      Notes: .maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md
 
       Create the HLD from this?
     options:
@@ -100,7 +100,7 @@ nodes:
     label: Find the next material architecture gaps
     instruction: |
       Build the next architecture Grill queue at
-      .maestro/runs/${inputs.slug}/hld-questions.json before HLD prose is written. Read every
+      .maestro/runs/${inputs.slug}/.engine/queues/hld.json before HLD prose is written. Read every
       requirement file, the maintained codebase map in each affected repo, docs/architecture.md and
       the affected domains' technical docs (${steps.living_domains.outputs.technical_paths}),
       existing confirmed HLD decisions when present, and revision feedback. Explore source only
@@ -157,7 +157,7 @@ nodes:
       concrete and consistent and, when anything was asked in this stage, the latest direction is
       confirmed. Every question declares 1-4 short must_resolve facts.
       Include audit.unresolved and audit.contradictions; both must be empty with an empty queue.
-      Decision log: .maestro/runs/${inputs.slug}/decision-log.md (every earlier stage's decisions).
+      Decision log: .maestro/runs/${inputs.slug}/decisions/decision-log.md (every earlier stage's decisions).
       Never ask a topic already decided there or in this stage's decisions: give every question a
       short kebab-case `topic`; to refine a recorded answer, ask at most one follow-up with
       `follow_up_of: <its id>`. Decide from evidence first: when the requirement, an approved
@@ -177,14 +177,14 @@ nodes:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
+      decisions_path: ".maestro/runs/${inputs.slug}/decisions/hld.json"
       validator: ".maestro/engine/validate_prd_questions.py"
       revision_feedback: "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"
       iac_repos: "${steps.infra_profile.outputs.iac_repos_csv}"
       codebase_lessons: "${memory.knowledge.codebase}"
     outputs: [summary]
-    artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
-    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
+    artifact: ".maestro/runs/${inputs.slug}/.engine/queues/hld.json"
+    check: {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/.engine/queues/hld.json", --decisions, ".maestro/runs/${inputs.slug}/decisions/hld.json", --require-version, "2", --require-direction, --log, ".maestro/runs/${inputs.slug}/decisions", --require-topics, --root, ".", --report]}
     max_visits: 8
     on_exhausted: hld_clarity_limit
     routes:
@@ -198,7 +198,7 @@ nodes:
     context: |
       Feature: ${inputs.feature}
       Approved PRD: .maestro/runs/${inputs.slug}/requirement/prd.md
-    questions_artifact: ".maestro/runs/${inputs.slug}/hld-questions.json"
+    questions_artifact: ".maestro/runs/${inputs.slug}/.engine/queues/hld.json"
     batch_size: 12
     presentation: popup
     discuss:
@@ -206,7 +206,7 @@ nodes:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
         codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
         source: "only the files that settle this question"
-    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    artifact: ".maestro/runs/${inputs.slug}/decisions/hld.json"
     # Autopilot (auto mode): recommendations become logged assumptions; one round, then write.
     auto: {modes: [auto]}
     routes:
@@ -237,21 +237,21 @@ nodes:
     instruction: |
       HLD approval choice (empty before the first approval): ${steps.hld_approval.outputs.choice}.
 
-      When the choice is revise, apply this feedback to .maestro/runs/${inputs.slug}/hld.md as a
+      When the choice is revise, apply this feedback to .maestro/runs/${inputs.slug}/design/hld.md as a
       targeted edit: ${steps.hld_approval.outputs.feedback}
       Change only the sections the feedback affects, plus any a decision recorded after the HLD
       was last written affects (a clarification round may have added one); keep every other
       section and confirmed decision unchanged. Read only the HLD, the confirmed decisions at
-      .maestro/runs/${inputs.slug}/hld-context.json, and source the change itself depends on — do
-      not re-run clarification, survey the codebase, or rewrite the HLD. Keep
-      open-questions.json consistent with the edit. If the feedback needs a new architecture
+      .maestro/runs/${inputs.slug}/decisions/hld.json, and source the change itself depends on — do
+      not re-run clarification, survey the codebase, or rewrite the HLD. Keep the deferred
+      questions file (the `open_questions_path` input) consistent with the edit. If the feedback needs a new architecture
       decision the confirmed decisions cannot settle, do not guess: leave the HLD unchanged and
       return needs_clarification true.
 
       Otherwise, write the final high-level design from the approved requirement, maintained
       codebase maps, relevant source details, and confirmed architecture decisions at
-      .maestro/runs/${inputs.slug}/hld-context.json. When the brainstorm notes at
-      .maestro/runs/${inputs.slug}/hld-brainstorm.md exist, their decisions are confirmed too and
+      .maestro/runs/${inputs.slug}/decisions/hld.json. When the brainstorm notes at
+      .maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md exist, their decisions are confirmed too and
       their open points are yours to design or defer to LLD. Honour review feedback without
       mentioning the review: ${steps.hld_approval.outputs.feedback} ${inputs.feedback}
 
@@ -271,19 +271,20 @@ nodes:
       feature crosses repositories or changes infrastructure. Use the architecture-patterns skill
       for the patterns you choose and, for each detected platform (the `platforms` input), the
       matching infrastructure pack when it is installed. Validate with `python3 .maestro/engine/validate_hld.py
-      .maestro/runs/${inputs.slug}/hld.md --open-questions
-      .maestro/runs/${inputs.slug}/open-questions.json --infra-level
+      .maestro/runs/${inputs.slug}/design/hld.md --open-questions
+      .maestro/runs/${inputs.slug}/design/open-questions.json --infra-level
       ${steps.infra_profile.outputs.level} --repos ${steps.infra_profile.outputs.repos_csv} --greenfield ${inputs.greenfield}`. Use the shortest clear wording that preserves every
       material decision and all context needed to understand the architecture; never remove
       necessary content to reduce length.
 
-      Also write open-questions.json containing only questions explicitly deferred to LLD, and
-      hld-post-questions.json as a schema-version-2 post-check. The post-check must be empty when no
+      Also write the deferred questions file (the `open_questions_path` input) containing only
+      questions explicitly deferred to LLD, and the post-check queue (the `post_questions_path`
+      input) as a schema-version-2 post-check. The post-check must be empty when no
       new material gap emerged during synthesis. If a new blocking gap did emerge, put only that
       gap in the post-check; do not silently guess. Validate the HLD, deferred-question ledger, and
       post-check before completing, repairing deterministic defects inside this same call.
 
-      Deal with every item in the impact assessment at .maestro/runs/${inputs.slug}/impact.json
+      Deal with every item in the impact assessment at .maestro/runs/${inputs.slug}/design/impact.json
       (domains, tables, jobs, queues, endpoints and their consumers, INV rules, CS scenarios): name
       each where the design handles it, or write "<item>: no change needed, because …". The engine
       checks this and sends any gap back.
@@ -302,12 +303,12 @@ nodes:
       feature: "${inputs.feature}"
       slug: "${inputs.slug}"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
-      brainstorm_path: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      impact_path: ".maestro/runs/${inputs.slug}/impact.json"
-      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
-      post_questions_path: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+      decisions_path: ".maestro/runs/${inputs.slug}/decisions/hld.json"
+      brainstorm_path: ".maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      impact_path: ".maestro/runs/${inputs.slug}/design/impact.json"
+      open_questions_path: ".maestro/runs/${inputs.slug}/design/open-questions.json"
+      post_questions_path: ".maestro/runs/${inputs.slug}/.engine/queues/hld-post.json"
       hld_validator: ".maestro/engine/validate_hld.py"
       approval_choice: "${steps.hld_approval.outputs.choice}"
       revision_feedback: "${steps.hld_approval.outputs.feedback}"
@@ -320,14 +321,14 @@ nodes:
       lessons: "${memory.knowledge.plan}"
     outputs: [hld_summary, needs_clarification]
     artifact:
-      - ".maestro/runs/${inputs.slug}/hld.md"
-      - ".maestro/runs/${inputs.slug}/open-questions.json"
-      - ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+      - ".maestro/runs/${inputs.slug}/design/hld.md"
+      - ".maestro/runs/${inputs.slug}/design/open-questions.json"
+      - ".maestro/runs/${inputs.slug}/.engine/queues/hld-post.json"
     check:
-      - {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/hld-post-questions.json", --decisions, ".maestro/runs/${inputs.slug}/hld-context.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decision-log.json", --require-topics, --root, ".", --report]}
-      - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
+      - {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/runs/${inputs.slug}/.engine/queues/hld-post.json", --decisions, ".maestro/runs/${inputs.slug}/decisions/hld.json", --require-version, "2", --log, ".maestro/runs/${inputs.slug}/decisions", --require-topics, --root, ".", --report]}
+      - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/design/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/design/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
       # every item the impact assessment lists is dealt with (none to trace on greenfield)
-      - {run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --docs, ".maestro/runs/${inputs.slug}/hld.md", --stage, hld, --out, ".maestro/runs/${inputs.slug}/impact-trace.md"]}
+      - {run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --docs, ".maestro/runs/${inputs.slug}/design/hld.md", --stage, hld, --out, ".maestro/runs/${inputs.slug}/design/impact-trace.md"]}
     max_visits: 6
     routes:
       - {when: "${steps.write_hld.outputs.needs_clarification} == true", to: prepare_hld_questions}
@@ -340,15 +341,15 @@ nodes:
     skill: hld-interview
     context: |
       A material gap emerged while connecting the complete HLD. Resolve it before final approval.
-    questions_artifact: ".maestro/runs/${inputs.slug}/hld-post-questions.json"
+    questions_artifact: ".maestro/runs/${inputs.slug}/.engine/queues/hld-post.json"
     batch_size: 12
     presentation: popup
     discuss:
       inputs:
         requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
-        hld_draft: ".maestro/runs/${inputs.slug}/hld.md"
+        hld_draft: ".maestro/runs/${inputs.slug}/design/hld.md"
         codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
-    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    artifact: ".maestro/runs/${inputs.slug}/decisions/hld.json"
     auto: {modes: [auto]}
     next: write_hld
 
@@ -357,15 +358,16 @@ nodes:
   - id: validate_hld
     type: script
     label: Record HLD facts
-    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]
+    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/design/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/design/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]
     max_visits: 12
     on_exhausted: abort
     routes:
       - {when: "${steps.validate_hld.outputs.valid} == true", to: sync_decisions}
       - {to: write_hld}
 
-  # Engine-owned: rebuild the feature's decision log from every stage's decisions, so later
-  # stages never re-ask a decided topic and the approval shows every decision.
+  # Engine-owned: render the feature's decision log from every stage's interview record (and
+  # record the points the latest queue settled from evidence), so the approval shows every
+  # decision, the unconfirmed ones first.
   - id: sync_decisions
     type: script
     label: Update the decision log
@@ -375,21 +377,23 @@ nodes:
       - sync
       - --root
       - .
-      - --log
-      - ".maestro/runs/${inputs.slug}/decision-log.json"
+      - --slug
+      - "${inputs.slug}"
+      - --md
+      - ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
       - --stage
-      - "PRD=.maestro/runs/${inputs.slug}/prd-context.json,.maestro/runs/${inputs.slug}/prd-questions.json"
+      - "PRD=.maestro/runs/${inputs.slug}/decisions/prd.json,.maestro/runs/${inputs.slug}/.engine/queues/prd.json"
       - --stage
-      - "HLD=.maestro/runs/${inputs.slug}/hld-context.json,.maestro/runs/${inputs.slug}/hld-questions.json"
+      - "HLD=.maestro/runs/${inputs.slug}/decisions/hld.json,.maestro/runs/${inputs.slug}/.engine/queues/hld.json"
       - --stage
-      - "LLD=.maestro/runs/${inputs.slug}/lld-context.json,.maestro/runs/${inputs.slug}/lld-questions.json"
+      - "LLD=.maestro/runs/${inputs.slug}/decisions/lld.json,.maestro/runs/${inputs.slug}/.engine/queues/lld.json"
     next: arch_scope
 
   # Engine-owned: a re-review sees the HLD changes since its last round, not the whole HLD again.
   - id: arch_scope
     type: script
     label: What changed since the last architecture review
-    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --name, architecture, --files, ".maestro/runs/${inputs.slug}/hld.md", --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"]
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, architecture, --files, ".maestro/runs/${inputs.slug}/design/hld.md", --findings, ".maestro/runs/${inputs.slug}/reviews/architecture.findings.json"]
     next: arch_review
 
   - id: arch_review
@@ -397,7 +401,7 @@ nodes:
     label: Architecture review (fresh reviewer)
     brief: full
     instruction: |
-      Review the HLD at .maestro/runs/${inputs.slug}/hld.md before it is approved, as a reviewer
+      Review the HLD at .maestro/runs/${inputs.slug}/design/hld.md before it is approved, as a reviewer
       who did not write it. Read the approved requirement in .maestro/runs/${inputs.slug}/requirement/
       and the maintained architecture summaries and codebase maps; read source only to check a
       specific claim. Judge the architecture against the requirement: style, boundaries and data
@@ -411,13 +415,13 @@ nodes:
       rollout and observability. When it is none, raise no infrastructure findings beyond what the
       requirement's targets need. Use the architecture-patterns skill and the matching
       infrastructure pack as your reference. The decisions the person confirmed are in
-      .maestro/runs/${inputs.slug}/decision-log.md, and in the brainstorm notes at
-      .maestro/runs/${inputs.slug}/hld-brainstorm.md when they exist: a confirmed decision is not a finding unless it
+      .maestro/runs/${inputs.slug}/decisions/decision-log.md, and in the brainstorm notes at
+      .maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md when they exist: a confirmed decision is not a finding unless it
       breaks a requirement or carries a risk they may not have seen, and then say the finding
       overrides it. Findings need evidence; severity blocking only for must-fix issues.
-      Write every finding to .maestro/runs/${inputs.slug}/reviews/architecture-findings.json as well as
+      Write every finding to .maestro/runs/${inputs.slug}/reviews/architecture.findings.json as well as
       the report (the engine decides from that file). If it exists from an earlier round, this is a
-      re-review: read it and the author's resolutions at .maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json first. Mark a fixed finding
+      re-review: read it and the author's resolutions at .maestro/runs/${inputs.slug}/reviews/architecture.resolutions.json first. Mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the author is right or upheld with your
       reason; keep finding ids stable and give new findings new ids.
       ${steps.arch_scope.outputs.summary}. On a re-review the changes since your last round are at
@@ -432,22 +436,22 @@ nodes:
     timeout: 900
     inputs:
       slug: "${inputs.slug}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
       requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
       codebase_maps: "docs/architecture.md (Cross-repo flows and contracts, Platform-wide invariants); the affected domains' technical docs: ${steps.living_domains.outputs.technical_paths}; one section of docs/_generated/<domain>.inventory.md when you need it; docs/codebase-maps/<repo>.md for each affected repo"
-      decision_log: ".maestro/runs/${inputs.slug}/decision-log.md"
-      brainstorm_notes: ".maestro/runs/${inputs.slug}/hld-brainstorm.md"
+      decision_log: ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
+      brainstorm_notes: ".maestro/runs/${inputs.slug}/decisions/hld-brainstorm.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
       changes_since_last_review: "${steps.arch_scope.outputs.diff_path}"
-      findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture.resolutions.json"
       platforms: "${steps.infra_profile.outputs.platforms_csv}"
       infra_profile: "${steps.infra_profile.outputs.profile_path}"
       lessons: "${memory.knowledge.architecture-review}"
     outputs: [review_path, blocking, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/reviews/architecture.md"
-      - ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
+      - ".maestro/runs/${inputs.slug}/reviews/architecture.findings.json"
     fresh: true
     max_visits: 6
     on_exhausted: hld_approval
@@ -459,7 +463,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking architecture findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json", --previous, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.previous.json", --round, "${steps.arch_review.visits}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/architecture.baseline.json", --round, "${steps.arch_review.visits}", --root, "."]
     max_visits: 8
     on_exhausted: hld_approval
     routes:
@@ -473,36 +477,37 @@ nodes:
     execution: lead
     label: Revise the HLD for blocking review findings
     instruction: |
-      Resolve each blocking finding (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/architecture-findings.json
-      one way, and record it in .maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json as
+      Resolve each blocking finding (status open or upheld) in .maestro/runs/${inputs.slug}/reviews/architecture.findings.json
+      one way, and record it in .maestro/runs/${inputs.slug}/reviews/architecture.resolutions.json as
       {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]}:
-      - fixed: a targeted edit to .maestro/runs/${inputs.slug}/hld.md; the note says what changed;
+      - fixed: a targeted edit to .maestro/runs/${inputs.slug}/design/hld.md; the note says what changed;
       - contested: the finding is wrong — the note gives the evidence (requirement, decision, code);
         a finding the reviewer already upheld cannot be contested again;
       - escalated: it needs a person's decision — the note states the decision.
       Change only what the fixes need and keep every confirmed decision a finding does not
       contradict. A finding that would overturn a decision the person confirmed is never fixed
       silently: contest it, citing the decision, when the decision still meets the requirements;
-      otherwise escalate it so the person decides. Keep open-questions.json consistent with the edit. If a fix needs a new
+      otherwise escalate it so the person decides. Keep the deferred questions file (the
+      `open_questions_path` input) consistent with the edit. If a fix needs a new
       architecture decision the confirmed decisions cannot settle and you are not escalating it,
       return needs_clarification true; otherwise return false.
     skill: hld-writing
     inputs:
       slug: "${inputs.slug}"
-      hld_path: ".maestro/runs/${inputs.slug}/hld.md"
-      decisions_path: ".maestro/runs/${inputs.slug}/hld-context.json"
-      open_questions_path: ".maestro/runs/${inputs.slug}/open-questions.json"
+      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      decisions_path: ".maestro/runs/${inputs.slug}/decisions/hld.json"
+      open_questions_path: ".maestro/runs/${inputs.slug}/design/open-questions.json"
       hld_validator: ".maestro/engine/validate_hld.py"
       revision_feedback: ".maestro/runs/${inputs.slug}/reviews/architecture.md"
-      findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/architecture.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/architecture.resolutions.json"
     outputs: [hld_summary, needs_clarification]
     artifact:
-      - ".maestro/runs/${inputs.slug}/hld.md"
-      - ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"
+      - ".maestro/runs/${inputs.slug}/design/hld.md"
+      - ".maestro/runs/${inputs.slug}/reviews/architecture.resolutions.json"
     check:
-      - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
-      - {run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/impact.json", --docs, ".maestro/runs/${inputs.slug}/hld.md", --stage, hld, --out, ".maestro/runs/${inputs.slug}/impact-trace.md"]}
+      - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/design/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/design/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]}
+      - {run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --docs, ".maestro/runs/${inputs.slug}/design/hld.md", --stage, hld, --out, ".maestro/runs/${inputs.slug}/design/impact-trace.md"]}
     max_visits: 3
     on_exhausted: hld_approval
     routes:
@@ -514,7 +519,7 @@ nodes:
   - id: review_resolution
     type: script
     label: Findings fixed, contested or escalated?
-    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture-findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/architecture-resolutions.json"]
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/architecture.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/architecture.resolutions.json"]
     max_visits: 8
     on_exhausted: hld_approval
     routes:
@@ -526,9 +531,10 @@ nodes:
     type: gate
     label: HLD approval
     prompt: |
-      Impact report (read this first): .maestro/runs/${inputs.slug}/impact-trace.md — everything
-      the feature touches and where the HLD deals with it.
-      HLD ready at .maestro/runs/${inputs.slug}/hld.md — ${steps.write_hld.outputs.hld_summary}
+      Impact report (read this first; there is none when no impact assessment ran):
+      ${steps.write_hld.outputs.report_path} — everything the feature touches and where the HLD
+      deals with it.
+      HLD ready at .maestro/runs/${inputs.slug}/design/hld.md — ${steps.write_hld.outputs.hld_summary}
       Architecture review: ${steps.arch_review.outputs.summary}
       Blocking findings (engine): ${steps.review_verdict.outputs.summary}
       Escalated by the author: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
@@ -556,4 +562,4 @@ outputs:
   new_repos_csv: "${steps.validate_hld.outputs.new_repos_csv}"
   infra_level: "${steps.infra_profile.outputs.level}"
   review_summary: "${steps.arch_review.outputs.summary}"
-  hld_path: ".maestro/runs/${inputs.slug}/hld.md"
+  hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"

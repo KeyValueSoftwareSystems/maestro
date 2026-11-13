@@ -20,7 +20,7 @@ class RepoChecksTest(unittest.TestCase):
         subprocess.run(["git", "init", "-q", self.worktree], check=True)
         subprocess.run(["git", "-C", self.worktree, "-c", "user.email=t@e", "-c", "user.name=T",
                         "commit", "-q", "--allow-empty", "-m", "init"], check=True)
-        self.out = ".maestro/runs/demo/backend/verify.json"
+        self.out = ".maestro/runs/demo/build/backend/verify.json"
 
     def config(self, commands, extra=""):
         lines = "".join(f"      {k}: {json.dumps(v)}\n" for k, v in commands.items())
@@ -54,6 +54,22 @@ class RepoChecksTest(unittest.TestCase):
         with open(lint_log) as fh:
             self.assertIn("linted", fh.read())
         self.assertEqual(receipt["skipped"], ["setup", "typecheck", "security"])
+
+    def test_logs_go_where_the_workflow_says(self):
+        """Default: `<receipt>-logs/` beside the receipt. The shipped workflows pass --logs so
+        the per-check output sits with the engine's working files, not among the documents."""
+        self.config({"build": "true", "test": "echo tested"})
+        self.run_checks()
+        self.assertEqual(self.receipt()["checks"][1]["log"],
+                         ".maestro/runs/demo/build/backend/verify-logs/test.log")
+        logs = ".maestro/runs/demo/.engine/logs/verify/backend"
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--root", self.root, "--repo", "backend", "--worktree",
+             self.worktree, "--out", self.out, "--logs", logs], capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.receipt()["checks"][1]["log"], f"{logs}/test.log")
+        with open(os.path.join(self.root, logs, "test.log")) as fh:
+            self.assertIn("tested", fh.read())
 
     def test_failing_test_is_reported_not_raised(self):
         self.config({"build": "true", "test": "echo 2 failed; exit 1"})

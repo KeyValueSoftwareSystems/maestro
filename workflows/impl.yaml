@@ -28,8 +28,8 @@ nodes:
     label: Task DAG
     instruction: |
       Produce the parallel task DAG for the ${inputs.stack} repository from its LLD at
-      .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one). Group tasks into slices with intra-group
+      .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
+      .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one). Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
       .maestro/engine/schemas/tasks.schema.json). If the engine's check failed, fix what it
       reported. If the LLD needs work it does not plan (a change in another repository, or an
@@ -44,8 +44,8 @@ nodes:
       validator: .maestro/engine/validate_tasks.py
       guidance: "${steps.stop_gate.outputs.guidance}"
     outputs: [task_count, slice_count, escalate, escalation]
-    artifact: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
-    check: {run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"]}
+    artifact: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
+    check: {run: [python3, .maestro/engine/validate_tasks.py, ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"]}
     max_visits: 3
     on_exhausted: abort
     routes:
@@ -57,7 +57,7 @@ nodes:
   - id: facts
     type: script
     label: Collect the facts the LLD cites
-    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/lld/${inputs.stack}.md", --out, ".maestro/runs/${inputs.slug}/${inputs.stack}/facts.md"]
+    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md", --out, ".maestro/runs/${inputs.slug}/.engine/facts/${inputs.stack}.md"]
     next: implement
 
   - id: implement
@@ -65,10 +65,10 @@ nodes:
     label: Implement slices
     instruction: |
       Implement the ${inputs.stack} repository for this feature from
-      .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json — every slice, with tests. The
+      .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json — every slice, with tests. The
       skill owns slice fan-out and worktree hygiene. Work against the LLD at
-      .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one), grounded in the
+      .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
+      .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), grounded in the
       maintained codebase map
       at docs/codebase-maps/${inputs.stack}.md and the living-doc facts the LLD cites at
       ${steps.facts.outputs.facts_path}: keep every invariant listed there, and when you change
@@ -88,7 +88,7 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
-      tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
+      tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
       repo_path: "${inputs.repo_path}"
       worktree: "${inputs.worktree}"
       branch: "${inputs.branch}"
@@ -150,7 +150,9 @@ nodes:
       - --worktree
       - "${steps.handoff.outputs.worktree}"
       - --out
-      - ".maestro/runs/${inputs.slug}/${inputs.stack}/verify.json"
+      - ".maestro/runs/${inputs.slug}/build/${inputs.stack}/verify.json"
+      - --logs
+      - ".maestro/runs/${inputs.slug}/.engine/logs/verify/${inputs.stack}"
       - --base-repo
       - "${inputs.repo_path}"
       - --reuse-key
@@ -170,7 +172,7 @@ nodes:
   - id: domain_rules
     type: script
     label: Team rules vs this branch (engine)
-    run: [python3, .maestro/engine/living_docs.py, rules, --root, ".", --repo, "${inputs.stack}", --worktree, "${steps.handoff.outputs.worktree}", --out, ".maestro/runs/${inputs.slug}/${inputs.stack}/domain-rules.json"]
+    run: [python3, .maestro/engine/living_docs.py, rules, --root, ".", --repo, "${inputs.stack}", --worktree, "${steps.handoff.outputs.worktree}", --out, ".maestro/runs/${inputs.slug}/build/${inputs.stack}/domain-rules.json"]
     max_visits: 10
     on_exhausted: review_scope
     on_fail: review_scope
@@ -180,7 +182,7 @@ nodes:
   - id: review_scope
     type: script
     label: Previous review round
-    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews", --name, code-review, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"]
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, "code-${inputs.stack}", --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json"]
     next: review
 
   - id: review
@@ -189,10 +191,10 @@ nodes:
     instruction: |
       Review the ${inputs.stack} implementation on branch
       ${steps.handoff.outputs.branch} at exact commit ${steps.handoff.outputs.commit}
-      against the LLD at .maestro/runs/${inputs.slug}/lld/${inputs.stack}.md, the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when the feature has one), the task list at
-      .maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json, the functional test cases at
-      .maestro/runs/${inputs.slug}/test-cases.md, the standards and the maintained codebase map
+      against the LLD at .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md, the contract at
+      .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), the task list at
+      .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json, the functional test cases at
+      .maestro/runs/${inputs.slug}/design/test-cases.md, the standards and the maintained codebase map
       (docs/codebase-maps/${inputs.stack}.md) — use the map to check blast radius, not
       just the diff in isolation. A change that breaks an invariant in the living-doc facts (the
       `living_doc_facts` input) or skips what a change scenario there says is affected is
@@ -213,11 +215,11 @@ nodes:
       this branch caused, or a change that breaks an invariant, is blocking; for each change
       scenario whose files this branch touches, check the places it says to check. Otherwise
       ignore them.
-      Write every finding to .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json as
+      Write every finding to .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json as
       well as the report (the engine decides from that file). If it exists from an earlier round,
       this is a re-review after a fix (the `fix_summary` input says what changed): read it, the report and
       the author's resolutions at
-      .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json first; review only the
+      .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json first; review only the
       diff from the commit the report records to this commit; mark a fixed finding resolved; for a
       contested one, mark it withdrawn when the author is right or upheld with your reason; keep
       finding ids stable and give new findings new ids. Do not re-audit unchanged code. A new blocking finding is only for a problem the fix introduced
@@ -236,16 +238,16 @@ nodes:
       worktree: "${steps.handoff.outputs.worktree}"
       commit: "${steps.handoff.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
-      lld_path: ".maestro/runs/${inputs.slug}/lld/${inputs.stack}.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
-      tasks_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/tasks.json"
-      test_cases_path: ".maestro/runs/${inputs.slug}/test-cases.md"
+      lld_path: ".maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
+      test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
       living_doc_facts: "${steps.facts.outputs.facts_path}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
-      previous_review: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
-      findings_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"
+      previous_review: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json"
       fix_summary: "${steps.fix.outputs.fix_summary}"
       pre_existing_checks: "${steps.verify.outputs.pre_existing_csv}"
       domain_rules_present: "${steps.domain_rules.outputs.present}"
@@ -254,8 +256,8 @@ nodes:
       review_skills: "${inputs.review_skills}"
     outputs: [review_path, blocking, summary]
     artifact:
-      - ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
-      - ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
+      - ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.md"
+      - ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json"
     fresh: true
     max_visits: 5
     on_exhausted: impl_gate
@@ -267,7 +269,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.reviewed.json", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
     routes:
@@ -288,8 +290,8 @@ nodes:
         ${steps.verify.outputs.receipt_path} and the logs it names. Checks marked pre-existing
         (the `pre_existing_checks` input) fail on the base commit too: they are not yours to fix;
       - blocking review findings (status open or upheld) in
-        .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json, when that file exists:
-        answer each one in .maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json as
+        .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json, when that file exists:
+        answer each one in .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json as
         {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed (the note says
         what changed), contested (the finding is wrong; the note gives the evidence from the LLD,
         contract or code; never a second time for a finding the reviewer upheld) or escalated (it
@@ -315,9 +317,9 @@ nodes:
       repo_path: "${inputs.repo_path}"
       worktree: "${steps.handoff.outputs.worktree}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
-      review_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/summary.md"
-      findings_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"
+      review_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json"
       failed_checks: "${steps.verify.outputs.failed_checks}"
       pre_existing_checks: "${steps.verify.outputs.pre_existing_csv}"
       implement_summary: "${steps.implement.outputs.summary}"
@@ -336,7 +338,7 @@ nodes:
   - id: review_resolution
     type: script
     label: Findings fixed, contested or escalated?
-    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/findings.json", --resolutions, ".maestro/runs/${inputs.slug}/${inputs.stack}/reviews/resolutions.json"]
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json"]
     max_visits: 8
     on_exhausted: impl_gate
     routes:

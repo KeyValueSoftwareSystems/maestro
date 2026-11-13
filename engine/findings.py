@@ -13,12 +13,13 @@ The author answers every blocking finding still open or upheld:
     "escalated", "note": "what changed, or why the finding is wrong, or what a person must decide"}]}
 
   findings.py verdict --findings F [--previous P] [--round N] [--max-rounds M] [--commit C]
-                      [--root .]
+                      [--reviewed R] [--root .]
       {valid, blocking, blocking_count, late, late_count, late_csv, round, max_rounds,
        limit_reached, revise, summary} — blocking means a blocking finding is open or upheld. An unreadable or
       malformed file is not valid (the workflow re-runs the reviewer).
       Re-review rounds are bounded here, not in the reviewer's prose:
-        late           with --previous (the findings file as it was before this review), a
+        late           with --previous (the review's baseline from review_scope.py, which
+                       holds the ids the findings file had before this review), a
                        blocking finding that is new in this round and not marked
                        `"introduced_by_revision": true` is late — it was there to find earlier. It
                        is reported to the person at the gate, never another revision round.
@@ -26,9 +27,9 @@ The author answers every blocking finding still open or upheld:
                        the limit: --max-rounds, else `reviews.max_rounds` in maestro.config.yaml,
                        else 3. Remaining findings go to the person.
         revise         route on this: blocking, valid and the limit not reached.
-      With --commit (the code commit reviewed), a valid verdict is also written beside the findings
-      as reviewed.json {commit, blocking, summary}: the release reads it to show whether the
-      shipped commit was code-reviewed.
+      With --commit (the code commit reviewed), a valid verdict is also written to --reviewed
+      (default: reviewed.json beside the findings) as {commit, blocking, summary}: the release
+      reads it to show whether the shipped commit was code-reviewed.
   findings.py resolve --findings F --resolutions R
       {state, fixed_csv, contested_csv, escalated_csv, missing_csv, summary}:
         proceed     every blocking finding is fixed or contested (re-review next), or none is open
@@ -107,11 +108,18 @@ def blocking(findings):
 
 
 def previous_ids(path):
-    """Finding ids an earlier round raised, or None when there was no earlier round."""
+    """Finding ids an earlier round raised, or None when there was no earlier round. `path` is
+    the review's baseline (review_scope.py: `finding_ids`) or a copy of the earlier findings
+    file."""
     if not path or not os.path.exists(path):
         return None
     doc, error = _read(path)
-    items = doc.get("findings") if isinstance(doc, dict) and not error else None
+    if error or not isinstance(doc, dict):
+        return None
+    if "finding_ids" in doc:
+        ids = doc["finding_ids"]
+        return set(ids) if isinstance(ids, list) else None
+    items = doc.get("findings")
     if not isinstance(items, list):
         return None
     return {item.get("id") for item in items if isinstance(item, dict)}
@@ -170,7 +178,9 @@ def cmd_verdict(args):
                       "revise": is_blocking and not problems and not limit_reached,
                       "summary": summary}))
     if args.commit and not problems:
-        path = os.path.join(os.path.dirname(os.path.abspath(args.findings)), "reviewed.json")
+        path = args.reviewed or os.path.join(
+            os.path.dirname(os.path.abspath(args.findings)), "reviewed.json")
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
         with open(path, "w", encoding="utf-8") as fh:
             json.dump({"schema_version": 1, "commit": args.commit,
                        "blocking": bool(active or late), "summary": summary}, fh, indent=2)
@@ -227,10 +237,13 @@ def main(argv=None):
     sub = parser.add_subparsers(dest="cmd", required=True)
     p = sub.add_parser("verdict")
     p.add_argument("--findings", required=True)
-    p.add_argument("--previous", help="the findings file as it was before this review round")
+    p.add_argument("--previous", help="the review's baseline (review_scope.py), or a copy of "
+                                      "the findings file as it was before this review round")
     p.add_argument("--round", default="", help="this review's visit count")
     p.add_argument("--max-rounds", type=int)
-    p.add_argument("--commit", help="the code commit reviewed: record it in reviewed.json")
+    p.add_argument("--commit", help="the code commit reviewed: record it in the --reviewed file")
+    p.add_argument("--reviewed", help="where to record the reviewed commit (default: "
+                                      "reviewed.json beside the findings)")
     p.add_argument("--root", default=".")
     p.set_defaults(fn=cmd_verdict)
     p = sub.add_parser("resolve")

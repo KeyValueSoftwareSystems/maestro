@@ -78,7 +78,7 @@ class LldSetTest(unittest.TestCase):
             subprocess.run(["git", "init", "-q", path], check=True)
         self.run_dir = os.path.join(self.root, ".maestro", "runs", "demo")
         os.makedirs(self.run_dir)
-        self.write("hld.md", "# Demo — HLD\n")
+        self.write("design/hld.md", "# Demo — HLD\n")
 
     def write(self, rel, text):
         path = os.path.join(self.run_dir, rel)
@@ -88,7 +88,7 @@ class LldSetTest(unittest.TestCase):
 
     def write_llds(self, repos=("api", "web")):
         for repo in repos:
-            self.write(f"lld/{repo}.md", LLD.format(repo=repo))
+            self.write(f"design/lld/{repo}.md", LLD.format(repo=repo))
 
     def test_pick_rejects_unknown_repo_and_records_paths(self):
         code, _, err = run("init", "--root", self.root, "--slug", "demo", "--choice", "pick",
@@ -99,7 +99,7 @@ class LldSetTest(unittest.TestCase):
                            "--repos-text", "WEB")
         self.assertEqual(code, 0)
         self.assertEqual(out["selected_csv"], "web")
-        self.assertEqual(out["lld_paths_csv"], ".maestro/runs/demo/lld/web.md")
+        self.assertEqual(out["lld_paths_csv"], ".maestro/runs/demo/design/lld/web.md")
 
     def test_validate_needs_every_selected_lld(self):
         run("init", "--root", self.root, "--slug", "demo")
@@ -114,7 +114,7 @@ class LldSetTest(unittest.TestCase):
     def test_validate_checks_each_lld_names_its_repository(self):
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds()
-        self.write("lld/web.md", LLD.format(repo="api"))
+        self.write("design/lld/web.md", LLD.format(repo="api"))
         _, out, _ = run("validate", "--root", self.root, "--slug", "demo")
         self.assertFalse(out["valid"])
         self.assertIn("web:", out["issues_summary"])
@@ -122,24 +122,24 @@ class LldSetTest(unittest.TestCase):
     def test_approval_goes_stale_when_hld_contract_or_lld_changes(self):
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds()
-        self.write("openapi.yaml", "openapi: 3.1.0\n")
+        self.write("design/openapi.yaml", "openapi: 3.1.0\n")
         code, _, _ = run("approve", "--root", self.root, "--slug", "demo")
         self.assertEqual(code, 0)
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertFalse(out["stale"], out)
 
-        self.write("openapi.yaml", "openapi: 3.1.0\n# frontend needs updated_at\n")
+        self.write("design/openapi.yaml", "openapi: 3.1.0\n# frontend needs updated_at\n")
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertTrue(out["stale"])
         self.assertIn("contract changed", out["reasons"])
 
         run("approve", "--root", self.root, "--slug", "demo")
-        self.write("lld/web.md", LLD.format(repo="web") + "\nEdited after approval.\n")
+        self.write("design/lld/web.md", LLD.format(repo="web") + "\nEdited after approval.\n")
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertIn("web: LLD changed", out["reasons"])
 
         run("approve", "--root", self.root, "--slug", "demo")
-        self.write("hld.md", "# Demo — HLD\n\nChanged.\n")
+        self.write("design/hld.md", "# Demo — HLD\n\nChanged.\n")
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertIn("HLD changed", out["reasons"])
 
@@ -155,7 +155,7 @@ class LldSetTest(unittest.TestCase):
         self.assertIn("selected repositories changed", out["reasons"])
 
     def test_light_path_approves_without_an_hld_and_tracks_the_prd(self):
-        os.remove(os.path.join(self.run_dir, "hld.md"))
+        os.remove(os.path.join(self.run_dir, "design", "hld.md"))
         self.write("requirement/prd.md", "# Demo — PRD\n")
         run("init", "--root", self.root, "--slug", "demo")
         self.write_llds()
@@ -180,11 +180,11 @@ class LldSetTest(unittest.TestCase):
         self.assertEqual((code, out["selected_csv"]), (0, "web,api"))
 
     def test_impact_scope_takes_the_assessed_repos_plus_infrastructure_owners(self):
-        self.write("impact.json", json.dumps({
+        self.write("design/impact.json", json.dumps({
             "schema_version": 1, "repos": [{"name": "web", "change": "new screen"}],
             "interfaces_change": False, "data_migration": False, "infrastructure_change": False,
             "size": "minor"}))
-        impact = os.path.join(self.run_dir, "impact.json")
+        impact = os.path.join(self.run_dir, "design", "impact.json")
         code, out, _ = run("init", "--root", self.root, "--slug", "demo", "--choice", "impact",
                            "--impact", impact)
         self.assertEqual((code, out["selected_csv"]), (0, "web"))

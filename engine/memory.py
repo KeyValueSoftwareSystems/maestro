@@ -40,13 +40,24 @@ def read_knowledge(root="."):
     return out
 
 
+SNAPSHOT = f"{statemod.ENGINE_DIR}/memory-snapshot.json"  # relative to the run folder
+
+
 def snapshot_path(slug, root="."):
-    return os.path.join(statemod.feature_dir(slug, root), "memory-snapshot.json")
+    return os.path.join(statemod.feature_dir(slug, root), *SNAPSHOT.split("/"))
 
 
 def write_snapshot(slug, root, knowledge):
-    """Freeze `knowledge` into the run's snapshot file. Atomic tmp+rename."""
+    """Freeze `knowledge` into the run's snapshot file. Atomic tmp+rename. A run that starts
+    with no lessons keeps no file (and drops one an earlier ledger of this feature froze):
+    returns None."""
     path = snapshot_path(slug, root)
+    if not knowledge:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+        return None
     os.makedirs(os.path.dirname(path), exist_ok=True)
     tmp = path + ".tmp"
     with open(tmp, "w", encoding="utf-8") as fh:

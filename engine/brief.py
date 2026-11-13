@@ -11,7 +11,7 @@ hand. The engine builds the brief from the ledger, so every step starts from the
 
 An agent node picks its level with `brief:` (workflow `defaults.brief`, else minimal).
 render_agent_prompt inlines it; `maestroctl brief` prints it, and every serving call keeps
-`.maestro/runs/<slug>/run-brief.md` current with the full brief.
+`.maestro/runs/<slug>/.engine/run-brief.md` current with the full brief.
 """
 import os
 
@@ -20,6 +20,8 @@ try:
     import todo as todomod
 except ImportError:
     from . import state as statemod, todo as todomod
+
+BRIEF_FILE = f"{statemod.ENGINE_DIR}/run-brief.md"  # relative to the run folder
 
 LEVELS = ("none", "minimal", "full")
 DEFAULT_LEVEL = "minimal"
@@ -41,6 +43,9 @@ def _documents(run, current):
         if path == current or entry.get("status") != "done":
             continue
         for rel in entry.get("artifact") or []:
+            # a step's working file under .engine/ (a question queue) is not a document to read
+            if isinstance(rel, str) and f"/{statemod.ENGINE_DIR}/" in "/" + rel.replace(os.sep, "/"):
+                continue
             if isinstance(rel, str) and rel not in seen and os.path.exists(
                     rel if os.path.isabs(rel) else os.path.join(run.root, rel)):
                 seen.add(rel)
@@ -90,13 +95,14 @@ def prompt_section(run, frame, node, path):
 
 
 def write_file(run):
-    """Keep `<feature dir>/run-brief.md` current with the full brief."""
+    """Keep `<feature dir>/.engine/run-brief.md` current with the full brief."""
     folder = statemod.feature_dir(run.slug, run.root)
     if not os.path.isdir(folder):
         return None
     cursors = (run.state.get("run") or {}).get("cursors") or []
     body = build(run, ", ".join(cursors) or "-", "full")
-    path = os.path.join(folder, "run-brief.md")
+    path = os.path.join(folder, *BRIEF_FILE.split("/"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as fh:
         fh.write(f"# Run brief — {run.slug}\n\n{body}\n")
     return path

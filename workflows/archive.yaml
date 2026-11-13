@@ -11,8 +11,8 @@ inputs:
   slug: {type: string, required: true}
   feature: {type: string, default: "${inputs.slug}"}
   # Defaults let a person archive later on its own: /maestro <slug> .maestro/workflows/archive.yaml
-  manifest: {type: string, default: ".maestro/runs/${inputs.slug}/implementation-manifest.json", description: engine-verified repo/branch/commit manifest}
-  pack: {type: string, default: ".maestro/runs/${inputs.slug}/review-pack.md", description: the release review pack}
+  manifest: {type: string, default: ".maestro/runs/${inputs.slug}/build/manifest.json", description: engine-verified repo/branch/commit manifest}
+  pack: {type: string, default: ".maestro/runs/${inputs.slug}/release/review-pack.md", description: the release review pack}
 defaults:
   model: haiku
   agent: analyst
@@ -61,9 +61,9 @@ nodes:
       - --pack
       - "${inputs.pack}"
       - --trace
-      - ".maestro/runs/${inputs.slug}/ac-trace.md"
+      - ".maestro/runs/${inputs.slug}/release/ac-trace.md"
       - --assumptions
-      - ".maestro/runs/${inputs.slug}/assumptions.md"
+      - ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
       - --release-by
       - "${steps.check_release.outputs.release_by}"
     timeout: 900

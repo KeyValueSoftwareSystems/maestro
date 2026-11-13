@@ -570,7 +570,8 @@ def check_citations(root, repos, docs, defs, report):
     runs = os.path.join(root, ".maestro", "runs")
     if os.path.isdir(runs):
         for base, dirs, files in os.walk(runs):
-            dirs.sort()
+            # a run's .engine/ holds generated copies (cited facts, briefs), not documents
+            dirs[:] = sorted(d for d in dirs if d != ".engine")
             for name in sorted(files):
                 if name.endswith(".md"):
                     path = os.path.join(base, name)
@@ -2141,7 +2142,13 @@ def main(argv=None):
             parser.error("--repo and --worktree go together")
         result = rules_check(args.root, args.repo, args.worktree)
         report_path = ""
-        if args.out:
+        if args.out and result.get("skipped"):
+            # the team has written no rules: nothing to report, so no file (and none left over)
+            try:
+                os.remove(args.out)
+            except OSError:
+                pass
+        elif args.out:
             write_text(args.out, json.dumps(result, indent=2) + "\n")
             report_path = args.out
         line = {k: v for k, v in result.items() if k not in ("errors", "warnings")}

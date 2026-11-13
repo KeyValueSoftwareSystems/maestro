@@ -72,8 +72,8 @@ class SimulatorTest(unittest.TestCase):
     def test_full_sdlc_happy_path_finishes_without_llm(self):
         code = simulate.main(self.argv("--allow-script-side-effects"))
         self.assertEqual(code, 0)
-        manifest = os.path.join(self.root, ".maestro", "runs", "sim",
-                                "implementation-manifest.json")
+        manifest = os.path.join(self.root, ".maestro", "runs", "sim", "build",
+                                "manifest.json")
         self.assertTrue(os.path.isfile(manifest))
 
 

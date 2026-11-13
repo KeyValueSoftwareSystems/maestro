@@ -122,6 +122,15 @@ class ImpactTraceTest(unittest.TestCase):
         rows, missing, issues, _added, skipped = impact_trace.trace(
             self.root, os.path.join(self.root, "missing.json"), [hld], "hld")
         self.assertTrue(skipped)
+        # with nothing to trace there is nothing to report: no file, and the earlier one goes
+        out = subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "..", "impact_trace.py"),
+                              "check", "--root", self.root, "--impact",
+                              os.path.join(self.root, "missing.json"), "--docs", hld,
+                              "--out", os.path.join(self.root, "impact-trace.md")],
+                             capture_output=True, text=True, check=True)
+        result = json.loads(out.stdout)
+        self.assertEqual((result["valid"], result["report_path"]), (True, ""))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "impact-trace.md")))
 
 
 if __name__ == "__main__":

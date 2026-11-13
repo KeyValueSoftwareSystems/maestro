@@ -1,0 +1,138 @@
+#!/usr/bin/env bash
+# =============================================================================
+# maestro — repo-local dev wrapper for the Maestro pack
+# =============================================================================
+# Dev tooling only. This wrapper NEVER drives a run or writes run
+# state (.maestro/**/state.yaml) — the Maestro skill + engine remain the sole
+# execution path and the only state writer.
+#
+#   maestro ui [--port N] [--no-open]   serve the visual builder from THIS repo:
+#                                       auto-loads .maestro/workflows and .maestro/runs
+#   maestro install [claude-code|cursor|codex|hermes …]   (re)install the pack into this repo
+#   maestro sync [--dry-run]            after adding a repo: add its maestro.config.yaml entry;
+#                                       /maestro-sync then fills it in
+#   maestro help | version
+#
+# install.sh drops this at your repo root as ./maestro. Run it as `./maestro ui`.
+# =============================================================================
+set -u
+
+# --- resolve our own location (portable readlink -f; macOS/bash-3.2 safe) ----
+resolve() {
+  src="$1"
+  while [ -h "$src" ]; do
+    dir=$(cd -P "$(dirname "$src")" && pwd)
+    src=$(readlink "$src")
+    case "$src" in /*) ;; *) src="$dir/$src" ;; esac
+  done
+  cd -P "$(dirname "$src")" && pwd
+}
+D=$(resolve "$0")
+
+# MAESTRO_HOME holds engine/ + ui/. Env override wins; else the installed consumer
+# layout (.maestro/ next to the wrapper at repo root), then a tree given directly, then
+# the pack-repo layout (wrapper at bin/, engine/ui at the parent). install.sh is NOT
+# under MAESTRO_HOME in a consumer — it sits at the repo root beside the wrapper.
+if [ -n "${MAESTRO_HOME:-}" ]; then
+  :
+elif [ -f "$D/.maestro/engine/ui_server.py" ]; then
+  MAESTRO_HOME="$D/.maestro"
+elif [ -f "$D/engine/ui_server.py" ]; then
+  MAESTRO_HOME="$D"
+elif [ -f "$D/../engine/ui_server.py" ]; then
+  MAESTRO_HOME=$(cd "$D/.." && pwd)
+else
+  echo "maestro: cannot locate the pack (no engine/ui_server.py under $D/.maestro or $D)." >&2
+  echo "  set MAESTRO_HOME to the dir that holds engine/ and ui/." >&2
+  exit 2
+fi
+
+usage() {
+  sed -n '5,16p' "$0" | sed 's/^# \{0,1\}//'
+}
+
+cmd="${1:-help}"
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  ui)
+    builder="$MAESTRO_HOME/ui/builder.html"
+    [ -f "$PWD/.maestro/ui/builder.html" ] && builder="$PWD/.maestro/ui/builder.html"
+    [ -f "$PWD/ui/builder.html" ] && builder="$PWD/ui/builder.html"
+    exec python3 "$MAESTRO_HOME/engine/ui_server.py" \
+      --root "$PWD" --builder "$builder" "$@"
+    ;;
+  init)
+    # Create maestro.config.yaml when it is missing. Never overwrites an existing file.
+    exec python3 "$MAESTRO_HOME/engine/project_config.py" init --root "$PWD"
+    ;;
+  sync)
+    # Config entries for new repos only (no scan, no model). Comments in the file survive.
+    python3 "$MAESTRO_HOME/engine/project_config.py" sync --root "$PWD" "$@" || exit $?
+    echo "Next: run /maestro-sync (\$maestro-sync on Codex) to detect the new repos' stacks," >&2
+    echo "fill their build/test commands and write their docs." >&2
+    ;;
+  install)
+    # install.sh lives beside the wrapper at the repo root (consumer) or beside engine/
+    # (pack repo) — check MAESTRO_HOME, then its parent, then the wrapper's own dir.
+    inst="$MAESTRO_HOME/install.sh"
+    [ -f "$inst" ] || inst="$MAESTRO_HOME/../install.sh"
+    [ -f "$inst" ] || inst="$D/install.sh"
+    if [ ! -f "$inst" ]; then
+      echo "maestro: no install.sh near $MAESTRO_HOME" >&2; exit 2
+    fi
+    DEST="$PWD" exec bash "$inst" "$@"
+    ;;
+  version|--version|-v)
+    echo "maestro (KeyValue AI-SDLC pack) — home: $MAESTRO_HOME"
+    ;;
+  help|--help|-h)
+    usage
+    cat <<'EOF'
+
+  Get started — open Claude Code, Cursor, Codex or Hermes Agent in this repo and run:
+
+    /maestro-init                    Claude Code / Cursor / Hermes: onboard this repo
+    $maestro-init                    Codex: onboard this repo
+                                     Both detect stack + install matching
+                                     skills, then build the living-docs knowledge base
+                                     (Hermes: run `hermes skills trust` here first)
+    /maestro my-feature              Claude Code / Cursor / Hermes: start or resume a feature
+    $maestro my-feature              Codex: start or resume the same workflow
+                                     Runs .maestro/workflows/sdlc-main.yaml, resumable
+                                     (scaffolds .maestro/runs/my-feature/requirement/
+                                      on first run and asks you to fill it)
+
+  Design workflows visually: ./maestro ui   (serves the builder, auto-loads your runs;
+                             --port to change the port) — or open .maestro/ui/builder.html directly.
+  Re-install / add a host:   ./maestro install [claude-code|cursor|codex|hermes]
+  Project config:            ./maestro init   (writes maestro.config.yaml if missing; never overwrites)
+  Added a repo:              /maestro-sync    (or ./maestro sync for the config entry alone;
+                             --dry-run only reports)
+  Lint one by hand:          python3 .maestro/engine/maestroctl.py validate <file>
+
+  Version control — recommended .gitignore for a consumer repo:
+    .claude/skills/      .claude/commands/      .claude/agents/
+    .cursor/skills/      .cursor/commands/
+    .agents/skills/
+    .maestro/engine/  .maestro/ui/  maestro  install.sh   # regenerated by re-running install.sh
+  COMMIT these (they are your feature's source of truth and resume ledger):
+    .maestro/workflows/   .maestro/docs/   .maestro/memory/   .maestro/runs/<slug>/
+    .maestro/workflow-manifest.json   .maestro/skill-manifest.json   .maestro/install.json
+  One run ledger per feature slug — see "Working as a team" in the README before
+  two people drive the same slug.
+
+  Upgrade later: re-run the same curl | bash command with --ref <tag|sha|branch>; without
+  --ref it reinstalls the version recorded in .maestro/install.json. Engine/UI are
+  overwritten; a workflow or skill you edited is kept, with the new upstream version written
+  beside it (<name>.yaml.upstream, <skill>/<file>.upstream) to reconcile. Preview: --dry-run.
+  Uninstall: delete the regenerated dirs above; .maestro/runs/<slug>/ holds your work — keep it.
+EOF
+    ;;
+  *)
+    echo "maestro: unknown command '$cmd'" >&2
+    echo >&2
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -27,9 +27,9 @@ nodes:
       - --root
       - .
       - --out
-      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-plan.json"
+      - ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/plan.json"
       - --lock
-      - ".maestro/runs/${inputs.slug}/workspace-lock.json"
+      - ".maestro/runs/${inputs.slug}/.engine/workspace-lock.json"
       - --fetch-errors
       - "${inputs.fetch_errors}"
     on_fail: abort
@@ -88,7 +88,7 @@ nodes:
       - --plan-sha256
       - "${steps.plan.outputs.plan_sha256}"
       - --out
-      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-result.json"
+      - ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/result.json"
     on_fail: abort
     routes:
       - {when: "${steps.apply.outputs.refresh_needed} == true", to: map_plan}
@@ -112,7 +112,7 @@ nodes:
       - --root
       - .
       - --out
-      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-map-snapshot.json"
+      - ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/map-snapshot.json"
     on_fail: abort
     next: snapshot_docs
 
@@ -120,7 +120,7 @@ nodes:
     type: script
     label: Snapshot living docs before refresh
     # Lets the stamp step below mark exactly the docs this refresh rewrote.
-    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-docs-snapshot.json"]
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/docs-snapshot.json"]
     on_fail: abort
     next: extract_inventory
 
@@ -129,7 +129,7 @@ nodes:
     label: Extract the workspace inventory (engine)
     # Endpoints, calls, events, jobs, tables and config read from code and contracts, so the
     # writer never has to restate or grep for them.
-    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-inventory.md"]
+    run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/inventory.md"]
     on_fail: abort
     next: refresh_knowledge
 
@@ -159,7 +159,7 @@ nodes:
       application code.
 
       Write a concise audit of files assessed, docs changed, and why unchanged docs remained
-      valid to .maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md.
+      valid to .maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/knowledge.md.
     skill: build-knowledge
     inputs:
       slug: "${inputs.slug}"
@@ -167,20 +167,20 @@ nodes:
       plan_path: "${steps.plan.outputs.plan_path}"
       apply_result: "${steps.apply.outputs.result_path}"
       updated_repos: "${steps.apply.outputs.updated_repos_csv}"
-      inventory: ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-inventory.md"
+      inventory: ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/inventory.md"
     outputs: [domains_written, architecture_path, summary]
     artifact:
       - docs/architecture.md
-      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md"
+      - ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/knowledge.md"
     # Regenerates the generated files and blocks, then checks the format, IDs and anchors.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-docs-snapshot.json", --report]}
+    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/docs-snapshot.json", --report]}
     next: stamp_docs
 
   - id: stamp_docs
     type: script
     label: Stamp refreshed docs (engine)
     # verified_at = each repo's HEAD, status back to draft, only on the docs this refresh changed.
-    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-docs-snapshot.json"]
+    run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/docs-snapshot.json"]
     on_fail: abort
     routes:
       - {when: "${steps.map_plan.outputs.stale} == true", to: record_maps}
@@ -212,7 +212,7 @@ nodes:
       - --root
       - .
       - --evidence
-      - ".maestro/runs/${inputs.slug}/workspace-sync-${inputs.checkpoint}-knowledge.md"
+      - ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/knowledge.md"
     on_fail: abort
     next: lock
 
@@ -226,7 +226,7 @@ nodes:
       - --root
       - .
       - --out
-      - ".maestro/runs/${inputs.slug}/workspace-lock.json"
+      - ".maestro/runs/${inputs.slug}/.engine/workspace-lock.json"
       - --result
       - "${steps.apply.outputs.result_path}"
       - --slug

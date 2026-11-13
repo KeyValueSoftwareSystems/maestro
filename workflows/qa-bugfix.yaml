@@ -30,16 +30,16 @@ nodes:
       One fix attempt on branch ${inputs.branch} in exact worktree ${inputs.worktree}, starting
       from commit ${inputs.commit}. QA found a product bug in the ${inputs.repo} repository:
       read the diagnosis at ${inputs.bug_report} and the QA report beside it, and fix only what it
-      names for ${inputs.repo}, against the LLD at .maestro/runs/${inputs.slug}/lld/${inputs.repo}.md
-      and the contract at .maestro/runs/${inputs.slug}/openapi.yaml (when it exists). Add a
+      names for ${inputs.repo}, against the LLD at .maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md
+      and the contract at .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists). Add a
       regression test that fails before the fix and passes after it. Never weaken, skip or delete
       a test. If the fix needs a design or contract change, do not make it: escalate.
       When the engine checks or the review sent you back, address what they found:
       failing checks (the `failed_checks` input; receipt
       ${steps.verify.outputs.receipt_path}; checks marked pre-existing fail on the base commit too
       and are not yours to fix) and blocking findings (status open or upheld) in
-      .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json: answer each one in
-      .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json as
+      .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json: answer each one in
+      .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json as
       {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed, contested
       (with the evidence; never a second time for a finding the reviewer upheld) or escalated.
       Honour the person's guidance (the `guidance` input) when there is any.
@@ -58,9 +58,9 @@ nodes:
       worktree: "${inputs.worktree}"
       bug_report: "${inputs.bug_report}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
-      review_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
-      findings_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json"
+      review_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json"
       failed_checks: "${steps.verify.outputs.failed_checks}"
       guidance: "${steps.fix_gate.outputs.guidance}"
       stack_skills: "${inputs.stack_skills}"
@@ -75,7 +75,7 @@ nodes:
   - id: review_resolution
     type: script
     label: Findings fixed, contested or escalated?
-    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --resolutions, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json"]
+    run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json"]
     max_visits: 8
     on_exhausted: fix_gate
     routes:
@@ -103,7 +103,9 @@ nodes:
       - --worktree
       - "${steps.handoff.outputs.worktree}"
       - --out
-      - ".maestro/runs/${inputs.slug}/${inputs.repo}/verify.json"
+      - ".maestro/runs/${inputs.slug}/build/${inputs.repo}/verify.json"
+      - --logs
+      - ".maestro/runs/${inputs.slug}/.engine/logs/verify/${inputs.repo}"
       - --base-repo
       - "${inputs.repo_path}"
       - --reuse-key
@@ -121,7 +123,7 @@ nodes:
   - id: review_scope
     type: script
     label: Previous review round
-    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews", --name, code-review, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"]
+    run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, "code-${inputs.repo}", --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"]
     next: review
 
   - id: review
@@ -130,18 +132,18 @@ nodes:
     instruction: |
       Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
       ${inputs.commit} (what QA tested) to ${steps.handoff.outputs.commit}, against the LLD at
-      .maestro/runs/${inputs.slug}/lld/${inputs.repo}.md, the contract at
-      .maestro/runs/${inputs.slug}/openapi.yaml (when it exists) and the standards. The engine ran build, lint and tests
+      .maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md, the contract at
+      .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists) and the standards. The engine ran build, lint and tests
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
       still listed there was accepted by a person. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed} — a weakened, skipped or deleted
       assertion is blocking. Confirm the regression test covers the bug in ${inputs.bug_report}.
-      Read the earlier report at .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md
+      Read the earlier report at .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md
       first, then overwrite it with the reviewed commit at the top. Write every finding to
-      .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json (the engine decides from
+      .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json (the engine decides from
       that file; severity blocking only for must-fix issues). When it holds findings from an
       earlier round, read the fixer's resolutions at
-      .maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json: mark a fixed finding
+      .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json: mark a fixed finding
       resolved; for a contested one, mark it withdrawn when the fixer is right or upheld with your
       reason; keep finding ids stable and give new findings new ids. On such a re-review a new
       blocking finding is only for a problem the latest fix introduced (mark it
@@ -158,16 +160,16 @@ nodes:
       branch: "${inputs.branch}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
-      lld_path: ".maestro/runs/${inputs.slug}/lld/${inputs.repo}.md"
-      contract_path: ".maestro/runs/${inputs.slug}/openapi.yaml"
-      previous_review: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
-      findings_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"
-      resolutions_path: ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/resolutions.json"
+      lld_path: ".maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md"
+      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      previous_review: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
+      findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"
+      resolutions_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json"
       fix_summary: "${steps.fix.outputs.fix_summary}"
     outputs: [review_path, blocking, summary]
     artifact:
-      - ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/summary.md"
-      - ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json"
+      - ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
+      - ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"
     fresh: true
     max_visits: 4
     on_exhausted: fix_gate
@@ -177,7 +179,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/findings.json", --previous, ".maestro/runs/${inputs.slug}/${inputs.repo}/reviews/code-review-findings.previous.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.reviewed.json", --root, "."]
     max_visits: 8
     on_exhausted: fix_gate
     routes:

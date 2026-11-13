@@ -157,7 +157,7 @@ Workflow steps pull their slice of memory via a placeholder, e.g.
 **subagent** prompt — the lead agent's context stays empty.
 
 The rule that keeps runs reproducible: **memory is read once, at `init`, snapshotted into the
-run (`.maestro/runs/<slug>/memory-snapshot.json`, hash recorded in `state.memory`), and resolved
+run (`.maestro/runs/<slug>/.engine/memory-snapshot.json`, hash recorded in `state.memory`; no file when there are no lessons yet), and resolved
 from that snapshot for the whole run — never re-read from the live store mid-run.** So a run
 is a pure function of its `state.yaml` + the pinned workflow + the frozen snapshot, and a
 concurrent run consolidating the shared store cannot perturb a run already in flight. Learning

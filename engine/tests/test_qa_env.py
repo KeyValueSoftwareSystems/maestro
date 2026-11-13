@@ -22,7 +22,7 @@ class QaEnvTest(unittest.TestCase):
             path = os.path.join(self.root, "worktrees", repo)
             os.makedirs(path)
             self.worktrees[repo] = path
-        self.manifest = ".maestro/runs/demo/implementation-manifest.json"
+        self.manifest = ".maestro/runs/demo/build/manifest.json"
         full = os.path.join(self.root, self.manifest)
         os.makedirs(os.path.dirname(full))
         with open(full, "w") as fh:
@@ -96,6 +96,14 @@ class QaEnvTest(unittest.TestCase):
             receipt = json.load(fh)
         self.assertEqual([(c["repo"], c["commit"], c["exit_code"]) for c in receipt["checks"]],
                          [("backend", "backend-sha", 0), ("web-app", "web-app-sha", 3)])
+        # --logs keeps the command output with the engine's working files, not beside the receipt
+        code, out, _ = self.run_cmd("e2e", "--out", ".maestro/runs/demo/qa/e2e-receipt.json",
+                                    "--logs", ".maestro/runs/demo/.engine/logs/qa")
+        with open(os.path.join(self.root, out["receipt_path"])) as fh:
+            logs = [c["log"] for c in json.load(fh)["checks"]]
+        self.assertEqual(logs, [".maestro/runs/demo/.engine/logs/qa/e2e/backend.log",
+                                ".maestro/runs/demo/.engine/logs/qa/e2e/web-app.log"])
+        self.assertTrue(all(os.path.isfile(os.path.join(self.root, log)) for log in logs))
 
 
 if __name__ == "__main__":
