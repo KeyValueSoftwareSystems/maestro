@@ -179,6 +179,7 @@
     ],
     "design-tests.yaml": [
       "sha256:acda42af297591c071d2a40c9c897b736a0112c6f5b8e0b856ea19811b7ecc0d",
+      "sha256:c055d996dfb013a00d0855b5c0142884f8488f5e44bf4e9eca136767cab05ccb",
       "sha256:ee2d723cbc4255260cde128a217eb143eb31fa3e3870516e2b96800b20ce592e"
     ],
     "design.yaml": [

@@ -17,7 +17,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
        → API contract (only when the HLD lists cross-repo interfaces)
        → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
             → readiness check → [approve])
-     ‖ functional test cases, at the same time, from the PRD alone (every AC traced → [approve])
+     ‖ functional test cases, at the same time, from the PRD alone (every AC traced; no gate)
    → design still current? → implement every repo (parallel, sliced,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
@@ -186,7 +186,8 @@ are black-box: the acceptance criteria decide which cases exist and what each sh
 the PRD's terms, with no status codes or field names the PRD does not state. So a design change
 never rewrites them. The engine checks that every PRD acceptance criterion (`AC-xx`) is traced by
 at least one case and that no case traces a criterion the PRD lacks, and sends the catalog back
-with the exact gaps otherwise; then the catalog has its own approval. QA takes the exact values to
+with the exact gaps otherwise; the stage has no approval gate, and only a trace the writer cannot
+fix stops for you. QA takes the exact values to
 check (status codes, error codes, fields, messages) from the approved contract, HLD and LLDs when
 it runs each case (on the light path, the LLDs alone); a design that cannot meet a case fails it.
 
@@ -294,7 +295,6 @@ for design approval"). The mode decides who answers each gate:
 | HLD approval | you | you | approved if the architecture review has no blocking findings |
 | LLD scope | you | the repositories the impact assessment names (plus infrastructure owners) | same |
 | LLD approval | you | approved if the readiness check passes | same |
-| Test case approval | you | approved if every acceptance criterion is traced by a test case | same |
 | Workspace updates | you | keep current commits, refresh stale docs | same |
 | Release | you | approved if the engine verified every repository and every acceptance criterion passes QA | same |
 | Archive confirmation | you | you | you |

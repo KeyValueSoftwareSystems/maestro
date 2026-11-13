@@ -445,8 +445,6 @@ class SdlcE2E(unittest.TestCase):
                     decisions = gate_script.get(step)
                     if decisions is None and step == "design/lld/lld_approval":
                         decisions = [("approve", None)] * 20
-                    if decisions is None and step == "design/tests/test_cases_approval":
-                        decisions = [("approve", None)] * 20
                     if decisions is None and step == "design/hld/hld_mode":
                         decisions = [("guided", None)] * 5
                     if decisions is None and step == "archive/confirm_archive":
@@ -532,9 +530,9 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("design/prd/write_prd", steps)
         self.assertLess(steps.index("design/prd/write_prd"), steps.index("design/hld/write_hld"))
         # one LLD run: one interview, one write, a readiness check and one human approval,
-        # all before any implementation begins; the test cases have their own approval
+        # all before any implementation begins; the test cases have no gate of their own
         gate_steps = [s for a, s in trace if a == "ask_gate"]
-        self.assertEqual(gate_steps, ["design/prd/prd_approval", "design/tests/test_cases_approval",
+        self.assertEqual(gate_steps, ["design/prd/prd_approval",
                                       "design/hld/hld_mode", "design/hld/hld_approval",
                                       "design/lld/lld_scope", "design/lld/lld_approval",
                                       "delivery/release_approval", "archive/confirm_archive"])
@@ -560,7 +558,7 @@ class SdlcE2E(unittest.TestCase):
         # before the HLD is written, are written once, and are approved before delivery
         self.assertLess(steps.index("design/prd/prd_approval"), steps.index("design/tests/test_cases"))
         self.assertLess(steps.index("design/tests/test_cases"), steps.index("design/hld/write_hld"))
-        self.assertLess(steps.index("design/tests/test_cases_approval"), steps.index("delivery/design_check"))
+        self.assertLess(steps.index("design/tests/test_cases#check"), steps.index("delivery/design_check"))
         self.assertEqual(steps.count("design/tests/test_cases"), 1)
         tests_prompt = self.prompts["design/tests/test_cases"][0]
         self.assertIn("from the approved PRD at", tests_prompt)
@@ -888,11 +886,11 @@ class SdlcE2E(unittest.TestCase):
                          ["design/prd/prd_approval", "design/hld/hld_mode",
                           "design/hld/hld_approval", "archive/confirm_archive"])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
-                         ["design/tests/test_cases_approval", "design/lld/lld_scope",
+                         ["design/lld/lld_scope",
                           "design/lld/lld_approval", "delivery/release_approval"])
         gates = statemod.load("demo", self.tmp)["gates"]
         self.assertEqual([(stage_path(g["step"]), g.get("auto")) for g in gates], [
-            ("design/prd/prd_approval", None), ("design/tests/test_cases_approval", "design"),
+            ("design/prd/prd_approval", None),
             ("design/hld/hld_mode", None), ("design/hld/hld_approval", None),
             ("design/lld/lld_scope", "design"), ("design/lld/lld_approval", "design"),
             ("delivery/release_approval", "design"), ("archive/confirm_archive", None)])
@@ -921,7 +919,6 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("Run mode: auto. 3 assumptions, 0 left open", log)
         self.assertIn("**PRD · ", log)
         self.assertIn(SOLUTION + "lld/lld_approval → approve (auto mode", log)
-        self.assertIn(TESTS + "test_cases_approval → approve (auto mode", log)
         self.assertLess(steps.index("delivery/assumptions"), steps.index("delivery/review_pack"))
         # a release nobody approved is recorded as such; pull-request delivery opens drafts from it
         self.assertEqual(statemod.load("demo", self.tmp)["steps"][
@@ -973,23 +970,22 @@ class SdlcE2E(unittest.TestCase):
                                    agent_overrides={"arch_review": blocked}, mode="auto")
         self.assertEqual(action["action"], "failed", action)
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["design/hld/hld_approval"])
-        # the test cases need only the PRD, so they are approved while the HLD is still blocked
+        # the test cases need only the PRD, so they are written while the HLD is still blocked
+        self.assertIn("design/tests/test_cases#check", [s for _, s in trace])
         self.assertEqual([s for a, s in trace if a == "auto_gate"],
-                         ["design/prd/prd_approval", "design/tests/test_cases_approval",
-                          "design/hld/hld_mode"])
+                         ["design/prd/prd_approval", "design/hld/hld_mode"])
 
     def test_acceptance_criteria_are_traced_through_qa_to_the_release_gate(self):
         self.prep_tasks_json()
         action, trace = self.drive(dict(self.DESIGN_GATES))
         self.assertEqual(action["action"], "done", action)
         steps = [s for _, s in trace]
-        # the catalog is written from the PRD, checked by the engine, then approved
+        # the catalog is written from the PRD and checked by the engine, with no gate
         self.assertLess(steps.index("design/prd/prd_approval"),
                         steps.index("design/tests/test_cases"))
         self.assertLess(steps.index("design/tests/test_cases#check"),
-                        steps.index("design/tests/test_cases_approval"))
-        self.assertLess(steps.index("design/tests/test_cases_approval"),
                         steps.index("delivery/design_check"))
+        self.assertNotIn("ask_gate", [a for a, s in trace if s.startswith("design/tests/")])
         self.assertLess(steps.index("delivery/ac_trace"), steps.index("delivery/review_pack"))
         trace_md = Path(self.tmp, ".maestro/runs/demo/ac-trace.md").read_text()
         self.assertIn("1/1 acceptance criteria passing", trace_md)
@@ -1016,7 +1012,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         tests = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/tests/")]
         self.assertEqual(tests, ["test_cases", "test_cases#check", "test_cases",
-                                 "test_cases#check", "test_cases_approval"])
+                                 "test_cases#check"])
         self.assertEqual(len(calls), 2)
 
     def test_auto_mode_stops_at_release_when_a_criterion_fails_qa(self):
@@ -1138,7 +1134,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("Design path: light", self.prompts["design/lld/author_llds"][0])
         # the light path writes its test cases from the PRD too, beside the LLDs
         self.assertLess(steps.index("design/tests/test_cases"), steps.index("design/lld/lld_approval"))
-        self.assertLess(steps.index("design/tests/test_cases_approval"), steps.index("delivery/design_check"))
+        self.assertLess(steps.index("design/tests/test_cases#check"), steps.index("delivery/design_check"))
         approval = json.loads(Path(lld_set.approval_path("demo", self.tmp)).read_text())
         self.assertTrue(approval["light"])
         self.assertIsNone(approval["hld_sha256"])
@@ -1613,8 +1609,6 @@ class SdlcE2E(unittest.TestCase):
                         resolver.record_gate(run, step, "approve")
                     elif gate == "hld_mode":
                         resolver.record_gate(run, step, "guided")
-                    elif gate == "test_cases_approval":
-                        resolver.record_gate(run, step, "approve")
                     else:
                         self.fail(f"unexpected gate {step}")
                 elif action["action"] == "ask_interview":
