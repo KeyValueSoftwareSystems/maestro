@@ -36,12 +36,12 @@ nodes:
     label: Archive confirmation
     prompt: |
       Release approved. Archive this feature now?
-      Archiving pushes the code (or opens pull requests) and updates the docs/ folder.
-      Not now: you push the code yourself, and docs/ is not updated until you archive with
+      Archiving delivers the code and updates the docs/ folder. ${steps.check_release.outputs.delivery_action}
+      Not now: you deliver the code yourself, and docs/ is not updated until you archive with
       /maestro ${inputs.slug} .maestro/workflows/archive.yaml
     options:
       - {id: archive, label: Archive now, to: deliver}
-      - {id: skip, label: Not now — I will push the code myself, to: end}
+      - {id: skip, label: Not now — I will deliver the code myself, to: end}
 
   # Engine-owned: re-checks each branch is still at its verified commit, then (delivery.mode
   # pull-request) pushes it and opens or reuses a pull request — a draft when autopilot approved

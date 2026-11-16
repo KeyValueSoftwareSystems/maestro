@@ -181,7 +181,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`project_config.py`** — loads and checks the per-project `maestro.config.yaml` (repo
   build/lint/test commands, QA environment, delivery); `maestroctl preflight` reports missing
   repos, missing `build`/`test` commands (errors) and missing `lint`/`security`/`e2e` (warnings; not
-  `e2e` when the repo's `e2e: {status: none}` record says none was found). `apply` writes
+  `e2e` when the repo's `e2e: {status: none}` record says none was found). `init` refuses to start `auto` mode on a
+  preflight error; in the other modes it starts and lists the errors as `preflight` in its output
+  for the lead to relay. `apply` writes
   `commands.e2e` only after **`e2e_check.py`** confirms detect-stack's proposal (list mode shows ≥1
   spec, else a cited package.json/Makefile/CI file runs or defines the command; otherwise `none`
   with the reason); `sync` returns `needs_e2e` so /maestro-sync re-checks. Engine
@@ -253,7 +255,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`release_record.py`** — the release record: delivery's `record_release` writes `release.json`
   (who approved, the manifest's sha256) after the release gate approves; the archive's
   `check_release` refuses a feature without it or with a manifest changed since, and returns
-  `release_by` for `deliver.py` — so the archive is safe to run later on its own.
+  `release_by` for `deliver.py` and `delivery_action` (what `delivery.mode` will do, a sentence the
+  archive question shows) — so the archive is safe to run later on its own.
 - **`infra_scan.py`** — the workspace's infrastructure level (`none` / `containers` / `iac`, from
   Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless, Ansible, Docker, Compose
   files; overridable in maestro.config.yaml). The HLD stage starts with it: the level decides

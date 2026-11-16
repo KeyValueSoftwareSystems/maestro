@@ -166,6 +166,13 @@ class RunModeCliTest(unittest.TestCase):
                                   "--mode", "auto")["mode"], "auto")
         self.ctl("init", "--slug", "f", "--workflow", "modes.yaml", "--mode", "fast", code=2)
 
+    def test_other_modes_start_but_report_a_failing_preflight(self):
+        started = self.ctl("init", "--slug", "f", "--workflow", "modes.yaml", "--mode", "human")
+        self.assertTrue(started["ok"])
+        self.assertTrue(any("maestro.config.yaml" in line for line in started["preflight"]))
+        self.write_config()
+        self.assertNotIn("preflight", self.ctl("init", "--slug", "f", "--workflow", "modes.yaml"))
+
 
 
     def stop_hook_exit(self):

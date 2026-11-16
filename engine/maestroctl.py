@@ -102,11 +102,16 @@ def cmd_init(args):
         for issue in errors:
             print(str(issue), file=sys.stderr)
         raise resolver.RunError(f"workflow has {len(errors)} validation error(s); fix them first", code=1)
+    import project_config
+    try:
+        problems = [i for i in project_config.preflight(args.root) if i.level == "error"]
+    except Exception as exc:  # noqa: BLE001 — a warning must never stop a human/design run
+        if args.mode == "auto":
+            raise
+        problems = [f"preflight could not run: {exc}"]
     if args.mode == "auto":
         # Autopilot needs the engine's own build/test checks; without them nothing verifies
         # the agents' work before the release is approved for them.
-        import project_config
-        problems = [i for i in project_config.preflight(args.root) if i.level == "error"]
         if problems:
             for issue in problems:
                 print(str(issue), file=sys.stderr)
@@ -141,6 +146,10 @@ def cmd_init(args):
         "mode": resolver.run_mode(data),
         **({"debug": True} if run_profile.enabled(data) else {}),
         **({"migrated": _migration_note(migrated)} if migrated["migrated"] else {}),
+        # Human and design modes still start (a new product adds its commands once its
+        # repositories exist; some workflows never build), but the engine's build/test step
+        # fails until these are fixed, so say so now rather than at verify.
+        **({"preflight": [str(i) for i in problems]} if problems else {}),
         "todo": todomod.flat(todo),
     })
     return 0

@@ -82,6 +82,8 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
 - `init` is safe when the run already exists (that IS the resume path — say "resuming" and
   continue); it only releases worker claims left by an interrupted session. Its output carries
   `todo`, the run's stage checklist: put it in your task list now (see **Task list**).
+- If `init` reports `preflight`, tell the user once, listing each line: maestro.config.yaml has
+  problems, and the engine's build and test checks may fail until they are fixed. Then continue.
 - If `init` or `rebase` reports `migrated`, say once, in one line, that the feature's files were
   moved into folders by kind (nothing rewritten), then continue.
 - If it exits 3 with a "workflow changed" message: STOP and ask the user to DECIDE between

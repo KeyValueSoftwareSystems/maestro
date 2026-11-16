@@ -936,7 +936,10 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("archive/confirm_archive", steps)
         self.assertFalse([s for s in steps
                           if s.startswith(("archive/deliver", "archive/harvest", "archive/cleanup"))])
-        self.assertIn("push the code yourself", self.prompts["archive/confirm_archive"][0])
+        prompt = self.prompts["archive/confirm_archive"][0]
+        self.assertIn("deliver the code yourself", prompt)
+        # the default delivery mode is `branch`: the question must not promise a push
+        self.assertIn("nothing is pushed", prompt)
         state = statemod.load("demo", self.tmp)
         self.assertEqual(state["steps"]["archive/confirm_archive"]["outputs"]["choice"], "skip")
         run_dir = Path(self.tmp, ".maestro/runs/demo")

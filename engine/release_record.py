@@ -9,7 +9,8 @@ record  after the release gate approves: writes release.json in the feature fold
 check   before the archive: the record must exist and bind the manifest as it is now, so an
         unapproved feature, or one rebuilt since the approval, is never delivered. Returns who
         approved (`release_by`), which makes a later standalone archive open draft pull requests
-        for an autopilot release too.
+        for an autopilot release too, and what delivery will do (`delivery_action`, from
+        delivery.mode) for the archive question.
 
 stdout: one JSON object; a refusal goes to stderr with exit 1.
 """
@@ -19,6 +20,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import project_config  # noqa: E402
 import state as statemod  # noqa: E402
 
 FILE = "release.json"
@@ -65,7 +67,21 @@ def check(args):
                            "approve the release again")
     by = data["approved_by"]
     return {"release_by": by, "approved_at": data.get("approved_at", ""),
+            "delivery_action": _delivery_action(args.root),
             "summary": f"Release approved by {by}"}
+
+
+def _delivery_action(root):
+    """What deliver.py will do (same default: branch): a whole sentence, so the archive
+    question still reads properly for a run whose release check ran before this field."""
+    try:
+        config = project_config.load(root) or {}
+    except project_config.ConfigError:
+        config = {}
+    mode = (config.get("delivery") or {}).get("mode") or "branch"
+    if mode == "pull-request":
+        return "Delivery pushes each verified branch and opens (or reuses) a pull request."
+    return "Delivery reports the verified branches ready to merge; nothing is pushed."
 
 
 def main(argv=None):

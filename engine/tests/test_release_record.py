@@ -61,6 +61,13 @@ class ReleaseRecordTest(unittest.TestCase):
             self.assertEqual(code, 1, command)
         self.assertIn("manifest not found", self.run_cmd("record")[1])
 
+    def test_check_says_what_delivery_will_do(self):
+        self.run_cmd("record")
+        self.assertIn("nothing is pushed", self.run_cmd("check")[1]["delivery_action"])
+        with open(os.path.join(self.root, "maestro.config.yaml"), "w") as fh:
+            fh.write("version: 1\ndelivery:\n  mode: pull-request\n")
+        self.assertIn("pull request", self.run_cmd("check")[1]["delivery_action"])
+
 
 if __name__ == "__main__":
     unittest.main()
