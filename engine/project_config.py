@@ -67,7 +67,7 @@ ENVIRONMENT_KEYS = {"start", "ready", "stop"}
 DELIVERY_KEYS = {"mode", "base", "remote"}
 DELIVERY_MODES = ("branch", "pull-request")
 WORKTREE_KEYS = {"create", "path", "branch", "remove"}
-DOCS_KEYS = {"facts_blocks", "extract"}
+DOCS_KEYS = {"facts_blocks", "extract", "ignore_calls"}
 # living_docs.py extraction kinds and the named groups each pattern must capture.
 DOCS_EXTRACT_KINDS = {"route": "path", "call": "path", "event_out": "name", "event_in": "name",
                       "job": "schedule", "config": "key", "table": "name"}
@@ -505,7 +505,8 @@ def check(config, discovered):
 
 
 def _check_docs(section, known_repos):
-    """`docs`: facts_blocks (repos that receive generated facts blocks) and extract patterns."""
+    """`docs`: facts_blocks (repos that receive generated facts blocks), extract patterns and
+    ignore_calls (client calls R6 does not check)."""
     issues = []
     if not isinstance(section, dict):
         return [Issue("error", "config-shape", "`docs` must be a mapping", "docs")]
@@ -524,6 +525,12 @@ def _check_docs(section, known_repos):
                 if repo not in known_repos:
                     issues.append(Issue("warning", "config-unknown-repo",
                                         f"repo `{repo}` is not in this workspace", "docs.facts_blocks"))
+    ignored = section.get("ignore_calls")
+    if ignored is not None and (not isinstance(ignored, list)
+                                or not all(isinstance(p, str) and p for p in ignored)):
+        issues.append(Issue("error", "config-shape",
+                            "must be a list of patterns, each matched against `METHOD /path` or the "
+                            "caller anchor", "docs.ignore_calls"))
     rules = section.get("extract")
     if rules is not None:
         if not isinstance(rules, list):

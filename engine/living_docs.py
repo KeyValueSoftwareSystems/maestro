@@ -39,6 +39,7 @@ and scenarios". In a writer's check, a problem inside team-owned content is a wa
 import argparse
 import datetime
 import fnmatch
+import functools
 import hashlib
 import json
 import os
@@ -775,12 +776,17 @@ def _anchor(repo, path, symbol):
     return f"{repo} · {path} · {symbol}"
 
 
+_PARAM_SEGMENT = re.compile(r"\{[^}]*\}|:\w+|<[^>]*>|\$\{?\w+\}?|\*")
+
+
+@functools.lru_cache(maxsize=None)
 def norm_path(path):
-    """Route matching key: params as {}, no trailing slash, no query."""
+    """Route matching key: params as {}, no trailing slash, no query. Pure, so cached: the same
+    few thousand paths are normalised again for every call x route pairing."""
     path = path.split("?")[0].rstrip("/") or "/"
     segments = []
     for seg in path.split("/"):
-        if re.fullmatch(r"\{[^}]*\}|:\w+|<[^>]*>|\$\{?\w+\}?|\*", seg):
+        if _PARAM_SEGMENT.fullmatch(seg):
             seg = "{}"
         segments.append(seg)
     return "/".join(segments)
@@ -820,8 +826,67 @@ def _safe_default(key, value):
     return value.replace("|", "/")[:60]
 
 
+# Per-extract index of where each function is defined, so a route's handler is looked up in a
+# dict instead of re-reading and re-scanning every file of the repository for every route.
+# Reset at the start of extract(); keyed by repository and language.
+_DEF_INDEX = {}
+_GO_FUNC = re.compile(r"^func (?:\(\w+ \*?(\w+)\) )?(\w+)\(", re.M)
+_DEF_NAME = re.compile(r"(?:\bdef|\bfunction|\bfun|\bfunc)\s+(\w+)")
+_ASSIGNED_NAME = re.compile(r"(?<!\w)(\w+)(?=\s*[:=]\s*(?:async\s*)?(?:function|\())")
+
+
+def _definition_index(repo_path, files, lang):
+    """{file: {name: [owners]}} for Go, {file: {names}} for the other languages."""
+    key = (repo_path, lang, len(files))
+    index = _DEF_INDEX.get(key)
+    if index is not None:
+        return index
+    index = {}
+    exts = [e for e, l in LANG_BY_EXT.items() if l == lang]
+    for rel in files:
+        ext = os.path.splitext(rel)[1]
+        if (ext != ".go") if lang == "go" else (ext not in exts):
+            continue
+        text = read_text(os.path.join(repo_path, rel)) or ""
+        if lang == "go":
+            found = {}
+            for owner, fname in _GO_FUNC.findall(text):
+                found.setdefault(fname, []).append(owner)
+            index[rel] = found
+        else:
+            index[rel] = set(_DEF_NAME.findall(text)) | set(_ASSIGNED_NAME.findall(text))
+    _DEF_INDEX[key] = index
+    return index
+
+
 def _find_definition(repo_path, files, lang, name, reg_file, reg_text):
     """Where `name` (a route's handler) is defined: Type.Name for Go methods when it can tell."""
+    if not re.fullmatch(r"\w+", name or ""):
+        return _find_definition_scan(repo_path, files, lang, name, reg_file, reg_text)
+    index = _definition_index(repo_path, files, lang)
+    candidates = []
+    if lang == "go":
+        receiver_types = set()
+        for var in re.findall(rf"\b(\w+)\.{re.escape(name)}\b", reg_text):
+            receiver_types |= set(re.findall(rf"\b{re.escape(var)}\s+\*?(?:\w+\.)?(\w+)\b", reg_text))
+        for rel in files:
+            for owner in index.get(rel, {}).get(name, ()):
+                candidates.append((rel, f"{owner}.{name}" if owner else name, owner))
+        typed = [c for c in candidates if c[2] in receiver_types]
+        pick = typed if typed else candidates
+        if len(pick) == 1 or (pick and len({c[0] for c in pick}) == 1):
+            return pick[0][0], pick[0][1]
+        return None
+    candidates = [rel for rel in files if name in index.get(rel, ())]
+    if reg_file in candidates:
+        return reg_file, name
+    if len(candidates) == 1:
+        return candidates[0], name
+    return None
+
+
+def _find_definition_scan(repo_path, files, lang, name, reg_file, reg_text):
+    """The original per-name scan, kept for handler names that are not plain identifiers."""
     exts = [e for e, l in LANG_BY_EXT.items() if l == lang]
     candidates = []
     if lang == "go":
@@ -982,6 +1047,8 @@ def _apply_pattern(repo, repo_path, files, rel, lang, lines, text, kind, regex, 
             method = (groups.get("method") or "GET").upper()
             deferred.append((repo, rel, lang, index, method, groups["path"], symbol, line.lstrip()))
         elif kind == "call":
+            if MOCK_PATH_RE.search(rel):
+                continue
             caller = enclosing_symbol(lang, lines, index) or symbol
             if not caller:
                 continue
@@ -1014,6 +1081,7 @@ def _apply_pattern(repo, repo_path, files, rel, lang, lines, text, kind, regex, 
 def extract(repos, custom=None):
     """Read every repo's contracts and code into an Inventory. Deterministic; no LLM."""
     inv = Inventory()
+    _DEF_INDEX.clear()
     compiled = {lang: [(k, re.compile(p, re.M)) for k, p in pats] for lang, pats in BUILTIN_PATTERNS.items()}
     custom_rules = []
     for rule in custom or []:
@@ -1076,24 +1144,59 @@ def _dedupe(inv):
     inv.tables = unique(inv.tables, lambda r: (r["repo"], r["name"]))
 
 
+def _route_index(inv):
+    """Routes indexed once per inventory: first route per exact (method, normalised path), and
+    each method's routes with their normalised paths. Rebuilt when the route list changes."""
+    stamp = (id(inv.routes), len(inv.routes))
+    cached = getattr(inv, "_route_index", None)
+    if cached and cached["stamp"] == stamp:
+        return cached
+    exact, by_method = {}, {}
+    for route in inv.routes:
+        norm = norm_path(route["path"])
+        exact.setdefault((route["method"], norm), route)
+        by_method.setdefault(route["method"], []).append((route, norm))
+    cached = {"stamp": stamp, "exact": exact, "by_method": by_method, "served": {}}
+    inv._route_index = cached
+    return cached
+
+
 def serving_route(inv, call):
     """The route a call reaches, preferring an exact path; None when no repo serves it."""
+    index = _route_index(inv)
     key = norm_path(call["path"])
-    exact = [r for r in inv.routes if r["method"] == call["method"] and norm_path(r["path"]) == key]
-    if exact:
-        return exact[0]
-    loose = [r for r in inv.routes if r["method"] == call["method"]
-             and path_matches(key, norm_path(r["path"]))]
-    return loose[0] if len(loose) == 1 else None
+    memo_key = (call["method"], key)
+    served = index["served"]
+    if memo_key in served:
+        return served[memo_key]
+    route = index["exact"].get(memo_key)
+    if route is None:
+        loose = [r for r, norm in index["by_method"].get(call["method"], ())
+                 if path_matches(key, norm)]
+        route = loose[0] if len(loose) == 1 else None
+    served[memo_key] = route
+    return route
 
 
 def api_rows(inv):
     """One row per served operation (code routes, then contract-only operations)."""
+    stamp = (id(inv.routes), len(inv.routes), id(inv.calls), len(inv.calls), id(inv.ops), len(inv.ops))
+    cached = getattr(inv, "_api_rows", None)
+    if cached and cached[0] == stamp:
+        return cached[1]
+    callers_by_route = {}
+    for call in inv.calls:
+        route = serving_route(inv, call)
+        if route is not None:
+            callers_by_route.setdefault(id(route), []).append(call["anchor"])
+    contract_by_key = {}
+    for op in inv.ops:
+        contract_by_key.setdefault((op["method"], norm_path(op["path"])), op["anchor"])
     rows = []
     for route in inv.routes:
         key = (route["method"], norm_path(route["path"]))
-        callers = sorted(c["anchor"] for c in inv.calls if serving_route(inv, c) is route)
-        contract = next((o["anchor"] for o in inv.ops if (o["method"], norm_path(o["path"])) == key), None)
+        callers = sorted(callers_by_route.get(id(route), ()))
+        contract = contract_by_key.get(key)
         rows.append({"op": f"{route['method']} {route['path']}", "repo": route["repo"],
                      "handler": route["anchor"], "callers": callers, "contract": contract,
                      "names": [route["path"]] + ([contract.split(" · ")[-1]] if contract else [])})
@@ -1103,7 +1206,9 @@ def api_rows(inv):
             rows.append({"op": f"{op['method']} {op['path']}", "repo": op["repo"], "handler": None,
                          "callers": [], "contract": op["anchor"],
                          "names": [op["path"]] + ([op["op"]] if op["op"] else [])})
-    return sorted(rows, key=lambda r: (r["op"], r["repo"]))
+    rows = sorted(rows, key=lambda r: (r["op"], r["repo"]))
+    inv._api_rows = (stamp, rows)
+    return rows
 
 
 def event_rows(inv):
@@ -1238,6 +1343,9 @@ def gen_index(anchors):
 
 
 TEST_PATH_RE = re.compile(r"(^|/)(tests?|__tests__|spec)/|_test\.|\.test\.|\.spec\.|(^|/)test_[^/]*$")
+# Demo, mock and storybook data: the calls found there are not requests the app really makes.
+MOCK_PATH_RE = re.compile(r"(^|/)(__mocks__|mocks?|mock[-_]?data|fixtures?|stories|storybook)(/|$)|"
+                          r"\.(mock|mocks|stories|fixture)\.")
 
 
 def gen_facts_blocks(repos, anchors, defs, opted_in):
@@ -1804,11 +1912,16 @@ def run_check(root, write=False, nightly=False, today=None, locked_from=None):
         remove_stale_facts(repos, opted_in, set(blocks))
     check_citations(root, repos, docs, defs, report)
     check_side_effects(root, repos, docs, defs, report)
+    ignored = [p for p in settings.get("ignore_calls") or [] if isinstance(p, str) and p]
     for call in inv.calls:
         if inv.routes and not serving_route(inv, call):
+            if any(fnmatch.fnmatchcase(f"{call['method']} {call['path']}", pattern)
+                   or fnmatch.fnmatchcase(call["anchor"], pattern) for pattern in ignored):
+                continue
             report.err("R6", call["anchor"], f"calls {call['method']} {call['path']}, which no "
-                       "repository serves", "fix the client, add the route, or add the project's "
-                       "route pattern under docs.extract in maestro.config.yaml")
+                       "repository serves", "fix the client, add the route, add the project's "
+                       "route pattern under docs.extract, or list a call to a third party or an "
+                       "unextracted service under docs.ignore_calls in maestro.config.yaml")
     if inv.calls and not inv.routes:
         report.warn("R6", "extract", "no routes were extracted, so app calls were not checked; add the "
                     "project's route pattern under docs.extract in maestro.config.yaml")

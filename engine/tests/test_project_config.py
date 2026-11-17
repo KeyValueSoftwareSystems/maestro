@@ -59,6 +59,14 @@ class PreflightTest(unittest.TestCase):
         self.assertEqual(self.codes("warning"), [("config-missing-command", "environment.ready")])
         self.assertEqual(self.codes("error"), [])
 
+    def test_docs_ignore_calls_must_be_a_list_of_patterns(self):
+        self.write(VALID + 'docs:\n  ignore_calls: ["POST /pg/orders/sessions", "*trial-mode/mock-data*"]\n')
+        self.assertEqual(self.codes("error"), [])
+        self.write(VALID + 'docs:\n  ignore_calls: "POST /x"\n')
+        self.assertEqual(self.codes("error"), [("config-shape", "docs.ignore_calls")])
+        self.write(VALID + 'docs:\n  ignore_calls: ["ok", ""]\n')
+        self.assertEqual(self.codes("error"), [("config-shape", "docs.ignore_calls")])
+
     def test_missing_file_is_an_error(self):
         self.assertEqual(self.codes("error"), [("config-missing", None)])
 

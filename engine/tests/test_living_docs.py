@@ -200,6 +200,28 @@ class FaultInjectionTest(LivingDocsBase):
         self.assert_caught(lambda r: edit(os.path.join(r, "codebase/cofee-admin-app/lib/api/links_api.dart"),
                                           "/disable", "/deactivate"), "ERROR:R6")
 
+    def test_ignore_calls_silences_r6_for_a_listed_call_only(self):
+        def break_call(root):
+            edit(os.path.join(root, "codebase/cofee-admin-app/lib/api/links_api.dart"),
+                 "/disable", "/deactivate")
+
+        def configure(root, patterns):
+            edit(os.path.join(root, "maestro.config.yaml"), "docs:\n",
+                 "docs:\n  ignore_calls: [%s]\n" % ", ".join(f'"{p}"' for p in patterns))
+
+        root = self.copy()
+        break_call(root)
+        configure(root, ["POST /v1/links/*/deactivate"])
+        self.assertNotIn("ERROR:R6", rules(self.check(root)))
+        root = self.copy()
+        break_call(root)
+        configure(root, ["POST /v1/links/{id}/something-else", "*other-app*"])
+        self.assertIn("ERROR:R6", rules(self.check(root)))
+        root = self.copy()
+        break_call(root)
+        configure(root, ["cofee-admin-app · lib/api/links_api.dart · *"])
+        self.assertNotIn("ERROR:R6", rules(self.check(root)), "matches the caller anchor too")
+
     def test_missing_required_section(self):
         def mutate(root):
             path = os.path.join(root, T)
@@ -578,6 +600,65 @@ class ExtractorTest(unittest.TestCase):
         self.assertEqual(inv.jobs[0]["trigger"], "cron 0 3 * * *")
         rows = living_docs.api_rows(inv)
         self.assertEqual([r["handler"] for r in rows], [None, None])
+
+    def test_calls_in_mock_and_fixture_files_are_not_client_calls(self):
+        web = self.repo({
+            "src/api.ts": "export async function load() {\n  return axios.get('/real');\n}\n",
+            "src/features/trial-mode/mock-data/index.ts":
+                "export async function demo() {\n  return axios.get('/demo-only');\n}\n",
+            "src/__mocks__/client.ts": "export function stub() {\n  return fetch('/stubbed');\n}\n",
+            "src/Card.stories.tsx": "export function story() {\n  return fetch('/story');\n}\n",
+        })
+        inv = living_docs.extract({"web": web})
+        self.assertEqual([c["path"] for c in inv.calls], ["/real"])
+
+    def test_definition_index_agrees_with_the_per_name_scan(self):
+        repo = self.repo({
+            "internal/a.go": "package a\nfunc (h *Handler) Create(c Ctx) {}\nfunc (h *Other) Create(c Ctx) {}\n"
+                             "func Plain() {}\nfunc (g Generic[T]) Skip() {}\nfunc CreateAll() {}\n",
+            "internal/b.go": "package a\nfunc (b *Batch) Run() {}\nfunc Plain2() {}\n",
+            "src/x.ts": "export function load() {}\nexport const save = async function() {}\n"
+                        "const handlers = { get: function() {}, put: async () => 1 }\nclass K { post: (a) => 1 }\n",
+            "src/y.js": "function load2() {}\nloader = (x) => x\nvar notit = 5\n",
+            "svc/z.py": "def handler():\n  pass\nclass C:\n  def method(self):\n    pass\n",
+        })
+        files = living_docs.repo_files(repo)
+        reg_texts = {
+            "go": "x := &Handler{}\nr.POST(\"/c\", h.Create)\nvar h *Handler\n",
+            "js": "", "python": "",
+        }
+        cases = [("go", ["Create", "Plain", "Plain2", "Run", "CreateAll", "Skip", "Missing"]),
+                 ("js", ["load", "save", "get", "put", "post", "load2", "loader", "notit", "missing"]),
+                 ("python", ["handler", "method", "C", "missing"])]
+        for lang, names in cases:
+            for name in names:
+                living_docs._DEF_INDEX.clear()
+                fast = living_docs._find_definition(repo, files, lang, name, "src/x.ts", reg_texts[lang])
+                slow = living_docs._find_definition_scan(repo, files, lang, name, "src/x.ts", reg_texts[lang])
+                self.assertEqual(fast, slow, f"{lang} {name}")
+        # a handler name that is not a plain identifier still resolves through the original scan
+        self.assertEqual(living_docs._find_definition(repo, files, "js", "a.b", "src/x.ts", ""),
+                         living_docs._find_definition_scan(repo, files, "js", "a.b", "src/x.ts", ""))
+
+    def test_serving_route_and_api_rows_follow_route_changes(self):
+        inv = living_docs.Inventory()
+        inv.routes.append({"repo": "api", "method": "GET", "path": "/a/{id}", "anchor": "api · r.go · A"})
+        call = {"repo": "web", "method": "GET", "path": "/a/:id", "anchor": "web · c.ts · fa"}
+        inv.calls.append(call)
+        self.assertIs(living_docs.serving_route(inv, call), inv.routes[0])
+        self.assertEqual(living_docs.api_rows(inv)[0]["callers"], ["web · c.ts · fa"])
+        late = {"repo": "web", "method": "GET", "path": "/b", "anchor": "web · c.ts · fb"}
+        self.assertIsNone(living_docs.serving_route(inv, late))
+        inv.routes.append({"repo": "api", "method": "GET", "path": "/b", "anchor": "api · r.go · B"})
+        self.assertIs(living_docs.serving_route(inv, late), inv.routes[1], "the memo is rebuilt")
+        inv.calls.append(late)
+        rows = {r["op"]: r for r in living_docs.api_rows(inv)}
+        self.assertEqual(rows["GET /b"]["callers"], ["web · c.ts · fb"])
+        # a call that matches two routes loosely is ambiguous, so it reaches neither
+        inv2 = living_docs.Inventory()
+        inv2.routes += [{"repo": "x", "method": "GET", "path": "/v1/u", "anchor": "x · a · A"},
+                        {"repo": "y", "method": "GET", "path": "/v2/u", "anchor": "y · a · B"}]
+        self.assertIsNone(living_docs.serving_route(inv2, {"method": "GET", "path": "/u"}))
 
     def test_custom_pattern_from_config(self):
         repo = self.repo({"lib/bus.ex": "Bus.emit(\"invoice.paid\", payload)\n"})

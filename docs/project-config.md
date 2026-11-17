@@ -73,6 +73,9 @@ docs:                           # optional; the living docs (engine/living_docs.
       repo: backend             # optional; every repo when omitted
       glob: "internal/**/*.go"  # optional; repo-relative fnmatch
       pattern: 'mux\.Route\("(?P<method>\w+)", "(?P<path>/[^"]*)", (?P<symbol>\w+)'
+  ignore_calls:                 # optional; client calls R6 must not check (third parties, unextracted services)
+    - "POST /pg/orders/sessions"     # fnmatch against `METHOD /path` ...
+    - "*trial-mode/mock-data*"       # ... or against the caller anchor `repo · path · function`
 ```
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
@@ -150,6 +153,11 @@ regular expression with named groups — `path` (and optionally `method`, `symbo
 `default`, `symbol`) for `config`. Without `symbol`, the enclosing function is used. Facts blocks
 are written only into instruction files that already exist in a listed repo; the engine never
 creates one.
+
+R6 ("every app call reaches a served route") is an error for any client call no repository serves.
+Calls found in mock, fixture and storybook files are skipped automatically. A call to a third party
+(a payment gateway, say) or to a service whose routes the extractor cannot see is listed under
+`docs.ignore_calls` so it stops failing every docs step.
 
 Every review loop (architecture review of the HLD, LLD readiness check, code review) stops after
 `reviews.max_rounds` reviews; any blocking finding still open then goes to the person at that
