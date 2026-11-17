@@ -18,7 +18,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
        → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
             → readiness check → [approve])
      ‖ functional test cases, at the same time, from the PRD alone (every AC traced; no gate)
-   → design still current? → implement every repo (parallel, sliced,
+   → design still current? → implement every repo (parallel; 2+ slice groups → one agent per slice,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
    → acceptance-criteria trace → design-vs-code drift check → assumption log → review pack

@@ -65,6 +65,7 @@ LLD_SCOPE = f"{ENGINE}/lld-scope.json"
 LLD_APPROVAL = f"{ENGINE}/lld-approval.json"
 POOL = f"{ENGINE}/implementation-pool.json"
 WORKTREES = f"{ENGINE}/worktrees.json"
+SLICES_DIR = f"{ENGINE}/slices"
 WORKSPACE_LOCK = f"{ENGINE}/workspace-lock.json"
 DESIGN_FACTS = f"{ENGINE}/facts/design.md"
 QUEUES_DIR = f"{ENGINE}/queues"
@@ -90,6 +91,11 @@ def queue(stage):
 def receipt(repo):
     """The engine's build/lint/test receipt for one repository (repo_checks.py --out)."""
     return f"build/{repo}/verify.json"
+
+
+def slice_pool(repo):
+    """One repository's slice queue: the plan's slice groups, their worktrees and results."""
+    return f"{SLICES_DIR}/{repo}.json"
 
 
 def reviewed(repo):
