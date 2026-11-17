@@ -73,6 +73,9 @@ nodes:
       {"schema_version": 1, "cases": [{"id": "<TC id from the catalog>", "status": "passed" |
       "failed" | "skipped", "note": "<why, for failed or skipped>"}]}. A case you did not automate
       or run is "skipped" with the reason; the engine traces every acceptance criterion through it.
+      Return `passed` as exactly the string "true" when results.json has zero "failed" cases
+      (skipped is fine), otherwise exactly "false" — never a count or any other word. Return
+      `failed_count` as the number of "failed" cases.
       QA environment: ${steps.env_up.outputs.summary}. When the engine started it, test against
       that running stack; do not start or stop it yourself.
     skill: qa-automation
