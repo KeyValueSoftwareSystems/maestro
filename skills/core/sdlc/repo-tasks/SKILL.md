@@ -23,7 +23,15 @@ name.
   production config, dependencies) — the approved LLD already authorizes it; the flag makes the
   implementer build it exactly as designed and the review check it closely.
 - **Slices** — split work into independent slices with disjoint writes; dependencies may only
-  point within a slice. Prefer a thin end-to-end slice before breadth.
+  point within a slice. Prefer a thin end-to-end slice before breadth. Each slice group can be
+  built by its own agent, in parallel with the others, then merged: plan groups that one agent
+  finishes with a short context, about ten tasks at most. A group of more than ten tasks is
+  rejected when its tasks fall into parts that no `depends_on` and no shared (or nested) write
+  path connect — give each part its own group. A group whose tasks are all connected is never
+  split. When a larger unconnected group really must be built by one agent, set the slice's
+  `keep_together` to the reason (one line).
+- **Shared files** — a file several slices would touch (a route table, a dependency manifest, a
+  registry, a barrel export) belongs to one group's `writes`; tasks that need it go in that group.
 - **Order** — types and schema → domain logic → persistence → API, UI or entry point → tests →
   logging and metrics → docs. Migrations go expand → migrate → contract, never breaking in one
   step.

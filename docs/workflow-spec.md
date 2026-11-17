@@ -462,6 +462,20 @@ maestro.config.yaml), and `claim` hands it to the implementer with its branch; a
 it. A team workflow that wants batches
 can use `--choice pick`, which keeps unselected repositories as deferred work.
 
+Inside one repository, `impl.yaml` plans the work as a task DAG of slice groups
+(`validate_tasks.py`: intra-group dependencies only, disjoint writes, and no group over 10 tasks
+that its `depends_on` and write paths would let split, unless the slice says `keep_together`). The
+plan's second check, `slice_pool.py init`, decides `fanout`: two or more groups and an
+engine-created feature worktree. Then the `slices` stage (`impl-slices.yaml`) builds the plan
+instead of one implementer: three slots each `claim` one group at a time, a fresh agent implements
+only that group in its own slice worktree and branch cut from the feature branch, `record` reads
+the slice's commit from that worktree, and `merge` merges every slice into the feature branch in
+plan order, moving the branch only when all of them merged. A slice that escalates, or a merge
+conflict (the plan's writes overlapped), goes to the stop gate; the feature branch is left as it
+was. A one-group plan keeps the single `implement` agent. Either way the same handoff, verify,
+review and fix loop follows. A branch's subworkflow may itself contain a `parallel` node, as
+`impl-slices.yaml` does inside the repository pool.
+
 Branch bodies may contain `agent`, `gate`, `script` and `subworkflow` nodes (no nested
 `parallel` in v1) — a branch wrapping a subworkflow is how sdlc-main runs one impl.yaml per
 stack. In harnesses with parallel subagents, ready agent steps across branches are dispatched
@@ -566,7 +580,7 @@ interrupted (`running`) steps are re-served; gates always re-ask.
 
 ```
 maestroctl validate <wf>                 # refuse to start on errors
-maestroctl init --slug S --workflow <wf> [--input k=v ...] [--mode human|design|auto] [--debug]
+maestroctl init --slug S --workflow <wf> [--input k=v ...] [--mode human|design|auto] [--no-profile]
 loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON (claims workers; --peek re-reads)
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'

@@ -225,15 +225,17 @@ def _stub_agent(root, act, slug=None):
                 parts = rel.split("/")
                 slug = parts[3] if len(parts) > 3 else "simulation"
                 repo = parts[-2]
+                # two slice groups, so the walk takes the engine's slice fan-out
                 content = {
                     "schema_version": 1, "stack": repo, "feature_slug": slug,
                     "context_manifest": {"read_once": ["simulated"], "reference": []},
-                    "slices": [{"group_id": "sim", "task_ids": ["sim-1"]}],
-                    "tasks": [{"id": "sim-1", "group_id": "sim",
+                    "slices": [{"group_id": f"sim-{n}", "task_ids": [f"sim-{n}"]}
+                               for n in (1, 2)],
+                    "tasks": [{"id": f"sim-{n}", "group_id": f"sim-{n}",
                                "title": "simulated task", "depends_on": [],
-                               "reads": [], "writes": ["simulated.txt"],
+                               "reads": [], "writes": [f"simulated-{n}.txt"],
                                "test": "simulated", "standards": [],
-                               "needs_human_gate": False}],
+                               "needs_human_gate": False} for n in (1, 2)],
                 }
                 with open(full, "w", encoding="utf-8") as fh:
                     json.dump(content, fh, indent=2)

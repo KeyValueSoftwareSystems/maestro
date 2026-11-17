@@ -25,6 +25,14 @@ headings, table columns and budgets. The steps below say what to write; the form
 how it must look. A checker enforces it; when your instruction includes its report, fix exactly
 what it names.
 
+**Fix errors, not warnings.** Only an `ERROR` line fails the check. Warnings (`WARN`: a doc over
+its token budget, anchors changed since `verified_at`, docs still `draft`) never do, and
+`draft` is set by the engine. Do not reword docs to shave a budget, and do not re-verify anchors
+the audit already covers. An error you cannot fix from `docs/` (for example R6, an app call no
+repository serves, which needs a change to app code or to `docs.ignore_calls` in
+`maestro.config.yaml`) is not yours: say so in your report instead of editing around it. Run the
+checker once after your edits, not after each one; a run takes seconds to minutes.
+
 ## What you write, and what you never write
 - **Write only judgement**: purpose and actors, business rules with their edge cases, states and
   flows, failure and concurrency behaviour, gotchas, known gaps, owned unknowns.

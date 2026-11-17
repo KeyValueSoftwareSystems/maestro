@@ -111,11 +111,11 @@ python3 .maestro/engine/maestroctl.py preflight                             # ch
 decides which gates the engine answers itself from each gate's `auto:` policy — see
 [Run modes](sdlc-pipeline.md#run-modes). `status` shows the mode and marks autopilot decisions.
 
-**Debug profile.** `init --debug` (on a new or a resumed run) records every visit of every step
-and keeps `.maestro/runs/<slug>/.engine/profile.md` and `profile.json` current: per stage and step, the
+**Run profile.** Every run records every visit of every step (`init --no-profile` opts out; a
+resumed run switches on from that point) and keeps `.maestro/runs/<slug>/.engine/profile.md` and `profile.json` current: per stage and step, the
 visits, work time (agents, scripts), human time (gates, interviews), queued time (ready but not yet
 picked up) and idle stretches when nothing ran and nobody was asked. `profile --slug <slug>`
-prints it. Off by default: a normal run keeps only each step's last visit.
+prints it. A run started with `--no-profile` keeps only each step's last visit.
 
 If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --slug <slug>` are your recovery levers — see [Working as a team](#working-as-a-team).
 

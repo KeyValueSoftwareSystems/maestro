@@ -18,7 +18,7 @@ workspace sync → requirement → PRD (summarize context → Grill unclear deci
        → repository LLDs, one run (one grouped Grill → write one LLD per repo → validate
             → readiness check → [approve])
      ‖ functional test cases, at the same time, from the PRD alone (every AC traced; no gate)
-   → design still current? → implement every repo (parallel, sliced,
+   → design still current? → implement every repo (parallel; 2+ slice groups → one agent per slice,
      engine-verified build/lint/test, reviewed)
    → QA (product bug → fix that repo, re-verify, re-review → QA again)
    → acceptance-criteria trace → design-vs-code drift check → assumption log → review pack
@@ -197,10 +197,10 @@ design that changed after approval goes back through design instead of being bui
 After LLD approval, Maestro implements every repository in the approved design, in
 parallel. If the release is sent back to design, the next delivery pass rebuilds every repository
 against the revised design; the pre-implementation workspace drift check still protects stale
-designs. That check sends the run back to design whenever a sync moved a repository's commits
-after approval, which redoes the PRD, HLD and LLDs and takes hours. Keep the current commits at
-that gate unless you need the updates; set `design.sync_restart: cited` (maestro.config.yaml) to
-redo the design only when a changed file is one the design cites or a migration.
+designs. That check sends the run back to design when a sync moved a repository's commits after approval
+and a changed file is one the design cites or a migration, which redoes the PRD, HLD and LLDs and
+takes hours. Keep the current commits at that gate unless you need the updates; set
+`design.sync_restart: always` (maestro.config.yaml) to redo the design for any moved commit.
 
 QA tests exactly those verified commits. When `maestro.config.yaml` defines an `environment`, the
 engine starts it before QA (with each repository's worktree and commit in environment variables,

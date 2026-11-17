@@ -53,7 +53,8 @@ runtime. It ships:
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
-  `delivery` → `archive`; `design` composes `design-intake` / `design-prd`, then a `parallel`
+  `delivery` → `archive` (delivery runs `impl` per repository, which hands a plan of two or more
+slice groups to `impl-slices`); `design` composes `design-intake` / `design-prd`, then a `parallel`
   node running `design-solution` (impact, sizing, then `design-hld` with its architecture review /
   `scaffold` (greenfield only: create the repositories the HLD lists) / `design-contract` (only
   when the HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run)) beside
@@ -151,6 +152,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   parses BEFORE substitution so values can't inject operators. `norm()` canonicalises
   bools/numbers; guards use `== true`/`== false`, never `!= true` (prose would slip through).
 - **`wf.py`** — the zero-dep YAML-subset loader/emitter (see its own section below).
+- **`oq_settle.py`** — recognises a clarification stage whose question queue is already clear
+  (HLD and LLD entry, before the lead's `prepare_*_questions`): clear queue that passes
+  `validate_prd_questions.py --require-direction`, written after the person's last confirmed
+  round, no input document newer, no feedback → `state: clear` and the lead is skipped; anything
+  doubtful → `ask`. It never writes a queue.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
@@ -171,6 +177,16 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `not-reviewed`, and autopilot will not release it.
   `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
   in its worktree) and `record --from-worktree` records the fixed HEAD.
+- **`slice_pool.py`** — one repository's slice fan-out (`impl.yaml` → `impl-slices.yaml`):
+  `init` (the task step's second check) decides `fanout` from the validated plan (≥2 slice groups
+  and an engine-made, clean feature worktree; otherwise the single implementer) and queues the
+  groups under `.engine/slices/<repo>.json`; three slots `claim` a group each (an unrecorded claim
+  is handed back on resume), each in its own worktree and branch off the feature branch's commit
+  (`.maestro/worktrees/<slug>/.slices/<repo>/<group>`); `record` reads the slice's commit from its
+  worktree; `merge` merges them in plan order in a scratch worktree and fast-forwards the feature
+  branch only when all merged — a conflict or an escalated slice is reported as `escalate` for
+  the stop gate, never resolved. `validate_tasks.py` keeps groups splittable: over 10 tasks in
+  parts no `depends_on` or write path connects fails the plan unless the slice sets `keep_together`.
 - **`worktrees.py`** — the feature's implementation worktrees, made by the engine before any agent
   writes code: `prepare` runs `worktree.create` from maestro.config.yaml once per feature (e.g. the
   workspace template's sandbox command) and finds each repo at `worktree.path`, or adds its own at
@@ -202,7 +218,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `unchanged`, which the workflow sends to the person instead of another round. The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
-  findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
+  findings JSON (blocking = a blocking finding still `open`/`upheld`); `open` counts the blocking
+  and major findings left open across the code reviews, which the release autopilot requires to
+  be zero (`delivery/open_findings`); `resolve` reads the author's
   `fixed`/`contested`/`escalated` answers → `proceed` (re-review), `incomplete` (back to the author)
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
   A resolutions file older than the findings file answers an earlier round and is ignored. The HLD
@@ -220,7 +238,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
-- **`run_profile.py`** — debug-mode timing (`init --debug`, off by default): every step visit is
+- **`run_profile.py`** — run timing (on by default; `init --no-profile` opts out, `--debug` is the old name): every step visit is
   kept under the ledger's `profile.visits` (resolver `_finish_visit`; serving calls stamp
   `served_at_ms`), split into queued, work (agents, scripts) and human (gates, interviews) time,
   plus idle stretches; serving calls rewrite `.engine/profile.md`/`profile.json`, `maestroctl profile`

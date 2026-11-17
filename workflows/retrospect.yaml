@@ -88,6 +88,9 @@ nodes:
          gets it right first time. Choose each `key` so another run seeing the same pattern
          picks the SAME key (that is how the engine corroborates). Do NOT set authoritative.
          Do NOT write knowledge/ or candidates/ — the engine renders those.
+      Fix only what the docs check reports as an ERROR: warnings (token budgets, anchors changed,
+      draft docs) do not fail it, and an error that needs a change outside docs/ (an R6 call no
+      repository serves) is not yours; say so in your summary and stop.
     skill: retrospect
     model: sonnet
     inputs:
@@ -105,6 +108,10 @@ nodes:
     run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json"]
     on_fail: abort
     routes:
+      # Skipped after failing its check (`valid` stays false): the docs were not verified, so
+      # recording map commits and provenance would only be refused and send the agent round again.
+      # The lessons it wrote are still folded into memory.
+      - {when: "${steps.retrospect.outputs.valid} == false", to: consolidate}
       - {when: "${steps.plan_maps.outputs.stale} == true", to: record_maps}
       - {to: record_knowledge}
 

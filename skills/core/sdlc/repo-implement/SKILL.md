@@ -1,6 +1,6 @@
 ---
 name: repo-implement
-description: Implement every task slice in one selected repository, test-first, to the repository's engineering standards, and return a verifiable worktree handoff.
+description: Implement every task slice in one selected repository (or, in slice mode, one slice group), test-first, to the repository's engineering standards, and return a verifiable worktree handoff.
 allowed-tools: Read, Grep, Glob, Bash, Edit, Write, Task
 tags: [sdlc, implement, repository]
 ---
@@ -46,6 +46,23 @@ delegate at most three independent slice groups, one bounded group per subagent,
 own slice worktree with disjoint writes. Wait for them, check their tests actually ran, then
 merge every slice commit into the feature branch. Otherwise implement slices sequentially in
 the feature worktree. You are accountable for every slice: a subagent's claim is not proof.
+
+## Slice mode
+
+When your instructions name one slice group (`group_id`, with its `task_ids`), build only that
+group; other agents build the other groups at the same time. The `worktree` and `branch` you are
+given are that slice's own, cut from the feature branch: work and commit only there.
+
+- Read the task plan for your tasks only, and only the parts of the LLD, contract and codebase
+  map they need; do not load the whole repository's context.
+- Edit only the files your tasks list in `writes`. A change anywhere else could collide with
+  another slice: stop and escalate instead.
+- Do not delegate, merge, rebase or push. Commit every change on the slice branch (nothing left
+  uncommitted) and return; the slice is merged into the feature branch for you.
+- Run the tests your tasks name and the targeted tests for the files you changed; the whole
+  repository's checks run after every slice is merged.
+
+Return the same fields as below; `branch` and `commit` are the slice's.
 
 ## Each task, test-first
 
@@ -115,7 +132,8 @@ config or secrets. Never weaken, skip or delete a failing test to make it pass.
 
 ## Definition of done
 
-Every slice merged and committed on the feature branch; tests ran and pass; negative paths
+Every slice merged and committed on the feature branch (in slice mode: your slice committed on
+its branch); tests ran and pass; negative paths
 tested; every applicable standard addressed or explicitly noted as a risk in the summary.
 Before returning, capture:
 

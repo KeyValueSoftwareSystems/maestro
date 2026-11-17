@@ -234,9 +234,20 @@ class WorkspaceSyncTest(unittest.TestCase):
               os.path.join(self.tmp, "result.json"))
         return quiet(ws.cmd_lock, self.tmp, lock_path, "result.json", "f")[1]
 
-    def test_a_sync_after_design_restarts_it_by_default(self):
-        locked = self.sync_after_design({"src/other.go": "x\n"})
+    def test_always_policy_restarts_the_design_for_any_moved_commit(self):
+        locked = self.sync_after_design({"src/other.go": "x\n"}, "always")
         self.assertTrue(locked["head_changed"])
+        self.assertTrue(locked["changed"])
+        self.assertFalse(locked["design_still_valid"])
+
+    def test_the_default_policy_is_cited(self):
+        self.assertEqual(ws.DEFAULT_SYNC_RESTART, "cited")
+        kept = self.sync_after_design({"src/other.go": "x\n"})
+        self.assertFalse(kept["changed"])
+        self.assertTrue(kept["design_still_valid"])
+
+    def test_the_default_policy_restarts_when_a_cited_file_changed(self):
+        locked = self.sync_after_design({"src/handler.go": "x\n"})
         self.assertTrue(locked["changed"])
         self.assertFalse(locked["design_still_valid"])
 

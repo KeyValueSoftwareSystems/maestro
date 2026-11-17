@@ -48,7 +48,7 @@ MAX_CHANGED = 500
 # approved, does the run go back to design? `always` (default): yes. `cited`: only when a changed
 # file is one the design cites, or touches a migration (numbering must not collide).
 SYNC_RESTART_POLICIES = ("always", "cited")
-DEFAULT_SYNC_RESTART = "always"
+DEFAULT_SYNC_RESTART = "cited"
 _CODE_EXTENSIONS = ("go", "ts", "tsx", "js", "jsx", "mjs", "py", "sql", "yaml", "yml", "proto",
                     "graphql", "prisma", "java", "kt")
 _CITED_PATH_RE = re.compile(
@@ -761,14 +761,18 @@ def cmd_ensure_index_state(root, evidence, state_path=DEFAULT_INDEX_STATE):
 
 
 def sync_restart_policy(root):
-    """`design.sync_restart` from maestro.config.yaml; anything unreadable or unknown is `always`."""
+    """`design.sync_restart` from maestro.config.yaml: `cited` when it is not set, and the
+    conservative `always` when the config is unreadable or the value is unknown."""
     try:
         import project_config
         config = project_config.load(root) or {}
     except Exception:  # an unreadable config is preflight's to report
+        return "always"
+    design = config.get("design") if isinstance(config, dict) else None
+    value = design.get("sync_restart") if isinstance(design, dict) else None
+    if value is None:
         return DEFAULT_SYNC_RESTART
-    value = (config.get("design") or {}).get("sync_restart") if isinstance(config, dict) else None
-    return value if value in SYNC_RESTART_POLICIES else DEFAULT_SYNC_RESTART
+    return value if value in SYNC_RESTART_POLICIES else "always"
 
 
 def _design_cited_paths(root, slug):

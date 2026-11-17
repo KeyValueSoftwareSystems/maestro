@@ -266,8 +266,8 @@ documents. If the feature already has a run ledger, Maestro asks first and keeps
 repositories and where each LLD goes. No queue or validators: a missing blocking decision is asked
 in chat, and a contract change is reported in chat. `/hld-writing` works the same way.
 
-**See where the time goes:** `/maestro my-feature --debug` (new or resumed run) keeps a timing
-profile at `.maestro/runs/my-feature/.engine/profile.md`: work, human and idle time per stage and step.
+**See where the time goes:** every run keeps a timing
+profile (`/maestro my-feature --no-profile` opts out) at `.maestro/runs/my-feature/.engine/profile.md`: work, human and idle time per stage and step.
 
 What each stage of the included pipeline does: [docs/sdlc-pipeline.md](docs/sdlc-pipeline.md).
 

@@ -1020,6 +1020,105 @@ class AgentCheckTest(Sim):
         self.assertEqual(action["running"], ["write"])
 
 
+SKIPPED_REFRESH_WF = """\
+version: 1
+nodes:
+  - id: refresh
+    instruction: Refresh the docs.
+    outputs: [summary]
+    artifact: doc.md
+    check: {run: [python3, .maestro/engine/validate_doc.py, doc.md, --report]}
+    next: stamp
+  - id: stamp
+    type: script
+    run: [python3, .maestro/engine/stamp.py]
+    routes:
+      - {when: "${steps.refresh.outputs.valid} == false", to: lock}
+      - {to: record}
+  - id: record
+    type: script
+    run: [python3, .maestro/engine/record.py]
+    next: lock
+  - id: lock
+    type: script
+    run: [python3, .maestro/engine/lock.py]
+    next: end
+"""
+
+
+class SkippedRefreshRoutingTest(Sim):
+    """The docs workflows read `valid` from a refresh step that was skipped after failing its check,
+    to jump over the recording steps (which would refuse docs nobody verified) to their lock."""
+
+    def setUp(self):
+        super().setUp()
+        self.start(self.write_wf("w.yaml", SKIPPED_REFRESH_WF))
+        self.touch("doc.md")
+
+    def fail_check_then_skip(self):
+        self.complete("refresh", outputs={"summary": "s"})
+        action = self.complete("refresh", exit_code=0, stdout='{"valid": false, "issues_summary": "R6"}')
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "refresh"))
+        # the lead reports the failure (a check failure alone cannot be skipped), then a person skips
+        for _ in range(4):  # each report is a retry until the step's attempts run out
+            action = self.fail_step("refresh", "R6 errors a docs refresh cannot fix")
+            if action["action"] == "ask_gate":
+                break
+        self.assertEqual(action["action"], "ask_gate")
+        self.assertEqual(action["synthesized"], "fail")
+        return self.gate("refresh", "skip")
+
+    def test_a_skipped_refresh_goes_straight_to_the_lock(self):
+        action = self.fail_check_then_skip()
+        self.assertEqual((action["action"], action["step"]), ("run_script", "stamp"))
+        action = self.complete("stamp", exit_code=0, stdout="{}")
+        self.assertEqual((action["action"], action["step"]), ("run_script", "lock"))
+
+    def test_a_refresh_that_passed_still_records(self):
+        self.complete("refresh", outputs={"summary": "s"})
+        self.complete("refresh", exit_code=0, stdout='{"valid": true}')
+        action = self.complete("stamp", exit_code=0, stdout="{}")
+        self.assertEqual((action["action"], action["step"]), ("run_script", "record"))
+
+
+class PromptFileTest(Sim):
+    """A long worker prompt is also written to a file, so the lead spawns the worker with a pointer."""
+
+    LONG = "version: 1\nnodes:\n  - id: big\n    instruction: |\n" + "".join(
+        f"      Line {n}: read the design carefully and keep every invariant.\n" for n in range(40)) + \
+        "    outputs: [summary]\n    next: small\n  - id: small\n    instruction: Do the small thing.\n    outputs: [summary]\n"
+
+    def test_a_long_prompt_gets_a_file_and_a_short_pointer(self):
+        self.start(self.write_wf("w.yaml", self.LONG))
+        action = self.nxt()
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "big"))
+        self.assertGreater(len(action["prompt"]), resolver.PROMPT_FILE_MIN_CHARS)
+        path = os.path.join(self.tmp, action["prompt_file"])
+        self.assertTrue(os.path.isfile(path), path)
+        with open(path, encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), action["prompt"])  # the file is the whole instruction
+        self.assertIn(os.path.abspath(path), action["prompt_short"])
+        self.assertLess(len(action["prompt_short"]), 600)
+        self.assertTrue(action["prompt_file"].startswith(".maestro/feat/") or "prompts" in action["prompt_file"])
+        # serving it again does not change the file
+        again = self.nxt()
+        self.assertEqual(again["prompt_file"], action["prompt_file"])
+
+    def test_a_short_prompt_stays_inline(self):
+        self.start(self.write_wf("w.yaml", self.LONG))
+        action = self.complete("big", {"summary": "s"})
+        self.assertEqual(action["step"], "small")
+        self.assertNotIn("prompt_file", action)
+        self.assertNotIn("prompt_short", action)
+
+    def test_a_lead_step_never_gets_a_file(self):
+        wf = self.LONG.replace("  - id: big\n", "  - id: big\n    execution: lead\n", 1)
+        self.start(self.write_wf("w.yaml", wf))
+        action = self.nxt()
+        self.assertEqual(action["action"], "run_lead")
+        self.assertNotIn("prompt_file", action)
+
+
 class AgentCheckProgressTest(Sim):
     """A check that reports the same failure again has nothing left to learn from another attempt."""
 

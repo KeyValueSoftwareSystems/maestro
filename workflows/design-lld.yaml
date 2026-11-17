@@ -81,7 +81,19 @@ nodes:
     type: script
     label: Collect the cited living-doc facts
     run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/requirement/prd.md", --from, ".maestro/runs/${inputs.slug}/design/hld.md", --repos, "${steps.lld_scope_init.outputs.selected_csv}", --out, ".maestro/runs/${inputs.slug}/.engine/facts/design.md"]
-    next: prepare_lld_questions
+    next: settle_lld_questions
+
+  # Engine-owned: when this stage is entered again (a design rerun, a resumed session) with its
+  # question queue still clear and nothing it was audited against changed, the lead's earlier
+  # audit stands and the LLDs are written straight away. Anything doubtful goes to the lead.
+  - id: settle_lld_questions
+    type: script
+    label: Is the repository-design queue already clear?
+    run: [python3, .maestro/engine/oq_settle.py, --queue, ".maestro/runs/${inputs.slug}/.engine/queues/lld.json", --decisions, ".maestro/runs/${inputs.slug}/decisions/lld.json", --log, ".maestro/runs/${inputs.slug}/decisions", --root, ".", --inputs, ".maestro/runs/${inputs.slug}/requirement/prd.md,.maestro/runs/${inputs.slug}/design/hld.md,.maestro/runs/${inputs.slug}/design/openapi.yaml,.maestro/runs/${inputs.slug}/design/impact.json", --feedback, "${steps.lld_approval.outputs.feedback} ${inputs.feedback}"]
+    on_fail: prepare_lld_questions
+    routes:
+      - {when: "${steps.settle_lld_questions.outputs.state} == clear", to: author_llds}
+      - {to: prepare_lld_questions}
 
   - id: prepare_lld_questions
     type: agent
@@ -473,7 +485,9 @@ nodes:
   - id: revise_llds
     type: agent
     execution: worker
-    model: opus
+    # Targeted edits to an approved structure, checked again by the Opus readiness review: the
+    # first authoring stays on opus, this pass does not need it (it was ~70k output tokens a run).
+    model: sonnet
     label: Revise the repository LLDs
     instruction: |
       Make targeted edits to the LLDs at ${steps.lld_scope_init.outputs.lld_paths_csv} for whichever

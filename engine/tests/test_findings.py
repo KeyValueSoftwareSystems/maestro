@@ -123,6 +123,42 @@ class FindingsTest(unittest.TestCase):
         self.assertEqual(self.resolve()["state"], "proceed")
 
 
+class OpenFindingsTest(FindingsTest):
+    """`open` tells the release gate which findings nobody resolved, across every code review."""
+
+    def review(self, name, *items):
+        self.write(os.path.join(self.dir, f"code-{name}.findings.json"),
+                   {"schema_version": 1, "findings": list(items)})
+
+    def test_counts_active_blocking_and_major_findings_per_review(self):
+        self.review("backend", finding("B1", "blocking", "resolved"), finding("M1", "major"),
+                    finding("M2", "major", "upheld"), finding("M3", "major", "withdrawn"),
+                    finding("m1", "minor"))
+        self.review("web", finding("M1", "major", "resolved"), finding("B9", "blocking"))
+        got = self.run_cmd("open", "--dir", self.dir)
+        self.assertEqual((got["open_blocking"], got["open_major"], got["open_minor"]), (1, 2, 1))
+        self.assertEqual(got["open_csv"], "code-backend:M1,code-backend:M2,code-web:B9")
+        self.assertEqual(got["files"], 2)
+        self.assertIn("1 blocking and 2 major", got["summary"])
+
+    def test_nothing_open_is_zero_and_unreadable_files_or_directories_count_as_none(self):
+        self.review("backend", finding("M1", "major", "resolved"))
+        self.write(os.path.join(self.dir, "code-web.findings.json"), "{not json")
+        got = self.run_cmd("open", "--dir", self.dir)
+        self.assertEqual((got["open_blocking"], got["open_major"], got["files"]), (0, 0, 1))
+        self.assertEqual(got["summary"], "no blocking or major review findings open")
+        gone = self.run_cmd("open", "--dir", os.path.join(self.dir, "nowhere"))
+        self.assertEqual((gone["open_major"], gone["files"]), (0, 0))
+
+    def test_only_code_reviews_are_counted_by_default(self):
+        self.review("backend", finding("M1", "major"))
+        self.write(os.path.join(self.dir, "architecture.findings.json"),
+                   {"schema_version": 1, "findings": [finding("A1", "major")]})
+        self.assertEqual(self.run_cmd("open", "--dir", self.dir)["open_major"], 1)
+        got = self.run_cmd("open", "--dir", self.dir, "--glob", "*.findings.json")
+        self.assertEqual(got["open_major"], 2)
+
+
 class RoundLimitTest(FindingsTest):
     """The engine bounds re-review loops: a round limit, and late findings go to the person."""
 

@@ -23,6 +23,7 @@ import shlex
 try:
     import condctl
     import memory as memorymod
+    import run_layout
     import run_profile
     import state as statemod
     import validate as validatemod
@@ -32,6 +33,7 @@ except ImportError:  # imported as a package (tests)
     from . import (
         condctl,
         memory as memorymod,
+        run_layout,
         run_profile,
         state as statemod,
         validate as validatemod,
@@ -1147,7 +1149,7 @@ def _agent_action(run, frame, node, path):
     skill = node.get("skill")
     if skill:
         skill = run.resolve_text(skill, frame)  # e.g. skill: "${inputs.stack}-implement"
-    return {
+    action = {
         "action": "run_lead" if node.get("execution") == "lead" else "run_agent",
         "step": path,
         "agent_type": run.agent_for(node, frame),
@@ -1158,6 +1160,42 @@ def _agent_action(run, frame, node, path):
         "artifacts": artifacts,
         "prompt": render_agent_prompt(run, frame, node, resolved_inputs, artifacts, isolate, skill),
     }
+    if action["action"] == "run_agent":
+        _offer_prompt_file(run, path, action)
+    return action
+
+
+# A worker prompt longer than this is also written to a file, so the lead can spawn the worker with
+# a two-line pointer instead of copying kilobytes of text into every spawn call.
+PROMPT_FILE_MIN_CHARS = 1500
+
+
+def _offer_prompt_file(run, path, action):
+    """Add `prompt_file` (run-relative) and `prompt_short` to a long worker action. The full
+    `prompt` stays in the action for hosts that cannot let a worker read a file."""
+    prompt = action["prompt"]
+    if len(prompt) < PROMPT_FILE_MIN_CHARS:
+        return
+    rel = f"{run_layout.PROMPTS_DIR}/{re.sub(r'[^A-Za-z0-9._-]+', '_', path).strip('_')}.md"
+    full = run_layout.path(run.slug, run.root, rel)
+    try:
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        current = None
+        if os.path.isfile(full):
+            with open(full, encoding="utf-8") as fh:
+                current = fh.read()
+        if current != prompt:
+            with open(full, "w", encoding="utf-8") as fh:
+                fh.write(prompt)
+    except OSError:
+        return  # the full prompt is still in the action
+    absolute = os.path.abspath(full)
+    first = prompt.split("\n", 1)[0].strip()
+    action["prompt_file"] = os.path.relpath(absolute, os.path.abspath(run.root))
+    action["prompt_short"] = (
+        (first + "\n" if first.startswith("Role:") else "")
+        + f"Your full instruction is in {absolute}. Read that file completely first, then do exactly "
+        "what it says: inputs, artifacts to write and the outputs to return are all in it.")
 
 
 def _interview_sections(run, frame, node):

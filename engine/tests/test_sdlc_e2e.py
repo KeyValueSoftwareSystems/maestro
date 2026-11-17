@@ -102,6 +102,7 @@ class SdlcE2E(unittest.TestCase):
     maxDiff = None
 
     qa_case_status = "passed"
+    real_worktrees = False  # run worktrees.py for real (the engine creates feature worktrees)
 
     @property
     def prompts(self):
@@ -354,7 +355,10 @@ class SdlcE2E(unittest.TestCase):
         repo = prompt_value("stack")
         repo_path = os.path.join(self.tmp, prompt_value("repo_path"))
         branch = prompt_value("branch")
-        worktree = os.path.join(self.tmp, ".maestro", "test-worktrees", repo)
+        given = re.search(r"^- worktree: (.+)$", act["prompt"], re.MULTILINE)
+        # the engine's own feature worktree when worktrees.py ran for real, else the agent's
+        worktree = (given.group(1).strip() if given and os.path.isdir(given.group(1).strip())
+                    else os.path.join(self.tmp, ".maestro", "test-worktrees", repo))
         os.makedirs(os.path.dirname(worktree), exist_ok=True)
         if not os.path.exists(worktree):
             subprocess.run(["git", "-C", repo_path, "worktree", "add", "-q", "-b",
@@ -364,6 +368,24 @@ class SdlcE2E(unittest.TestCase):
         return {"branch": branch, "worktree": worktree, "commit": commit,
                 "summary": "built", "tests_passed": True, "escalate": False,
                 "escalation": "None"}
+
+    def slice_outputs(self, act):
+        """One slice agent: commits a file of its own in the slice worktree it was given."""
+        def prompt_value(name):
+            return re.search(rf"^- {re.escape(name)}: (.+)$", act["prompt"],
+                             re.MULTILINE).group(1).strip()
+        worktree, branch, group = (prompt_value("worktree"), prompt_value("branch"),
+                                   prompt_value("group_id"))
+        self.assertEqual(subprocess.run(["git", "-C", worktree, "branch", "--show-current"],
+                                        check=True, capture_output=True,
+                                        text=True).stdout.strip(), branch)
+        Path(worktree, f"slice-{group}.txt").write_text(f"{group}\n")
+        subprocess.run(["git", "-C", worktree, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", worktree, "commit", "-q", "-m", f"slice {group}"], check=True)
+        commit = subprocess.run(["git", "-C", worktree, "rev-parse", "HEAD"], check=True,
+                                capture_output=True, text=True).stdout.strip()
+        return {"branch": branch, "commit": commit, "summary": f"built {group}",
+                "tests_passed": True, "escalate": False, "escalation": "None"}
 
     # -- driver ----------------------------------------------------------
 
@@ -411,6 +433,7 @@ class SdlcE2E(unittest.TestCase):
                         override() if callable(override) else override
                     ) or (
                         self.implementation_outputs(act) if node == "implement"
+                        else self.slice_outputs(act) if node == "implement_slice"
                         else canned_agent_outputs(real, act)
                     )
                     self.write_review_files(act, node, outputs)
@@ -430,7 +453,8 @@ class SdlcE2E(unittest.TestCase):
                                    or "infra_scan.py" in a or "decision_log.py" in a
                                    or "findings.py" in a or "sizing.py" in a
                                    or "greenfield.py" in a or "impact_trace.py" in a
-                                   or "release_record.py" in a
+                                   or "release_record.py" in a or "slice_pool.py" in a
+                                   or ("worktrees.py" in a and self.real_worktrees)
                                    for a in act.get("argv", []))):
                         proc = subprocess.run(act["argv"], cwd=self.tmp, capture_output=True,
                                               text=True, timeout=30)
@@ -658,7 +682,8 @@ class SdlcE2E(unittest.TestCase):
             "review/contract_approval": [("approve", None), ("approve", None)],
             "delivery/release_approval": [("revise", "handle the empty state"), ("approve", None)],
         }
-        action, trace = self.drive(gates)
+        # two full passes through every stage: more than the default step budget
+        action, trace = self.drive(gates, max_steps=260)
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 4)
@@ -1128,6 +1153,26 @@ class SdlcE2E(unittest.TestCase):
         self.assertIn("Design drift (engine): 1 blocking finding",
                       self.prompts["delivery/release_approval"][0])
 
+    def test_an_open_major_review_finding_stops_an_autopilot_release(self):
+        self.prep_tasks_json()
+        original = self.write_review_files
+
+        def write_review_files(act, node, outputs):
+            original(act, node, outputs)
+            if node == "review":  # the code review: a major finding nobody fixed or withdrew
+                rel = next(r for r in act["artifacts"] if r.endswith(".findings.json"))
+                Path(self.tmp, rel).write_text(json.dumps({"schema_version": 1, "findings": [
+                    {"id": "M1", "severity": "major", "area": "correctness", "status": "open",
+                     "finding": "Month-end due dates drift.", "evidence": "billing.go:210"}]}))
+        self.write_review_files = write_review_files
+        action, trace = self.drive({"delivery/release_approval": [("reject", None)]}, mode="auto")
+        self.assertEqual(action["action"], "failed", action)
+        steps = [s for _, s in trace]
+        self.assertLess(steps.index("delivery/open_findings"), steps.index("delivery/review_pack"))
+        self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
+        self.assertIn("Open code-review findings (engine): 0 blocking and 2 major",
+                      self.prompts["delivery/release_approval"][0])
+
     def test_light_path_designs_from_the_prd_without_an_hld(self):
         self.prep_tasks_json()
         action, trace = self.drive({"design/prd/prd_approval": [("approve", None)],
@@ -1481,6 +1526,57 @@ class SdlcE2E(unittest.TestCase):
         """The impl steps of the first repository slot that ran `node` (slots interleave)."""
         slot = next(s.split("]")[0] for _, s in trace if s.endswith(f"/impl/{node}"))
         return [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith(slot + "]/impl/")]
+
+    def test_a_plan_with_two_slice_groups_is_built_by_the_engine_fan_out(self):
+        """backend's plan has two slice groups: one agent per group, each in its own slice
+        worktree, merged by the engine into the feature branch, then verified and reviewed as
+        usual. frontend's one-group plan keeps the single implementer."""
+        self.prep_tasks_json()
+        backend = Path(self.tmp, ".maestro/runs/demo/build/backend/tasks.json")
+        doc = json.loads(backend.read_text())
+        doc["slices"] = [{"group_id": "api", "task_ids": ["t1", "t2"]},
+                         {"group_id": "jobs", "task_ids": ["t3"]}]
+        doc["tasks"] = [
+            {**doc["tasks"][0], "id": "t1", "group_id": "api", "writes": ["slice-api.txt"]},
+            {**doc["tasks"][0], "id": "t2", "group_id": "api", "writes": ["src/api_test"],
+             "depends_on": ["t1"]},
+            {**doc["tasks"][0], "id": "t3", "group_id": "jobs", "writes": ["slice-jobs.txt"]}]
+        backend.write_text(json.dumps(doc))
+        self.real_worktrees = True  # the engine creates the feature worktrees
+        action, trace = self.drive(dict(self.IMPL_GATES))
+        self.assertEqual(action["action"], "done", action)
+        steps = [s for _, s in trace]
+        # repos are claimed in name order: slot_1 builds backend, slot_2 frontend
+        backend_impl = "delivery/implement[slot_1]/impl/"
+        slices = sorted(s for s in steps if s.startswith(backend_impl + "slices/")
+                        and s.endswith("/implement_slice"))
+        self.assertEqual(slices, [backend_impl + "slices/pool[slot_1]/implement_slice",
+                                  backend_impl + "slices/pool[slot_2]/implement_slice"])
+        self.assertNotIn(backend_impl + "implement", steps)
+        self.assertIn("delivery/implement[slot_2]/impl/implement", steps)
+        self.assertFalse([s for s in steps
+                          if s.startswith("delivery/implement[slot_2]/impl/slices/")])
+        order = [backend_impl + n for n in ("facts", "slices/merge", "handoff", "verify", "review")]
+        self.assertEqual([steps.index(s) for s in order], sorted(steps.index(s) for s in order))
+        prompt = self.prompts[backend_impl + "slices/pool[slot_1]/implement_slice"][0]
+        self.assertIn("Implement ONLY slice group api", prompt)
+        self.assertIn("- task_ids: t1,t2", prompt)
+        # both slices are on the feature branch the release ships
+        repo = os.path.join(self.tmp, "codebase", "backend")
+
+        def git_out(*args):
+            return subprocess.run(["git", "-C", repo, *args], check=True, capture_output=True,
+                                  text=True).stdout.strip()
+        manifest = json.loads(Path(self.tmp, ".maestro/runs/demo/build/manifest.json").read_text())
+        shipped = next(r for r in manifest["repositories"] if r["repo"] == "backend")
+        self.assertEqual(shipped["branch"], "feature/demo-backend")
+        self.assertEqual(shipped["commit"], git_out("rev-parse", "feature/demo-backend"))
+        self.assertEqual(shipped["verification"]["status"], "verified")
+        files = git_out("ls-tree", "--name-only", "feature/demo-backend").split()
+        self.assertIn("slice-api.txt", files)
+        self.assertIn("slice-jobs.txt", files)
+        # merged slice branches are deleted with their worktrees
+        self.assertEqual(git_out("branch", "--list", "*-slice-*"), "")
 
     def test_blocking_code_review_is_decided_from_the_findings_file(self):
         """The reviewer's own flag says clean, its findings file says blocking: the file wins,
