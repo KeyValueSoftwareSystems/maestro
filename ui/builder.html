@@ -3229,18 +3229,27 @@ boot();
     if ((r.repoHandle || r.server) && r.state.workflow && r.state.workflow.file) {
       try {
         // walk down the opened subworkflow steps: each level's graph comes from its parent's node
-        let wf = jsyaml.load(await readWf(r, r.state.workflow.file));
+        let wf = jsyaml.load(await readWf(r, r.state.workflow.file)), pre = "";
         const titles = [wf.title || wf.name || r.slug];
         for (let i = 0; i < drill.length; i++) {
           const node = (wf.nodes || []).find(n => n.id === drill[i].id);
+          const key = node && (node._pre || pre) + node.id;
+          if (node && node.type === "parallel" && node.branches) {
+            // a parallel opens as its branches' steps side by side; each keeps its own state prefix
+            // shortcut: step ids must be unique across branches, or two branches share a card
+            wf = { nodes: node.branches.flatMap(b => (b.steps || []).map(s => Object.assign({}, s, { _pre: key + "[" + b.id + "]/" }))) };
+            titles.push(node.label || node.id);
+            continue;
+          }
           if (!node || !node.workflow) { drill = drill.slice(0, i); break; }
+          pre = key + "/";
           wf = jsyaml.load(await readWf(r, node.workflow));
           titles.push(wf.title || wf.name || node.label || node.id);
         }
-        renderGraph(graph, wf, r.state, drill.map(d => d.id + "/").join(""));
+        renderGraph(graph, wf, r.state, pre);
         graph.prepend(crumbBar(r.slug, titles));
         graph.ondblclick = ev => {
-          const el = ev.target.closest(".rnode.sub");
+          const el = ev.target.closest(".rnode.sub");  // subworkflow or parallel
           if (!el) return;
           drill.push({ id: el.dataset.id });
           renderSelected();
@@ -3328,7 +3337,7 @@ boot();
     let html = '<div id="runs-plane" style="width:' + planeW + 'px;height:' + planeH + 'px">';
     html += '<svg width="' + planeW + '" height="' + planeH + '">' + paths + '</svg>';
     for (const n of nodes) {
-      const p = pos[n.id], key = pre + n.id, s = nodeStatus(state, key), type = n.type || "agent";
+      const p = pos[n.id], key = (n._pre || pre) + n.id, s = nodeStatus(state, key), type = n.type || "agent";
       const under = stepsUnder(state, key), keys = Object.keys(under);
       const isContainer = type === "parallel" || type === "subworkflow";
       let cnt = "";
@@ -3339,7 +3348,7 @@ boot();
         const v = under[key].visits || 0;
         if (v > 1) cnt = '<span class="rn-count">×' + v + '</span>';
       }
-      const sub = type === "subworkflow" && n.workflow && !String(n.workflow).includes("${");
+      const sub = (type === "subworkflow" && n.workflow && !String(n.workflow).includes("${")) || (type === "parallel" && n.branches);
       html += '<div class="rnode s-' + s + (sub ? ' sub' : '') + '" data-id="' + esc(n.id) + '" style="left:' + p.x + 'px;top:' + p.y + 'px">' +
         '<div class="rn-head"><span class="rn-dot"></span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
         esc(n.label || n.id) + '</span>' + cnt + '</div>' +
