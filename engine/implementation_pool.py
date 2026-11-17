@@ -350,7 +350,14 @@ def cmd_record(args):
 
 
 def cmd_inspect(args):
-    """Resolve the live feature worktree identity after implementation or a fix."""
+    """Resolve the live feature worktree identity after implementation or a fix.
+
+    `--fanout true` (the plan was built slice by slice, slice_pool.py): the feature branch and
+    worktree are the ones the engine merged the slices into, not an implementer's report."""
+    if str(args.fanout).strip().lower() == "true":
+        if not args.merged_branch or not args.merged_worktree:
+            return _fail("the slices were not merged into the feature branch")
+        args.branch, args.worktree = args.merged_branch, args.merged_worktree
     if os.environ.get("MAESTRO_SIMULATION") == "1":
         print(json.dumps({"branch": args.branch, "worktree": args.worktree,
                           "commit": "[simulated commit]"}))
@@ -520,6 +527,9 @@ def main(argv=None):
     p.add_argument("--repo", required=True)
     p.add_argument("--branch", required=True)
     p.add_argument("--worktree", required=True)
+    p.add_argument("--fanout", default="", help="true: inspect the merged slice build")
+    p.add_argument("--merged-branch", default="")
+    p.add_argument("--merged-worktree", default="")
     p.set_defaults(fn=cmd_inspect)
     args = parser.parse_args(argv)
     return args.fn(args)

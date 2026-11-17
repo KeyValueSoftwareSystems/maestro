@@ -53,7 +53,8 @@ runtime. It ships:
 - **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
-  `delivery` → `archive`; `design` composes `design-intake` / `design-prd`, then a `parallel`
+  `delivery` → `archive` (delivery runs `impl` per repository, which hands a plan of two or more
+slice groups to `impl-slices`); `design` composes `design-intake` / `design-prd`, then a `parallel`
   node running `design-solution` (impact, sizing, then `design-hld` with its architecture review /
   `scaffold` (greenfield only: create the repositories the HLD lists) / `design-contract` (only
   when the HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run)) beside
@@ -171,6 +172,16 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `not-reviewed`, and autopilot will not release it.
   `bugfix-init`/`bugfix-claim` queue the repos a QA product bug names (`qa-bugfix.yaml` fixes each
   in its worktree) and `record --from-worktree` records the fixed HEAD.
+- **`slice_pool.py`** — one repository's slice fan-out (`impl.yaml` → `impl-slices.yaml`):
+  `init` (the task step's second check) decides `fanout` from the validated plan (≥2 slice groups
+  and an engine-made, clean feature worktree; otherwise the single implementer) and queues the
+  groups under `.engine/slices/<repo>.json`; three slots `claim` a group each (an unrecorded claim
+  is handed back on resume), each in its own worktree and branch off the feature branch's commit
+  (`.maestro/worktrees/<slug>/.slices/<repo>/<group>`); `record` reads the slice's commit from its
+  worktree; `merge` merges them in plan order in a scratch worktree and fast-forwards the feature
+  branch only when all merged — a conflict or an escalated slice is reported as `escalate` for
+  the stop gate, never resolved. `validate_tasks.py` keeps groups splittable: over 10 tasks in
+  parts no `depends_on` or write path connects fails the plan unless the slice sets `keep_together`.
 - **`worktrees.py`** — the feature's implementation worktrees, made by the engine before any agent
   writes code: `prepare` runs `worktree.create` from maestro.config.yaml once per feature (e.g. the
   workspace template's sandbox command) and finds each repo at `worktree.path`, or adds its own at
