@@ -217,7 +217,8 @@ of the same name the agent returned (what the engine measured beats what the age
 the step routes. When one fails, the same agent is served again with the check's
 `issues_summary` (or its output's tail) appended to its prompt, and the list starts over on the
 next hand-off. After `attempts` failed hand-offs (default 3; for a list, the largest any check sets) the step fails with that report and
-`on_fail` applies; its outputs then hold the failing check's fields. Use a check where the
+`on_fail` applies; a hand-off whose report is identical to the previous one ends it at once (the agent
+changed nothing the check looks at, typically a failure outside its reach), saying so in the reason; its outputs then hold the failing check's fields. Use a check where the
 agent that wrote an output is the one who should fix it; keep a separate `script` node where the
 result is a decision with several outcomes (a review verdict) or where several writers' paths
 meet.

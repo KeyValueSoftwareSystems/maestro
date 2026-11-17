@@ -1020,6 +1020,39 @@ class AgentCheckTest(Sim):
         self.assertEqual(action["running"], ["write"])
 
 
+class AgentCheckProgressTest(Sim):
+    """A check that reports the same failure again has nothing left to learn from another attempt."""
+
+    def setUp(self):
+        super().setUp()
+        self.start(self.write_wf("w.yaml", CHECK_WF.replace("attempts: 2", "attempts: 3")))
+        self.touch("doc.md")
+
+    def test_an_unchanged_report_stops_before_the_attempts_run_out(self):
+        bad = '{"valid": false, "issues_summary": "calls GET /x, which no repository serves"}'
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0, stdout=bad)
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))  # first miss
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0, stdout=bad)  # same report: no progress
+        self.assertEqual((action["action"], action["synthesized"]), ("ask_gate", "fail"))
+        entry = self.state()["steps"]["write"]
+        self.assertIn("unchanged report", entry["reason"])
+        self.assertNotIn("check_fingerprint", entry)
+
+    def test_a_changed_report_keeps_the_remaining_attempts(self):
+        self.complete("write", outputs={"summary": "s"})
+        self.complete("write", exit_code=0, stdout='{"valid": false, "issues_summary": "5 errors"}')
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0,
+                               stdout='{"valid": false, "issues_summary": "2 errors"}')
+        self.assertEqual((action["action"], action["step"]), ("run_agent", "write"))  # progress
+        self.complete("write", outputs={"summary": "s"})
+        action = self.complete("write", exit_code=0, stdout='{"valid": true, "state": "clear"}')
+        self.assertEqual(action["action"], "done")
+        self.assertNotIn("check_fingerprint", self.state()["steps"]["write"])
+
+
 class RoleLineTest(Sim):
     def test_prompt_names_the_role_from_its_definition(self):
         os.makedirs(os.path.join(self.tmp, ".claude", "agents"))

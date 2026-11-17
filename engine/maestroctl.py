@@ -408,6 +408,15 @@ def cmd_fail(args):
     return _mutate(args, lambda run: resolver.fail_step(run, args.step, args.reason))
 
 
+def _drop_workspace_lock(slug, root):
+    """A run started over has no design yet, so the commits an earlier attempt pinned must not
+    judge it: a stale pin made the pre-implementation sync send a fresh design back to the start."""
+    try:
+        os.remove(run_layout.path(slug, root, run_layout.WORKSPACE_LOCK))
+    except FileNotFoundError:
+        pass
+
+
 def cmd_reset(args):
     if not args.all and not args.step:
         raise resolver.RunError("reset needs --step ... or --all", code=4)
@@ -415,6 +424,7 @@ def cmd_reset(args):
     def fn(run):
         if args.all:
             resolver.reset_all(run)
+            _drop_workspace_lock(args.slug, args.root)
         else:
             resolver.reset_steps(run, args.step, cascade=args.cascade)
 

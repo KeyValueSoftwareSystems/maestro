@@ -14,6 +14,7 @@ Path ids: top-level node `author_hld`; inside subworkflow node `design` →
 from __future__ import annotations
 
 import functools
+import hashlib
 import json
 import os
 import re
@@ -1587,6 +1588,7 @@ def _complete_check(run, frame, node, path, entry, exit_code, stdout, telemetry=
     if _check_passed(exit_code, outputs):
         entry.pop("check_failures", None)
         entry.pop("check_report", None)
+        entry.pop("check_fingerprint", None)
         # what the engine measured wins over what the agent claimed (e.g. a validated repos_csv)
         entry["outputs"] = {**(entry.get("outputs") or {}), **check_outputs}
         entry["status"] = "done"
@@ -1604,13 +1606,20 @@ def _complete_check(run, frame, node, path, entry, exit_code, stdout, telemetry=
     command = " ".join(checks[position - 1]["run"][:2])
     entry["check_report"] = f"[{command}] " + _tail(report, CHECK_REPORT_LIMIT)
     attempts = max(c.get("attempts", DEFAULT_CHECK_ATTEMPTS) for c in checks)
-    if entry["check_failures"] < attempts:
+    # The same report as the last hand-off means the agent changed nothing the check looks at
+    # (typically a failure outside the step's reach); serving it again only burns time and tokens.
+    fingerprint = hashlib.sha256(report.encode("utf-8", "replace")).hexdigest()
+    stalled = entry.get("check_fingerprint") == fingerprint
+    entry["check_fingerprint"] = fingerprint
+    if entry["check_failures"] < attempts and not stalled:
         entry["status"] = "pending"  # stays in cursors: the same agent is served again
         return entry
-    reason = f"check failed on {entry['check_failures']} hand-off(s): {_tail(report, 300)}"
+    note = " with an unchanged report" if stalled and entry["check_failures"] < attempts else ""
+    reason = f"check failed on {entry['check_failures']} hand-off(s){note}: {_tail(report, 300)}"
     entry["reason"] = reason
     entry["status"] = "failed"
     entry.pop("check_failures")  # the next visit (or a retry) gets a fresh budget
+    entry.pop("check_fingerprint", None)
     entry.pop("agent_telemetry", None)
     _finish_visit(run, path, entry, telemetry)
     _apply_on_fail(run, frame, node, reason, unchecked=True)

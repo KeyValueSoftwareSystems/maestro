@@ -72,6 +72,19 @@ class ResumeSafetyTest(unittest.TestCase):
         done = self.ctl("complete", "--slug", "f", "--step", "fan[b]/work", "--outputs", "{}")
         self.assertEqual(done["action"], "done")
 
+    def test_reset_all_drops_the_workspace_lock_of_the_earlier_attempt(self):
+        import run_layout
+        self.ctl("init", "--slug", "f", "--workflow", "pair.yaml")
+        lock = run_layout.path("f", self.tmp, run_layout.WORKSPACE_LOCK)
+        os.makedirs(os.path.dirname(lock), exist_ok=True)
+        with open(lock, "w") as fh:
+            fh.write("{}")
+        self.ctl("reset", "--slug", "f", "--step", "fan[a]/work")
+        self.assertTrue(os.path.exists(lock), "a step reset keeps the pin")
+        self.ctl("reset", "--slug", "f", "--all")
+        self.assertFalse(os.path.exists(lock), "starting over drops it")
+        self.ctl("reset", "--slug", "f", "--all")  # nothing left to drop is fine
+
     def test_stuck_workers_are_reported_and_can_be_reclaimed(self):
         self.ctl("init", "--slug", "f", "--workflow", "pair.yaml")
         first = {a["step"]: a["claim"] for a in self.ctl("next", "--slug", "f")["agents"]}
