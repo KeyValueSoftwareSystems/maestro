@@ -1,4 +1,4 @@
-"""Debug-mode run profile: off by default; `init --debug` keeps every visit of every step and
+"""Run profile: on by default (`init --no-profile` opts out); it keeps every visit of every step and
 splits its time into queued, work (agents, scripts) and human (gates, interviews)."""
 
 import io
@@ -69,15 +69,23 @@ class RunProfileTest(unittest.TestCase):
     def feature_file(self, name):
         return os.path.join(statemod.engine_dir("f", self.tmp), name)
 
-    def test_off_by_default(self):
+    def test_on_by_default(self):
         started = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml")
+        self.assertTrue(started["debug"])
+        self.drive()
+        self.assertTrue(statemod.load("f", self.tmp)["profile"]["visits"])
+        self.assertTrue(os.path.exists(self.feature_file("profile.md")))
+        self.assertIn("# Run profile", self.ctl("profile", "--slug", "f"))
+
+    def test_no_profile_opts_out(self):
+        started = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml", "--no-profile")
         self.assertNotIn("debug", started)
         self.drive()
         state = statemod.load("f", self.tmp)
         self.assertNotIn("profile", state)
         self.assertNotIn("served_at_ms", state["steps"]["draft"])
         self.assertFalse(os.path.exists(self.feature_file("profile.md")))
-        self.assertIn("not in debug mode", self.ctl("profile", "--slug", "f", code=3))
+        self.assertIn("has no profile", self.ctl("profile", "--slug", "f", code=3))
 
     def test_debug_keeps_every_visit_and_splits_work_from_human(self):
         started = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml", "--debug")
@@ -104,11 +112,11 @@ class RunProfileTest(unittest.TestCase):
         self.assertIn("# Run profile — f", text)
         self.assertIn("| review | gate | 2 |", text)
 
-    def test_debug_switched_on_for_a_resumed_run(self):
-        self.ctl("init", "--slug", "f", "--workflow", "prof.yaml")
+    def test_the_profile_is_switched_on_for_a_resumed_run_that_had_none(self):
+        self.ctl("init", "--slug", "f", "--workflow", "prof.yaml", "--no-profile")
         self.ctl("next", "--slug", "f")
         self.ctl("complete", "--slug", "f", "--step", "draft", "--outputs", "{}")
-        resumed = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml", "--debug")
+        resumed = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml")
         self.assertTrue(resumed["debug"])
         self.ctl("next", "--slug", "f")
         self.ctl("complete", "--slug", "f", "--step", "check", "--exit-code", "0")

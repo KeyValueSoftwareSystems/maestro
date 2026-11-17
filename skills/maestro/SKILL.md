@@ -25,8 +25,9 @@ is work the workflow deliberately assigns to this session:
 - `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
 - `--mode human|design|auto` (or the same asked in words): the run mode, passed to init.
-- `--debug` (or the user asks to debug, profile or time the run): pass `--debug` to init. Strip
-  these flags before treating the rest as a slug or feature request.
+- `--no-profile`: pass it to init to skip the timing profile, which is recorded by default.
+  `--debug` is the old name for the default and is still accepted. Strip these flags before
+  treating the rest as a slug or feature request.
 
 ## Selecting a slug (only when none was given)
 
@@ -62,7 +63,7 @@ skip it.
 ```bash
 python3 .maestro/engine/maestroctl.py validate <workflow>            # abort on errors, tell the user
 python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
-    [--input feature="..." ...] [--mode human|design|auto] [--debug]
+    [--input feature="..." ...] [--mode human|design|auto] [--no-profile]
 ```
 
 - **Run mode** — who answers the gates. `human` (default): every gate. `design`: the human
@@ -73,9 +74,9 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   design approval"); never pick a faster mode yourself. `auto` refuses to start until
   `maestroctl preflight` passes — relay that. To take over or hand back a running feature,
   re-run `init` with the new `--mode`; it applies from the next gate.
-- **Debug** — `--debug` records a timing profile of every step visit (work, human and idle time)
-  in the feature folder's `.engine/profile.md`. Pass it only when the user asks to debug or profile the
-  run; on a running feature, re-run `init --debug` and it records from then on. `maestroctl
+- **Profile** — every run records a timing profile of every step visit (work, human and idle
+  time) in the feature folder's `.engine/profile.md`; `--no-profile` opts out. On a running
+  feature started without one, re-run `init` and it records from then on. `maestroctl
   profile --slug <slug>` prints it; never read or edit the profile in place of the engine's
   actions. A step open for an hour or more is listed as a suspect long visit: the engine cannot
   see a session that was paused mid-step, so tell the user its work time may be an overcount.
@@ -151,7 +152,11 @@ Use ONE worker:
 
 - **Claude Code (Task tool available):** `Task(subagent_type=<agent_type>,
   model=<model>, prompt=<prompt>)` — all three come straight from the action. Use the
-  prompt EXACTLY as served; do not rewrite it.
+  prompt EXACTLY as served; do not rewrite it. **A long prompt also arrives as a file:** when the
+  action has `prompt_short` (and `prompt_file`), pass `prompt_short` as the prompt instead of
+  the full `prompt`. It is two lines naming the file that holds the whole instruction; the worker
+  reads it. This keeps kilobytes of text out of every spawn call you write. Pass the full
+  `prompt` only when the host's workers cannot read files.
 - **Codex (subagent tools available):** spawn exactly one subagent for the action and give
   it the served `prompt` EXACTLY. Use `agent_type` as the role/task label when the host lets
   you name the worker. Treat `model` as a host-specific hint: pass it only when Codex accepts
@@ -185,7 +190,8 @@ The engine owns retries and failure routing — never loop on a step yourself.
 
 A parallel wave. On Claude Code, spawn ALL listed Task calls in ONE message. On Codex,
 spawn one native subagent per listed action in the same turn so independent work runs in
-parallel. Use each action's exact prompt and the same model rule as `run_agent`. If the host
+parallel. Use each action's exact prompt (or its `prompt_short` when it has one) and the same
+model rule as `run_agent`. If the host
 has no subagent tools, inline mode's `--serial` contract prevents the engine from serving
 `run_agents`.
 

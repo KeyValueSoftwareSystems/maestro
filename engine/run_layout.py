@@ -70,6 +70,7 @@ DESIGN_FACTS = f"{ENGINE}/facts/design.md"
 QUEUES_DIR = f"{ENGINE}/queues"
 LOGS_DIR = f"{ENGINE}/logs"
 PR_BODIES_DIR = f"{ENGINE}/pr-bodies"
+PROMPTS_DIR = f"{ENGINE}/prompts"
 
 
 def lld(repo):

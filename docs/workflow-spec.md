@@ -566,7 +566,7 @@ interrupted (`running`) steps are re-served; gates always re-ask.
 
 ```
 maestroctl validate <wf>                 # refuse to start on errors
-maestroctl init --slug S --workflow <wf> [--input k=v ...] [--mode human|design|auto] [--debug]
+maestroctl init --slug S --workflow <wf> [--input k=v ...] [--mode human|design|auto] [--no-profile]
 loop:
   maestroctl next --slug S [--serial]    # → ONE action JSON (claims workers; --peek re-reads)
     run_agent  → spawn subagent with the pre-rendered prompt → complete --outputs '<json>'

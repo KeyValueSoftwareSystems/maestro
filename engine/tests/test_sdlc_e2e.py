@@ -658,7 +658,8 @@ class SdlcE2E(unittest.TestCase):
             "review/contract_approval": [("approve", None), ("approve", None)],
             "delivery/release_approval": [("revise", "handle the empty state"), ("approve", None)],
         }
-        action, trace = self.drive(gates)
+        # two full passes through every stage: more than the default step budget
+        action, trace = self.drive(gates, max_steps=260)
         self.assertEqual(action["action"], "done", action)
         steps = [step for _, step in trace]
         self.assertEqual(len([step for step in steps if step.endswith("/impl/implement")]), 4)
@@ -1126,6 +1127,26 @@ class SdlcE2E(unittest.TestCase):
         self.assertLess(steps.index("delivery/drift_verdict"), steps.index("delivery/review_pack"))
         self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
         self.assertIn("Design drift (engine): 1 blocking finding",
+                      self.prompts["delivery/release_approval"][0])
+
+    def test_an_open_major_review_finding_stops_an_autopilot_release(self):
+        self.prep_tasks_json()
+        original = self.write_review_files
+
+        def write_review_files(act, node, outputs):
+            original(act, node, outputs)
+            if node == "review":  # the code review: a major finding nobody fixed or withdrew
+                rel = next(r for r in act["artifacts"] if r.endswith(".findings.json"))
+                Path(self.tmp, rel).write_text(json.dumps({"schema_version": 1, "findings": [
+                    {"id": "M1", "severity": "major", "area": "correctness", "status": "open",
+                     "finding": "Month-end due dates drift.", "evidence": "billing.go:210"}]}))
+        self.write_review_files = write_review_files
+        action, trace = self.drive({"delivery/release_approval": [("reject", None)]}, mode="auto")
+        self.assertEqual(action["action"], "failed", action)
+        steps = [s for _, s in trace]
+        self.assertLess(steps.index("delivery/open_findings"), steps.index("delivery/review_pack"))
+        self.assertEqual([s for a, s in trace if a == "ask_gate"], ["delivery/release_approval"])
+        self.assertIn("Open code-review findings (engine): 0 blocking and 2 major",
                       self.prompts["delivery/release_approval"][0])
 
     def test_light_path_designs_from_the_prd_without_an_hld(self):

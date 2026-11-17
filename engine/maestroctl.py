@@ -6,7 +6,7 @@ The lead agent's whole protocol:
     maestroctl validate <workflow>
     maestroctl preflight                             # maestro.config.yaml vs the repos on disk
     maestroctl init --slug S --workflow <workflow> [--input k=v ...] [--mode human|design|auto]
-                    [--debug]                        # also record a timing profile
+                    [--no-profile]                   # timing profile is recorded by default
     loop:
         maestroctl next --slug S [--serial]          # ONE action as JSON (claims workers)
         # dispatch it, then one of:
@@ -22,7 +22,7 @@ The lead agent's whole protocol:
         maestroctl interview-brief --slug S --step P --section X [--mode subagent|side]
         maestroctl fail --slug S --step P --reason '<why>'
 
-Also: status, todo, brief, profile (a debug run's timing), reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
+Also: status, todo, brief, profile (the run's timing: work, human, idle), reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
 rebase, migrate, graph, runs, and note.
 `next --peek` re-reads without claiming or running.
 
@@ -129,7 +129,7 @@ def cmd_init(args):
                                           force=args.force, mode=args.mode)
         if not created:
             resolver.release_claims(data)  # resume: a previous session's workers are gone
-        if args.debug:
+        if args.debug or not args.no_profile:
             data["run"]["debug"] = True  # from here on, every visit is kept for the profile
         # Start or resume: the lead (re)builds its task list from here; `next` then re-sends
         # the list only when it changes.
@@ -588,8 +588,12 @@ def build_parser():
                    help="who answers gates: human (default, every gate), design or auto "
                         "(each gate's auto: policy); on a resumed run, switches the mode")
     p.add_argument("--debug", action="store_true",
-                   help="record every step visit's timing (.engine/profile.md in the feature "
-                        "folder); on a resumed run, from now on")
+                   help="record every step visit's timing; this is the default now, kept so "
+                        "older leads' commands still work")
+    p.add_argument("--no-profile", action="store_true",
+                   help="do not record step timing (.engine/profile.md in the feature folder "
+                        "is written by default; on a resumed run it is switched on from now on "
+                        "unless this is given)")
     p.set_defaults(fn=cmd_init)
 
     p = sub.add_parser("next", help="serve the next action as JSON (claims workers, runs "

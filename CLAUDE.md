@@ -151,6 +151,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   parses BEFORE substitution so values can't inject operators. `norm()` canonicalises
   bools/numbers; guards use `== true`/`== false`, never `!= true` (prose would slip through).
 - **`wf.py`** — the zero-dep YAML-subset loader/emitter (see its own section below).
+- **`oq_settle.py`** — recognises a clarification stage whose question queue is already clear
+  (HLD and LLD entry, before the lead's `prepare_*_questions`): clear queue that passes
+  `validate_prd_questions.py --require-direction`, written after the person's last confirmed
+  round, no input document newer, no feedback → `state: clear` and the lead is skipped; anything
+  doubtful → `ask`. It never writes a queue.
 - **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
   stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
@@ -202,7 +207,9 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `unchanged`, which the workflow sends to the person instead of another round. The impl loop
   routes on its `passed`, never on an agent's `tests_passed`. Missing config → exit 2.
 - **`findings.py`** — review findings decided by the engine: `verdict` reads a reviewer's
-  findings JSON (blocking = a blocking finding still `open`/`upheld`); `resolve` reads the author's
+  findings JSON (blocking = a blocking finding still `open`/`upheld`); `open` counts the blocking
+  and major findings left open across the code reviews, which the release autopilot requires to
+  be zero (`delivery/open_findings`); `resolve` reads the author's
   `fixed`/`contested`/`escalated` answers → `proceed` (re-review), `incomplete` (back to the author)
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
   A resolutions file older than the findings file answers an earlier round and is ignored. The HLD
@@ -220,7 +227,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
   commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
-- **`run_profile.py`** — debug-mode timing (`init --debug`, off by default): every step visit is
+- **`run_profile.py`** — run timing (on by default; `init --no-profile` opts out, `--debug` is the old name): every step visit is
   kept under the ledger's `profile.visits` (resolver `_finish_visit`; serving calls stamp
   `served_at_ms`), split into queued, work (agents, scripts) and human (gates, interviews) time,
   plus idle stretches; serving calls rewrite `.engine/profile.md`/`profile.json`, `maestroctl profile`

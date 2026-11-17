@@ -53,9 +53,10 @@ nodes:
 
       Before implementation, "Apply safe updates" moves the commits the approved design was
       grounded in and sends the run back to design (PRD, HLD and LLDs are redone and approved
-      again, often hours). Pick "Keep current commits" unless you need the updates now; they can
-      be pulled at the next feature start. With `design.sync_restart: cited` in
-      maestro.config.yaml, only updates that touch code the design cites, or a migration, go back.
+      again, often hours) when an update touches code the design cites, or a migration. Pick
+      "Keep current commits" unless you need the updates now; they can be pulled at the next
+      feature start. With `design.sync_restart: always` in maestro.config.yaml, any moved
+      commit sends the design back.
     options:
       - {id: sync, label: Apply safe updates and refresh stale docs; leave blocked repos unchanged, to: apply}
       - {id: current, label: Keep current commits; refresh stale docs, to: keep_current}
@@ -156,7 +157,9 @@ nodes:
       config and cross-repo calls are generated (the extracted inventory is the `inventory`
       input): never restate them, and never edit docs/_generated/, docs/_index/, a generated:
       block or verified_at. Preserve unrelated sections and human edits. Do not edit
-      application code.
+      application code. Fix only what the check reports as an ERROR: warnings (token budgets,
+      anchors changed, draft docs) do not fail it, and an error that needs a change outside
+      docs/ (an R6 call no repository serves) is not yours; name it in the audit and stop.
 
       Write a concise audit of files assessed, docs changed, and why unchanged docs remained
       valid to .maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/knowledge.md.

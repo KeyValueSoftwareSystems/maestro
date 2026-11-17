@@ -334,6 +334,15 @@ nodes:
       - --stage
       - "LLD=.maestro/runs/${inputs.slug}/decisions/lld.json,.maestro/runs/${inputs.slug}/.engine/queues/lld.json"
     on_fail: abort
+    next: open_findings
+
+  # Engine-owned: the review findings nobody resolved. Autopilot does not release over an open
+  # major finding (a bug a reviewer found that the author neither fixed nor got withdrawn).
+  - id: open_findings
+    type: script
+    label: Open code-review findings
+    run: [python3, .maestro/engine/findings.py, open, --dir, ".maestro/runs/${inputs.slug}/reviews"]
+    on_fail: review_pack
     next: review_pack
 
   - id: review_pack
@@ -349,7 +358,8 @@ nodes:
       acceptance-criteria trace
       (${steps.ac_trace.outputs.path}: ${steps.ac_trace.outputs.summary}) as written: each
       criterion with its test cases and result, and the drift check
-      (${steps.drift_verdict.outputs.summary}; reviews/drift.md). Read only these
+      (${steps.drift_verdict.outputs.summary}; reviews/drift.md), and the code-review findings no
+      one resolved (${steps.open_findings.outputs.summary}) as a list of risks. Read only these
       inputs: decisions/decision-log.md, release/ac-trace.md, reviews/drift.md, build/manifest.json, each
       repository's code review reviews/code-<repo>.md,
       reviews/architecture.md (the HLD review), reviews/lld-readiness.md, and qa/report.md under
@@ -383,6 +393,7 @@ nodes:
       Engine verification (build/lint/test receipts): ${steps.finalize_implementation.outputs.verification_summary}
       Acceptance criteria: ${steps.ac_trace.outputs.summary} (${steps.ac_trace.outputs.path})
       Design drift (engine): ${steps.drift_verdict.outputs.summary} (.maestro/runs/${inputs.slug}/reviews/drift.md)
+      Open code-review findings (engine): ${steps.open_findings.outputs.summary}
       Unconfirmed decisions: ${steps.assumptions.outputs.unconfirmed_summary} (${steps.assumptions.outputs.path})
       Recommendation: ${steps.review_pack.outputs.recommendation}
       ${steps.review_pack.outputs.summary}
@@ -393,14 +404,16 @@ nodes:
       - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}
       - {id: reject, label: Reject — abort, to: abort}
     # Design and auto modes release only what the engine itself verified (build/lint/test receipts
-    # at the exact commits) with every acceptance criterion passing QA; anything else stops the run
-    # for a person.
+    # at the exact commits) with every acceptance criterion passing QA, no design drift and no
+    # blocking or major review finding left open; anything else stops the run for a person.
     auto:
       option: approve
       when:
         - "${steps.finalize_implementation.outputs.verified_ok} == true"
         - "${steps.ac_trace.outputs.all_passed} == true"
         - "${steps.drift_verdict.outputs.blocking} == false"
+        - "${steps.open_findings.outputs.open_major} == 0"
+        - "${steps.open_findings.outputs.open_blocking} == 0"
 
   # Engine-owned: binds the approval to the manifest as approved (release.json). The archive
   # refuses to deliver without it, also when a person archives later on its own.

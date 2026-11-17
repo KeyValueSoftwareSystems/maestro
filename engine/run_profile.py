@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Debug-mode timing profile of a run: every visit of every step, split into work and human time.
 
-Off by default. `maestroctl init --debug` turns it on for a run (on a resumed run too, from that
-point on); the ledger then keeps one record per finished visit under `profile.visits`, and every
-serving call rewrites `profile.json` and `profile.md` in the feature folder. Without debug the
-ledger keeps only each step's last visit, as before.
+On by default: `maestroctl init` records it for every run (a resumed run too, from that point
+on) unless `--no-profile` is given; `--debug` is the old name and does the same. The ledger keeps
+one record per finished visit under `profile.visits`, and every serving call rewrites
+`profile.json` and `profile.md` in the feature folder. A run started with `--no-profile` keeps
+only each step's last visit.
 
 A visit runs from the moment the step is entered to the moment it finishes. When the engine
 handed it out (`next`), the part before that is `queued` (the lead had not picked it up yet:
@@ -254,8 +255,8 @@ def main(argv=None):
         print(f"no run {args.slug!r}", file=sys.stderr)
         return 3
     if not enabled(state):
-        print(f"run {args.slug!r} is not in debug mode: start or resume it with "
-              f"`maestroctl init --debug` to record a profile", file=sys.stderr)
+        print(f"run {args.slug!r} has no profile: it was started with --no-profile; "
+              f"re-run `maestroctl init` to record one from now on", file=sys.stderr)
         return 3
     write_files(args.slug, state, args.root)
     report = build(state)

@@ -48,7 +48,7 @@ nodes:
       straight to the structured architecture questions?
     options:
       - {id: brainstorm, label: Brainstorm — talk the architecture through first, to: brainstorm_hld}
-      - {id: guided, label: No — ask the architecture questions, to: prepare_hld_questions}
+      - {id: guided, label: No — ask the architecture questions, to: settle_hld_questions}
     auto: {option: guided, modes: [auto]}
 
   # Architect role, in the lead's session: an open conversation with the person, ended by them.
@@ -92,7 +92,19 @@ nodes:
     options:
       - {id: create, label: Yes — write the HLD, to: write_hld}
       - {id: more, label: Keep brainstorming, to: brainstorm_hld}
-      - {id: guided, label: Switch to the architecture questions, to: prepare_hld_questions}
+      - {id: guided, label: Switch to the architecture questions, to: settle_hld_questions}
+
+  # Engine-owned: when this stage is entered again (a design rerun, a resumed session) with its
+  # question queue still clear and nothing it was audited against changed, the lead's earlier
+  # audit stands and the HLD is written straight away. Anything doubtful goes to the lead.
+  - id: settle_hld_questions
+    type: script
+    label: Is the architecture queue already clear?
+    run: [python3, .maestro/engine/oq_settle.py, --queue, ".maestro/runs/${inputs.slug}/.engine/queues/hld.json", --decisions, ".maestro/runs/${inputs.slug}/decisions/hld.json", --log, ".maestro/runs/${inputs.slug}/decisions", --root, ".", --inputs, ".maestro/runs/${inputs.slug}/requirement/prd.md,.maestro/runs/${inputs.slug}/design/impact.json,docs/architecture.md,${steps.living_domains.outputs.technical_paths}", --feedback, "${steps.hld_approval.outputs.feedback} ${inputs.feedback}"]
+    on_fail: prepare_hld_questions
+    routes:
+      - {when: "${steps.settle_hld_questions.outputs.state} == clear", to: write_hld}
+      - {to: prepare_hld_questions}
 
   - id: prepare_hld_questions
     type: agent

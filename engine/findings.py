@@ -38,9 +38,16 @@ The author answers every blocking finding still open or upheld:
         incomplete  a blocking finding has no resolution (back to the author)
       A resolutions file older than the findings file answers an earlier review round and is
       ignored, so the author must answer the current round.
-Both always exit 0; workflows route on the fields.
+  findings.py open --dir D [--glob G]
+      {open_blocking, open_major, open_minor, open_csv, files, summary}: the findings still open
+      or upheld across every code review's findings file (default glob `code-*.findings.json`),
+      by severity, with ids as `<review>:<id>`. The release gate reads it: a major finding nobody
+      resolved (a bug a reviewer found and the author did not fix or withdraw) is not silently
+      released by autopilot. A missing directory or an unreadable file counts as no findings.
+All commands always exit 0; workflows route on the fields.
 """
 import argparse
+import fnmatch
 import json
 import os
 import sys
@@ -231,6 +238,36 @@ def cmd_resolve(args):
     return 0
 
 
+def cmd_open(args):
+    counts = {"blocking": 0, "major": 0, "minor": 0}
+    ids, files = [], []
+    pattern = args.glob
+    try:
+        names = sorted(n for n in os.listdir(args.dir) if fnmatch.fnmatch(n, pattern))
+    except OSError:
+        names = []
+    for name in names:
+        loaded, problems = load_findings(os.path.join(args.dir, name))
+        if not loaded and problems:
+            continue  # unreadable: the review's own verdict step already asked for a re-run
+        review = name[:-len(".findings.json")] if name.endswith(".findings.json") else name
+        files.append(name)
+        for item in loaded:
+            if item["status"] in ACTIVE and item.get("severity") in counts:
+                counts[item["severity"]] += 1
+                if item["severity"] in ("blocking", "major"):
+                    ids.append(f"{review}:{item.get('id')}")
+    if counts["blocking"] or counts["major"]:
+        summary = (f"{counts['blocking']} blocking and {counts['major']} major review finding(s) "
+                   f"still open: {', '.join(ids)}")
+    else:
+        summary = "no blocking or major review findings open"
+    print(json.dumps({"open_blocking": counts["blocking"], "open_major": counts["major"],
+                      "open_minor": counts["minor"], "open_csv": ",".join(ids),
+                      "files": len(files), "summary": summary}))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -250,6 +287,10 @@ def main(argv=None):
     p.add_argument("--findings", required=True)
     p.add_argument("--resolutions", required=True)
     p.set_defaults(fn=cmd_resolve)
+    p = sub.add_parser("open")
+    p.add_argument("--dir", required=True, help="the run's reviews directory")
+    p.add_argument("--glob", default="code-*.findings.json")
+    p.set_defaults(fn=cmd_open)
     args = parser.parse_args(argv)
     return args.fn(args)
 
