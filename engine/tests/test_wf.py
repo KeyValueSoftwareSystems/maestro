@@ -160,5 +160,136 @@ class RoundTripHardStringsTest(unittest.TestCase):
             wf.loads("a: 1\n---\nb: 2\n")
 
 
+class LedgerCorruptionTest(unittest.TestCase):
+    """Agent text that once saved fine and then broke every later load of the run."""
+
+    def rt(self, obj):
+        text = wf.dumps(obj)
+        self.assertEqual(wf.loads(text), obj, f"round-trip failed:\n{text}")
+        self.assertEqual(wf.dumps(wf.loads(text)), text, "dump not stable")
+
+    def test_brace_in_flow_value_does_not_merge_fields(self):
+        obj = {"f": {"summary": "added missing } in parser", "blocking": True}}
+        self.rt(obj)
+        self.assertIs(wf.loads(wf.dumps(obj))["f"]["blocking"], True)
+        self.rt({"f": ["a { b", "c } d", "{", "}", "x}y{z"]})
+        self.rt({"f": {"k}": 1, "a{b": 2}})
+
+    def test_placeholders_stay_plain_in_flow(self):
+        text = wf.dumps({"r": {"when": "a ${steps.x.outputs.y} b", "to": "z"}})
+        self.assertIn("when: a ${steps.x.outputs.y} b", text)
+        self.rt({"r": {"when": "a ${steps.x.outputs.y} b", "to": "z"}})
+
+    def test_flow_quoted_escapes_do_not_split(self):
+        self.assertEqual(wf.loads('a: ["say \\"hi\\", ok", b]\n'), {"a": ['say "hi", ok', "b"]})
+        self.assertEqual(wf.loads("a: ['it''s, ok', b]\n"), {"a": ["it's, ok", "b"]})
+        self.rt({"a": ['say "hi", ok', "b\\", "c"]})
+
+    def test_line_separators_round_trip(self):
+        for ch in "\u2028\u2029\x85\x0b\x0c\x1c\x1d\x1e\x00\x7f\ufeff\r":
+            self.rt({"a": f"x{ch}y", "b": [f"p{ch}", {"k": f"{ch}q\nr"}], f"k{ch}": 1})
+        # raw separators written by another tool must not cut a quoted scalar
+        self.assertEqual(wf.loads('a: "x\u2028y"\nb: 1\n'), {"a": "x\u2028y", "b": 1})
+
+    def test_escapes_decode(self):
+        self.assertEqual(wf.loads('a: "\\x0b\\u2028\\U0001f600 \\\\x41 C:\\\\dir \\q"\n'),
+                         {"a": "\x0b\u2028\U0001f600 \\x41 C:\\dir \\q"})
+
+    def test_tab_leading_line_in_multiline_value(self):
+        self.rt({"a": "func f() {\n\treturn 1\n}\n", "b": "x\n\ty"})
+        doc = wf.loads("a: |\n  func f() {\n  \treturn 1\n  }\nb: 1\n")
+        self.assertEqual(doc, {"a": "func f() {\n\treturn 1\n}\n", "b": 1})
+
+    def test_tab_in_structural_indentation_still_rejected(self):
+        for bad in ("a:\n\tb: 1\n", "a: |\n  x\nb:\n\tc: 1\n", "\ta: 1"):
+            with self.assertRaises(wf.WfError, msg=bad):
+                wf.loads(bad)
+
+    def test_trailing_newlines_and_blank_values(self):
+        for v in ("a\n\n", "a\n\n\n", "\n", "\n\n", "\nfoo", "\n\nfoo\n", "  \n", "a\n \n"):
+            self.rt({"a": v, "z": 1})
+
+    def test_nested_lists(self):
+        self.rt({"a": [[1, [2, 3]], [[]], [{"k": "v"}], ["x\ny"], [[1] * 60]]})
+
+    def test_float_exponent_round_trips(self):
+        self.rt({"a": 1e-05, "b": 1e20, "c": 0.5})
+
+
+class BlockLiteralHeaderTest(unittest.TestCase):
+    def test_chomping_indicators(self):
+        doc = wf.loads("a: |\n  x\n\nb: |-\n  y\n\nc: |+\n  z\n\nd: |+\n  w\n")
+        self.assertEqual(doc, {"a": "x\n", "b": "y", "c": "z\n\n", "d": "w\n"})
+
+    def test_keep_at_end_of_file_and_empty(self):
+        self.assertEqual(wf.loads("a: |+\n  x\n\n\n"), {"a": "x\n\n\n"})
+        self.assertEqual(wf.loads("a: |+\n\nb: 1\n"), {"a": "\n", "b": 1})
+        self.assertEqual(wf.loads("a: |\nb: 1\n"), {"a": "", "b": 1})
+
+    def test_indentation_indicator_either_order(self):
+        for hdr, want in (("|2", " z\n"), ("|2-", " z"), ("|-2", " z"), ("|+2", " z\n"), ("|2+", " z\n")):
+            self.assertEqual(wf.loads(f"a: {hdr}\n   z\nb: 1\n"), {"a": want, "b": 1}, hdr)
+
+    def test_indentation_indicator_keeps_leading_spaces_and_blank_space(self):
+        doc = wf.loads("a: |2\n    code\n\n     more\n  \n  end\nb: 1\n")
+        self.assertEqual(doc, {"a": "  code\n\n   more\n\nend\n", "b": 1})
+
+    def test_header_in_list_item_map_and_comment(self):
+        doc = wf.loads("l:\n  - k: |+  # keep\n      x\n\n    n: |2-\n        y\n")
+        self.assertEqual(doc, {"l": [{"k": "x\n\n", "n": "  y"}]})
+
+    def test_folded_with_indicators_still_rejected(self):
+        for hdr in (">", ">-", ">+", ">2", ">2-"):
+            with self.assertRaises(wf.WfError, msg=hdr):
+                wf.loads(f"a: {hdr}\n  x\n")
+
+
+class PropertyRoundTripTest(unittest.TestCase):
+    """dump->load must be an identity for arbitrary strings the ledger may carry."""
+
+    ATOMS = ["{", "}", "[", "]", ":", ": ", "#", " #", "'", '"', "\\", "\n", "\r", "\t", " ", "  ",
+             "\u2028", "\u2029", "\x85", "\x0b", "\x1c", "\x00", "\x7f", "\ufeff", "\xe9", "a", "b",
+             "true", "null", "1", "1.5", "-", "- ", "? ", "|", ">", "---", "${x}", "${", ",", "\xa0",
+             "\U0001f600", "~", "&", "*", "!", "%", "@", "`", "1e5", "0x1"]
+    FIXED = ["", " ", "  x", "x  ", "{", "}", "{}", "[]", "[a, b]", "{a: b}", "a}b", "a{b", ":", "a:", ": a",
+             "a: b", "#c", "a #c", "'", '"', "\\", "\\n", "true", "False", "null", "~", "Null", "1", "-1",
+             "1.5", "0123", "1e5", "- a", "-", "? a", "|", "|-", ">", "&a", "*a", "!a", "%a", "@a",
+             "`a", "---", "a\n---\nb", "\n", "a\n", "a\n\n", "\ta", "a\n\tb", "\u2028", "a\u2029b",
+             "${steps.x.outputs.y}", "x ${a} }", "\x85", "\x0b\x0c\x1c\x1d\x1e"]
+
+    def values(self):
+        import random
+
+        rnd = random.Random(20240601)
+        out = list(self.FIXED)
+        for _ in range(400):
+            out.append("".join(rnd.choice(self.ATOMS) for _ in range(rnd.randint(1, 7))))
+        return out
+
+    def check(self, obj):
+        text = wf.dumps(obj)
+        try:
+            back = wf.loads(text)
+        except wf.WfError as e:
+            self.fail(f"load failed ({e}) for {obj!r}:\n{text}")
+        self.assertEqual(back, obj, f"round-trip failed:\n{text}")
+
+    def test_strings_in_every_position(self):
+        vals = self.values()
+        for v in vals:
+            with self.subTest(v=v):
+                self.check({"k": v})
+                self.check({"k": [v]})
+                self.check({"k": {"x": v, "y": 1}})
+                self.check({"k": [{"a": v}, [v, 2]], "z": {"n": {"m": v}}})
+                self.check({v or "empty": 1, "x": {v or "empty": [v]}})
+        self.check({f"k{i}": v for i, v in enumerate(vals)})
+        self.check({"all": vals, "flow": {"a": vals[:3]}})
+
+    def test_non_string_scalars_next_to_strings(self):
+        self.check({"a": [None, True, False, 0, -7, 2.5, 1e-07, "1", "true", "null", ""],
+                    "b": {"c": None, "d": [None], "e": {}}, "f": [[], {}]})
+
+
 if __name__ == "__main__":
     unittest.main()

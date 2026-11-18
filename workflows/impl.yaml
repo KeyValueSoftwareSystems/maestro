@@ -139,7 +139,7 @@ nodes:
       to the design itself goes back through design: abort here and revise the LLD.
     options:
       - {id: continue, label: Continue with my guidance, to: tasks, input: guidance}
-      - {id: abandon, label: Abort this stack, to: abort}
+      - {id: abandon, label: Stop this stack — nothing is recorded for it and the other repositories carry on, to: end}
 
   - id: handoff
     type: script
@@ -216,6 +216,34 @@ nodes:
     type: script
     label: Previous review round
     run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, "code-${inputs.stack}", --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json"]
+    next: review_head
+
+  # Engine-owned: the commit the review reads is the worktree's HEAD now. A person who accepts the
+  # failing checks at the escalation gate sends the build here without passing `handoff` again, and
+  # the fixer may have committed since `handoff` last ran.
+  - id: review_head
+    type: script
+    label: Commit to review (worktree HEAD)
+    run:
+      - python3
+      - .maestro/engine/implementation_pool.py
+      - inspect
+      - --root
+      - "."
+      - --repo
+      - "${inputs.stack}"
+      - --branch
+      - "${steps.implement.outputs.branch}"
+      - --worktree
+      - "${steps.implement.outputs.worktree}"
+      - --fanout
+      - "${steps.tasks.outputs.fanout}"
+      - --merged-branch
+      - "${steps.slices.outputs.branch}"
+      - --merged-worktree
+      - "${steps.slices.outputs.worktree}"
+    on_fail: abort
+    max_visits: 10
     next: review
 
   - id: review
@@ -223,7 +251,7 @@ nodes:
     label: Code review
     instruction: |
       Review the ${inputs.stack} implementation on branch
-      ${steps.handoff.outputs.branch} at exact commit ${steps.handoff.outputs.commit}
+      ${steps.handoff.outputs.branch} at exact commit ${steps.review_head.outputs.commit}
       against the LLD at .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md, the contract at
       .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), the task list at
       .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json, the functional test cases at
@@ -249,8 +277,12 @@ nodes:
       scenario whose files this branch touches, check the places it says to check. Otherwise
       ignore them.
       Write every finding to .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json as
-      well as the report (the engine decides from that file). If it exists from an earlier round,
-      this is a re-review after a fix (the `fix_summary` input says what changed): read it, the report and
+      well as the report (the engine decides from that file). This is review round
+      ${steps.review.visits} of this implementation pass. Round 1 is a first review of the whole
+      implementation even when a report, findings file or resolutions file already exists: those
+      are an earlier pass's, written against an older design, so ignore them, overwrite them and
+      keep none of their finding ids or statuses. From round 2 this is a re-review after a fix
+      (the `fix_summary` input says what changed): read the findings file, the report and
       the author's resolutions at
       .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json first; review only the
       diff from the commit the report records to this commit; mark a fixed finding resolved; for a
@@ -269,7 +301,7 @@ nodes:
       slug: "${inputs.slug}"
       repo_path: "${inputs.repo_path}"
       worktree: "${steps.handoff.outputs.worktree}"
-      commit: "${steps.handoff.outputs.commit}"
+      commit: "${steps.review_head.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
       lld_path: ".maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md"
       contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
@@ -302,7 +334,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.reviewed.json", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.review_head.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.reviewed.json", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
     routes:
@@ -323,7 +355,9 @@ nodes:
         ${steps.verify.outputs.receipt_path} and the logs it names. Checks marked pre-existing
         (the `pre_existing_checks` input) fail on the base commit too: they are not yours to fix;
       - blocking review findings (status open or upheld) in
-        .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json, when that file exists:
+        .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json, once the code review of
+        this pass has run (${steps.review.visits} review round(s) so far; a file left by an
+        earlier pass is not yours to answer):
         answer each one in .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json as
         {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed (the note says
         what changed), contested (the finding is wrong; the note gives the evidence from the LLD,
@@ -396,9 +430,13 @@ nodes:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
       - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
       - {id: accept, label: Accept as-is without a code review of this commit — I'll handle the rest, to: end}
-      - {id: abandon, label: Abort this stack, to: abort}
+      - {id: abandon, label: Stop this stack — nothing is recorded for it and the other repositories carry on, to: end}
 
+# A person who stops this stack ends the child through a gate option instead of aborting the run:
+# the parent routes on the gate's choice (`abandon`) and records nothing for the repository.
 outputs:
+  stop_gate_choice: "${steps.stop_gate.outputs.choice}"
+  impl_gate_choice: "${steps.impl_gate.outputs.choice}"
   branch: "${steps.handoff.outputs.branch}"
   worktree: "${steps.handoff.outputs.worktree}"
   commit: "${steps.handoff.outputs.commit}"

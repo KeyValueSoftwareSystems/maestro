@@ -124,7 +124,7 @@ class CliTodoTest(unittest.TestCase):
         self.assertEqual(action["step"], "first/build")
         self.assertNotIn("todo", action)  # claiming the worker changed nothing the human sees
         action = self.ctl("complete", "--slug", "feat", "--step", "first/build",
-                          "--outputs", "{}")
+                          "--outputs", "{}", "--claim", action["claim"])
         self.assertEqual(action["step"], "first/approve")
         self.assertEqual(action["todo"][0],
                          {"content": "First stage — waiting on you: Ship approval",

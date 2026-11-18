@@ -553,7 +553,9 @@ class ImplRoutingTest(GitWorkspace):
         self.slice_agent = slice_agent
         base = self.head()
         action, trace = self.drive({"stop_gate": "abandon"})
-        self.assertEqual(action["action"], "failed", action)
+        # stopping the stack ends its stage (the parent records nothing for it), not the run
+        self.assertEqual(action["action"], "done", action)
+        self.assertEqual(action["outputs"]["stop_gate_choice"], "abandon")
         nodes = self.nodes(trace)
         self.assertEqual(nodes[nodes.index("merge") + 1], "stop_gate")
         self.assertIn("Slices: slice jobs: needs an unplanned jobs table",
@@ -571,7 +573,9 @@ class ImplRoutingTest(GitWorkspace):
         self.slice_agent = slice_agent
         base = self.head()
         action, trace = self.drive({"stop_gate": "abandon"})
-        self.assertEqual(action["action"], "failed", action)
+        # stopping the stack ends its stage (the parent records nothing for it), not the run
+        self.assertEqual(action["action"], "done", action)
+        self.assertEqual(action["outputs"]["stop_gate_choice"], "abandon")
         self.assertEqual(self.nodes(trace)[-1], "stop_gate")
         self.assertIn("conflicts in routes.txt", self.prompts["stop_gate"][0])
         self.assertEqual(self.head(), base)

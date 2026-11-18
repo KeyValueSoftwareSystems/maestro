@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sys
 
 try:
@@ -34,6 +35,17 @@ except ImportError:  # imported as a package (tests)
 
 DEFAULT_THRESHOLD = 3
 MAX_PER_DOMAIN = 40  # size cap so injected knowledge stays cheap
+# A domain names two files (candidates/<domain>.json, knowledge/<domain>.md), so it is a slug:
+# no separators, no leading dot, so it can never leave the memory folder.
+DOMAIN_RE = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")
+
+
+def valid_domain(domain):
+    return isinstance(domain, str) and DOMAIN_RE.fullmatch(domain) is not None
+
+
+def _warn(msg):
+    print(f"mem_consolidate: {msg}", file=sys.stderr)
 
 
 def _load_json(path):
@@ -68,13 +80,19 @@ def consolidate(memory_dir, threshold):
         for name in sorted(os.listdir(candidates_dir)):
             if not name.endswith(".json"):
                 continue
+            if not valid_domain(name[:-5]):
+                _warn(f"ignoring candidates/{name}: not a valid domain name")
+                continue
             doc = _load_json(os.path.join(candidates_dir, name)) or []
             entries = {}
             for e in doc if isinstance(doc, list) else []:
-                if isinstance(e, dict) and e.get("key"):
+                if isinstance(e, dict) and isinstance(e.get("key"), str) and e["key"]:
+                    slugs = e.get("slugs")
                     entries[e["key"]] = {
                         "text": str(e.get("text", "")),
-                        "slugs": list(dict.fromkeys(e.get("slugs") or [])),
+                        "slugs": list(dict.fromkeys(
+                            s for s in (slugs if isinstance(slugs, list) else [])
+                            if isinstance(s, str))),
                         "authoritative": bool(e.get("authoritative")),
                     }
             ledger[name[:-5]] = entries
@@ -90,11 +108,16 @@ def consolidate(memory_dir, threshold):
             if not isinstance(doc, dict):
                 continue  # skip non-object / unparseable drops (e.g. test stubs)
             slug = str(doc.get("slug") or name[:-5])
-            for lesson in doc.get("lessons") or []:
+            lessons = doc.get("lessons")
+            for lesson in lessons if isinstance(lessons, list) else []:
                 if not isinstance(lesson, dict):
                     continue
                 domain, key, text = lesson.get("domain"), lesson.get("key"), lesson.get("text")
-                if not (domain and key and text):
+                if not (domain and key and text) or not isinstance(key, str):
+                    continue
+                if not valid_domain(domain):
+                    _warn(f"skipping a lesson in incoming/{name}: invalid domain {domain!r} "
+                          "(use lowercase letters, digits, '.', '_' or '-')")
                     continue
                 entry = ledger.setdefault(domain, {}).setdefault(
                     key, {"text": "", "slugs": [], "authoritative": False})

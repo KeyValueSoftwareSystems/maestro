@@ -39,6 +39,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import subprocess
 import sys
 
@@ -88,7 +89,7 @@ def _save_record(root, slug, doc):
 def _git(cwd, *args):
     try:
         proc = subprocess.run(["git", "-C", cwd, *args], capture_output=True, text=True,
-                              timeout=120)
+                              errors="replace", timeout=120)
     except (OSError, subprocess.SubprocessError) as exc:
         return 1, str(exc)
     return proc.returncode, (proc.stdout.strip() or proc.stderr.strip())
@@ -164,6 +165,16 @@ def _check_new(repo, repo_path, worktree, branch, pinned):
     return current, head
 
 
+def _discard(repo_path, worktree, branch):
+    """Remove a worktree and branch this run made and did not hand out. Never raises."""
+    if os.path.lexists(worktree):
+        _git(repo_path, "worktree", "remove", "--force", worktree)
+        shutil.rmtree(worktree, ignore_errors=True)
+    _git(repo_path, "worktree", "prune")
+    if branch:
+        _git(repo_path, "branch", "-D", branch)
+
+
 def _reusable(entry, repo_path):
     worktree = os.path.realpath(entry.get("path") or "")
     return bool(entry.get("path")) and os.path.isdir(worktree) and worktree in _registered(repo_path)
@@ -192,10 +203,15 @@ def prepare(root, slug):
         template = DEFAULT_BRANCH
         for repo in selected:
             repo_path = discovered[repo]
+            worktree = os.path.join(root, DEFAULT_DIR, slug, repo)
+            if (entries.get(repo) or {}).get("pending"):
+                # an earlier attempt stopped between `git worktree add` and its checks: what is
+                # there is this run's own, half-made — discard it and make it again
+                _discard(repo_path, worktree, entries.pop(repo).get("branch"))
+                _save_record(root, slug, record)
             if repo in entries and _reusable(entries[repo], repo_path):
                 reused.append(repo)
                 continue
-            worktree = os.path.join(root, DEFAULT_DIR, slug, repo)
             if repo in entries and not os.path.exists(worktree):
                 # this run's own worktree was deleted by hand: check its branch out again
                 _git(repo_path, "worktree", "prune")
@@ -220,11 +236,22 @@ def prepare(root, slug):
             base = pinned.get(repo) or "HEAD"
             _ignore_default_dir(root)
             os.makedirs(os.path.dirname(worktree), exist_ok=True)
-            rc, out = _git(repo_path, "worktree", "add", "-q", "-b", branch, worktree, base)
-            if rc:
-                raise WorktreeError(f"{repo}: git worktree add failed: {out[-400:]}")
-            worktree = os.path.realpath(worktree)
-            _branch, head = _check_new(repo, repo_path, worktree, branch, pinned.get(repo))
+            # recorded first: a run that stops before the checks below finish still knows the
+            # worktree and branch are its own, so a retry removes them instead of refusing
+            entries[repo] = {"path": os.path.realpath(worktree), "branch": branch,
+                             "created_by_maestro": True, "pending": True}
+            _save_record(root, slug, record)
+            try:
+                rc, out = _git(repo_path, "worktree", "add", "-q", "-b", branch, worktree, base)
+                if rc:
+                    raise WorktreeError(f"{repo}: git worktree add failed: {out[-400:]}")
+                worktree = os.path.realpath(worktree)
+                _branch, head = _check_new(repo, repo_path, worktree, branch, pinned.get(repo))
+            except BaseException:
+                _discard(repo_path, worktree, branch)
+                entries.pop(repo, None)
+                _save_record(root, slug, record)
+                raise
             entries[repo] = {"path": worktree, "branch": branch, "base_commit": head,
                              "created_by_maestro": True}
             created.append(repo)

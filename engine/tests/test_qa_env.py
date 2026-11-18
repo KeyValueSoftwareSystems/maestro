@@ -4,6 +4,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -17,17 +18,23 @@ class QaEnvTest(unittest.TestCase):
     def setUp(self):
         self.root = tempfile.mkdtemp(prefix="qa-env-")
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
-        self.worktrees = {}
+        self.worktrees, self.commits = {}, {}
         for repo in ("backend", "web-app"):
             path = os.path.join(self.root, "worktrees", repo)
             os.makedirs(path)
+            subprocess.run(["git", "init", "-q", path], check=True)
+            subprocess.run(["git", "-C", path, "-c", "user.email=t@e", "-c", "user.name=T",
+                            "commit", "-q", "--allow-empty", "-m", "verified"], check=True)
             self.worktrees[repo] = path
+            self.commits[repo] = subprocess.run(
+                ["git", "-C", path, "rev-parse", "HEAD"], capture_output=True, text=True,
+                check=True).stdout.strip()
         self.manifest = ".maestro/runs/demo/build/manifest.json"
         full = os.path.join(self.root, self.manifest)
         os.makedirs(os.path.dirname(full))
         with open(full, "w") as fh:
             json.dump({"feature_slug": "demo", "repositories": [
-                {"repo": repo, "worktree": path, "commit": f"{repo}-sha"}
+                {"repo": repo, "worktree": path, "commit": self.commits[repo]}
                 for repo, path in self.worktrees.items()]}, fh)
 
     def config(self, text):
@@ -71,7 +78,7 @@ class QaEnvTest(unittest.TestCase):
         code, out, _ = self.run_cmd("up")
         self.assertEqual((code, out["started"]), (0, True))
         with open(os.path.join(self.root, "up.txt")) as fh:
-            self.assertEqual(fh.read().split(), [self.worktrees["web-app"], "backend-sha"])
+            self.assertEqual(fh.read().split(), [self.worktrees["web-app"], self.commits["backend"]])
         code, out, _ = self.run_cmd("down")
         self.assertTrue(out["stopped"])
         self.assertFalse(os.path.exists(os.path.join(self.root, "up.txt")))
@@ -82,20 +89,21 @@ class QaEnvTest(unittest.TestCase):
 
     def test_e2e_runs_each_configured_suite_in_its_worktree(self):
         self.config('repos:\n  backend:\n    commands: {build: "true", test: "true", '
-                    'e2e: "pwd > ran.txt"}\n  web-app:\n    commands: {build: "true", '
+                    'e2e: "pwd > ../ran-$(basename $PWD).txt"}\n  web-app:\n    commands: {build: "true", '
                     'test: "true", e2e: "exit 3"}\n')
         code, out, _ = self.run_cmd("e2e", "--out", ".maestro/runs/demo/qa/e2e-receipt.json")
         self.assertEqual(code, 0)
         self.assertFalse(out["passed"])
         self.assertEqual((out["failed_repos"], out["ran_csv"]), ("web-app", "backend,web-app"))
         self.assertEqual(out["summary"], "Project e2e failed: web-app")
-        with open(os.path.join(self.worktrees["backend"], "ran.txt")) as fh:
+        with open(os.path.join(self.root, "worktrees", "ran-backend.txt")) as fh:
             self.assertEqual(os.path.realpath(fh.read().strip()),
                              os.path.realpath(self.worktrees["backend"]))
         with open(os.path.join(self.root, out["receipt_path"])) as fh:
             receipt = json.load(fh)
         self.assertEqual([(c["repo"], c["commit"], c["exit_code"]) for c in receipt["checks"]],
-                         [("backend", "backend-sha", 0), ("web-app", "web-app-sha", 3)])
+                         [("backend", self.commits["backend"], 0),
+                          ("web-app", self.commits["web-app"], 3)])
         # --logs keeps the command output with the engine's working files, not beside the receipt
         code, out, _ = self.run_cmd("e2e", "--out", ".maestro/runs/demo/qa/e2e-receipt.json",
                                     "--logs", ".maestro/runs/demo/.engine/logs/qa")
@@ -104,6 +112,27 @@ class QaEnvTest(unittest.TestCase):
         self.assertEqual(logs, [".maestro/runs/demo/.engine/logs/qa/e2e/backend.log",
                                 ".maestro/runs/demo/.engine/logs/qa/e2e/web-app.log"])
         self.assertTrue(all(os.path.isfile(os.path.join(self.root, log)) for log in logs))
+
+    def test_e2e_refuses_a_worktree_that_moved_or_has_uncommitted_changes(self):
+        self.config('repos:\n  backend:\n    commands: {build: "true", test: "true", '
+                    'e2e: "touch ran.txt"}\n  web-app:\n    commands: {build: "true", '
+                    'test: "true", e2e: "touch ran.txt"}\n')
+        out_path = ".maestro/runs/demo/qa/e2e-receipt.json"
+        backend, web = self.worktrees["backend"], self.worktrees["web-app"]
+        with open(os.path.join(backend, "edited.py"), "w") as fh:   # uncommitted
+            fh.write("x = 1\n")
+        subprocess.run(["git", "-C", web, "-c", "user.email=t@e", "-c", "user.name=T", "commit",
+                        "-q", "--allow-empty", "-m", "later"], check=True)   # moved past the commit
+        code, out, _ = self.run_cmd("e2e", "--out", out_path)
+        self.assertEqual(code, 0)
+        self.assertFalse(out["passed"])
+        self.assertEqual((out["failed_repos"], out["ran_csv"]), ("backend,web-app", "backend,web-app"))
+        self.assertIn("uncommitted changes: edited.py", out["summary"])
+        self.assertIn("not the verified commit", out["summary"])
+        self.assertFalse(os.path.exists(os.path.join(backend, "ran.txt")))  # the suite never ran
+        self.assertFalse(os.path.exists(os.path.join(web, "ran.txt")))
+        with open(os.path.join(self.root, out_path)) as fh:
+            self.assertEqual({c["status"] for c in json.load(fh)["checks"]}, {"refused"})
 
 
 if __name__ == "__main__":

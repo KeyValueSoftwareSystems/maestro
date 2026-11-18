@@ -9,7 +9,8 @@ substituted values can never inject operators:
     <text>                # truthy
 
 Comparison normalises numbers and booleans ("3" == 3, "true" == true) and otherwise
-compares strings. Truthiness: missing, "", "false", "0", "null" are false.
+compares strings. Truthiness: missing, "", "false", "0", "null", "none" and an empty list or
+map ("[]", "{}", also as the JSON text a placeholder renders) are false.
 """
 
 from __future__ import annotations
@@ -123,8 +124,14 @@ def norm(value):
     return s
 
 
+_EMPTY_COLLECTION_RE = re.compile(r"^(\[\s*\]|\{\s*\})$")
+
+
 def truthy(value):
-    return norm(value).lower() not in _FALSY
+    if isinstance(value, (list, tuple, set, dict)):
+        return bool(value)
+    text = norm(value).lower()
+    return text not in _FALSY and not _EMPTY_COLLECTION_RE.match(text)
 
 
 def evaluate(cond, substitute):

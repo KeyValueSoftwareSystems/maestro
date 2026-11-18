@@ -143,6 +143,23 @@ class LldSetTest(unittest.TestCase):
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
         self.assertIn("HLD changed", out["reasons"])
 
+    def test_approval_binds_the_test_cases_when_they_exist(self):
+        run("init", "--root", self.root, "--slug", "demo")
+        self.write_llds()
+        run("approve", "--root", self.root, "--slug", "demo")
+        self.write("design/test-cases.md", "### TC-1 — one\n")  # appeared after: not tracked
+        self.assertFalse(run("verify", "--root", self.root, "--slug", "demo")[1]["stale"])
+        run("approve", "--root", self.root, "--slug", "demo")
+        self.assertFalse(run("verify", "--root", self.root, "--slug", "demo")[1]["stale"])
+        self.write("design/test-cases.md", "")
+        _, out, _ = run("verify", "--root", self.root, "--slug", "demo")
+        self.assertTrue(out["stale"])
+        self.assertIn("test cases changed", out["reasons"])
+        self.write("design/test-cases.md", "### TC-1 — one\n")
+        self.assertFalse(run("verify", "--root", self.root, "--slug", "demo")[1]["stale"])
+        os.remove(os.path.join(self.run_dir, "design", "test-cases.md"))
+        self.assertIn("test cases changed", run("verify", "--root", self.root, "--slug", "demo")[1]["reasons"])
+
     def test_no_approval_or_changed_scope_is_stale(self):
         run("init", "--root", self.root, "--slug", "demo")
         _, out, _ = run("verify", "--root", self.root, "--slug", "demo")

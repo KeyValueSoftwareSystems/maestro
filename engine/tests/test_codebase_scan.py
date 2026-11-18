@@ -196,6 +196,19 @@ class UmbrellaRepos(unittest.TestCase):
         repos = dict(cs.discover_repos(self.tmp))
         self.assertEqual(set(repos), {"backend", "frontend"})
 
+    def test_a_plain_folder_inside_a_tracked_umbrella_is_not_a_repository(self):
+        # git answers for the umbrella from any folder under it; only a folder that is its own
+        # repository's top level may be treated as one (else worktrees and delivery would act
+        # on the umbrella under that folder's name)
+        init_repo(self.tmp)
+        commit(self.tmp, "codebase/notes/readme.md", "notes", "track the notes")
+        commit(self.tmp, "codebase/shared/x.txt", "x", "track shared")
+        repos = dict(cs.discover_repos(self.tmp))
+        self.assertEqual(set(repos), {"backend", "frontend"})
+        link = os.path.join(self.tmp, "codebase", "linked")
+        os.symlink(os.path.join(self.tmp, "codebase", "backend"), link)  # a symlink to a repo
+        self.assertEqual(set(dict(cs.discover_repos(self.tmp))), {"backend", "frontend", "linked"})
+
     def test_a_worktree_inside_codebase_is_not_another_repo(self):
         # an implementer's `git worktree add codebase/backend-wt` is a checkout of backend
         backend = os.path.join(self.tmp, "codebase", "backend")

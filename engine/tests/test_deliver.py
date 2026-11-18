@@ -148,6 +148,58 @@ class DeliverTest(unittest.TestCase):
         self.assertIn("refusing to deliver", err)
         self.assertEqual(git(self.remote, "branch", "--list"), "")
 
+    def pr_body(self):
+        with open(os.path.join(self.root, ".maestro/runs/demo/.engine/pr-bodies/backend.md")) as fh:
+            return fh.read()
+
+    def test_pr_body_describes_the_verification_the_manifest_records(self):
+        self.config("delivery: {mode: pull-request}\n")
+        with open(self.manifest) as fh:
+            doc = json.load(fh)
+        doc["repositories"][0]["verification"] = {
+            "status": "baseline-failing", "receipt": ".maestro/runs/demo/build/backend/verify.json",
+            "pre_existing": ["test"], "not_configured": ["lint"], "review": "not-reviewed",
+            "test_changes": [{"path": "a_test.py", "status": "M"}]}
+        write(self.manifest, json.dumps(doc))
+        code, _, err = self.run_deliver()
+        self.assertEqual(code, 0, err)
+        body = self.pr_body()
+        self.assertNotIn("no receipt", body)
+        self.assertIn("Engine verification: baseline-failing (", body)
+        for part in ("also failing on the base commit: test", "not configured: lint",
+                     "1 existing test file(s) changed", "code review not run on this commit",
+                     "receipt .maestro/runs/demo/build/backend/verify.json"):
+            self.assertIn(part, body)
+
+    def test_pr_commands_target_the_repository_the_branch_was_pushed_to(self):
+        self.config("delivery: {mode: pull-request}\n")
+        repo = os.path.join(self.root, "codebase", "backend")
+        git(repo, "remote", "set-url", "origin", "git@github.com:acme/widgets.git")
+        git(repo, "remote", "set-url", "--push", "origin", self.remote)
+        code, out, err = self.run_deliver()
+        self.assertEqual(code, 0, err)
+        calls = self.gh_calls()
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertIn("--repo acme/widgets", call)
+            self.assertIn(f"--head {self.branch}", call)
+
+    def test_remote_repo_parses_hosted_urls_only(self):
+        repo = os.path.join(self.root, "codebase", "backend")
+        for url, want in (("https://github.com/acme/widgets.git", "acme/widgets"),
+                          ("https://user@github.com/acme/widgets", "acme/widgets"),
+                          ("ssh://git@github.com:22/acme/widgets.git", "acme/widgets"),
+                          ("git@ghe.example.com:acme/widgets.git", "ghe.example.com/acme/widgets"),
+                          (self.remote, ""), ("/srv/git/widgets.git", "")):
+            git(repo, "remote", "set-url", "origin", url)
+            self.assertEqual(deliver._remote_repo("origin", repo), want, url)
+        self.assertEqual(deliver._remote_repo("nope", repo), "")
+
+    def test_a_local_remote_passes_no_repo_flag(self):
+        self.config("delivery: {mode: pull-request}\n")
+        self.run_deliver()
+        self.assertFalse([c for c in self.gh_calls() if "--repo" in c])
+
     def test_a_missing_gh_fails_clearly(self):
         self.config("delivery: {mode: pull-request}\n")
         code, _, err = self.run_deliver(env={"MAESTRO_GH": os.path.join(self.root, "no-gh")})

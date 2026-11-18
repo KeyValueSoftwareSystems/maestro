@@ -107,6 +107,54 @@ class WorktreesTest(unittest.TestCase):
 
     # --- the engine's own worktrees -------------------------------------------------------
 
+    def stray_file_hook(self, repo):
+        """A post-checkout hook that dirties every new worktree while `.git/hookon` exists."""
+        hook = os.path.join(repo, ".git", "hooks", "post-checkout")
+        with open(hook, "w") as fh:
+            fh.write('#!/bin/sh\n[ -e "$(git rev-parse --git-common-dir)/hookon" ] && touch stray.txt\nexit 0\n')
+        os.chmod(hook, 0o755)
+        marker = os.path.join(repo, ".git", "hookon")
+        open(marker, "w").close()
+        return marker
+
+    def test_a_failed_prepare_removes_what_it_made_so_the_retry_works(self):
+        self.pin()
+        backend = self.repos["cofee-backend"]
+        marker = self.stray_file_hook(backend)
+        code, out = self.prepare()
+        self.assertEqual(code, 1)
+        self.assertIn("uncommitted changes", out)
+        path = os.path.join(self.root, ".maestro", "worktrees", SLUG, "cofee-backend")
+        branch = f"feature/{SLUG}-cofee-backend"
+        self.assertFalse(os.path.exists(path))                       # no worktree left behind
+        self.assertEqual(git(backend, "branch", "--list", branch), "")  # nor its branch
+        self.assertNotIn(os.path.realpath(path), worktrees._registered(backend))
+        entries = (worktrees.load_record(self.root, SLUG) or {}).get("repos") or {}
+        self.assertNotIn("cofee-backend", entries)
+        os.remove(marker)
+        code, out = self.prepare()                                   # the retry is not blocked
+        self.assertEqual(code, 0, out)
+        self.assertEqual(set(out["created_csv"].split(",")), set(self.repos))
+
+    def test_a_prepare_that_died_midway_is_cleaned_up_by_the_retry(self):
+        self.pin()
+        backend = self.repos["cofee-backend"]
+        path = os.path.join(self.root, ".maestro", "worktrees", SLUG, "cofee-backend")
+        branch = f"feature/{SLUG}-cofee-backend"
+        # what a killed run leaves: the worktree and branch exist, the record says "pending"
+        os.makedirs(os.path.dirname(path))
+        git(backend, "worktree", "add", "-q", "-b", branch, path)
+        worktrees._save_record(self.root, SLUG, {
+            "schema_version": 1, "slug": SLUG, "mode": "default",
+            "repos": {"cofee-backend": {"path": path, "branch": branch,
+                                        "created_by_maestro": True, "pending": True}}})
+        code, out = self.prepare()
+        self.assertEqual(code, 0, out)
+        self.assertIn("cofee-backend", out["created_csv"].split(","))
+        entry = worktrees.load_record(self.root, SLUG)["repos"]["cofee-backend"]
+        self.assertNotIn("pending", entry)
+        self.assertEqual(entry["base_commit"], git(path, "rev-parse", "HEAD"))
+
     def test_default_creates_at_the_pinned_commit_and_claim_hands_it_out(self):
         pins = self.pin()
         # main moves on after the pin: the worktree must still start at the pinned commit

@@ -334,7 +334,7 @@ nodes:
     artifact: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
     fresh: true
     max_visits: 3
-    on_exhausted: lld_approval
+    on_exhausted: approval_validate
     next: revise_llds
 
   - id: validate_llds
@@ -438,7 +438,7 @@ nodes:
       - ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json"
     fresh: true
     max_visits: 6
-    on_exhausted: lld_approval
+    on_exhausted: approval_validate
     next: readiness_verdict
 
   # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag. The
@@ -449,20 +449,40 @@ nodes:
     label: Blocking readiness findings?
     run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/lld-readiness.baseline.json", --round, "${steps.readiness_review.visits}", --root, "."]
     max_visits: 8
-    on_exhausted: lld_approval
+    on_exhausted: approval_validate
     routes:
       - {when: "${steps.readiness_verdict.outputs.valid} == false", to: readiness_review}
       - {when: "${steps.readiness_verdict.outputs.revise} == true", to: revise_llds}
-      - {to: lld_approval}
+      - {to: approval_validate}
+
+  # Engine-owned: every way to the approval gate passes the two engine checks on the LLDs as they
+  # stand now. Revisions made after a visit limit ran out (or after the author escalated) skip
+  # validate_llds, the impact trace and the readiness check, so the gate shows what these two say
+  # about them and autopilot approves only LLDs that pass both. They never block the person.
+  - id: approval_validate
+    type: script
+    label: Check the LLDs as they stand
+    run: [python3, .maestro/engine/lld_set.py, validate, --root, ., --slug, "${inputs.slug}"]
+    max_visits: 20
+    next: approval_trace
+
+  - id: approval_trace
+    type: script
+    label: Impact trace of the LLDs as they stand
+    run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --docs, "${steps.lld_scope_init.outputs.lld_paths_csv}", --stage, lld, --match, --out, ".maestro/runs/${inputs.slug}/design/impact-trace.md"]
+    max_visits: 20
+    next: lld_approval
 
   - id: lld_approval
     type: gate
     label: Repository LLD approval
     prompt: |
       Impact report (read this first; there is none when no impact assessment ran):
-      ${steps.lld_impact_trace.outputs.report_path} — ${steps.lld_impact_trace.outputs.issues_summary}
+      ${steps.approval_trace.outputs.report_path} — ${steps.approval_trace.outputs.issues_summary}
+      Engine checks on these LLDs as they stand: valid ${steps.approval_validate.outputs.valid} — ${steps.approval_validate.outputs.issues_summary}
+      Impact trace valid: ${steps.approval_trace.outputs.valid}
       Repository LLDs ready: ${steps.lld_scope_init.outputs.lld_paths_csv}
-      Readiness check: ${steps.readiness_review.outputs.summary}
+      Readiness check (round ${steps.readiness_review.visits}; ${steps.revise_llds.visits} revision round(s) so far; revisions made after the last readiness round were not re-checked by a reviewer): ${steps.readiness_review.outputs.summary}
       Blocking findings (engine): ${steps.readiness_verdict.outputs.summary}
       Escalated by the author: ${steps.readiness_resolution.outputs.escalated_csv} ${steps.readiness_resolution.outputs.summary}
       Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
@@ -470,7 +490,7 @@ nodes:
 
       Approving starts implementation of every repository in scope.
     options:
-      - {id: approve, label: Approve — implement these designs, to: record_approval}
+      - {id: approve, label: Approve — implement these designs, to: final_validate}
       - {id: revise, label: Request changes — targeted edits, to: revise_llds, input: feedback}
       - {id: rethink, label: Re-clarify repository decisions and regenerate, to: prepare_lld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
@@ -479,7 +499,7 @@ nodes:
     # run here.
     auto:
       option: approve
-      when: ["${steps.readiness_verdict.outputs.blocking} == false", "${steps.readiness_verdict.outputs.late} == false"]
+      when: ["${steps.readiness_verdict.outputs.blocking} == false", "${steps.readiness_verdict.outputs.late} == false", "${steps.approval_validate.outputs.valid} == true", "${steps.approval_trace.outputs.valid} == true"]
 
   # Targeted edits from the readiness check, the approval gate, or a contract change.
   - id: revise_llds
@@ -501,9 +521,9 @@ nodes:
         person's decision; the note states it);
       - the contract changed (${steps.contract_change.outputs.contract_summary}): bring every LLD
         that implements or calls the changed operation in line with it;
-      - the engine's LLD check (${steps.validate_llds.outputs.issues_summary}): when it names
+      - the engine's LLD check (${steps.validate_llds.outputs.issues_summary} ${steps.final_validate.outputs.issues_summary}): when it names
         defects, fix exactly those, bringing only the named structure to the nine-section format;
-      - the engine's impact trace (${steps.lld_impact_trace.outputs.issues_summary}): when it names
+      - the engine's impact trace (${steps.lld_impact_trace.outputs.issues_summary} ${steps.final_trace.outputs.issues_summary}): when it names
         items no LLD deals with, cover each in the LLD of the repository that owns it, or write
         "<item>: no change needed, because …".
       Before you mark a finding fixed, re-check the new wording against the code it cites (every
@@ -526,8 +546,8 @@ nodes:
       revision_feedback: "${steps.lld_approval.outputs.feedback}"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json"
-      validator_feedback: "${steps.validate_llds.outputs.issues_summary}"
-      impact_trace_feedback: "${steps.lld_impact_trace.outputs.issues_summary}"
+      validator_feedback: "${steps.validate_llds.outputs.issues_summary} ${steps.final_validate.outputs.issues_summary}"
+      impact_trace_feedback: "${steps.lld_impact_trace.outputs.issues_summary} ${steps.final_trace.outputs.issues_summary}"
     outputs: [summary, contract_change_needed, contract_change, needs_clarification]
     max_visits: 10
     routes:
@@ -542,11 +562,33 @@ nodes:
     label: Findings fixed, contested or escalated?
     run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/lld-readiness.resolutions.json"]
     max_visits: 10
-    on_exhausted: lld_approval
+    on_exhausted: approval_validate
     routes:
-      - {when: "${steps.readiness_resolution.outputs.state} == escalate", to: lld_approval}
+      - {when: "${steps.readiness_resolution.outputs.state} == escalate", to: approval_validate}
       - {when: "${steps.readiness_resolution.outputs.state} == incomplete", to: revise_llds}
       - {to: validate_llds}
+
+  # Engine-owned: the hashes the approval records cover the LLDs exactly as they are, so the checks
+  # run once more on approval. An LLD that fails goes back to the author, never into the record.
+  - id: final_validate
+    type: script
+    label: Check the LLDs before recording the approval
+    run: [python3, .maestro/engine/lld_set.py, validate, --root, ., --slug, "${inputs.slug}"]
+    max_visits: 20
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.final_validate.outputs.valid} == true", to: final_trace}
+      - {to: revise_llds}
+
+  - id: final_trace
+    type: script
+    label: Impact trace before recording the approval
+    run: [python3, .maestro/engine/impact_trace.py, check, --root, ".", --impact, ".maestro/runs/${inputs.slug}/design/impact.json", --docs, "${steps.lld_scope_init.outputs.lld_paths_csv}", --stage, lld, --match, --out, ".maestro/runs/${inputs.slug}/design/impact-trace.md"]
+    max_visits: 20
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.final_trace.outputs.valid} == true", to: record_approval}
+      - {to: revise_llds}
 
   - id: record_approval
     type: script

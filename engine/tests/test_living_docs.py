@@ -454,6 +454,116 @@ class TeamOwnedTest(LivingDocsBase):
         self.assertTrue(any(e.startswith("R9 docs/impact/side-effects.yaml") for e in report.errors))
         self.assertEqual(open(path).read(), before)
 
+    def _write_rules_snapshot_case(self):
+        root = self.copy()
+        return root, self.snapshot(root), os.path.join(root, T)
+
+    def test_renamed_doc_is_restored_and_the_copy_does_not_keep_the_rules(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        original = open(path).read()
+        renamed = os.path.join(root, "docs/technical/links.md")
+        os.rename(path, renamed)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/payment-links.md") and "removed" in e
+                            and "restored" in e for e in report.errors), report.errors)
+        self.assertEqual(open(path).read(), original)
+        copy = living_docs.Doc(renamed, root, "technical")
+        self.assertEqual(copy.section_text("Invariants and consistency"), "None.")
+        self.assertEqual(copy.section_text("Change scenarios"), "None.")
+
+    def test_removed_doc_is_restored_with_write_and_fails_without(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        original = open(path).read()
+        os.remove(path)
+        report, _ = living_docs.run_check(root, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/payment-links.md") for e in report.errors))
+        self.assertFalse(os.path.exists(path))
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/payment-links.md") for e in report.errors))
+        self.assertEqual(open(path).read(), original)
+
+    def test_removed_doc_from_an_old_snapshot_still_fails(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        snap.pop("docs", None)
+        os.remove(path)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/payment-links.md") for e in report.errors))
+        self.assertFalse(os.path.exists(path))
+
+    def test_duplicate_team_heading_is_dropped_and_the_first_restored(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        before = open(path).read()
+        text = before.replace("## Change scenarios\n",
+                              "## Invariants and consistency\nPL-INV-777 slipped in.\n\n## Change scenarios\n", 1)
+        text = text.replace("| PL-INV-001 | An invoice has at most one active payment link",
+                            "| PL-INV-001 | An invoice has any number of payment links")
+        open(path, "w").write(text)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9 technical/payment-links.md §Invariants") for e in report.errors),
+                        report.errors)
+        self.assertEqual(open(path).read(), before)
+
+    def test_empty_duplicate_team_heading_is_still_a_change(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        before = open(path).read()
+        open(path, "w").write(before.replace("## Change scenarios\n",
+                                             "## Change scenarios\n\n## Change scenarios\n", 1))
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9") and "Change scenarios" in e for e in report.errors), report.errors)
+        self.assertEqual(open(path).read().count("## Change scenarios"), 1)
+
+    def test_heading_inside_a_code_fence_is_not_a_section(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        before = open(path).read()
+        # a fenced example of a heading before the real one must not capture the restore
+        text = before.replace("## Invariants and consistency\n",
+                              "## Invariants and consistency\n```md\n## Change scenarios\nnot a section\n```\n", 1)
+        open(path, "w").write(text)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9") for e in report.errors), report.errors)
+        self.assertEqual(open(path).read(), before)
+
+    def test_unclosed_fence_hiding_team_sections_fails_closed(self):
+        root, snap, path = self._write_rules_snapshot_case()
+        before = open(path).read()
+        text = before.replace("## Cross-repo connections\n", "## Cross-repo connections\n```\n", 1)
+        open(path, "w").write(text)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9") and "fence" in e for e in report.errors), report.errors)
+        # an unclosed fence inside a team section is no silent pass either
+        root, snap, path = self._write_rules_snapshot_case()
+        text = open(path).read().replace("## Invariants and consistency\n",
+                                         "## Invariants and consistency\n```\n", 1)
+        open(path, "w").write(text)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertTrue(any(e.startswith("R9") and "fence" in e for e in report.errors), report.errors)
+
+    def test_unchanged_doc_with_a_preexisting_unclosed_fence_does_not_fail(self):
+        root = self.copy()
+        path = os.path.join(root, T)
+        edit(path, "## Gotchas\n", "## Gotchas\n```\n")
+        snap = self.snapshot(root)
+        report, _ = living_docs.run_check(root, write=True, locked_from=snap)
+        self.assertFalse([e for e in report.errors if e.startswith("R9")], report.errors)
+
+    def test_fence_closes_only_on_a_matching_marker(self):
+        lines = ["```", "~~~", "## inside", "```", "## outside"]
+        flags, unclosed = living_docs.fence_flags(lines)
+        self.assertEqual(flags, [True, True, True, False, False])
+        self.assertFalse(unclosed)
+        self.assertTrue(living_docs.fence_flags(["~~~~", "~~~"])[1])
+
+    def test_dotfile_anchors_resolve(self):
+        repo = os.path.join(self.base, "dot-repo")
+        os.makedirs(os.path.join(repo, ".github/workflows"), exist_ok=True)
+        open(os.path.join(repo, ".github/workflows/ci.yml"), "w").write("x")
+        open(os.path.join(repo, ".env.example"), "w").write("x")
+        code = living_docs.Code({"r": repo})
+        for rel in (".github/workflows/ci.yml", "./.github/workflows/ci.yml", ".env.example", "/.env.example"):
+            self.assertTrue(code.has_path("r", rel), rel)
+        self.assertFalse(code.has_path("r", "github/workflows/ci.yml"))
+        self.assertFalse(code.has_path("r", "../outside"))
+
     def test_team_problems_are_warnings_in_a_writer_check(self):
         root = self.copy()
         edit(os.path.join(root, "codebase/cofee-backend/internal/links/link_test.go"),

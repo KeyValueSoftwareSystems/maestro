@@ -109,6 +109,40 @@ class ImpactTraceTest(unittest.TestCase):
         with open(self.impact) as fh:
             self.assertIn("PL-CS-001", [s["id"] for s in json.load(fh)["scenarios"]])
 
+    def test_a_merge_that_would_be_invalid_is_not_saved_and_is_an_error(self):
+        self.write("docs/impact/side-effects.yaml", SIDE_EFFECTS + """  - id: PL-CS-002
+    domain: payments
+    summary: Ghost
+    rules: [PL-INV-001]
+    when_changing: ["internal/ghost.go"]
+    also_impacts:
+      domains: [ghost]
+""")
+        with open(self.impact) as fh:
+            before = fh.read()
+        hld = self.write("hld.md", HLD + "\nChange internal/ghost.go.\n")
+        _rows, _missing, issues, added, skipped = impact_trace.trace(self.root, self.impact, [hld],
+                                                                     "lld", True)
+        self.assertFalse(skipped)
+        self.assertEqual(added, [])
+        self.assertTrue(any("PL-CS-002" in i and "cannot be added" in i for i in issues), issues)
+        with open(self.impact) as fh:
+            self.assertEqual(fh.read(), before)
+        self.assertIsNotNone(impact.load(self.root, self.impact)[0])
+
+    def test_an_invalid_existing_assessment_is_an_error_not_nothing_to_trace(self):
+        bad = json.loads(json.dumps(FEE_GROUPS))
+        bad["domains"] = [item("ghost")]
+        self.write("impact.json", json.dumps(bad))
+        hld = self.write("hld.md", HLD)
+        for match in (False, True):
+            _rows, _missing, issues, _added, skipped = impact_trace.trace(
+                self.root, self.impact, [hld], "hld", match)
+            self.assertFalse(skipped)
+            self.assertTrue(any("is invalid" in i for i in issues), issues)
+        self.write("impact.json", "{not json")
+        self.assertFalse(impact_trace.trace(self.root, self.impact, [hld], "hld")[4])
+
     def test_cli_writes_report_and_skips_without_assessment(self):
         hld = self.write("hld.md", HLD)
         out = subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), "..", "impact_trace.py"),

@@ -30,7 +30,8 @@ NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORE
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.IGNORECASE)
 TO_CONFIRM_RE = re.compile(r"\(to confirm\)", re.IGNORECASE)
-AC_PREFIX_RE = re.compile(r"^(\s*[-*]\s+)(?:\*\*)?AC-\d{2,}(?:\*\*)?:\s*", re.IGNORECASE)
+# the label in any bold form (`AC-01:`, `**AC-01**:`, `**AC-01:**`); the fixer rewrites it as `AC-NN: `
+AC_PREFIX_RE = re.compile(r"^(\s*[-*]\s+)(?:\*\*)?AC-\d+(?:\*\*:|:\*\*|:)\s*", re.IGNORECASE)
 
 # Existing PRDs do not share a universal heading standard. The fast-path compatibility mode
 # accepts common equivalents while generated Maestro PRDs still use the exact headings above.
@@ -70,6 +71,28 @@ HEADING_ALIASES = {
 }
 
 
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+
+
+def fenced_lines(lines):
+    """-> (flags, unclosed): flags[i] is True for a line inside a fenced code block (the fence lines
+    included); unclosed is the 1-based line of a fence that never closes (it is not treated as
+    one, so the headings after it still count), else None."""
+    flags = [False] * len(lines)
+    start = marker = None
+    for index, line in enumerate(lines):
+        match = FENCE_RE.match(line)
+        if start is None:
+            if match and not (match.group(1)[0] == "`" and "`" in match.group(2)):
+                start, marker = index, match.group(1)
+        elif match and match.group(1)[0] == marker[0] and len(match.group(1)) >= len(marker) \
+                and not match.group(2).strip():
+            for inner in range(start, index + 1):
+                flags[inner] = True
+            start = None
+    return flags, (start + 1 if start is not None else None)
+
+
 def _normalise_heading(text):
     return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
 
@@ -81,8 +104,10 @@ def _words(text):
 def _sections(text, compatible=False):
     found = {}
     current = None
-    for line in text.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
+    lines = text.splitlines()
+    fenced, _unclosed = fenced_lines(lines)
+    for line, in_fence in zip(lines, fenced):
+        match = None if in_fence else re.match(r"^##\s+(.+?)\s*$", line)
         if match:
             current = _normalise_heading(match.group(1))
             if compatible:
@@ -96,13 +121,14 @@ def _sections(text, compatible=False):
 def _normalize_acceptance_criteria(text):
     """Apply syntax-only AC fixes without changing any product words."""
     lines = text.splitlines()
+    fenced, _unclosed = fenced_lines(lines)
     start = next((index for index, line in enumerate(lines)
                   if _normalise_heading(line[3:]) == "acceptance criteria"
-                  and line.startswith("## ")), None)
+                  and line.startswith("## ") and not fenced[index]), None)
     if start is None:
         return text, []
     end = next((index for index in range(start + 1, len(lines))
-                if lines[index].startswith("## ")), len(lines))
+                if lines[index].startswith("## ") and not fenced[index]), len(lines))
 
     body = lines[start + 1:end]
     prefix_blanks = []
@@ -186,14 +212,17 @@ def validate(path, compatible=False):
     sections = _sections(text, compatible=compatible)
     if not compatible:
         lines = text.splitlines()
+        fenced, unclosed = fenced_lines(lines)
+        if unclosed:
+            errors.append(f"line {unclosed}: code fence is never closed")
         h1 = [(index, line[2:].strip()) for index, line in enumerate(lines)
-              if re.match(r"^#\s+\S", line)]
+              if re.match(r"^#\s+\S", line) and not fenced[index]]
         if len(h1) != 1:
             errors.append("document header: exactly one level-1 PRD title is required")
         elif not re.search(r"\b(?:prd|product requirements document)\b", h1[0][1], re.I):
             errors.append("document header: level-1 title must identify the document as a PRD")
-        first_h2 = next((index for index, line in enumerate(lines) if line.startswith("## ")),
-                        len(lines))
+        first_h2 = next((index for index, line in enumerate(lines)
+                         if line.startswith("## ") and not fenced[index]), len(lines))
         preamble = lines[:first_h2]
         if not any(FEATURE_SLUG_RE.match(line) for line in preamble):
             errors.append("document header: missing Feature slug metadata")

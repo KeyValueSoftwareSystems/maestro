@@ -23,6 +23,7 @@ executable (tests); MAESTRO_SIMULATION=1 delivers nothing.
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -62,13 +63,55 @@ def _run(argv, cwd):
     return proc.returncode, (proc.stdout.strip() or proc.stderr.strip())
 
 
+def _verification_text(verification):
+    """One line from the manifest's verification record (implementation_pool._verification:
+    status, failed_checks, pre_existing, not_configured, test_changes, review, receipt)."""
+    parts = []
+    if verification.get("failed_checks"):
+        parts.append("failed: " + ", ".join(verification["failed_checks"]))
+    if verification.get("pre_existing"):
+        parts.append("also failing on the base commit: " + ", ".join(verification["pre_existing"]))
+    if verification.get("not_configured"):
+        parts.append("not configured: " + ", ".join(verification["not_configured"]))
+    if verification.get("test_changes"):
+        parts.append(f"{len(verification['test_changes'])} existing test file(s) changed")
+    review = verification.get("review")
+    if review == "not-reviewed":
+        parts.append("code review not run on this commit")
+    elif review == "blocking":
+        parts.append("code review left blocking findings")
+    elif review == "reviewed":
+        parts.append("code reviewed")
+    if verification.get("receipt"):
+        parts.append(f"receipt {verification['receipt']}")
+    return "; ".join(parts) if parts else "no further detail"
+
+
+def _remote_repo(remote, cwd):
+    """`[HOST/]OWNER/REPO` for gh's --repo, from the remote's URL; "" when it is not a
+    recognisable hosted URL (a local path), so gh then falls back to its own default."""
+    code, url = _run(["git", "remote", "get-url", remote], cwd)
+    if code or not url:
+        return ""
+    url = url.strip()
+    match = (re.match(r"^[\w.+-]+://(?:[^@/]+@)?(?P<host>[^/:]+)(?::\d+)?/(?P<path>.+)$", url)
+             or re.match(r"^(?:[^@/\s]+@)?(?P<host>[^/:\s]+):(?P<path>[^/].*)$", url))
+    if not match:
+        return ""
+    path = re.sub(r"(\.git)?/*$", "", match.group("path"))
+    if not re.fullmatch(r"[\w.-]+/[\w.-]+", path):
+        return ""
+    host = match.group("host")
+    return path if host.lower() == "github.com" else f"{host}/{path}"
+
+
 def _body(entry, siblings, args, root):
     verification = entry.get("verification") or {}
     lines = [
         f"Feature `{args.slug}` — repository `{entry['repo']}`, commit `{entry['commit']}`.",
         "",
         f"- Engine verification: {verification.get('status', 'missing')} "
-        f"({verification.get('summary', 'no receipt')})",
+        f"({_verification_text(verification)})",
     ]
     trace = _first_line(_read(root, args.trace))
     if trace:
@@ -97,8 +140,11 @@ def _pull_request(entry, args, root, delivery, gh, siblings, title):
     code, out = _run(["git", "push", "--set-upstream", remote, f"{branch}:{branch}"], worktree)
     if code:
         raise RuntimeError(f"{entry['repo']}: git push {remote} {branch} failed: {out[-400:]}")
+    # target the repository the branch was pushed to, not whatever gh guesses from the
+    # worktree's remotes (a fork checkout has several)
+    repo_flag = ["--repo", target] if (target := _remote_repo(remote, worktree)) else []
     code, out = _run([gh, "pr", "list", "--head", branch, "--state", "open",
-                      "--json", "url", "--jq", ".[0].url"], worktree)
+                      "--json", "url", "--jq", ".[0].url", *repo_flag], worktree)
     if code:
         raise RuntimeError(f"{entry['repo']}: gh pr list failed (is gh installed and logged in?): "
                            f"{out[-400:]}")
@@ -109,7 +155,8 @@ def _pull_request(entry, args, root, delivery, gh, siblings, title):
     os.makedirs(os.path.dirname(body_path), exist_ok=True)
     with open(body_path, "w", encoding="utf-8") as fh:
         fh.write(_body(entry, siblings, args, root))
-    argv = [gh, "pr", "create", "--head", branch, "--title", title, "--body-file", body_path]
+    argv = [gh, "pr", "create", "--head", branch, "--title", title, "--body-file", body_path,
+            *repo_flag]
     if delivery.get("base"):
         argv += ["--base", delivery["base"]]
     if args.release_by == "autopilot":

@@ -1,0 +1,10 @@
+version: 1
+name: bad-next
+start: a
+nodes:
+  - id: a
+    instruction: Go.
+    next: [b]
+  - id: b
+    instruction: Go on.
+    next: end

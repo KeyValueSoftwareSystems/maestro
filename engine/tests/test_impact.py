@@ -159,6 +159,45 @@ class ImpactTest(unittest.TestCase):
         self.assertEqual([t["name"] for t in doc["tables"]], ["payment_links"])
         self.assertEqual(impact.validate(self.root, self.path, prd)["item_count"], 3)  # idempotent
 
+    def scenario_ids(self, when_changing, text):
+        os.makedirs(os.path.join(self.root, "docs", "impact"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "impact", "side-effects.yaml"), "w") as fh:
+            fh.write("version: 1\nscenarios:\n  - id: PL-CS-001\n    summary: s\n"
+                     f"    when_changing: [{when_changing}]\n")
+        return [sc["id"] for sc in impact.match_scenarios(self.root, [text])]
+
+    def test_a_directory_in_when_changing_does_not_match_every_prd(self):
+        unrelated = "Admins export the report as CSV."
+        for entry in ('"internal/links/"', '"backend:internal/links/"', '"./"', '"/"', '"internal/links"',
+                      '"."'):
+            self.assertEqual(self.scenario_ids(entry, unrelated), [], entry)
+        # the text naming the directory, or a file under it, does match
+        for entry in ('"internal/links/"', '"internal/links"', '"backend:internal/links/"'):
+            self.assertEqual(self.scenario_ids(entry, "Change internal/links/create.go."), ["PL-CS-001"], entry)
+            self.assertEqual(self.scenario_ids(entry, "Touches `internal/links`."), ["PL-CS-001"], entry)
+        self.assertEqual(self.scenario_ids('"internal/links"', "see internal/links.go"), [])
+        self.assertEqual(self.scenario_ids('"internal/links/create.go"', "edit create.go"), ["PL-CS-001"])
+
+    def test_a_scenario_the_docs_cannot_back_is_not_saved_by_validate(self):
+        os.makedirs(os.path.join(self.root, "docs", "impact"))
+        os.makedirs(os.path.join(self.root, "docs", "technical"))
+        with open(os.path.join(self.root, "docs", "technical", "payments.md"), "w") as fh:
+            fh.write("---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One. |\n")
+        with open(os.path.join(self.root, "docs", "impact", "side-effects.yaml"), "w") as fh:
+            fh.write("version: 1\nscenarios:\n  - id: PL-CS-001\n    summary: s\n"
+                     "    when_changing: [links.Service.Disable]\n    also_impacts:\n      domains: [ghost]\n")
+        prd = os.path.join(self.root, "prd.md")
+        with open(prd, "w") as fh:
+            fh.write("Call links.Service.Disable.\n")
+        self.check(self.doc([{"name": "web", "change": "x"}]))
+        with open(self.path) as fh:
+            before = fh.read()
+        result = impact.validate(self.root, self.path, prd)
+        self.assertFalse(result["valid"])
+        self.assertIn("cannot be added", result["issues_summary"])
+        with open(self.path) as fh:
+            self.assertEqual(fh.read(), before)
+
 
 if __name__ == "__main__":
     unittest.main()

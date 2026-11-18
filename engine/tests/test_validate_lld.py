@@ -150,6 +150,23 @@ class LldValidationTest(unittest.TestCase):
         errors, _ = validate_lld.validate(self.write(text))
         self.assertEqual(errors, [])
 
+    def test_repository_header_may_carry_a_parenthetical(self):
+        for header in ("`backend` (Go service)", "backend (Go service)", "backend"):
+            text = self.valid_text().replace("**Repository:** `backend`", f"**Repository:** {header}")
+            errors, _ = validate_lld.validate(self.write(text), parent_slug="demo", repo="backend")
+            self.assertEqual(errors, [], header)
+
+    def test_headings_inside_code_fences_are_not_sections(self):
+        for fence in ("```", "~~~~"):
+            block = f"{fence}python\n# a comment\n## Appendix\n### Frontend handoff\n{fence}"
+            text = self.valid_text().replace(
+                "Keep persistence ownership", f"Keep persistence ownership\n\n{block}\n\nKeep it", 1)
+            errors, _ = validate_lld.validate(self.write(text), parent_slug="demo", repo="backend")
+            self.assertEqual(errors, [], fence)
+        text = self.valid_text().replace("Keep persistence", "\n\n```\nls\n\nKeep persistence", 1)
+        errors, _ = validate_lld.validate(self.write(text), parent_slug="demo", repo="backend")
+        self.assertTrue(any("never closed" in e for e in errors), errors)
+
 
 if __name__ == "__main__":
     unittest.main()

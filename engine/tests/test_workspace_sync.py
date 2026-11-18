@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import codebase_scan  # noqa: E402
@@ -141,6 +141,22 @@ class WorkspaceSyncTest(unittest.TestCase):
         self.assertTrue(result["updated"])
         self.assertTrue(result["refresh_needed"])
         self.assertEqual(git(self.repo, "rev-parse", "HEAD"), target)
+
+    def test_a_branch_switched_after_planning_is_not_fast_forwarded(self):
+        old = git(self.repo, "rev-parse", "HEAD")
+        self.remote_commit()
+        plan_path, out, doc = self.plan()
+        self.assertTrue(doc["repos"][0]["pullable"])
+        git(self.repo, "switch", "-q", "-c", "scratch")    # same commit, another branch
+        err = io.StringIO()
+        with redirect_stderr(err), redirect_stdout(io.StringIO()):
+            code = ws.cmd_apply(self.tmp, plan_path, out["plan_sha256"],
+                                os.path.join(self.tmp, "result.json"))
+        self.assertEqual(code, 1)
+        self.assertIn("checked-out branch changed after planning", err.getvalue())
+        self.assertEqual(git(self.repo, "rev-parse", "HEAD"), old)
+        self.assertEqual(git(self.repo, "rev-parse", "scratch"), old)
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "result.json")))
 
     def test_dirty_repo_is_never_updated(self):
         old = git(self.repo, "rev-parse", "HEAD")

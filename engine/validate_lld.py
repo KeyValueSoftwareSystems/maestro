@@ -9,6 +9,10 @@ import re
 import sys
 from pathlib import Path
 
+try:
+    from validate_prd import fenced_lines
+except ImportError:  # imported as a package (tests)
+    from .validate_prd import fenced_lines
 
 REQUIRED_SECTIONS = (
     "change summary",
@@ -23,7 +27,8 @@ REQUIRED_SECTIONS = (
 )
 SECTION_ORDER = list(REQUIRED_SECTIONS)
 PARENT_RE = re.compile(r"^\*\*Parent feature:\*\*\s+`?([^`\s]+)`?\s*$", re.I)
-REPO_RE = re.compile(r"^\*\*Repository:\*\*\s+`?(.+?)`?\s*$", re.I)
+# the repository name only: `api`, or "backend (Go service)" -> backend
+REPO_RE = re.compile(r"^\*\*Repository:\*\*\s+`?(.+?)`?(?:\s*\([^)]*\))?\s*$", re.I)
 STATUS_RE = re.compile(r"^\*\*Status:\*\*\s+Ready for review\s*$", re.I)
 UNRESOLVED_RE = re.compile(r"\b(?:TBD|TODO|to be decided|decide later)\b", re.I)
 HTTP_OPERATION_RE = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE)\s+`?/[^\s|`]+", re.I)
@@ -45,8 +50,10 @@ def _words(text):
 
 def _sections(text):
     found, order, current = {}, [], None
-    for line in text.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
+    lines = text.splitlines()
+    fenced, _unclosed = fenced_lines(lines)
+    for line, in_fence in zip(lines, fenced):
+        match = None if in_fence else re.match(r"^##\s+(.+?)\s*$", line)
         if match:
             current = _normalise_heading(match.group(1))
             order.append(current)
@@ -69,8 +76,10 @@ def _has_markdown_table(text):
 def _subsection(text, title):
     wanted = _normalise_heading(title)
     lines, capture = [], False
-    for line in text.splitlines():
-        match = re.match(r"^###\s+(.+?)\s*$", line)
+    source = text.splitlines()
+    fenced, _unclosed = fenced_lines(source)
+    for line, in_fence in zip(source, fenced):
+        match = None if in_fence else re.match(r"^###\s+(.+?)\s*$", line)
         if match:
             if capture:
                 break
@@ -90,12 +99,17 @@ def validate(path, parent_slug=None, repo=None):
 
     sections, order = _sections(text)
     lines = text.splitlines()
-    h1 = [line[2:].strip() for line in lines if re.match(r"^#\s+\S", line)]
+    fenced, unclosed = fenced_lines(lines)
+    if unclosed:
+        errors.append(f"line {unclosed}: code fence is never closed")
+    h1 = [line[2:].strip() for line, in_fence in zip(lines, fenced)
+          if re.match(r"^#\s+\S", line) and not in_fence]
     if len(h1) != 1:
         errors.append("document header: exactly one level-1 LLD title is required")
     elif not re.search(r"\b(?:lld|low level design)\b", h1[0], re.I):
         errors.append("document header: level-1 title must identify the document as an LLD")
-    first_h2 = next((i for i, line in enumerate(lines) if line.startswith("## ")), len(lines))
+    first_h2 = next((i for i, line in enumerate(lines)
+                     if line.startswith("## ") and not fenced[i]), len(lines))
     preamble = lines[:first_h2]
     parent_matches = [PARENT_RE.match(line) for line in preamble if PARENT_RE.match(line)]
     repo_matches = [REPO_RE.match(line) for line in preamble if REPO_RE.match(line)]

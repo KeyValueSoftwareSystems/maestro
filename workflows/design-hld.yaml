@@ -553,9 +553,11 @@ nodes:
       Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
       Report: .maestro/runs/${inputs.slug}/reviews/architecture.md
 
+      Final check of the HLD as it stands (an earlier approval attempt that failed it shows here): ${steps.final_hld_facts.outputs.issues_summary}
+
       Review the document and the review, then choose.
     options:
-      - {id: approve, label: Approve — write the detailed designs, to: end}
+      - {id: approve, label: Approve — write the detailed designs, to: final_hld_facts}
       - {id: revise, label: Request changes — targeted edit of this HLD, to: write_hld, input: feedback}
       - {id: rethink, label: Re-clarify the architecture and regenerate, to: prepare_hld_questions, input: feedback}
       - {id: reject, label: Reject — abort the run, to: abort}
@@ -566,12 +568,25 @@ nodes:
       modes: [auto]
       when: ["${steps.review_verdict.outputs.blocking} == false", "${steps.review_verdict.outputs.late} == false"]
 
+  # Engine-owned: the HLD facts the stage reports are read from the HLD exactly as approved. An
+  # approval reached after an escalation or an exhausted loop skips validate_hld, and the HLD may
+  # have been edited since it last ran; an HLD that fails here goes back to the person.
+  - id: final_hld_facts
+    type: script
+    label: Record the approved HLD's facts
+    run: [python3, .maestro/engine/validate_hld.py, ".maestro/runs/${inputs.slug}/design/hld.md", --open-questions, ".maestro/runs/${inputs.slug}/design/open-questions.json", --infra-level, "${steps.infra_profile.outputs.level}", --repos, "${steps.infra_profile.outputs.repos_csv}", --greenfield, "${inputs.greenfield}", --report]
+    max_visits: 12
+    on_exhausted: abort
+    routes:
+      - {when: "${steps.final_hld_facts.outputs.valid} == true", to: end}
+      - {to: hld_approval}
+
 outputs:
   hld_summary: "${steps.write_hld.outputs.hld_summary}"
-  interfaces_changed: "${steps.validate_hld.outputs.interfaces_changed}"
-  infra_changed: "${steps.validate_hld.outputs.infra_changed}"
-  infra_repos_csv: "${steps.validate_hld.outputs.infra_repos_csv}"
-  new_repos_csv: "${steps.validate_hld.outputs.new_repos_csv}"
+  interfaces_changed: "${steps.final_hld_facts.outputs.interfaces_changed}"
+  infra_changed: "${steps.final_hld_facts.outputs.infra_changed}"
+  infra_repos_csv: "${steps.final_hld_facts.outputs.infra_repos_csv}"
+  new_repos_csv: "${steps.final_hld_facts.outputs.new_repos_csv}"
   infra_level: "${steps.infra_profile.outputs.level}"
   review_summary: "${steps.arch_review.outputs.summary}"
   hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"

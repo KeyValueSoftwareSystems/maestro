@@ -12,7 +12,7 @@ the design itself sets off must be covered too. --out writes the impact report: 
 reason, evidence, consumers and where the design covers it.
 
 Prints one JSON line {valid, item_count, missing_csv, issues_summary, report_path}; always exits 0
-(the workflow routes on `valid`). No usable assessment (greenfield, skipped, no items) is valid:
+(the workflow routes on `valid`). No usable assessment (greenfield, skipped: no impact file) is valid:
 there is nothing to report, so no report is written (`report_path` is empty and a report an
 earlier assessment left is removed).
 """
@@ -59,21 +59,19 @@ def trace(root, impact_path, docs, stage, match=False):
         if text is not None:
             texts[path] = text
     added = []
-    if match and os.path.isfile(full):
-        try:
-            with open(full, encoding="utf-8") as fh:
-                doc = json.load(fh)
-            added = impact.merge(doc, impact.match_scenarios(root, texts.values()))
-            if added:
-                with open(full, "w", encoding="utf-8") as fh:
-                    json.dump(doc, fh, indent=2)
-                    fh.write("\n")
-        except (OSError, ValueError):
-            pass
-    assessed, _issues = impact.load(root, impact_path)
+    if not os.path.isfile(full):
+        return [], [], [f"no impact assessment at {impact_path}: nothing to trace"], added, True
+    assessed, problems = impact.load(root, impact_path)
+    if assessed is None:  # present but unusable is an error, never "nothing to trace"
+        return [], [], [f"the impact assessment {impact_path} is invalid, so the design cannot be "
+                        f"traced to it: {'; '.join(problems[:4])}"], added, False
     rows, missing, issues = [], [], []
-    if assessed is None:
-        return rows, missing, ["no valid impact assessment: nothing to trace"], added, True
+    if match:
+        added, issues = impact.merge_file(root, impact_path, list(texts.values()))
+        if issues:
+            return rows, missing, issues, added, False
+        if added:
+            assessed, problems = impact.load(root, impact_path)
     where = STAGE_LABEL.get(stage, "the design")
     if not texts and any(assessed[kind] for kind, _k in impact.KINDS):
         issues.append(f"none of the design documents exist: {', '.join(docs)}")

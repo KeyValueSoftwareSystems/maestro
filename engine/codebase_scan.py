@@ -59,7 +59,7 @@ def _git(repo, *args):
     try:
         proc = subprocess.run(
             ["git", "-C", repo, *args],
-            capture_output=True, text=True, timeout=60,
+            capture_output=True, text=True, errors="replace", timeout=60,
         )
         return proc.returncode, proc.stdout.strip()
     except (OSError, subprocess.SubprocessError):
@@ -69,6 +69,13 @@ def _git(repo, *args):
 def _is_git_repo(path):
     rc, _ = _git(path, "rev-parse", "--git-dir")
     return rc == 0
+
+
+def _is_repo_root(path):
+    """A git repository whose top level IS this folder — not a plain folder that merely sits
+    inside a tracked umbrella repository (git answers for the umbrella there)."""
+    rc, top = _git(path, "rev-parse", "--show-toplevel")
+    return rc == 0 and bool(top) and os.path.realpath(top) == os.path.realpath(path)
 
 
 def _is_linked_worktree(path):
@@ -97,7 +104,7 @@ def discover_repos(root):
     if os.path.isdir(codebase):
         for name in sorted(os.listdir(codebase)):
             path = os.path.join(codebase, name)
-            if os.path.isdir(path) and _is_git_repo(path) and not _is_linked_worktree(path):
+            if os.path.isdir(path) and _is_repo_root(path) and not _is_linked_worktree(path):
                 repos.append((name, path))
     if not repos and _is_git_repo(root):
         repos.append((os.path.basename(root) or "repo", root))

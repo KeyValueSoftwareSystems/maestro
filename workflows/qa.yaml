@@ -93,7 +93,11 @@ nodes:
       - ".maestro/runs/${inputs.slug}/qa/report.md"
       - ".maestro/runs/${inputs.slug}/qa/results.json"
     fresh: true
-    max_visits: 5
+    # Not the bound of the fix loop: qa_fix's own cap (3) ends the automatic rounds, and each "one
+    # more fix round" the person asks for at qa_gate (a real gate option, so not capped) adds one
+    # fix and one re-run. A low cap here would send a person's extra round to the gate again
+    # without re-running QA, showing the results of the run before the fix.
+    max_visits: 50
     on_exhausted: qa_gate
     routes:
       - {when: "${steps.qa_run.outputs.passed} == true", to: e2e_suite}
@@ -106,7 +110,7 @@ nodes:
     label: Project e2e suites (engine)
     run: [python3, .maestro/engine/qa_env.py, e2e, --root, ".", --manifest, "${inputs.implementation_manifest}", --out, ".maestro/runs/${inputs.slug}/qa/e2e-receipt.json", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 3600
-    max_visits: 6
+    max_visits: 50  # as qa_run: a person's extra fix round re-runs the suites too
     on_exhausted: qa_gate
     routes:
       - {when: "${steps.e2e_suite.outputs.passed} == true", to: env_down}

@@ -124,6 +124,17 @@ class AcTraceTest(unittest.TestCase):
         self.write("results.json", "[1, 2]")
         self.assertEqual(ac_trace.qa_results(os.path.join(self.dir, "results.json")), {})
 
+    def test_error_blocked_and_unknown_statuses_do_not_pass(self):
+        for status in ("error", "blocked", "weird", ""):
+            result = self.qa([{"id": "TC-x-001", "status": "passed"},
+                              {"id": "TC-x-002", "status": status, "note": "env down"},
+                              {"id": "TC-x-003", "status": "passed"}])
+            self.assertFalse(result["all_passed"], status)
+            self.assertEqual(result["failing"], 2, status)  # AC-01 and AC-02 share TC-x-002
+        # "pass" is an explicit pass; skipped stays neutral
+        result = self.qa([{"id": c, "status": "pass"} for c in ("TC-x-001", "TC-x-002", "TC-x-003")])
+        self.assertTrue(result["all_passed"])
+
 
 if __name__ == "__main__":
     unittest.main()

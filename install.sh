@@ -32,8 +32,9 @@
 # (engine/install_skills.py).
 #   --dry-run          print the workflow upgrade plan and exit without writing anything
 #
-# Version pinning: the installed version is recorded in .maestro/install.json. A re-run
-# without --ref installs that same version again (reproducible); pass --ref to move.
+# Version pinning: the installed version (and --stack filter) is recorded in .maestro/install.json.
+# A re-run without --ref installs that same version again (reproducible); pass --ref to move.
+# A re-run without --stack keeps the recorded stack filter; `--stack all` clears it.
 #   --ref <tag|sha|branch>   install exactly this version (e.g. --ref v1.4.0, --ref main)
 #
 # Env overrides:
@@ -49,11 +50,12 @@ DEST="${DEST:-$PWD}"
 
 AGENTS=""
 STACKS=""              # empty => install everything (back-compat)
+STACK_FLAG=""          # set when --stack was given, so a re-run knows to reuse the recorded one or not
 DRY_RUN=""
 while [ $# -gt 0 ]; do
   case "$1" in
-    --stack)   shift; STACKS="$STACKS ${1:-}" ;;
-    --stack=*) STACKS="$STACKS ${1#*=}" ;;
+    --stack)   shift; STACKS="$STACKS ${1:-}"; STACK_FLAG=1 ;;
+    --stack=*) STACKS="$STACKS ${1#*=}"; STACK_FLAG=1 ;;
     --dry-run) DRY_RUN=1 ;;
     --ref)     shift; REF="${1:-}" ;;
     --ref=*)   REF="${1#*=}" ;;
@@ -131,13 +133,19 @@ remove_retired_agents() { # $1 = installed agents dir
   # Named migrations only, as for skills. The per-stack reviewer agents became the
   # `<stack>-review` checklist skills: a stack is knowledge for the one `reviewer` role, not a
   # role of its own (and their "MUST BE USED" descriptions took over unrelated sessions).
+  # Only OUR retired copy goes: its frontmatter `tags:` carries a `stack:` token (the stack
+  # reviewer agents all did). A file of the user's own under the same name is left and reported.
   for retired in database-reviewer django-reviewer fastapi-reviewer flutter-reviewer \
       go-reviewer java-reviewer kotlin-reviewer python-reviewer react-reviewer rust-reviewer \
       typescript-reviewer vue-reviewer type-design-analyzer; do
     target="$1/$retired.md"
-    if [ -f "$target" ]; then
-      rm -f -- "$target"
-      note "removed retired agent -> $target"
+    if [ -f "$target" ] || [ -L "$target" ]; then
+      if [ ! -L "$target" ] && [ "$(frontmatter_stacks "$target")" != "" ]; then
+        rm -f -- "$target"
+        note "removed retired agent -> $target"
+      else
+        note "kept $target (not a Maestro copy of the retired agent '$retired')"
+      fi
     fi
   done
 }
@@ -150,21 +158,21 @@ copy_agents() { # $1 = dst dir — filtered by --stack
   done
   note "agents -> $1 ($kept installed, $skipped skipped by --stack)"
 }
-remove_retired_skills() { # $1 = installed skills dir
+remove_retired_skills() { # $1 = installed skills dir, $2 = host
   # Named migrations only: never prune the directory wholesale because it may contain
   # user-authored or third-party skills. `brainstorm` was replaced by the bounded
   # `prd-interview` + `prd-writing` pair; the per-stack design/tasks/implement/review skills,
   # `plan`, `repo-design` and `verify` were folded into the repo-* and *-writing skills and
-  # the engine's verify step.
-  for retired in brainstorm plan repo-design verify run-upgrade-repair design-correction-fold \
+  # the engine's verify step. Several of those names are generic (`plan`, `verify`), so a
+  # directory is removed only when it is our stock copy (engine/install_skills.py --retire:
+  # matches the manifest hash, or, before the manifest, carries the pack's `sdlc` tag);
+  # anything else is left in place and reported.
+  command -v python3 >/dev/null 2>&1 || return 0
+  python3 "$SRC/engine/install_skills.py" --dst "$1" --host "$2" \
+    --manifest "$DEST/.maestro/skill-manifest.json" \
+    --retire brainstorm plan repo-design verify run-upgrade-repair design-correction-fold \
       backend-design frontend-design backend-tasks frontend-tasks \
-      backend-implement frontend-implement backend-review frontend-review; do
-    target="$1/$retired"
-    if [ -d "$target" ]; then
-      rm -rf -- "$target"
-      note "removed retired skill -> $target"
-    fi
-  done
+      backend-implement frontend-implement backend-review frontend-review
 }
 
 # ---------------------------------------------------------------- source dir
@@ -181,10 +189,18 @@ if [ -n "${BASH_SOURCE[0]:-}" ]; then
     SRC="$script_dir"
   fi
 fi
-if [ -z "$REF" ] && [ -f "$DEST/.maestro/install.json" ] && command -v python3 >/dev/null 2>&1; then
-  # reproducible re-runs: reinstall the recorded version unless --ref asks for another
-  REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("ref") or "")' \
-    "$DEST/.maestro/install.json" 2>/dev/null || true)"
+if [ -f "$DEST/.maestro/install.json" ] && command -v python3 >/dev/null 2>&1; then
+  # reproducible re-runs: reinstall the recorded version unless --ref asks for another, and
+  # keep the recorded stack filter unless --stack is given (`--stack all` clears it)
+  if [ -z "$REF" ]; then
+    REF="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("ref") or "")' \
+      "$DEST/.maestro/install.json" 2>/dev/null || true)"
+  fi
+  if [ -z "$STACK_FLAG" ]; then
+    STACKS="$(python3 -c 'import json,sys; print(" ".join(json.load(open(sys.argv[1])).get("stacks") or []))' \
+      "$DEST/.maestro/install.json" 2>/dev/null || true)"
+    [ -z "$STACKS" ] || note "reusing the recorded stack filter: $STACKS (pass --stack to change, --stack all to clear)"
+  fi
 fi
 [ -n "$REF" ] || REF="main"
 if [ -z "$SRC" ]; then
@@ -203,6 +219,14 @@ if [ -z "$SRC" ]; then
 fi
 trap '[ -n "$CLEANUP" ] && rm -rf "$CLEANUP"' EXIT
 
+# Never install a pack into itself. The pack repo mirrors the installed layout with symlinks
+# (.maestro/engine -> ../engine, ...), so copying and pruning "the installed runtime" there
+# would act on the pack's own source (it used to delete engine/tests).
+if [ -d "$DEST" ] && [ "$(cd "$DEST" && pwd -P)" = "$(cd "$SRC" && pwd -P)" ]; then
+  echo "FAIL: $DEST is the pack source itself; run install.sh from the repo you are installing into." >&2
+  exit 1
+fi
+
 if [ -n "$DRY_RUN" ]; then
   say "Dry run — $REPO workflows vs $DEST/.maestro/workflows"
   python3 "$SRC/engine/install_workflows.py" --src "$SRC/workflows" --root "$DEST" --dry-run
@@ -219,7 +243,7 @@ for agent in $AGENTS; do
     claude-code)
       say "Installing skills + commands + agents for Claude Code${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.claude/skills" claude-code
-      remove_retired_skills "$DEST/.claude/skills"
+      remove_retired_skills "$DEST/.claude/skills" claude-code
       copy_tree commands "$DEST/.claude/commands"
       copy_agents        "$DEST/.claude/agents"
       remove_retired_agents "$DEST/.claude/agents"
@@ -227,7 +251,7 @@ for agent in $AGENTS; do
     cursor)
       say "Installing skills + commands for Cursor${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.cursor/skills" cursor
-      remove_retired_skills "$DEST/.cursor/skills"
+      remove_retired_skills "$DEST/.cursor/skills" cursor
       copy_tree commands "$DEST/.cursor/commands"
       # Cursor has no subagent registry; the Maestro skill degrades to inline mode.
       ;;
@@ -239,7 +263,7 @@ for agent in $AGENTS; do
       AGENTS_SKILLS_DONE=1
       say "Installing skills for Codex / Hermes Agent (.agents/skills)${STACKS:+ (stacks: $STACKS)}"
       copy_skills        "$DEST/.agents/skills" codex
-      remove_retired_skills "$DEST/.agents/skills"
+      remove_retired_skills "$DEST/.agents/skills" codex
       ;;
     *) echo "  unknown IDE target: $agent (skipping)" >&2 ;;
   esac
@@ -254,6 +278,14 @@ done
 #   docs/provenance.yaml — shared living-doc provenance (written by record-knowledge)
 #   .maestro/workflow-manifest.json  — committed: what the last upgrade offered per workflow
 say "Copying runtime into $DEST/.maestro"
+# A runtime dir that is a symlink points at someone else's tree (e.g. a pack checkout); writing or
+# pruning through it would modify that tree. Refuse rather than recurse through it.
+for d in engine ui workflows docs agents; do
+  if [ -L "$DEST/.maestro/$d" ]; then
+    echo "FAIL: $DEST/.maestro/$d is a symlink; install.sh would write through it. Replace it with a real directory." >&2
+    exit 1
+  fi
+done
 mkdir -p "$DEST/.maestro/workflows" "$DEST/.maestro/engine" "$DEST/.maestro/ui" "$DEST/.maestro/docs"
 cp -R "$SRC/engine/." "$DEST/.maestro/engine/" && note ".maestro/engine/ (stdlib-only python3)"
 rm -rf "$DEST/.maestro/engine/tests" "$DEST/.maestro/engine/__pycache__" 2>/dev/null
@@ -271,12 +303,29 @@ remove_retired_agents "$DEST/.maestro/agents"
 cp "$SRC/docs/workflow-spec.md" "$DEST/.maestro/docs/workflow-spec.md" 2>/dev/null && note ".maestro/docs/workflow-spec.md"
 # The repo-local dev wrapper + a copy of this installer, so `./maestro ui` and
 # `./maestro install` work without re-fetching. The wrapper never writes run state.
-cp "$SRC/bin/maestro" "$DEST/maestro" && chmod +x "$DEST/maestro" && note "maestro (dev wrapper: ui + install)"
-cp "$SRC/install.sh" "$DEST/install.sh" 2>/dev/null && note "install.sh (re-run to upgrade)"
+install_owned() { # <src> <dst> <marker> — replace our own copy; back up anything else as <dst>.previous
+  if [ -e "$2" ] || [ -L "$2" ]; then
+    if cmp -s "$1" "$2"; then return 0; fi
+    if [ -L "$2" ] || ! grep -q -- "$3" "$2" 2>/dev/null; then
+      cp -p -- "$2" "$2.previous" 2>/dev/null && note "kept your own $(basename "$2") as $(basename "$2").previous"
+    fi
+    [ -L "$2" ] && rm -f -- "$2"
+  fi
+  cp "$1" "$2"
+}
+install_owned "$SRC/bin/maestro" "$DEST/maestro" "repo-local dev wrapper for the Maestro pack" \
+  && chmod +x "$DEST/maestro" && note "maestro (dev wrapper: ui + install)"
+install_owned "$SRC/install.sh" "$DEST/install.sh" "install the Maestro pack" \
+  && note "install.sh (re-run to upgrade)"
 
 # Record what was installed, so a re-run reproduces it and support can tell versions apart.
 SRC_COMMIT=""
-if git -C "$SRC" rev-parse HEAD >/dev/null 2>&1; then SRC_COMMIT="$(git -C "$SRC" rev-parse HEAD)"; fi
+if git -C "$SRC" rev-parse HEAD >/dev/null 2>&1; then
+  SRC_COMMIT="$(git -C "$SRC" rev-parse HEAD)"
+  # a checkout installs what is checked out, not $REF: record the tag it sits on, else its sha
+  # (a re-run without --ref then fetches that exact version)
+  [ -n "$CLEANUP" ] || REF="$(git -C "$SRC" describe --tags --exact-match HEAD 2>/dev/null || echo "$SRC_COMMIT")"
+fi
 if command -v python3 >/dev/null 2>&1; then
   python3 - "$DEST/.maestro/install.json" "$REF" "$SRC_COMMIT" "$REPO" "$AGENTS" "$STACKS" <<'PY'
 import datetime, json, sys

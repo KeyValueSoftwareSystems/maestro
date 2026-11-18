@@ -192,6 +192,42 @@ class HldValidationTest(unittest.TestCase):
         )
         self.assertTrue(any("interfaces must list" in error for error in errors))
 
+    def test_interfaces_none_may_carry_a_reason(self):
+        for body in ("None — no call or event crosses a repository.", "None: the change is internal.",
+                     "none.\n\nOnly the backend changes.", "**None** - one repository."):
+            text = self.valid_text(interfaces=body).replace(
+                "\n\n```mermaid\nflowchart LR\n  client --> backend\n```", "")
+            result = self.report(text)
+            self.assertTrue(result["valid"], (body, result))
+            self.assertFalse(result["interfaces_changed"], body)
+        for body in ("None of the services agree on this.", "None\n- POST /v1/drafts"):
+            self.assertTrue(self.report(self.valid_text(interfaces=body))["interfaces_changed"], body)
+
+    def test_headings_inside_code_fences_are_not_sections(self):
+        text = self.valid_text().replace(
+            "client --> backend\n```", "client --> backend\n```\n\n```bash\n# install\n## Appendix\n```")
+        self.assertEqual(validate_hld.validate(self.write(text), self.ledger())[0], [])
+        sections, order = validate_hld._sections(text)
+        self.assertNotIn("appendix", order)
+        text = self.valid_text().replace("# Demo feature", "```\n# Demo feature").replace(
+            "\n\n**Feature slug", "\n```\n\n# Demo feature — HLD\n\n**Feature slug", 1)
+        self.assertEqual(validate_hld.validate(self.write(text), self.ledger())[0], [])
+
+    def test_an_infrastructure_table_header_is_not_an_unowned_change(self):
+        table = ("| Change | Owner |\n| --- | --- |\n| Autoscaled worker | `api` |\n"
+                 "| Dead-letter queue | `infra` |")
+        errors, _ = validate_hld.validate(self.write(self.infra_text(table)), self.ledger(),
+                                          infra_level="iac", repos=["api", "infra"])
+        self.assertEqual(errors, [])
+        errors, _ = validate_hld.validate(
+            self.write(self.infra_text(table.replace("| `infra` |", "| somebody |"))), self.ledger(),
+            infra_level="iac", repos=["api", "infra"])
+        self.assertTrue(any("Dead-letter queue" in e for e in errors), errors)
+        aligned = "| Change | Owner |\n|:--|:-:|\n| Autoscaled worker | `api` |"
+        errors, _ = validate_hld.validate(self.write(self.infra_text(aligned)), self.ledger(),
+                                          infra_level="iac", repos=["api"])
+        self.assertEqual(errors, [])
+
 
 if __name__ == "__main__":
     unittest.main()

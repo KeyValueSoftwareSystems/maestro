@@ -18,7 +18,8 @@ Formats (the contract the test-case and QA steps write to):
   - QA results: {"schema_version": 1, "cases": [{"id": "TC-...", "status": "passed" | "failed" |
     "skipped", "note": "..."}]}.
 
-A criterion passes only when at least one of its cases ran and every case that ran passed.
+A criterion passes only when at least one of its cases ran and every case that ran passed; a status
+other than passed or skipped (failed, error, blocked, unknown) counts as failing.
 """
 import argparse
 import json
@@ -32,6 +33,7 @@ import validate_prd  # noqa: E402
 AC_RE = re.compile(r"\bAC-(\d{2,})\b")
 CASE_HEADING_RE = re.compile(r"^#{2,4}\s+\**(TC-[A-Za-z0-9_.-]+)")
 STATUSES = ("passed", "failed", "skipped")
+PASS_ALIASES = {"pass": "passed"}
 
 
 def _read(path):
@@ -125,14 +127,16 @@ def qa_results(path):
     for item in items if isinstance(items, list) else []:
         if isinstance(item, dict) and isinstance(item.get("id"), str):
             status = str(item.get("status", "")).strip().lower()
-            results[item["id"].strip()] = (status if status in STATUSES else "skipped",
+            status = PASS_ALIASES.get(status, status)
+            # only skipped is neutral: error, blocked and anything unknown count against the criterion
+            results[item["id"].strip()] = (status if status in STATUSES else status or "unknown",
                                            str(item.get("note") or "").strip())
     return results
 
 
 def verdict(case_ids, results):
     ran = [results[c][0] for c in case_ids if c in results and results[c][0] != "skipped"]
-    if any(status == "failed" for status in ran):
+    if any(status != "passed" for status in ran):
         return "failing"
     return "passing" if ran else "not run"
 
@@ -155,7 +159,7 @@ def cmd_qa(args):
                            for c in ids) or "none"
         lines.append(f"| {ac} | {detail} | {state} |")
     failed_notes = [f"- {c}: {note}" for c, (status, note) in results.items()
-                    if status == "failed" and note]
+                    if status not in ("passed", "skipped") and note]
     if failed_notes:
         lines += ["", "## Failures", ""] + failed_notes
     out = args.out

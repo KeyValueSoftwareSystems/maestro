@@ -845,7 +845,7 @@ class SdlcE2E(unittest.TestCase):
         bugfix = [s for s in steps if s.startswith("delivery/bugfix/")]
         self.assertEqual([s.rsplit("/", 1)[-1] for s in bugfix],
                          ["fix", "review_resolution", "handoff", "verify", "review_scope",
-                          "review", "review_verdict"])
+                          "review_head", "review", "review_verdict"])
         self.assertEqual(steps.count("delivery/finalize_implementation"), 2)
         self.assertEqual(steps.count("delivery/qa/qa_run"), 2)
         self.assertEqual(steps.count("delivery/qa/env_down"), 2)
@@ -1301,12 +1301,14 @@ class SdlcE2E(unittest.TestCase):
         lld = [s.rsplit("/", 1)[-1] for _, s in trace if s.startswith("design/lld/")]
         start = lld.index("readiness_review")
         # the revision round re-checks the LLDs, then they go to approval
-        self.assertEqual(lld[start:start + 12], ["readiness_review", "readiness_verdict",
+        self.assertEqual(lld[start:start + 16], ["readiness_review", "readiness_verdict",
                                                  "revise_llds", "readiness_resolution",
                                                  "validate_llds", "lld_impact_trace", "sync_decisions",
                                                  "readiness_scope", "readiness_review",
-                                                 "readiness_verdict",
-                                                 "lld_approval", "record_approval"])
+                                                 "readiness_verdict", "approval_validate",
+                                                 "approval_trace", "lld_approval",
+                                                 "final_validate", "final_trace",
+                                                 "record_approval"])
         # an LLD revision does not rewrite the test cases
         self.assertEqual([s for _, s in trace].count("design/tests/test_cases"), 1)
 
@@ -1324,7 +1326,8 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(lld.count("readiness_review"), 3)
         self.assertEqual(lld.count("revise_llds"), 2)
         last_verdict = len(lld) - 1 - lld[::-1].index("readiness_verdict")
-        self.assertEqual(lld[last_verdict + 1], "lld_approval")
+        self.assertEqual(lld[last_verdict + 1:last_verdict + 4],
+                         ["approval_validate", "approval_trace", "lld_approval"])
         verdict = statemod.load("demo", self.tmp)["steps"][
             SOLUTION + "lld/readiness_verdict"]["outputs"]
         self.assertEqual((verdict["limit_reached"], verdict["blocking"]), (True, True))
@@ -1499,11 +1502,11 @@ class SdlcE2E(unittest.TestCase):
 
         # slot_1 claims backend (repos are claimed in name order); slot_2 claims frontend
         # domain_rules (optional, never blocks) runs after every passing verify
-        self.assertEqual(slot_steps("slot_1")[-9:], ["verify", "fix", "review_resolution", "handoff",
-                                                      "verify", "domain_rules", "review_scope",
-                                                      "review", "review_verdict"])
-        self.assertEqual(slot_steps("slot_2")[-5:], ["verify", "domain_rules", "review_scope",
-                                                      "review", "review_verdict"])
+        self.assertEqual(slot_steps("slot_1")[-10:], ["verify", "fix", "review_resolution", "handoff",
+                                                       "verify", "domain_rules", "review_scope",
+                                                       "review_head", "review", "review_verdict"])
+        self.assertEqual(slot_steps("slot_2")[-6:], ["verify", "domain_rules", "review_scope",
+                                                      "review_head", "review", "review_verdict"])
         receipt = json.loads(Path(self.tmp, ".maestro", "runs", "demo", "build", "backend",
                                   "verify.json").read_text())
         self.assertTrue(receipt["passed"])
@@ -1593,9 +1596,10 @@ class SdlcE2E(unittest.TestCase):
         self.assertEqual(action["action"], "done", action)
         steps = self.impl_steps(trace, "fix")
         start = steps.index("review_verdict")
-        self.assertEqual(steps[start:start + 9], ["review_verdict", "fix", "review_resolution",
-                                                  "handoff", "verify", "domain_rules",
-                                                  "review_scope", "review", "review_verdict"])
+        self.assertEqual(steps[start:start + 10], ["review_verdict", "fix", "review_resolution",
+                                                   "handoff", "verify", "domain_rules",
+                                                   "review_scope", "review_head", "review",
+                                                   "review_verdict"])
 
     def test_escalated_review_finding_goes_to_a_person(self):
         self.prep_tasks_json()

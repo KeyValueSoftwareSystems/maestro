@@ -124,6 +124,17 @@ nodes:
     type: script
     label: Previous review round
     run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, "code-${inputs.repo}", --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"]
+    next: review_head
+
+  # Engine-owned: the commit the review reads is the worktree's HEAD now. Accepting the failing
+  # checks at the escalation gate sends the fix here without passing `handoff` again, and the
+  # fixer may have committed since it last ran.
+  - id: review_head
+    type: script
+    label: Commit to review (worktree HEAD)
+    run: [python3, .maestro/engine/implementation_pool.py, inspect, --root, ".", --repo, "${inputs.repo}", --branch, "${inputs.branch}", --worktree, "${inputs.worktree}"]
+    on_fail: abort
+    max_visits: 10
     next: review
 
   - id: review
@@ -131,7 +142,7 @@ nodes:
     label: Re-review the fix
     instruction: |
       Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
-      ${inputs.commit} (what QA tested) to ${steps.handoff.outputs.commit}, against the LLD at
+      ${inputs.commit} (what QA tested) to ${steps.review_head.outputs.commit}, against the LLD at
       .maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md, the contract at
       .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists) and the standards. The engine ran build, lint and tests
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
@@ -156,7 +167,7 @@ nodes:
       slug: "${inputs.slug}"
       repo_path: "${inputs.repo_path}"
       worktree: "${steps.handoff.outputs.worktree}"
-      commit: "${steps.handoff.outputs.commit}"
+      commit: "${steps.review_head.outputs.commit}"
       branch: "${inputs.branch}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
@@ -179,7 +190,7 @@ nodes:
   - id: review_verdict
     type: script
     label: Blocking review findings?
-    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.handoff.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.reviewed.json", --root, "."]
+    run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.review_head.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.reviewed.json", --root, "."]
     max_visits: 8
     on_exhausted: fix_gate
     routes:

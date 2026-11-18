@@ -11,8 +11,10 @@ from pathlib import Path
 
 try:
     from validate_open_questions import validate as validate_open_questions
+    from validate_prd import fenced_lines
 except ImportError:  # imported as a package (tests)
     from .validate_open_questions import validate as validate_open_questions
+    from .validate_prd import fenced_lines
 
 
 REQUIRED_SECTIONS = (
@@ -51,8 +53,10 @@ def _words(text):
 
 def _sections(text):
     found, order, current = {}, [], None
-    for line in text.splitlines():
-        match = re.match(r"^##\s+(.+?)\s*$", line)
+    lines = text.splitlines()
+    fenced, _unclosed = fenced_lines(lines)
+    for line, in_fence in zip(lines, fenced):
+        match = None if in_fence else re.match(r"^##\s+(.+?)\s*$", line)
         if match:
             current = _normalise_heading(match.group(1))
             order.append(current)
@@ -87,6 +91,14 @@ def _validate_deferred_ledger(path, open_body):
     return errors
 
 
+def _says_none(body):
+    """`None`, or `None` then a dash, colon or period and a reason (`None — nothing crosses
+    repositories.`), with no bullet or table row listing a change."""
+    if re.search(r"^\s*(?:[-*]\s+\S|\|)", body, re.M):
+        return False
+    return bool(re.match(r"^[*_]*none[*_]*\s*(?:[-\u2013\u2014:.]|$)", body.strip(), re.I))
+
+
 def interfaces_changed(sections):
     """True when the HLD names cross-repository interfaces; the contract step runs only then.
 
@@ -94,7 +106,7 @@ def interfaces_changed(sections):
     row each), or says `None` when the feature changes no interface between repositories.
     """
     body = sections.get("interfaces", "").strip()
-    return bool(body) and body.lower().rstrip(".") != "none"
+    return bool(body) and not _says_none(body)
 
 
 def infra_changed(sections):
@@ -132,6 +144,19 @@ def _expected_order(order, infra_level, greenfield=False):
     return expected
 
 
+TABLE_SEP_RE = re.compile(r"^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$")
+
+
+def _table_frame(rows, index):
+    """True for a table's header row (the one above the `|---|` row) or its separator row."""
+    line = rows[index]
+    if "|" not in line:
+        return False
+    if TABLE_SEP_RE.match(line):
+        return True
+    return index + 1 < len(rows) and "|" in rows[index + 1] and bool(TABLE_SEP_RE.match(rows[index + 1]))
+
+
 def validate(path, open_questions_path=None, infra_level="none", repos=(), greenfield=False):
     errors, warnings = [], []
     try:
@@ -141,14 +166,17 @@ def validate(path, open_questions_path=None, infra_level="none", repos=(), green
 
     sections, order = _sections(text)
     lines = text.splitlines()
+    fenced, unclosed = fenced_lines(lines)
+    if unclosed:
+        errors.append(f"line {unclosed}: code fence is never closed")
     h1 = [(index, line[2:].strip()) for index, line in enumerate(lines)
-          if re.match(r"^#\s+\S", line)]
+          if re.match(r"^#\s+\S", line) and not fenced[index]]
     if len(h1) != 1:
         errors.append("document header: exactly one level-1 HLD title is required")
     elif not re.search(r"\b(?:hld|high level design)\b", h1[0][1], re.I):
         errors.append("document header: level-1 title must identify the document as an HLD")
-    first_h2 = next((index for index, line in enumerate(lines) if line.startswith("## ")),
-                    len(lines))
+    first_h2 = next((index for index, line in enumerate(lines)
+                     if line.startswith("## ") and not fenced[index]), len(lines))
     preamble = lines[:first_h2]
     if not any(FEATURE_SLUG_RE.match(line) for line in preamble):
         errors.append("document header: missing Feature slug metadata")
@@ -199,10 +227,10 @@ def validate(path, open_questions_path=None, infra_level="none", repos=(), green
         errors.append("infrastructure and operations must list each change as a bullet or table "
                       "row, or say None")
     if infra_changed(sections) and repos:
-        unowned = [line.strip() for line in infra.splitlines()
-                   if re.match(r"^\s*(?:[-*]\s+\S|\|)", line) and not re.match(r"^\s*\|\s*-", line)
-                   and not any(f"`{repo}`" in line for repo in repos)
-                   and not re.match(r"^\s*\|\s*(?:repository|repo|owner)\b", line, re.I)]
+        rows = infra.splitlines()
+        unowned = [line.strip() for index, line in enumerate(rows)
+                   if re.match(r"^\s*(?:[-*]\s+\S|\|)", line) and not _table_frame(rows, index)
+                   and not any(f"`{repo}`" in line for repo in repos)]
         if unowned:
             errors.append("infrastructure and operations: name the repository that owns each "
                           f"change in backticks (one of: {', '.join(repos)}): {unowned[0][:80]}")

@@ -209,6 +209,9 @@ def main(argv=None):
     if os.path.isdir(dest) and os.path.samefile(args.src, dest):
         print("  .maestro/workflows is the pack source itself — nothing to upgrade")
         return 0
+    if os.path.islink(dest) and not args.dry_run:
+        print(f"FAIL: {dest} is a symlink; refusing to write workflows through it", file=sys.stderr)
+        return 1
     actions, retired, manifest_out = plan(args.src, root, _load_json(args.releases, {}))
     failures = []
     if not args.dry_run:

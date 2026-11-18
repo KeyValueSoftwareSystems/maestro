@@ -169,6 +169,39 @@ class PrdValidationTest(unittest.TestCase):
         errors, _ = validate_prd.validate(path)
         self.assertEqual(errors, [])
 
+    def test_headings_inside_code_fences_are_not_headings(self):
+        for fence in ("```", "~~~"):
+            block = f"{fence}bash\n# install the tool\n## not a section\n{fence}"
+            text = self.valid_text().replace(
+                "A concise confirmed product decision for summary.",
+                f"A concise confirmed product decision for summary.\n\n{block}")
+            errors, _ = validate_prd.validate(self.write(text))
+            self.assertEqual(errors, [], fence)
+            sections = validate_prd._sections(text)
+            self.assertIn("## not a section", sections["summary"])
+            self.assertNotIn("not a section", sections)
+        # an unclosed fence is reported and does not hide the sections after it
+        text = self.valid_text().replace("decision for summary.", "decision for summary.\n\n```bash\nls")
+        errors, _ = validate_prd.validate(self.write(text))
+        self.assertEqual([e for e in errors if "never closed" not in e], [])
+        self.assertTrue(any("never closed" in e for e in errors), errors)
+
+    def test_mechanical_fix_keeps_the_ac_label_form(self):
+        text = self.valid_text().replace(
+            "- AC-01: The confirmed behavior is observable.",
+            "- **AC-01:** The confirmed behavior is observable.\n"
+            "- **AC-02**: A second result is shown.\n- AC-3: A third result.")
+        path = self.write(text)
+        validate_prd.apply_mechanical_fixes(path)
+        with open(path) as fh:
+            updated = fh.read()
+        for line in ("- AC-01: The confirmed behavior is observable.", "- AC-02: A second result is shown.",
+                     "- AC-03: A third result."):
+            self.assertIn(line, updated)
+        self.assertNotIn("**AC", updated)
+        self.assertNotIn(":**", updated.split("## Acceptance")[1])
+        self.assertEqual(validate_prd.validate(path)[0], [])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,19 @@
+version: 1
+name: bad-on-branch-fail
+start: fan
+nodes:
+  - id: fan
+    type: parallel
+    on_branch_fail: failall
+    branches:
+      - id: a
+        start: one
+        steps:
+          - id: one
+            instruction: Do one.
+      - id: b
+        start: two
+        steps:
+          - id: two
+            instruction: Do two.
+    next: end

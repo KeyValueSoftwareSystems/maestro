@@ -12,6 +12,8 @@ from contextlib import redirect_stderr, redirect_stdout
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, ".."))
 import maestroctl  # noqa: E402
+import resolver  # noqa: E402
+import state as statemod  # noqa: E402
 import validate  # noqa: E402
 
 FLOW = """\
@@ -60,7 +62,9 @@ class BriefTest(unittest.TestCase):
         return json.loads(text) if text.lstrip().startswith("{") else text
 
     def finish(self, step):
-        return self.ctl("complete", "--slug", "f", "--step", step, "--outputs", "{}")
+        entry = statemod.load("f", self.tmp)["steps"].get(step, {})
+        claim = ["--claim", entry[resolver.CLAIM_ID_KEY]] if entry.get(resolver.CLAIM_ID_KEY) else []
+        return self.ctl("complete", "--slug", "f", "--step", step, "--outputs", "{}", *claim)
 
     def test_levels(self):
         self.ctl("init", "--slug", "f", "--workflow", "briefed.yaml")
@@ -106,7 +110,7 @@ class BriefTest(unittest.TestCase):
         node = {"id": "a", "instruction": "x", "brief": "everything"}
         errors = [i.msg for i in validate._validate_node(node, {"a": node}, set(), "w")
                   if i.level == "error"]
-        self.assertIn("agent brief must be 'none', 'minimal' or 'full'", errors)
+        self.assertTrue(any("agent brief must be one of none, minimal, full" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

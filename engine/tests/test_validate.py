@@ -21,6 +21,10 @@ EXPECTED_RULE = {
     "invalid-dup-id": "dup-id",
     "invalid-branch-nested-parallel": "branch-bad-type",
     "invalid-subworkflow-missing": "subworkflow-missing-file",
+    "invalid-script-timeout-string": "bad-type",
+    "invalid-bad-on-branch-fail": "bad-type",
+    "invalid-next-list": "bad-type",
+    "invalid-route-when-bool": "bad-type",
 }
 
 
@@ -224,6 +228,124 @@ class InterviewDiscussTest(unittest.TestCase):
         self.assertIn("unknown-key", self.codes({"evidence": {}}))
         self.assertIn("bad-type", self.codes({"inputs": ["docs/map.md"]}))
         self.assertIn("bad-type", self.codes("docs/map.md"))
+
+
+class FieldTypeTest(unittest.TestCase):
+    """Every node field the JSON schema types or enumerates is enforced, with the node id."""
+
+    def errors(self, node, **doc):
+        issues = validate.validate_doc({"version": 1, "nodes": [node], **doc})
+        return [i for i in issues if i.level == "error"]
+
+    def assert_bad(self, node, key, **doc):
+        errs = self.errors(node, **doc)
+        self.assertTrue(any(i.code == "bad-type" and key in i.msg and "#" not in i.where
+                            and i.where == node["id"] for i in errs),
+                        [str(i) for i in errs])
+
+    def test_wrong_scalar_types_and_enums(self):
+        script = {"id": "s", "type": "script", "run": ["x"]}
+        agent = {"id": "a", "instruction": "go"}
+        gate = {"id": "g", "type": "gate", "prompt": "p",
+                "options": [{"id": "o", "label": "O", "to": "end"}]}
+        fan = {"id": "f", "type": "parallel", "branches": [
+            {"id": "b1", "start": "x", "steps": [{"id": "x", "instruction": "i"}]},
+            {"id": "b2", "start": "y", "steps": [{"id": "y", "instruction": "i"}]}]}
+        cases = [
+            (script, "timeout", "30s"), (script, "timeout", 0), (script, "timeout", True),
+            (script, "label", 3), (script, "ui", []),
+            (agent, "timeout", "1h"), (agent, "retries", -1), (agent, "retries", "2"),
+            (agent, "execution", "lad"), (agent, "brief", "loud"), (agent, "fresh", "yes"),
+            (agent, "isolate", "container"), (agent, "outputs", "x"), (agent, "outputs", [1]),
+            (agent, "inputs", ["a"]), (agent, "inputs", {"k": [1]}), (agent, "model", 4),
+            (agent, "skill", []), (agent, "agent", {}),
+            (gate, "prompt", ""), (gate, "prompt", 5),
+            (fan, "on_branch_fail", "failall"), (fan, "join", "some"),
+            (fan, "isolate", "tmp"),
+        ]
+        for node, key, bad in cases:
+            self.assert_bad({**node, key: bad}, key)
+
+    def test_valid_values_still_pass(self):
+        node = {"id": "a", "instruction": "go", "timeout": 5, "retries": 0, "execution": "lead",
+                "brief": "full", "fresh": True, "isolate": "worktree", "outputs": ["x"],
+                "inputs": {"k": 1, "j": "v", "i": False}, "model": "m", "next": "end"}
+        self.assertEqual(self.errors(node), [])
+
+    def test_attempts_and_check_timeout(self):
+        node = {"id": "a", "instruction": "go", "check": {"run": ["x"], "attempts": "3"}}
+        self.assertIn("bad-type", {i.code for i in self.errors(node)})
+
+    def test_top_level_types(self):
+        node = {"id": "a", "instruction": "go"}
+        for extra in ({"inputs": True}, {"inputs": {"x": "string"}}, {"inputs": {"x": {"type": "path"}}},
+                      {"defaults": [1]}, {"defaults": {"model": 3}}, {"defaults": {"extra": 1}},
+                      {"outputs": {"o": 1}}, {"outputs": []}, {"ui": "x"}, {"start": ["a"]}):
+            errs = self.errors(node, **extra)
+            self.assertTrue(errs, extra)
+
+    def test_bool_version_rejected(self):
+        issues = validate.validate_doc({"version": True, "nodes": [{"id": "a", "instruction": "x"}]})
+        self.assertIn("bad-version", {i.code for i in issues})
+
+
+class NoCrashOnWrongTypesTest(unittest.TestCase):
+    """Wrong-typed values are reported as ordinary issues, never raised."""
+
+    BAD = [None, True, False, 0, 1.5, "30s", "", [], ["b"], [1], {}, {"a": 1}, [[]], [{}]]
+
+    def base(self):
+        return {"version": 1, "name": "r", "inputs": {"a": {"type": "string"}},
+                "defaults": {"model": "m", "max_visits": 3, "brief": "full"},
+                "outputs": {"o": "x"}, "ui": {}, "nodes": [
+            {"id": "w", "instruction": "go", "inputs": {"k": "v"}, "outputs": ["x"],
+             "artifact": ["a.md"], "check": [{"run": ["x"], "attempts": 2}], "timeout": 5,
+             "routes": [{"when": "x == y", "to": "i"}, {"to": "g"}], "on_fail": "abort"},
+            {"id": "i", "type": "interview", "artifact": "a.json", "next": "g",
+             "sections": [{"id": "s1", "title": "T"}],
+             "discuss": {"inputs": {}}, "auto": {"modes": ["auto"], "when": ["x == y"]}},
+            {"id": "g", "type": "gate", "prompt": "p", "auto": {"option": "b"},
+             "options": [{"id": "a", "label": "A", "to": "s", "input": "t"},
+                         {"id": "b", "label": "B", "to": "end"}]},
+            {"id": "s", "type": "script", "run": ["x"], "next": "p"},
+            {"id": "p", "type": "parallel", "next": "end", "branches": [
+                {"id": "b1", "start": "c", "steps": [{"id": "c", "instruction": "x"}]},
+                {"id": "b2", "start": "e", "steps": [
+                    {"id": "e", "type": "subworkflow", "workflow": "x.yaml"}]}]}]}
+
+    def paths(self, obj, prefix=()):
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                yield prefix + (k,)
+                yield from self.paths(v, prefix + (k,))
+        elif isinstance(obj, list):
+            for i, v in enumerate(obj):
+                yield prefix + (i,)
+                yield from self.paths(v, prefix + (i,))
+
+    def test_no_exception_for_any_wrong_typed_field(self):
+        import copy
+        for path in list(self.paths(self.base())):
+            for bad in self.BAD:
+                doc = copy.deepcopy(self.base())
+                target = doc
+                for p in path[:-1]:
+                    target = target[p]
+                target[path[-1]] = bad
+                try:
+                    validate.validate_doc(doc)
+                except Exception as exc:  # noqa: BLE001
+                    self.fail(f"{path} = {bad!r}: {type(exc).__name__}: {exc}")
+
+    def test_reported_not_raised(self):
+        node = {"id": "a", "instruction": "x"}
+        for patch, code in (({"next": ["b"]}, "bad-type"),
+                            ({"routes": [{"when": False, "to": "end"}]}, "bad-type"),
+                            ({"on_fail": ["b"]}, "bad-type"),
+                            ({"routes": True}, "bad-type"),
+                            ({"type": []}, "bad-type")):
+            issues = validate.validate_doc({"nodes": [{**node, **patch}]})
+            self.assertIn(code, {i.code for i in issues}, patch)
 
 
 if __name__ == "__main__":

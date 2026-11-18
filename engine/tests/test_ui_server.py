@@ -196,6 +196,36 @@ nodes:
         self.assertIn(code, (400, 404))
         self.assertFalse(os.path.isfile(os.path.join(self.tmp, ".maestro", "runs", "my-feat", "x.yaml")))
 
+    def test_put_into_maestro_rejects_any_case_spelling_and_worktrees(self):
+        for evil in (".MAESTRO/runs/my-feat/x.yaml", ".Maestro/memory/x.yaml",
+                     ".maestro/worktrees/feat/backend/ci.yaml", ".maestro/baseline/x.yaml",
+                     ".maestro/x.yaml", ".maestro/Runs/my-feat/x.yaml", "sub/.GIT/x.yaml"):
+            code, _ = self._req("PUT", "/api/workflow?file=" + evil, WF)
+            self.assertIn(code, (400, 404), evil)
+            self.assertFalse(os.path.exists(os.path.join(self.tmp, *evil.split("/"))), evil)
+
+    def test_put_into_maestro_workflows_still_allowed(self):
+        code, _ = self._req("PUT", "/api/workflow?file=.maestro/workflows/new.yaml", WF)
+        self.assertEqual(code, 200)
+
+    def test_put_through_a_symlink_into_protected_tree_rejected(self):
+        os.symlink(os.path.join(self.tmp, ".maestro", "runs"), os.path.join(self.tmp, "link"))
+        code, _ = self._req("PUT", "/api/workflow?file=link/my-feat/x.yaml", WF)
+        self.assertIn(code, (400, 404))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, ".maestro", "runs", "my-feat", "x.yaml")))
+
+    def test_empty_or_non_mapping_put_does_not_truncate(self):
+        target = os.path.join(self.tmp, "workflows", "demo.yaml")
+        for body in ("", "  \n\n", "# only a comment\n", "- a\n- b\n"):
+            code, _ = self._req("PUT", "/api/workflow?file=workflows/demo.yaml", body)
+            self.assertEqual(code, 400, repr(body))
+            with open(target) as fh:
+                self.assertEqual(fh.read(), WF)
+
+    def test_put_leaves_no_temp_files(self):
+        self._req("PUT", "/api/workflow?file=workflows/demo.yaml", WF)
+        self.assertEqual(sorted(os.listdir(os.path.join(self.tmp, "workflows"))), ["demo.yaml"])
+
     def test_runs_list(self):
         code, obj = self._get_json("/api/runs")
         self.assertEqual(code, 200)

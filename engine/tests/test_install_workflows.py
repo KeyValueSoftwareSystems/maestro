@@ -231,6 +231,16 @@ class WorkflowUpgradeTest(unittest.TestCase):
         self.assertFalse(os.path.exists(self.upstream_path("a.yaml")))
         self.assertFalse(os.path.exists(os.path.join(self.dest, "b.yaml")))
 
+    def test_symlinked_workflows_dir_is_not_written_through(self):
+        other = os.path.join(self.tmp, "elsewhere")
+        os.makedirs(other)
+        os.rmdir(self.dest)
+        os.symlink(other, self.dest)
+        self.ship("a.yaml", V1)
+        rc = iw.main(["--src", self.src, "--root", self.root, "--releases", self.releases])
+        self.assertEqual(rc, 1)
+        self.assertEqual(os.listdir(other), [])
+
     def test_invalid_workflow_reported_after_install(self):
         self.ship("a.yaml", "nodes:\n  - id: a\n    type: gate\n")
         out = self.install()

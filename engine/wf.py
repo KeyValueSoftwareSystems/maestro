@@ -30,16 +30,20 @@ _FLOAT_RE = re.compile(r"^-?\d+\.\d+$")
 
 
 class _Line:
-    __slots__ = ("indent", "text", "no")
+    __slots__ = ("indent", "text", "no", "tabbed")
 
-    def __init__(self, indent, text, no):
-        self.indent, self.text, self.no = indent, text, no
+    def __init__(self, indent, text, no, tabbed=False):
+        self.indent, self.text, self.no, self.tabbed = indent, text, no, tabbed
 
 
 def loads(text):
     if text.startswith("﻿"):
         text = text[1:]
-    raw_lines = text.splitlines()
+    # Split on \n only: str.splitlines() also splits on U+2028/U+2029/U+0085/\x0b/\x0c/\x1c-\x1e,
+    # which would cut a quoted scalar in two.
+    raw_lines = text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+    if raw_lines and raw_lines[-1] == "":
+        raw_lines.pop()
     lines = []
     for no, raw in enumerate(raw_lines, 1):
         stripped = _strip_comment(raw)
@@ -52,15 +56,26 @@ def loads(text):
                 raise WfError("multi-document files are not supported", no)
             continue
         indent = len(stripped) - len(stripped.lstrip(" "))
-        if "\t" in raw[: indent + 1]:
-            raise WfError("tabs are not allowed in indentation", no)
-        lines.append(_Line(indent, stripped.strip(), no))
+        # A tab after the indent is only an error on a structural line: inside a `|` block
+        # literal it is content, so the check runs once the literals have claimed their lines.
+        lines.append(_Line(indent, stripped.strip(), no, "\t" in raw[: indent + 1]))
     if not lines:
         return {}
-    value, pos = _parse_block(lines, 0, raw_lines)
-    if pos != len(lines):
-        raise WfError("unexpected content", lines[pos].no)
+    try:
+        value, pos = _parse_block(lines, 0, raw_lines)
+        if pos != len(lines):
+            raise WfError("unexpected content", lines[pos].no)
+    except WfError:
+        _check_tabs(lines)
+        raise
+    _check_tabs(lines)
     return value
+
+
+def _check_tabs(lines):
+    for ln in lines:
+        if ln.tabbed:
+            raise WfError("tabs are not allowed in indentation", ln.no)
 
 
 def _strip_comment(raw):
@@ -149,10 +164,10 @@ def _parse_map_entries(first, lines, pos, raw_lines):
             raise WfError(f"expected 'key:' but got {line.text!r}", line.no)
         if key in out:
             raise WfError(f"duplicate key {key!r}", line.no)
-        if rest in ("|", "|-"):
-            value, pos = _parse_block_literal(lines, pos, line, rest == "|-", raw_lines)
+        if _BLOCK_HDR.match(rest):
+            value, pos = _parse_block_literal(lines, pos, line, rest, raw_lines)
             out[key] = value
-        elif rest in (">", ">-"):
+        elif _FOLD_HDR.match(rest):
             raise WfError("folded scalars (>) are not supported", line.no)
         elif rest:
             out[key] = _parse_scalar(rest, line.no)
@@ -177,15 +192,27 @@ def _parse_map_entries(first, lines, pos, raw_lines):
         pos += 1
 
 
-def _parse_block_literal(lines, pos, key_line, strip_final, raw_lines):
-    """Collect the raw body of a `|` block, preserving inner '#' and blank lines."""
+_BLOCK_HDR = re.compile(r"^\|(?:([+-])([1-9])?|([1-9])([+-])?)?$")
+_FOLD_HDR = re.compile(r"^>(?:[+-][1-9]?|[1-9][+-]?)?$")
+
+
+def _parse_block_literal(lines, pos, key_line, header, raw_lines):
+    """Collect the raw body of a `|` block, preserving inner '#' and blank lines.
+
+    The header is `|` plus an optional chomping indicator (`-` strip, `+` keep, none clip)
+    and indentation indicator (1-9, relative to the key's column), in either order.
+    """
+    m = _BLOCK_HDR.match(header)
+    chomp = m.group(1) or m.group(4) or ""
+    explicit = m.group(2) or m.group(3)
     body_lines = []
-    body_indent = None
+    body_indent = key_line.indent + int(explicit) if explicit else None
     i = key_line.no  # 0-based index of the first candidate body line in raw_lines
     while i < len(raw_lines):
         raw = raw_lines[i]
         if not raw.strip():
-            body_lines.append("")
+            # with an explicit indent, spaces beyond it are content
+            body_lines.append(raw[body_indent:] if explicit and body_indent < len(raw) else "")
             i += 1
             continue
         this_indent = len(raw) - len(raw.lstrip(" "))
@@ -197,13 +224,18 @@ def _parse_block_literal(lines, pos, key_line, strip_final, raw_lines):
             break
         body_lines.append(raw[body_indent:])
         i += 1
+    trailing = 0
     while body_lines and body_lines[-1] == "":
         body_lines.pop()
+        trailing += 1
     text = "\n".join(body_lines)
-    if not strip_final and text:
+    if chomp == "+":
+        text += "\n" * (trailing + (1 if body_lines else 0))
+    elif chomp != "-" and text:
         text += "\n"
     last_body_no = i  # raw line numbers 1..i are consumed
     while pos < len(lines) and key_line.no < lines[pos].no <= last_body_no:
+        lines[pos].tabbed = False  # a tab inside the literal is content
         pos += 1
     return text, pos
 
@@ -245,16 +277,24 @@ def _try_key(text):
     return None, None
 
 
+_ESCAPE_RE = re.compile(r"\\(?:x([0-9a-fA-F]{2})|u([0-9a-fA-F]{4})|U([0-9a-fA-F]{8})|(.))")
+_SIMPLE_ESC = {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}
+
+
+def _unescape(m):
+    hexa = m.group(1) or m.group(2) or m.group(3)
+    if hexa:
+        try:
+            return chr(int(hexa, 16))
+        except ValueError:  # beyond U+10FFFF: leave as written
+            return m.group(0)
+    return _SIMPLE_ESC.get(m.group(4), "\\" + m.group(4))
+
+
 def _unquote(token):
     if len(token) >= 2 and token[0] == '"' and token[-1] == '"':
         body = token[1:-1]
-        return re.sub(
-            r"\\(.)",
-            lambda m: {"n": "\n", "t": "\t", "r": "\r", '"': '"', "\\": "\\"}.get(
-                m.group(1), "\\" + m.group(1)
-            ),
-            body,
-        )
+        return _ESCAPE_RE.sub(_unescape, body)
     if len(token) >= 2 and token[0] == "'" and token[-1] == "'":
         return token[1:-1].replace("''", "'")
     return token
@@ -318,12 +358,24 @@ def _split_flow(text, no, closer):
         return []
     parts, depth, quote, cur = [], 0, None, []
     prev = ""
-    for c in inner:
+    i = 0
+    while i < len(inner):
+        c = inner[i]
         if quote:
             cur.append(c)
+            if quote == '"' and c == "\\" and i + 1 < len(inner):
+                cur.append(inner[i + 1])  # escaped char: never closes the string
+                prev = inner[i + 1]
+                i += 2
+                continue
             if c == quote:
+                if quote == "'" and inner[i + 1 : i + 2] == "'":
+                    cur.append("'")  # '' escape
+                    i += 2
+                    continue
                 quote = None
             prev = c
+            i += 1
             continue
         if c in ("'", '"') and (prev == "" or prev in " :,[{"):
             quote = c
@@ -338,17 +390,38 @@ def _split_flow(text, no, closer):
             parts.append("".join(cur).strip())
             cur = []
             prev = ","
+            i += 1
             continue
         else:
             cur.append(c)
         prev = c
+        i += 1
     parts.append("".join(cur).strip())
     return [p for p in parts if p]
 
 
 # ---------------------------------------------------------------- dumping
 
-_PLAIN_OK = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_./ ${}()<>=!*+@-]*$")
+_PLAIN_OK = re.compile(r"[A-Za-z0-9_][A-Za-z0-9_./ ${}()<>=!*+@-]*")
+# Braces are plain text at block level, but the flow splitter counts them: inside `{...}` / `[...]`
+# (and in keys) only a balanced `${...}` placeholder may stay unquoted.
+_FLOW_BRACES_OK = re.compile(r"(?:[^{}]|\$\{[^{}]*\})*")
+# Characters that cannot sit raw in a quoted scalar: C0/C1 controls (\x85, \x0b ... are line
+# breaks to a splitlines() reader), U+2028/U+2029, a BOM, lone surrogates.
+_ESCAPE_NEEDED = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029\\ufeff\\ud800-\\udfff]")
+_NAMED_ESC = {"\n": "\\n", "\t": "\\t", "\r": "\\r"}
+
+
+def _quote(s):
+    s = s.replace("\\", "\\\\").replace('"', '\\"')
+    return '"' + _ESCAPE_NEEDED.sub(_escape_char, s) + '"'
+
+
+def _escape_char(m):
+    c = m.group(0)
+    if c in _NAMED_ESC:
+        return _NAMED_ESC[c]
+    return f"\\x{ord(c):02x}" if ord(c) < 256 else f"\\u{ord(c):04x}"
 
 
 def dumps(obj):
@@ -378,7 +451,13 @@ def _dump(obj, out, indent):
             elif isinstance(item, dict):
                 out.append(f"{pad}- {{}}")
             elif isinstance(item, list):
-                out.append(f"{pad}- {_dump_flow(item) if item else '[]'}")
+                if not item:
+                    out.append(f"{pad}- []")
+                elif _flowable(item):
+                    out.append(f"{pad}- {_dump_flow(item)}")
+                else:
+                    out.append(f"{pad}-")
+                    _dump(item, out, indent + 2)
             else:
                 out.append(f"{pad}- {_dump_scalar(item)}")
     else:
@@ -389,13 +468,14 @@ def _literal_safe(s):
     """True if a multi-line string round-trips through a `|`/`|-` block literal.
 
     The emitter has no indentation-indicator or line-folding, so a string is only
-    literal-safe when the loader can recover it byte-for-byte: no carriage returns
-    (splitlines would split on them), no whitespace-only interior line (reloaded as a
-    blank), and no leading whitespace on the first content line (which would inflate the
+    literal-safe when the loader can recover it byte-for-byte: no control or line-separator
+    characters (they are escaped in a quoted scalar instead), no extra trailing newline
+    (`|` keeps one), no whitespace-only interior line (reloaded as a blank), no content at
+    all, and no leading whitespace on the first content line (which would inflate the
     inferred block indent and truncate later lines). Anything else falls back to a
     double-quoted scalar with escapes.
     """
-    if "\r" in s:
+    if s.endswith("\n\n") or _ESCAPE_NEEDED.search(s.replace("\n", "").replace("\t", "")):
         return False
     body = s[:-1] if s.endswith("\n") else s
     seen_content = False
@@ -408,7 +488,7 @@ def _literal_safe(s):
             if line[0] in " \t":
                 return False
             seen_content = True
-    return True
+    return seen_content
 
 
 def _dump_entry(prefix, value, out, indent):
@@ -449,52 +529,58 @@ def _flowable(value):
 
 def _dump_flow(value):
     if isinstance(value, list):
-        return "[" + ", ".join(_dump_scalar(v) for v in value) + "]"
-    return "{" + ", ".join(f"{_dump_key(k)}: {_dump_scalar(v)}" for k, v in value.items()) + "}"
+        return "[" + ", ".join(_dump_scalar(v, True) for v in value) + "]"
+    return "{" + ", ".join(f"{_dump_key(k)}: {_dump_scalar(v, True)}" for k, v in value.items()) + "}"
 
 
 def _dump_key(key):
     key = str(key)
-    if _PLAIN_OK.match(key) and ":" not in key and not key.endswith(" "):
+    if (_PLAIN_OK.fullmatch(key) and ":" not in key and not key.endswith(" ")
+            and _FLOW_BRACES_OK.fullmatch(key)):
         return key
-    return '"' + key.replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return _quote(key)
 
 
-def _dump_scalar(value):
+def _dump_float(value):
+    r = repr(value)
+    if _FLOAT_RE.fullmatch(r) or value != value or value in (float("inf"), float("-inf")):
+        return r
+    # 1e-05 / 1e+16: the loader reads only plain decimals, so spell the digits out
+    from decimal import Decimal
+
+    t = format(Decimal(r), "f")
+    return t if "." in t else t + ".0"
+
+
+def _dump_scalar(value, flow=False):
     if value is None:
         return "null"
     if value is True:
         return "true"
     if value is False:
         return "false"
-    if isinstance(value, (int, float)):
+    if isinstance(value, float):
+        return _dump_float(value)
+    if isinstance(value, int):
         return repr(value)
     s = str(value)
     if s == "":
         return '""'
     low = s.lower()
     needs_quote = (
-        not _PLAIN_OK.match(s)
+        not _PLAIN_OK.fullmatch(s)
         or low in _BOOLS
         or low in _NULLS
-        or bool(_INT_RE.match(s))
-        or bool(_FLOAT_RE.match(s))
+        or bool(_INT_RE.fullmatch(s))
+        or bool(_FLOAT_RE.fullmatch(s))
         or s != s.strip()
         or s.startswith(("- ", "? "))
         or ": " in s
         or s.endswith(":")
         or s[0] in "[{#&*!|>%@`'\"~"
+        or (flow and not _FLOW_BRACES_OK.fullmatch(s))
     )
-    if needs_quote:
-        body = (
-            s.replace("\\", "\\\\")
-            .replace('"', '\\"')
-            .replace("\n", "\\n")
-            .replace("\r", "\\r")
-            .replace("\t", "\\t")
-        )
-        return f'"{body}"'
-    return s
+    return _quote(s) if needs_quote else s
 
 
 # ---------------------------------------------------------------- file io

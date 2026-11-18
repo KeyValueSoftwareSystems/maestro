@@ -78,8 +78,8 @@ _GIT_ENV = _git_env()
 def _git(repo, *args, timeout=60):
     try:
         proc = subprocess.run(
-            ["git", "-C", repo, *args], capture_output=True, text=True, timeout=timeout,
-            env=_GIT_ENV,
+            ["git", "-C", repo, *args], capture_output=True, text=True, errors="replace",
+            timeout=timeout, env=_GIT_ENV,
         )
         return proc.returncode, proc.stdout.rstrip(), proc.stderr.strip()
     except (OSError, subprocess.SubprocessError) as exc:
@@ -591,6 +591,13 @@ def cmd_apply(root, plan, plan_sha256, out):
             continue
         if codebase_scan._head(repo) != entry.get("head_commit"):
             failures.append(f"{entry['name']}: HEAD changed after planning")
+            continue
+        rc, branch, _ = _git(repo, "symbolic-ref", "--quiet", "--short", "HEAD")
+        if rc != 0 or branch != entry.get("branch"):
+            # another branch at the same commit passes the HEAD check, and the fast-forward
+            # would move that branch to the upstream commit instead of the one that was planned
+            failures.append(f"{entry['name']}: checked-out branch changed after planning "
+                            f"({entry.get('branch') or 'detached'} -> {branch or 'detached'})")
             continue
         if _dirty_paths(repo):
             failures.append(f"{entry['name']}: local changes appeared after planning")

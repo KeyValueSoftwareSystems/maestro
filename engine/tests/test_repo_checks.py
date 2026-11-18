@@ -141,9 +141,12 @@ class RepoChecksTest(unittest.TestCase):
             fh.write("pass  # assertion removed\n")
         os.remove(os.path.join(worktree, "src_test.go"))
         with open(os.path.join(worktree, "tests", "test_new.py"), "w") as fh:
-            fh.write("assert True\n")
+            fh.write("assert 1 == 1\n")
         with open(os.path.join(worktree, "app.py"), "w") as fh:
             fh.write("changed = True\n")
+        subprocess.run(["git", "-C", worktree, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", worktree, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-qm", "edit tests"], check=True)
         result = self.run_guarded(main)
         self.assertTrue(result["passed"])  # flagged for the reviewer, not failed
         changes = {c["path"]: c["status"] for c in self.receipt()["test_changes"]}
@@ -289,7 +292,7 @@ class RepoChecksTest(unittest.TestCase):
         self.assertFalse(after_gate["unchanged"])
         with open(os.path.join(worktree, "feature.txt"), "w") as fh:
             fh.write("edited, not committed\n")
-        self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # dirty: re-run
+        self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # dirty: fails, runs none
         subprocess.run(["git", "-C", worktree, "checkout", "-q", "--", "feature.txt"], check=True)
         # clean now, but it was verified dirty: the fix changed files without a commit — re-run
         self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])
@@ -297,8 +300,8 @@ class RepoChecksTest(unittest.TestCase):
         self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # new commit
         self.config({"build": "true", "test": f"echo x >> {counter}; true"})
         self.assertFalse(self.run_keyed(main, "impl_gate-1")["unchanged"])  # command changed
-        with open(counter) as fh:  # branch runs only (the base run is cached once)
-            self.assertEqual(fh.read().count("x"), 7)
+        with open(counter) as fh:  # branch runs only (the base run is cached once); the dirty
+            self.assertEqual(fh.read().count("x"), 6)  # round ran nothing
 
     def test_a_failure_the_feature_caused_still_fails(self):
         main, worktree = self._repo_with_branch()
@@ -323,6 +326,139 @@ class RepoChecksTest(unittest.TestCase):
         self.config({"build": "true", "test": "true"})
         self.run_checks()
         self.assertEqual(self.receipt()["test_guard"], "no base repository given")
+
+    # -- review findings ------------------------------------------------------------------------
+    def commit_all(self, worktree, message="work"):
+        subprocess.run(["git", "-C", worktree, "add", "-A"], check=True)
+        subprocess.run(["git", "-C", worktree, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "commit", "-qm", message], check=True)
+
+    def write(self, worktree, rel, text):
+        full = os.path.join(worktree, rel)
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "w", encoding="utf-8") as fh:
+            fh.write(text)
+
+    def secret_findings(self):
+        return next((c["findings"] for c in self.receipt()["checks"] if c["name"] == "secrets"), [])
+
+    AWS = "AKIA" + "ZX7R4N2KQ8W5PL6M"
+
+    def test_uncommitted_changes_fail_verification_and_run_nothing(self):
+        main, worktree = self._repo_with_branch()
+        marker = os.path.join(self.root, "ran")
+        self.config({"build": f"touch {marker}", "test": "true"})
+        self.write(worktree, "app.py", "edited = True\n")           # tracked, not committed
+        self.write(worktree, "new dir/untracked \u00e9.txt", "x\n")  # untracked, not ignored
+        result = self.run_guarded(main)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failed_checks"], "dirty")
+        self.assertIn("uncommitted changes", result["summary"])
+        self.assertFalse(os.path.exists(marker))
+        dirty = next(c for c in self.receipt()["checks"] if c["name"] == "dirty")
+        self.assertEqual(sorted(dirty["paths"]), ["app.py", "new dir/untracked \u00e9.txt"])
+        # ignored files are not changes; once everything is committed the checks run
+        subprocess.run(["git", "-C", worktree, "checkout", "-q", "--", "app.py"], check=True)
+        self.write(worktree, ".gitignore", "*.log\n")
+        self.write(worktree, "x.log", "noise\n")
+        self.commit_all(worktree)
+        self.assertTrue(self.run_guarded(main)["passed"])
+        self.assertTrue(os.path.exists(marker))
+
+    def test_a_secret_on_a_line_starting_with_plus_plus_does_not_end_the_scan(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"})
+        # the added line "++ b/x" makes the diff line "+++ b/x", which is content, not a header
+        self.write(worktree, "notes.txt", "++ b/decoy\nkey = " + self.AWS + "\n")
+        self.commit_all(worktree)
+        self.assertEqual(self.run_guarded(main)["failed_checks"], "secrets")
+        self.assertEqual([(f["path"], f["line"]) for f in self.secret_findings()],
+                         [("notes.txt", 2)])
+
+    def test_a_secret_in_a_non_ascii_file_name_is_found(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"})
+        self.write(worktree, "config/cl\u00e9 secr\u00e8te.env", "KEY=" + self.AWS + "\n")
+        self.commit_all(worktree)
+        self.assertEqual(self.run_guarded(main)["failed_checks"], "secrets")
+        self.assertEqual(self.secret_findings()[0]["path"], "config/cl\u00e9 secr\u00e8te.env")
+
+    def test_a_secret_committed_then_deleted_is_still_found_in_the_history(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "true", "test": "true"})
+        self.write(worktree, "leak.env", "KEY=" + self.AWS + "\n")
+        self.commit_all(worktree, "add")
+        os.remove(os.path.join(worktree, "leak.env"))
+        self.commit_all(worktree, "remove")   # the net diff has no trace; the push still does
+        result = self.run_guarded(main)
+        self.assertEqual(result["failed_checks"], "secrets")
+        finding = self.secret_findings()[0]
+        self.assertEqual((finding["path"], finding["line"], finding["rule"]),
+                         ("leak.env", 1, "aws-access-key"))
+        with open(os.path.join(self.root, self.out)) as fh:
+            self.assertNotIn(self.AWS, fh.read())
+
+    def test_the_branch_base_is_the_recorded_one_not_the_main_checkouts_head(self):
+        main, worktree = self._repo_with_branch()
+        base = subprocess.run(["git", "-C", main, "rev-parse", "HEAD"], capture_output=True,
+                              text=True).stdout.strip()
+        self.config({"build": "true", "test": "true"})
+        self.write(worktree, "leak.env", "KEY=" + self.AWS + "\n")
+        self.write(worktree, "tests/test_orders.py", "pass\n")
+        self.commit_all(worktree)
+        # a local merge moved the main checkout onto the feature: merge-base(HEAD, main) is HEAD
+        subprocess.run(["git", "-C", main, "-c", "user.email=t@e", "-c", "user.name=T",
+                        "merge", "-q", "--ff-only", "feature"], check=True)
+        record = os.path.join(self.root, ".maestro", "runs", "demo", ".engine", "worktrees.json")
+        os.makedirs(os.path.dirname(record))
+        with open(record, "w") as fh:
+            json.dump({"repos": {"backend": {"path": worktree, "base_commit": base}}}, fh)
+        result = self.run_guarded(main)
+        self.assertEqual(result["failed_checks"], "secrets")
+        self.assertIn("tests/test_orders.py (modified)", result["tests_changed"])
+        os.remove(record)   # without a record the old behaviour stands (and sees nothing)
+        self.assertTrue(self.run_guarded(main)["passed"])
+        # an explicit base works the same
+        proc = subprocess.run(
+            [sys.executable, SCRIPT, "--root", self.root, "--repo", "backend", "--worktree",
+             worktree, "--out", self.out, "--base-repo", main, "--base-commit", base],
+            capture_output=True, text=True)
+        self.assertEqual(json.loads(proc.stdout.strip().splitlines()[-1])["failed_checks"],
+                         "secrets")
+
+    def test_output_that_is_not_utf8_does_not_crash_verification(self):
+        main, worktree = self._repo_with_branch()
+        self.config({"build": "printf '\\377\\376 bad bytes\\n'",
+                     "test": "printf '\\200'; test ! -f ok.txt"})
+        self.write(worktree, "ok.txt", "x\n")
+        with open(os.fsencode(worktree) + b"/caf\xe9.txt", "wb") as fh:   # a Latin-1 file name
+            fh.write(b"x\n")
+        self.commit_all(worktree)
+        result = self.run_guarded(main)
+        self.assertFalse(result["passed"])
+        self.assertEqual(result["failed_checks"], "test")
+        self.assertIn("bad bytes", self.receipt()["checks"][0]["tail"])
+
+    def test_one_verify_waits_while_another_uses_the_shared_baseline_checkout(self):
+        import fcntl
+        import time
+        main, worktree = self._repo_with_branch()
+        self.commit_feature(worktree)
+        self.config({"build": "true", "test": "test -f never-there"})
+        folder = os.path.join(self.root, ".maestro", "baseline", "backend")
+        os.makedirs(folder)
+        with open(os.path.join(folder, ".lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)    # another feature's verify is in the baseline
+            proc = subprocess.Popen(
+                [sys.executable, SCRIPT, "--root", self.root, "--repo", "backend", "--worktree",
+                 worktree, "--out", self.out, "--base-repo", main],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            time.sleep(1.5)
+            self.assertIsNone(proc.poll())       # it waits instead of deleting that checkout
+            fcntl.flock(lock, fcntl.LOCK_UN)
+        out, err = proc.communicate(timeout=60)
+        self.assertEqual(proc.returncode, 0, err)
+        self.assertEqual(json.loads(out.strip().splitlines()[-1])["pre_existing_csv"], "test")
 
     def test_simulation_mode_runs_nothing(self):
         proc, result = self.run_checks(env={"MAESTRO_SIMULATION": "1"})

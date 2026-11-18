@@ -68,8 +68,12 @@ class ResumeSafetyTest(unittest.TestCase):
         self.assertIn("re-dispatched", err)
         self.ctl("complete", "--slug", "f", "--step", "fan[a]/work", "--outputs", "{}",
                  "--claim", again["fan[a]/work"])
-        # a completion without a claim is still accepted (older leads)
-        done = self.ctl("complete", "--slug", "f", "--step", "fan[b]/work", "--outputs", "{}")
+        # a completion without the claim is refused: it cannot be told from a stale worker's
+        err = self.ctl("complete", "--slug", "f", "--step", "fan[b]/work", "--outputs", "{}",
+                       code=4)
+        self.assertIn("claim", err)
+        done = self.ctl("complete", "--slug", "f", "--step", "fan[b]/work", "--outputs", "{}",
+                        "--claim", again["fan[b]/work"])
         self.assertEqual(done["action"], "done")
 
     def test_reset_all_drops_the_workspace_lock_of_the_earlier_attempt(self):
@@ -105,7 +109,7 @@ class ResumeSafetyTest(unittest.TestCase):
         node = {"id": "a", "instruction": "x", "timeout": "1h"}
         errors = [i.msg for i in validate._validate_node(node, {"a": node}, set(), "w")
                   if i.level == "error"]
-        self.assertIn("agent timeout must be a positive whole number of seconds", errors)
+        self.assertTrue(any("agent timeout must be a positive whole number" in e for e in errors), errors)
 
 
 if __name__ == "__main__":

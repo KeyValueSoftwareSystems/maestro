@@ -137,6 +137,10 @@ class ClaimTest(Base):
     def start(self):
         self.ctl("init", "--slug", "feat", "--workflow", self.write("w.yaml", PARALLEL_WF))
 
+    @staticmethod
+    def claims(wave):
+        return {a["step"]: a["claim"] for a in wave["agents"]}
+
     def test_wave_is_claimed_and_not_reserved(self):
         self.start()
         _, action = self.ctl("next", "--slug", "feat")
@@ -148,21 +152,22 @@ class ClaimTest(Base):
 
     def test_finished_worker_releases_only_its_own_followup(self):
         self.start()
-        self.ctl("next", "--slug", "feat")
+        _, wave = self.ctl("next", "--slug", "feat")
         _, action = self.ctl("complete", "--slug", "feat", "--step", "fan[a]/impl",
-                             "--outputs", '{"note": "a"}')
+                             "--outputs", '{"note": "a"}', "--claim", self.claims(wave)["fan[a]/impl"])
         # branch a's review is ready now; branch b's impl is still in flight, not re-served
         self.assertEqual((action["action"], action["step"]), ("run_agent", "fan[a]/review"))
 
     def test_ready_worker_is_served_before_another_branchs_gate(self):
         self.start()
-        self.ctl("next", "--slug", "feat")
+        _, wave = self.ctl("next", "--slug", "feat")
+        claims = self.claims(wave)
         _, action = self.ctl("complete", "--slug", "feat", "--step", "fan[b]/impl",
-                             "--outputs", '{"note": "b"}')
+                             "--outputs", '{"note": "b"}', "--claim", claims["fan[b]/impl"])
         # b now waits on a human; a's impl is in flight, so the gate is what's left to do
         self.assertEqual((action["action"], action["step"]), ("ask_gate", "fan[b]/approve"))
         _, action = self.ctl("complete", "--slug", "feat", "--step", "fan[a]/impl",
-                             "--outputs", '{"note": "a"}')
+                             "--outputs", '{"note": "a"}', "--claim", claims["fan[a]/impl"])
         # a's review must be dispatched first; the open gate does not block it
         self.assertEqual((action["action"], action["step"]), ("run_agent", "fan[a]/review"))
         _, action = self.ctl("next", "--slug", "feat")
@@ -193,10 +198,11 @@ class ClaimTest(Base):
 
     def test_complete_batch_records_the_wave_in_one_call(self):
         self.start()
-        self.ctl("next", "--slug", "feat")
+        _, wave = self.ctl("next", "--slug", "feat")
+        claims = self.claims(wave)
         code, action = self.ctl("complete-batch", "--slug", "feat", "--results", json.dumps([
-            {"step": "fan[a]/impl", "outputs": {"note": "a"}},
-            {"step": "fan[b]/impl", "outputs": {}},  # missing field -> reported, not fatal
+            {"step": "fan[a]/impl", "outputs": {"note": "a"}, "claim": claims["fan[a]/impl"]},
+            {"step": "fan[b]/impl", "outputs": {}, "claim": claims["fan[b]/impl"]},  # missing field -> reported, not fatal
         ]))
         self.assertEqual(code, 4)
         self.assertEqual([r["status"] for r in action["batch"]], ["done", "error"])
@@ -257,7 +263,8 @@ class GateInputPriorityTest(Base):
         # a's impl finishes without serving its follow-up: a/review is ready, unclaimed
         with statemod.locked("feat", self.tmp):
             run = resolver.Run("feat", self.tmp)
-            resolver.complete_step(run, "fan[a]/impl", outputs={"note": "a"})
+            resolver.complete_step(run, "fan[a]/impl", outputs={"note": "a"},
+                                   claim=run.state["steps"]["fan[a]/impl"]["claim_id"])
             statemod.save("feat", run.state, self.tmp)
         _, action = self.ctl("gate-record", "--slug", "feat", "--step", "fan[b]/ask",
                              "--option", "change")

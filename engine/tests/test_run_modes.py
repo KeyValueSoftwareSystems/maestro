@@ -92,7 +92,12 @@ class RunModeCliTest(unittest.TestCase):
         action = self.ctl("next", "--slug", "f")
         self.assertEqual(action["step"], "draft")
         return self.ctl("complete", "--slug", "f", "--step", "draft",
-                        "--outputs", json.dumps({"ready": ready}))
+                        "--outputs", json.dumps({"ready": ready}), *self.claim(action))
+
+    @staticmethod
+    def claim(action):
+        """The served action's claim, passed back with its result (`complete` refuses without)."""
+        return ("--claim", action["claim"]) if action.get("claim") else ()
 
     def gates(self):
         return statemod.load("f", self.tmp)["gates"]
@@ -114,7 +119,8 @@ class RunModeCliTest(unittest.TestCase):
         self.assertEqual(action["mode"], "design")
         action = self.ctl("gate-record", "--slug", "f", "--step", "design_ok", "--option", "approve")
         self.assertEqual(action["step"], "build")
-        action = self.ctl("complete", "--slug", "f", "--step", "build", "--outputs", "{}")
+        action = self.ctl("complete", "--slug", "f", "--step", "build", "--outputs", "{}",
+                          *self.claim(action))
         self.assertEqual(action["action"], "done")
         self.assertEqual(action["autopilot"], [
             {"kind": "gate", "step": "release", "option": "approve", "label": "Approve",
@@ -128,7 +134,8 @@ class RunModeCliTest(unittest.TestCase):
         action = self.drive_to_gate_or_end(ready=False)
         self.assertEqual(action["step"], "build")
         self.assertEqual(action["autopilot"][0]["step"], "design_ok")
-        action = self.ctl("complete", "--slug", "f", "--step", "build", "--outputs", "{}")
+        action = self.ctl("complete", "--slug", "f", "--step", "build", "--outputs", "{}",
+                          *self.claim(action))
         # release's condition is false: autopilot halts at the gate instead of guessing
         self.assertEqual(action["action"], "ask_gate")
         self.assertEqual(action["step"], "release")
@@ -151,7 +158,8 @@ class RunModeCliTest(unittest.TestCase):
         action = self.ctl("next", "--slug", "f")
         for _ in range(2):
             self.assertEqual(action["step"], "work")
-            action = self.ctl("complete", "--slug", "f", "--step", "work", "--outputs", "{}")
+            action = self.ctl("complete", "--slug", "f", "--step", "work", "--outputs", "{}",
+                              *self.claim(action))
         # the third autopilot "again" would exceed work's cap: a person decides instead
         self.assertEqual(action["action"], "ask_gate")
         self.assertEqual(action.get("synthesized"), "exhausted")
@@ -191,7 +199,8 @@ class RunModeCliTest(unittest.TestCase):
         # build is served and claimed; once it completes, release is a gate design mode answers
         with statemod.locked("f", self.tmp):
             run = resolver.Run("f", self.tmp)
-            resolver.complete_step(run, "build", outputs={})
+            resolver.complete_step(run, "build", outputs={},
+                                   claim=run.state["steps"]["build"]["claim_id"])
             statemod.save("f", run.state, self.tmp)
         self.assertEqual(statemod.load("f", self.tmp)["run"]["cursors"], ["release"])
         self.assertEqual(self.stop_hook_exit(), 2)

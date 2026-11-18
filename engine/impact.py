@@ -123,11 +123,19 @@ def match_scenarios(root, texts):
             head, _, tail = thing.partition(":")
             if tail and "/" not in head and " " not in head:
                 thing = tail.strip()  # "repo:path" -> path
-            if not thing:
-                continue
+            if not re.search(r"[A-Za-z0-9]", thing):
+                continue  # "", "./", "/" and "." would match any text
             # shortcut: substring/word match, no code parsing — upgrade if false hits show up
+            path = thing[2:] if thing.startswith("./") else thing
             if "/" in thing or os.path.splitext(thing)[1].lower() in living_docs.SOURCE_EXT:
-                hit = thing in text or os.path.basename(thing) in text
+                if thing.endswith("/") or not os.path.splitext(path)[1]:
+                    # a directory: matched when the text names that path (or a file under it),
+                    # never by its (empty) basename
+                    path = path.strip("/")
+                    hit = bool(path) and re.search(
+                        r"(?<![A-Za-z0-9_.-])" + re.escape(path) + r"(?!\.?[A-Za-z0-9_-])", text)
+                else:
+                    hit = thing in text or os.path.basename(thing) in text
             else:
                 hit = re.search(r"(?<![A-Za-z0-9_])" + re.escape(thing) + r"(?![A-Za-z0-9_])", text)
             if hit:
@@ -171,6 +179,11 @@ def load(root, path, core_only=False):
         return None, [f"{path} is missing"]
     except (OSError, ValueError) as exc:
         return None, [f"{path} is not readable JSON: {exc}"]
+    return load_doc(root, doc, core_only)
+
+
+def load_doc(root, doc, core_only=False):
+    """-> (impact, issues) for an assessment already parsed (see load)."""
     if not isinstance(doc, dict):
         return None, ["the impact assessment must be a JSON object"]
     issues = []
@@ -267,6 +280,33 @@ def blocking_decisions(impact):
     return [d for d in impact.get("open_decisions") or [] if d["kind"] in BLOCKING_KINDS]
 
 
+def merge_file(root, path, texts):
+    """Engine-matched scenarios from texts, written into the impact file. -> (added, issues).
+
+    The merged assessment is validated before anything is written: when it would be invalid (a
+    scenario whose rule or domain the docs do not define) the file is left as it was and the
+    problems come back as issues, so a good assessment is never replaced by a bad one."""
+    full = path if os.path.isabs(path) else os.path.join(root, path)
+    try:
+        with open(full, encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return [], []
+    if not isinstance(doc, dict):
+        return [], []
+    added = merge(doc, match_scenarios(root, texts))
+    if not added:
+        return [], []
+    merged, issues = load_doc(root, doc)
+    if merged is None:
+        return [], [f"the change scenario(s) {', '.join(added)} match this feature but cannot be "
+                    f"added to the impact assessment: {'; '.join(issues[:3])}"]
+    with open(full, "w", encoding="utf-8") as fh:
+        json.dump(doc, fh, indent=2)
+        fh.write("\n")
+    return added, []
+
+
 def _merge_from_prd(root, path, prd):
     """Engine-matched scenarios from the PRD and the assessment's evidence, written into impact.json."""
     full = path if os.path.isabs(path) else os.path.join(root, path)
@@ -276,16 +316,11 @@ def _merge_from_prd(root, path, prd):
         with open(prd if os.path.isabs(prd) else os.path.join(root, prd), encoding="utf-8") as fh:
             prd_text = fh.read()
     except (OSError, ValueError):
-        return []
+        return [], []
     evidence = [str(i.get("evidence", "")) for kind, _k in KINDS for i in doc.get(kind) or []
                 if isinstance(i, dict)] + [str(r.get("change", "")) for r in doc.get("repos") or []
                                            if isinstance(r, dict)]
-    added = merge(doc, match_scenarios(root, [prd_text] + evidence))
-    if added:
-        with open(full, "w", encoding="utf-8") as fh:
-            json.dump(doc, fh, indent=2)
-            fh.write("\n")
-    return added
+    return merge_file(root, path, [prd_text] + evidence)
 
 
 def describe(impact):
@@ -317,8 +352,10 @@ def validate(root, path, prd=None):
     impact, issues = load(root, path)
     added = []
     if impact is not None and prd:
-        added = _merge_from_prd(root, path, prd)
-        if added:
+        added, issues = _merge_from_prd(root, path, prd)
+        if issues:
+            impact = None
+        elif added:
             impact, issues = load(root, path)
     if impact is None:
         return {"valid": False, "repos_csv": "", "count": 0, "interface_change": "",

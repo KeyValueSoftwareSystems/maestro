@@ -70,6 +70,35 @@ class ConsolidateTest(unittest.TestCase):
             mem_consolidate.consolidate(self.mem, threshold=2)
         self.assertIn("seen: 2", self.knowledge("backend-review"))  # promotes at 2
 
+    def test_unsafe_domains_are_skipped_not_written_or_crashing(self):
+        outside = os.path.join(self.tmp, ".maestro")  # '../..' from candidates/ lands here
+        self.drop("run1", [self.L(domain="../.."), self.L(domain="api/payments"),
+                           self.L(domain=".."), self.L(domain=".hidden"), self.L(domain=3),
+                           self.L(domain="ok-domain", key="k")])
+        r = mem_consolidate.consolidate(self.mem, threshold=1)
+        self.assertEqual(r["domains"], 1)
+        self.assertEqual(sorted(os.listdir(os.path.join(self.mem, "candidates"))),
+                         ["ok-domain.json"])
+        self.assertFalse(os.path.exists(os.path.join(outside, "candidates")))
+        self.assertFalse(os.path.exists(os.path.join(self.mem, "candidates", "api")))
+        self.assertEqual(os.listdir(os.path.join(self.mem, "incoming")), [])
+        # the harvest keeps working afterwards
+        self.drop("run2", [self.L(domain="ok-domain", key="k")])
+        self.assertEqual(mem_consolidate.consolidate(self.mem, threshold=2)["promoted"], 1)
+
+    def test_a_bad_ledger_file_from_an_earlier_run_does_not_crash_later_harvests(self):
+        cand = os.path.join(self.mem, "candidates")
+        os.makedirs(cand)
+        with open(os.path.join(cand, "..json"), "w") as fh:  # domain "."
+            json.dump([{"key": "a", "text": "x", "slugs": ["r"]}], fh)
+        with open(os.path.join(cand, "good.json"), "w") as fh:
+            json.dump([{"key": ["unhashable"], "text": "x"},
+                       {"key": "k", "text": "t", "slugs": [["bad"], "r1"]}], fh)
+        self.drop("run1", [self.L()])
+        r = mem_consolidate.consolidate(self.mem, threshold=1)
+        self.assertEqual(r["domains"], 2)
+        self.assertIn("N+1", self.knowledge("backend-review"))
+
 
 if __name__ == "__main__":
     unittest.main()

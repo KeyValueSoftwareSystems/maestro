@@ -146,6 +146,14 @@ class SizingTest(unittest.TestCase):
         result = self.size_with(self.impact(["web", "api"], interfaces=True, size="minor"))
         self.assertIn("interface between repositories changes shape", result["reasons"])
 
+    def test_a_minor_label_never_overrides_the_facts(self):
+        self.repo("api")
+        result = self.size_with(self.impact(["web"], infrastructure=True, size="minor"))
+        self.assertEqual(result["path"], "full")
+        self.assertIn("infrastructure changes", result["reasons"])
+        result = self.size_with(self.facts(["web"], size="minor", interface_change="shape"))
+        self.assertEqual(result["path"], "full")
+
     def test_a_bad_item_list_does_not_discard_the_facts(self):
         # a domain with no doc page fails the agent's check, but sizing still reads the facts
         self.repo("api")

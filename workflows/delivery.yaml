@@ -29,8 +29,17 @@ nodes:
     run: [python3, .maestro/engine/lld_set.py, verify, --root, ., --slug, "${inputs.slug}"]
     on_fail: abort
     routes:
-      - {when: "${steps.design_check.outputs.stale} == true", to: end}
+      - {when: "${steps.design_check.outputs.stale} == true", to: stale_note}
       - {to: workspace_sync_pre_impl}
+
+  # Engine-owned, route-only: the design is stale, so the reasons are what the parent hands back
+  # to design as feedback. Only this path sets them, so a release sent back for another reason
+  # never carries the "design is current" sentence verify prints when nothing is stale.
+  - id: stale_note
+    type: script
+    label: Why the design is stale
+    run: [python3, .maestro/engine/entry_serve.py, "${steps.design_check.outputs.reasons}"]
+    next: end
 
   - id: workspace_sync_pre_impl
     type: subworkflow
@@ -92,10 +101,15 @@ nodes:
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.write_skills_csv}"
               review_skills: "${steps.claim.outputs.review_skills_csv}"
-            next: record
+            # a person who stopped this stack at one of impl's gates: record nothing for it; the
+            # other slots carry on and the implementation check names the repository left out
+            routes:
+              - {when: "${steps.impl.outputs.stop_gate_choice} == abandon", to: end}
+              - {when: "${steps.impl.outputs.impl_gate_choice} == abandon", to: end}
+              - {to: record}
           - id: record
             type: script
-            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
       - id: slot_2
@@ -120,10 +134,15 @@ nodes:
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.write_skills_csv}"
               review_skills: "${steps.claim.outputs.review_skills_csv}"
-            next: record
+            # a person who stopped this stack at one of impl's gates: record nothing for it; the
+            # other slots carry on and the implementation check names the repository left out
+            routes:
+              - {when: "${steps.impl.outputs.stop_gate_choice} == abandon", to: end}
+              - {when: "${steps.impl.outputs.impl_gate_choice} == abandon", to: end}
+              - {to: record}
           - id: record
             type: script
-            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
       - id: slot_3
@@ -148,10 +167,15 @@ nodes:
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.write_skills_csv}"
               review_skills: "${steps.claim.outputs.review_skills_csv}"
-            next: record
+            # a person who stopped this stack at one of impl's gates: record nothing for it; the
+            # other slots carry on and the implementation check names the repository left out
+            routes:
+              - {when: "${steps.impl.outputs.stop_gate_choice} == abandon", to: end}
+              - {when: "${steps.impl.outputs.impl_gate_choice} == abandon", to: end}
+              - {to: record}
           - id: record
             type: script
-            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
       - id: slot_4
@@ -176,10 +200,15 @@ nodes:
               feature: "${inputs.feature}"
               stack_skills: "${steps.claim.outputs.write_skills_csv}"
               review_skills: "${steps.claim.outputs.review_skills_csv}"
-            next: record
+            # a person who stopped this stack at one of impl's gates: record nothing for it; the
+            # other slots carry on and the implementation check names the repository left out
+            routes:
+              - {when: "${steps.impl.outputs.stop_gate_choice} == abandon", to: end}
+              - {when: "${steps.impl.outputs.impl_gate_choice} == abandon", to: end}
+              - {to: record}
           - id: record
             type: script
-            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}"]
+            run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
     next: finalize_implementation
@@ -438,7 +467,7 @@ nodes:
 outputs:
   design_changed: "${steps.workspace_sync_pre_impl.outputs.changed}"
   design_stale: "${steps.design_check.outputs.stale}"
-  stale_reasons: "${steps.design_check.outputs.reasons}"
+  stale_reasons: "${steps.stale_note.outputs.entry}"
   release: "${steps.release_approval.outputs.choice}"
   release_feedback: "${steps.release_approval.outputs.feedback}"
   release_by: "${steps.release_approval.outputs.by}"

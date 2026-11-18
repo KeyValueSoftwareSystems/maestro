@@ -1,0 +1,10 @@
+version: 1
+name: bad-when
+start: a
+nodes:
+  - id: a
+    instruction: Go.
+    routes:
+      - when: false
+        to: end
+      - to: end

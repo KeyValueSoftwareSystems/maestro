@@ -60,7 +60,26 @@ ANCHOR_RE = re.compile(r"(?<![\w/.-])([A-Za-z0-9][\w.-]*) · ([^\s·|`]+) · ([A
 UNKNOWN_OK = re.compile(r"Unknown\. \(ask: [^,()]+, since \d{4}-\d{2}-\d{2}\)")
 PRONOUN_RE = re.compile(r"^(It|This|They|That|These|Those|Its|Their)\b")
 RETIRED_RE = re.compile(r"^Retired\b", re.I)
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
+FENCE_RE = re.compile(r"^\s*(`{3,}|~{3,})(.*)$")
+
+
+def fence_flags(lines):
+    """Per line: True on an opening fence and inside the block, False on the closing fence. A fence
+    closes only on the same marker, at least as long and with no text after it. Second value: the
+    last block never closed (everything after it is hidden code)."""
+    flags, opener = [], None
+    for line in lines:
+        match = FENCE_RE.match(line)
+        if opener is None:
+            if match:
+                opener = match.group(1)
+        elif (match and match.group(1)[0] == opener[0] and len(match.group(1)) >= len(opener)
+              and not match.group(2).strip()):
+            opener = None
+        flags.append(opener is not None)
+    return flags, opener is not None
+
+
 LINK_RE = re.compile(r"\]\(([^)#\s]+)")
 
 FORMAT = {
@@ -258,12 +277,12 @@ class Doc:
         self.domain = self.fm.get("domain") if kind != "architecture" else None
         self.prefix = str(self.fm.get("id_prefix") or "")
         self.sections, self.headings, self.line_section = {}, [], []
-        current, fenced = None, False
+        current = None
         offset = self.text[:len(self.text) - len(self.body)].count("\n")
         self.line_section = [None] * offset
-        for line in self.body.split("\n"):
-            if FENCE_RE.match(line):
-                fenced = not fenced
+        body_lines = self.body.split("\n")
+        flags, self.unclosed_fence = fence_flags(body_lines)
+        for line, fenced in zip(body_lines, flags):
             if not fenced and line.startswith("## "):
                 current = line[3:].strip()
                 self.headings.append(current)
@@ -281,13 +300,13 @@ class Doc:
         return 0 <= index < len(self.line_section) and self.is_team(self.line_section[index])
 
     def section_text(self, section):
-        """The section's body as written (fences kept), trimmed; None when the heading is absent."""
+        """The section's body as written (fences kept), trimmed; None when the heading is absent. A
+        heading written twice contributes both bodies, so an extra copy is a change."""
         if section not in self.sections:
             return None
-        lines, on, fenced = [], False, False
-        for line in self.body.split("\n"):
-            if FENCE_RE.match(line):
-                fenced = not fenced
+        lines, on = [], False
+        body_lines = self.body.split("\n")
+        for line, fenced in zip(body_lines, fence_flags(body_lines)[0]):
             if not fenced and line.startswith("## "):
                 on = line[3:].strip() == section
                 continue
@@ -1499,56 +1518,80 @@ def check_staleness(repos, docs, by_doc, nightly, today, report):
 
 def team_snapshot(root):
     """The text of every team-owned section, and side-effects.yaml, as a writer step starts."""
-    locked = {}
+    locked, texts = {}, {}
     for doc in load_docs(root):
         sections = TEAM_SECTIONS.get(doc.kind, ())
         if sections:
             locked[doc.rel] = {name: doc.section_text(name) for name in sections}
+            if any(not _empty(t) for t in locked[doc.rel].values()):
+                texts[doc.rel] = doc.text  # whole doc, so one that is removed or renamed can come back
     side = os.path.join(root, SIDE_EFFECTS)
-    return {"locked": locked, "side_effects": read_text(side) if os.path.isfile(side) else None}
+    return {"locked": locked, "docs": texts,
+            "side_effects": read_text(side) if os.path.isfile(side) else None}
 
 
 def _empty(text):
     return (text or "").strip() in ("", "None.")
 
 
+def _heading_ranges(lines, section):
+    """(start, end) of every real `## section` block: headings inside a code fence do not count."""
+    flags = fence_flags(lines)[0]
+    heads = [i for i, line in enumerate(lines) if not flags[i] and line.startswith("## ")]
+    return [(i, next((h for h in heads if h > i), len(lines)))
+            for i in heads if lines[i][3:].strip() == section]
+
+
 def _replace_section(path, kind, section, body):
-    """Put `body` back as the section's content, re-adding the heading in format order if gone."""
+    """Put `body` back as the section's content, re-adding the heading in format order if gone.
+    The first copy of a heading is restored; any further copy is dropped."""
     text = read_text(path) or ""
     lines = text.split("\n")
-    start, end, fenced = None, None, False
-    for i, line in enumerate(lines):
-        if FENCE_RE.match(line):
-            fenced = not fenced
-        if fenced or not line.startswith("## "):
-            continue
-        if start is not None:
-            end = i
-            break
-        if line[3:].strip() == section:
-            start = i
     new = [f"## {section}", *(body or "None.").split("\n"), ""]
-    if start is not None:
-        lines[start:end if end is not None else len(lines)] = new
+    ranges = _heading_ranges(lines, section)
+    if ranges:
+        for start, end in reversed(ranges[1:]):
+            del lines[start:end]
+        lines[ranges[0][0]:ranges[0][1]] = new
     else:
         order = FORMAT[kind]["order"]
         later = order[order.index(section) + 1:]
+        flags = fence_flags(lines)[0]
         at = next((i for i, line in enumerate(lines)
-                   if line.startswith("## ") and line[3:].strip() in later), len(lines))
+                   if not flags[i] and line.startswith("## ") and line[3:].strip() in later), len(lines))
         lines[at:at] = new
     write_text(path, "\n".join(lines).rstrip("\n") + "\n")
 
 
+def _heading_count(text, section):
+    return len(_heading_ranges(text.split("\n"), section))
+
+
 def enforce_lock(root, snapshot, write, report):
     """R9: a writer step may not change team-owned content. With --write the engine puts the
-    snapshot text back, so the guarantee holds even when the writer ignores the report."""
+    snapshot text back, so the guarantee holds even when the writer ignores the report. It fails
+    closed where it cannot: a removed or renamed doc comes back from the snapshot (or fails when
+    the snapshot has no copy), and a code fence left open, which hides every section after it,
+    fails for the writer to close."""
     before = snapshot.get("locked") or {}
-    for doc in load_docs(root):
-        for section in TEAM_SECTIONS.get(doc.kind, ()):
+    texts = snapshot.get("docs") or {}
+    docs = load_docs(root)
+    for doc in docs:
+        sections = TEAM_SECTIONS.get(doc.kind, ())
+        if not sections or (doc.rel in texts and texts[doc.rel] == doc.text):
+            continue  # nothing team-owned, or the doc is exactly as the step found it
+        if doc.unclosed_fence:
+            report.err("R9", doc.rel, "a code fence is never closed, so the sections after it, "
+                       "team-owned rules included, cannot be told apart from code",
+                       "close the fence; the engine restores the team's content once it is closed")
+            continue
+        for section in sections:
             now = doc.section_text(section)
             if doc.rel in before:
                 was = before[doc.rel].get(section)
-                if (now or "").strip() == (was or "").strip():
+                dup_before = _heading_count(texts[doc.rel], section) if doc.rel in texts else 1
+                extra = doc.headings.count(section) > max(1, dup_before)
+                if (now or "").strip() == (was or "").strip() and not extra:
                     continue
                 restore = was
             else:
@@ -1561,11 +1604,19 @@ def enforce_lock(root, snapshot, write, report):
                        f"under '## {PROPOSALS}' instead")
             if write:
                 _replace_section(doc.path, doc.kind, section, restore)
-    present = {d.rel for d in load_docs(root)}
+    present = {d.rel for d in docs}
+    docs_root = os.path.realpath(os.path.join(root, "docs"))
     for rel, sections in sorted(before.items()):
-        if rel not in present and any(not _empty(t) for t in sections.values()):
-            report.err("R9", rel, "a doc holding team-owned rules was removed",
-                       f"restore docs/{rel}; only the team may retire its rules")
+        if rel in present or all(_empty(t) for t in sections.values()):
+            continue
+        target = os.path.realpath(os.path.join(docs_root, rel))
+        text = texts.get(rel)
+        can_restore = write and isinstance(text, str) and target.startswith(docs_root + os.sep)
+        report.err("R9", rel, "a doc holding team-owned rules was removed or renamed"
+                   + (" and has been restored" if can_restore else ""),
+                   f"restore docs/{rel}; only the team may retire or move its rules")
+        if can_restore:
+            write_text(target, text)
     side = os.path.join(root, SIDE_EFFECTS)
     now = read_text(side) if os.path.isfile(side) else None
     was = snapshot.get("side_effects")
@@ -1644,7 +1695,10 @@ class Code:
         return self._files[repo]
 
     def has_path(self, repo, rel):
-        return os.path.exists(os.path.join(self.repos[repo], rel.lstrip("./")))
+        """`rel` is repo-relative; only a leading `./` or `/` is dropped, so `.github/...` stays."""
+        base = os.path.realpath(self.repos[repo])
+        target = os.path.realpath(os.path.join(base, re.sub(r"^(?:\./|/)+", "", rel)))
+        return (target == base or target.startswith(base + os.sep)) and os.path.exists(target)
 
     def has_word(self, repo, word):
         pattern = re.compile(r"(?<![A-Za-z0-9_])" + re.escape(word) + r"(?![A-Za-z0-9_])")

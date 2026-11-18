@@ -51,12 +51,17 @@ class RunProfileTest(unittest.TestCase):
         text = out.getvalue()
         return json.loads(text) if text.strip().startswith("{") else text + err.getvalue()
 
+    @staticmethod
+    def claim(action):
+        return ["--claim", action["claim"]] if isinstance(action, dict) and action.get("claim") else []
+
     def drive(self):
         """draft -> check (script, run by the lead) -> review: revise once, then approve."""
         action = self.ctl("next", "--slug", "f")
         for option in ("revise", "approve"):
             self.assertEqual(action["step"], "draft")
-            action = self.ctl("complete", "--slug", "f", "--step", "draft", "--outputs", "{}")
+            action = self.ctl("complete", "--slug", "f", "--step", "draft", "--outputs", "{}",
+                              *self.claim(action))
             self.assertEqual(action["step"], "check")
             action = self.ctl("complete", "--slug", "f", "--step", "check", "--exit-code", "0",
                               "--stdout", '{"ok": true}')
@@ -114,8 +119,9 @@ class RunProfileTest(unittest.TestCase):
 
     def test_the_profile_is_switched_on_for_a_resumed_run_that_had_none(self):
         self.ctl("init", "--slug", "f", "--workflow", "prof.yaml", "--no-profile")
-        self.ctl("next", "--slug", "f")
-        self.ctl("complete", "--slug", "f", "--step", "draft", "--outputs", "{}")
+        served = self.ctl("next", "--slug", "f")
+        self.ctl("complete", "--slug", "f", "--step", "draft", "--outputs", "{}",
+                 *self.claim(served))
         resumed = self.ctl("init", "--slug", "f", "--workflow", "prof.yaml")
         self.assertTrue(resumed["debug"])
         self.ctl("next", "--slug", "f")

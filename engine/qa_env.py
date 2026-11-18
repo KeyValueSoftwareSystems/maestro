@@ -17,6 +17,8 @@ QA writes and runs an E2E suite only when `plan` reports has_e2e, in that reposi
 otherwise it checks the test cases directly against the running system and adds no framework.
 Nothing configured is not a failure: `up`/`down` report `configured: false`, and `e2e` passes
 with a summary saying no suite is configured, so QA results stay agent-reported for that repo.
+`e2e` refuses a repository whose worktree is not at the manifest's commit or has uncommitted
+changes (status `refused`, `passed` false): it must test the code that was verified.
 `up` exits 1 when start or ready fails (QA cannot run against a stack that is not up). `e2e`
 writes a receipt like the verify step's and exits 0; route on `passed`.
 """
@@ -58,6 +60,23 @@ def code_under_test_env(manifest, manifest_path):
 
 def _run(command, cwd, timeout, log_path, extra_env):
     return repo_checks._run(command, cwd, timeout, log_path, extra_env)
+
+
+def _identity_problem(cwd, commit):
+    """Why a worktree is not the code QA must test, or "": it must be at the manifest's commit
+    and have no uncommitted change, else the suite would verify code that is never delivered."""
+    head = repo_checks._git_head(cwd) if os.path.isdir(cwd) else ""
+    if not head:
+        return f"{cwd} is not a git checkout"
+    if not commit or head != commit:
+        return f"the worktree is at {head[:12]}, not the verified commit {(commit or '?')[:12]}"
+    dirty = repo_checks._dirty_paths(cwd)
+    if dirty is None:
+        return "git could not report the worktree's status"
+    if dirty:
+        return ("the worktree has uncommitted changes: " + ", ".join(dirty[:5])
+                + (" …" if len(dirty) > 5 else ""))
+    return ""
 
 
 def _environment(root):
@@ -170,6 +189,11 @@ def cmd_e2e(args):
         worktree = entry.get("worktree") or ""
         cwd = worktree if os.path.isabs(worktree) else os.path.join(args.root, worktree)
         log = os.path.join(log_dir, f"{repo}.log")
+        problem = _identity_problem(cwd, entry.get("commit"))
+        if problem:
+            checks.append({"repo": repo, "commit": entry.get("commit"), "command": command,
+                           "status": "refused", "exit_code": None, "tail": problem})
+            continue
         result = _run(command, cwd, project_config.repo_timeout(config, repo), log, env)
         checks.append({"repo": repo, "commit": entry.get("commit"), "command": command,
                        "log": os.path.relpath(log, args.root), **result})
@@ -180,7 +204,14 @@ def cmd_e2e(args):
     with open(full_out, "w", encoding="utf-8") as fh:
         json.dump(receipt, fh, indent=2)
         fh.write("\n")
-    if failed:
+    refused = [c for c in checks if c["status"] == "refused"]
+    if refused:
+        summary = "Project e2e refused, not run: " + "; ".join(
+            f"{c['repo']}: {c['tail']}" for c in refused)
+        failed_only = [c["repo"] for c in checks if c["status"] not in ("passed", "refused")]
+        if failed_only:
+            summary += "; failed: " + ", ".join(failed_only)
+    elif failed:
         summary = "Project e2e failed: " + ", ".join(failed)
     elif checks:
         summary = "Project e2e passed: " + ", ".join(c["repo"] for c in checks)

@@ -18,7 +18,7 @@ Commands
            invalid) plus the --require ones
   validate [--root .] --slug S                         every selected LLD exists and validates
   approve  [--root .] --slug S [--light true]  record .engine/lld-approval.json (PRD, HLD, contract,
-           LLD hashes; --light: the light path designs without an HLD)
+           test cases when written, LLD hashes; --light: the light path designs without an HLD)
   verify   [--root .] --slug S                         are the approved LLDs still current?
 
 Every command prints one JSON line. `validate` and `verify` exit 0 so workflows route on fields.
@@ -150,6 +150,7 @@ def _current_hashes(slug, root, repos):
         "prd_sha256": _hash(_prd_path(slug, root)),
         "hld_sha256": _hash(_hld_path(slug, root)),
         "contract_sha256": _hash(_contract_path(slug, root)),
+        "test_cases_sha256": _hash(run_layout.path(slug, root, run_layout.TEST_CASES)),
         "llds": {repo: _hash(lld_path(slug, repo, root)) for repo in repos},
     }
 
@@ -191,6 +192,10 @@ def stale_reasons(slug, root):
         reasons.append("the HLD changed after LLD approval")
     if now["contract_sha256"] != approval.get("contract_sha256"):
         reasons.append("the API contract changed after LLD approval")
+    # test cases are written beside the design, so one that did not exist at approval is not tracked;
+    # once recorded, an edit or a removal makes the design stale (an older record has no key)
+    if approval.get("test_cases_sha256") and now["test_cases_sha256"] != approval["test_cases_sha256"]:
+        reasons.append("the test cases changed after LLD approval")
     for repo in repos:
         if now["llds"].get(repo) != (approval.get("llds") or {}).get(repo):
             reasons.append(f"{repo}: LLD changed after approval")

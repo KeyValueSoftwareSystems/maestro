@@ -29,6 +29,7 @@ import json
 import secrets
 import os
 import sys
+import tempfile
 import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
@@ -52,6 +53,9 @@ SKIP_DIRS = {".git", ".claude", ".cursor", ".agents", ".codex", "node_modules",
 # runtime. Never listed as workflow source and never written to. (.maestro/workflows +
 # .maestro/docs are the human-facing trees and stay walkable.)
 MAESTRO_PROTECTED = {"runs", "memory", "engine", "ui"}
+# Under .maestro/ a write may only target these (an allowlist, so engine-made trees such as
+# worktrees/, baseline/ or a future one are refused too).
+MAESTRO_WRITABLE = {"workflows", "docs"}
 
 
 # ---------------------------------------------------------------- data helpers
@@ -61,7 +65,7 @@ def _safe_repo_yaml(root, file, for_write=False):
 
     realpath first so a symlink can't tunnel out; commonpath rejects '..' and absolute
     paths that escape the repo. Reads may target any YAML under root except .git; writes
-    additionally refuse .maestro's engine-owned subtrees (run state / memory / runtime).
+    additionally refuse everything under .maestro/ but its workflows/ and docs/ trees.
     This is a localhost dev tool on the user's own repo — the same authority their editor has.
     """
     if not file:
@@ -72,11 +76,13 @@ def _safe_repo_yaml(root, file, for_write=False):
         return None
     if not cand.endswith((".yaml", ".yml")):
         return None
-    rel_parts = os.path.relpath(cand, root_real).split(os.sep)
+    # casefold: a case-insensitive filesystem (macOS, Windows) reaches `.git` / `.maestro`
+    # through any spelling, and realpath does not normalise the case there
+    rel_parts = [p.casefold() for p in os.path.relpath(cand, root_real).split(os.sep)]
     if ".git" in rel_parts:
         return None
-    if for_write and rel_parts[:1] == [statemod.MAESTRO_DIR] and (
-            len(rel_parts) < 2 or rel_parts[1] in MAESTRO_PROTECTED):
+    if for_write and rel_parts[:1] == [statemod.MAESTRO_DIR.casefold()] and (
+            len(rel_parts) < 2 or rel_parts[1] not in MAESTRO_WRITABLE):
         return None
     return cand
 
@@ -299,18 +305,31 @@ class Handler(BaseHTTPRequestHandler):
             text = raw.decode("utf-8")
         except UnicodeDecodeError:
             return self._fail(400, "body must be UTF-8")
+        if not text.strip():
+            return self._fail(400, "empty body: refusing to truncate the workflow")
         try:
-            wfmod.loads(text)  # reject anything outside the accepted YAML subset
+            doc = wfmod.loads(text)  # reject anything outside the accepted YAML subset
         except ValueError as exc:
             return self._fail(400, f"not a valid workflow: {exc}")
-        tmp = cand + ".tmp"
+        if not isinstance(doc, dict) or not doc:
+            return self._fail(400, "not a valid workflow: the top level must be a mapping")
+        tmp = None
         try:
             os.makedirs(os.path.dirname(cand), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as fh:
+            fd, tmp = tempfile.mkstemp(prefix=".ui-put-", suffix=".tmp", dir=os.path.dirname(cand))
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
                 fh.write(text)
+            os.chmod(tmp, os.stat(cand).st_mode & 0o777 if os.path.exists(cand) else 0o644)
             os.replace(tmp, cand)  # atomic
+            tmp = None
         except OSError as exc:
             return self._fail(500, f"write failed: {exc}")
+        finally:
+            if tmp:
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
         return self._json({"ok": True, "file": os.path.basename(cand)})
 
 

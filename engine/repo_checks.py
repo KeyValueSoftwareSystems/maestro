@@ -49,7 +49,9 @@ Exit: 0 when the checks ran (pass or fail; route on `passed`), 2 when they canno
 from __future__ import annotations
 
 import argparse
+import fcntl
 import fnmatch
+import glob
 import hashlib
 import json
 import os
@@ -83,72 +85,127 @@ def _fail(message):
     return 2
 
 
+def _git(worktree, *args, timeout=300):
+    """`git -C worktree <args>` -> (returncode, stdout). Output is decoded leniently: a path or a
+    message that is not valid UTF-8 must not crash a verify."""
+    proc = subprocess.run(["git", "-C", worktree, *args], capture_output=True, text=True,
+                          errors="replace", timeout=timeout)
+    return proc.returncode, proc.stdout
+
+
 def _git_head(worktree):
-    proc = subprocess.run(["git", "-C", worktree, "rev-parse", "HEAD"],
-                          capture_output=True, text=True)
-    return proc.stdout.strip() if proc.returncode == 0 else ""
+    rc, out = _git(worktree, "rev-parse", "HEAD")
+    return out.strip() if rc == 0 else ""
 
 
-def _test_changes(worktree, base_repo, patterns):
+def _test_changes(worktree, base_repo, patterns, recorded=""):
     """Existing test files the branch modified, renamed or deleted since it left the main checkout.
 
     New test files are fine and not listed. Changes are flagged, not failed: updating a test is
     sometimes right (the approved design changed behavior), so the reviewer must justify each.
     Returns (changes, note) — note explains why the guard could not run.
     """
-    if not base_repo:
+    if not base_repo and not recorded:
         return [], "no base repository given"
-    base = _branch_base(worktree, base_repo)
+    base = _branch_base(worktree, base_repo, recorded)
     if not base:
         return [], "cannot find the commit this branch started from"
-    proc = subprocess.run(["git", "-C", worktree, "diff", "--name-status", "-M", base],
-                          capture_output=True, text=True)
-    if proc.returncode:
+    rc, out = _git(worktree, "diff", "--name-status", "-z", "-M", base)
+    if rc:
         return [], "git diff failed"
     kinds = {"M": "modified", "D": "deleted", "R": "renamed", "T": "modified"}
-    changes = []
-    for line in proc.stdout.splitlines():
-        parts = line.split("\t")
-        kind = kinds.get(parts[0][:1])
-        if kind and any(fnmatch.fnmatch(parts[1], p) for p in patterns):
-            changes.append({"status": kind, "path": parts[1]})
+    tokens, changes, i = out.split("\0"), [], 0
+    while i < len(tokens) and tokens[i]:
+        code = tokens[i]
+        width = 2 if code[:1] in "RC" else 1     # renames and copies carry the old and new path
+        paths = tokens[i + 1:i + 1 + width]
+        i += 1 + width
+        kind = kinds.get(code[:1])
+        if kind and paths and any(fnmatch.fnmatch(paths[0], p) for p in patterns):
+            changes.append({"status": kind, "path": paths[0]})
     return changes, None
 
 
-def _branch_base(worktree, base_repo):
-    base_head = subprocess.run(["git", "-C", base_repo, "rev-parse", "HEAD"],
-                               capture_output=True, text=True).stdout.strip()
-    if not base_head:
-        return ""
-    return subprocess.run(["git", "-C", worktree, "merge-base", "HEAD", base_head],
-                          capture_output=True, text=True).stdout.strip()
+def recorded_base(root, worktree):
+    """The commit a feature's worktree was created at, from a run's worktree record
+    (`.engine/worktrees.json`), or "" when no run recorded this worktree."""
+    want = os.path.realpath(worktree)
+    pattern = os.path.join(statemod.runs_dir(root), "*", ".engine", "worktrees.json")
+    for record_path in sorted(glob.glob(pattern)):
+        try:
+            with open(record_path, encoding="utf-8") as fh:
+                repos = (json.load(fh) or {}).get("repos") or {}
+        except (OSError, ValueError, AttributeError):
+            continue
+        for entry in repos.values():
+            if (isinstance(entry, dict) and entry.get("path") and entry.get("base_commit")
+                    and os.path.realpath(entry["path"]) == want):
+                return str(entry["base_commit"])
+    return ""
 
 
-def _secret_scan(worktree, base_repo):
-    """Credentials in lines the branch added. -> (findings, note); note says why it could not run."""
+def _branch_base(worktree, base_repo, recorded=""):
+    """The commit the branch started from. The RECORDED base wins: the main checkout's HEAD moves
+    (a local merge, a pull), and a base taken from it would leave the scans an empty diff."""
+    if recorded:
+        rc, out = _git(worktree, "merge-base", "HEAD", recorded)
+        if rc == 0 and out.strip():
+            return out.strip()
     if not base_repo:
-        return [], "no base repository given"
-    base = _branch_base(worktree, base_repo)
-    if not base:
-        return [], "cannot find the commit this branch started from"
-    proc = subprocess.run(["git", "-C", worktree, "diff", "--unified=0", "--no-color", base],
-                          capture_output=True, text=True, errors="replace")
-    if proc.returncode:
-        return [], "git diff failed"
-    findings, path, line_no = [], None, 0
-    for line in proc.stdout.splitlines():
-        if line.startswith("+++ "):
-            path = line[6:] if line.startswith("+++ b/") else None
+        return ""
+    rc, base_head = _git(base_repo, "rev-parse", "HEAD")
+    if rc or not base_head.strip():
+        return ""
+    rc, out = _git(worktree, "merge-base", "HEAD", base_head.strip())
+    return out.strip() if rc == 0 else ""
+
+
+def _scan_added(text):
+    """Credential findings in `git log -p --unified=0` text (each commit opens with a
+    \\x01<sha> line). Only a line inside a hunk is content: `+++` after an `@@` is an added line
+    that starts with `++`, never a file header."""
+    findings, seen = [], set()
+    commit, path, line_no, in_hunk = "", None, 0, False
+    for line in text.splitlines():
+        if line.startswith("\x01"):
+            commit, path, in_hunk = line[1:13], None, False
+        elif line.startswith("diff --git "):
+            path, in_hunk = None, False
+        elif not in_hunk and line.startswith("+++ "):
+            name = line[4:].split("\t")[0]
+            if name.startswith('"'):
+                name = name.strip('"')
+            path = name[2:] if name.startswith("b/") else None
         elif line.startswith("@@"):
+            in_hunk = True
             match = re.search(r"\+(\d+)", line)
             line_no = int(match.group(1)) if match else 0
-        elif line.startswith("+") and path:
+        elif in_hunk and line.startswith("+") and path:
             for rule, pattern in SECRET_RULES:
                 hit = pattern.search(line)
-                if hit and "EXAMPLE" not in hit.group(0).upper():
-                    findings.append({"path": path, "line": line_no, "rule": rule})
+                key = (commit, path, line_no, rule)
+                if hit and "EXAMPLE" not in hit.group(0).upper() and key not in seen:
+                    seen.add(key)
+                    findings.append({"path": path, "line": line_no, "rule": rule,
+                                     "commit": commit})
             line_no += 1
-    return findings, None
+    return findings
+
+
+def _secret_scan(worktree, base_repo, recorded=""):
+    """Credentials in lines the branch added, in EVERY commit since its base: a key committed and
+    then deleted is gone from the net diff but still pushed with the history.
+    -> (findings, note); note says why it could not run."""
+    if not base_repo and not recorded:
+        return [], "no base repository given"
+    base = _branch_base(worktree, base_repo, recorded)
+    if not base:
+        return [], "cannot find the commit this branch started from"
+    rc, out = _git(worktree, "-c", "core.quotepath=false", "log", "-p", "-m", "--unified=0",
+                   "--no-color", "--no-ext-diff", "--format=%x01%H", f"{base}..HEAD")
+    if rc:
+        return [], "git log failed"
+    return _scan_added(out), None
 
 
 def _run(command, cwd, timeout, log_path, extra_env=None):
@@ -158,7 +215,7 @@ def _run(command, cwd, timeout, log_path, extra_env=None):
     started = time.monotonic()
     try:
         proc = subprocess.run(command, shell=True, cwd=cwd, env=env, capture_output=True,
-                              text=True, timeout=timeout)
+                              text=True, errors="replace", timeout=timeout)
         code, output, status = proc.returncode, proc.stdout + proc.stderr, None
     except subprocess.TimeoutExpired as exc:
         partial = (exc.stdout or b"") + (exc.stderr or b"")
@@ -197,18 +254,29 @@ def _baseline_checkout(root, repo, base_repo, commit):
     for name in os.listdir(folder):
         stale = os.path.join(folder, name)
         if os.path.isdir(stale):
-            subprocess.run(["git", "-C", base_repo, "worktree", "remove", "--force", stale],
-                           capture_output=True, text=True)
+            _git(base_repo, "worktree", "remove", "--force", stale)
             shutil.rmtree(stale, ignore_errors=True)
-    subprocess.run(["git", "-C", base_repo, "worktree", "prune"], capture_output=True, text=True)
-    proc = subprocess.run(["git", "-C", base_repo, "worktree", "add", "--detach", path, commit],
-                          capture_output=True, text=True)
-    return (path, True) if proc.returncode == 0 else (None, False)
+    _git(base_repo, "worktree", "prune")
+    rc, _ = _git(base_repo, "worktree", "add", "--detach", path, commit)
+    return (path, True) if rc == 0 else (None, False)
 
 
 def _baseline_result(root, repo, base_repo, base, name, commands, timeout):
-    """How check `name` fares on the base commit: cached {status, exit_code, log}, or None."""
+    """How check `name` fares on the base commit: cached {status, exit_code, log}, or None.
+
+    The checkout and results are shared by every feature of the repository, and a new base commit
+    replaces the old checkout: hold the repository's lock for the whole call, so no other verify
+    deletes a checkout while this one runs a check in it."""
     folder = _baseline_dir(root, repo)
+    with open(os.path.join(folder, ".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            return _baseline_locked(root, repo, base_repo, base, name, commands, timeout, folder)
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def _baseline_locked(root, repo, base_repo, base, name, commands, timeout, folder):
     cache_path = os.path.join(folder, f"results-{base[:12]}.json")
     try:
         with open(cache_path, encoding="utf-8") as fh:
@@ -272,24 +340,35 @@ def _is_build_output(path):
             or name.endswith(BUILD_OUTPUT_FILES) or name in BUILD_OUTPUT_NAMES)
 
 
-def _build_output_scan(worktree, base_repo):
+def _build_output_scan(worktree, base_repo, recorded=""):
     """Build or tool output among the files the branch added. -> (paths, note)."""
-    if not base_repo:
+    if not base_repo and not recorded:
         return [], "no base repository given"
-    base = _branch_base(worktree, base_repo)
+    base = _branch_base(worktree, base_repo, recorded)
     if not base:
         return [], "cannot find the commit this branch started from"
-    proc = subprocess.run(["git", "-C", worktree, "diff", "--name-only", "--diff-filter=A",
-                           "--no-renames", base], capture_output=True, text=True, errors="replace")
-    if proc.returncode:
+    rc, out = _git(worktree, "diff", "--name-only", "-z", "--diff-filter=A", "--no-renames", base)
+    if rc:
         return [], "git diff failed"
-    return [path for path in proc.stdout.splitlines() if _is_build_output(path)], None
+    return [path for path in out.split("\0") if path and _is_build_output(path)], None
+
+
+def _dirty_paths(worktree):
+    """Paths with uncommitted changes (tracked, or untracked and not ignored); None when git
+    cannot say, which counts as dirty."""
+    rc, out = _git(worktree, "status", "--porcelain", "-z", "--untracked-files=all")
+    if rc:
+        return None
+    tokens, paths, i = out.split("\0"), [], 0
+    while i < len(tokens) and tokens[i]:
+        entry = tokens[i]
+        paths.append(entry[3:])
+        i += 2 if entry[:1] in "RC" else 1      # a rename lists its old path as the next token
+    return paths
 
 
 def _clean(worktree):
-    status = subprocess.run(["git", "-C", worktree, "status", "--porcelain"],
-                            capture_output=True, text=True)
-    return status.returncode == 0 and not status.stdout.strip()
+    return _dirty_paths(worktree) == []
 
 
 def _report(receipt, root, full_out, unchanged=False):
@@ -311,6 +390,12 @@ def _report(receipt, root, full_out, unchanged=False):
         base = next((c["baseline"]["commit"] for c in checks if c.get("baseline")), "")
         summary += (f"; pre-existing failures, also failing on base {base[:12]}: "
                     f"{', '.join(pre_existing)}")
+    dirty = next((c for c in checks if c["name"] == "dirty"), None)
+    if dirty:
+        paths = dirty["paths"]
+        summary += ("; uncommitted changes, nothing was run — commit them, or ignore build output: "
+                    + (", ".join(paths[:5]) + (" …" if len(paths) > 5 else "") if paths
+                       else "git could not report the status"))
     if secrets:
         summary += "; committed secret(s): " + ", ".join(
             f"{f['path']}:{f['line']} ({f['rule']})" for f in secrets[:5])
@@ -337,7 +422,8 @@ def _report(receipt, root, full_out, unchanged=False):
     return 0
 
 
-def run_checks(root, repo, worktree, out, base_repo=None, reuse_key="", logs=None):
+def run_checks(root, repo, worktree, out, base_repo=None, reuse_key="", logs=None,
+               base_commit=""):
     # Absolute from here on: the baseline checkout is made with `git -C <base repo>`, which would
     # resolve a relative path inside that repository instead of under the workspace.
     root = os.path.abspath(root)
@@ -364,18 +450,23 @@ def run_checks(root, repo, worktree, out, base_repo=None, reuse_key="", logs=Non
     earlier = _reusable(full_out, reuse_key, commit, commands, full_worktree)
     if earlier:
         return _report(earlier, root, full_out, unchanged=True)
-    clean = _clean(full_worktree)
+    dirty = _dirty_paths(full_worktree)
+    clean = dirty == []
     # each check's full output: --logs, else `<receipt name>-logs/` beside the receipt
     log_dir = ((logs if os.path.isabs(logs) else os.path.join(root, logs)) if logs
                else os.path.splitext(full_out)[0] + "-logs")
     full_base = None
     if base_repo:
         full_base = base_repo if os.path.isabs(base_repo) else os.path.join(root, base_repo)
-    base = _branch_base(full_worktree, full_base) if full_base else ""
+    recorded = base_commit or recorded_base(root, full_worktree)
+    base = _branch_base(full_worktree, full_base, recorded) if (full_base or recorded) else ""
     checks, stopped_by = [], None
     for name in ORDER:
         if name not in commands:
             continue
+        if dirty is None or dirty:
+            break   # the receipt names HEAD and delivery pushes commits: files nobody committed
+            #         must not make code that is never delivered pass
         if stopped_by:
             checks.append({"name": name, "command": commands[name], "status": "not-run"})
             continue
@@ -396,18 +487,25 @@ def run_checks(root, repo, worktree, out, base_repo=None, reuse_key="", logs=Non
         if check["status"] not in ("passed", "pre-existing") and name in STOP_ON_FAILURE:
             stopped_by = name
 
-    secrets, secret_note = _secret_scan(full_worktree, full_base)
+    if dirty is None or dirty:
+        checks.append({"name": "dirty", "status": "failed",
+                       "command": "engine check that every change is committed",
+                       "paths": dirty or [],
+                       "tail": "uncommitted changes (commit them, or ignore them if they are "
+                               "build output); verification covers committed code only"
+                       if dirty else "git could not report the worktree's status"})
+    secrets, secret_note = _secret_scan(full_worktree, full_base, recorded)
     if secrets:
         checks.append({"name": "secrets", "command": "engine secret scan of added lines",
                        "status": "failed", "findings": secrets})
-    build_output, _build_note = _build_output_scan(full_worktree, full_base)
+    build_output, _build_note = _build_output_scan(full_worktree, full_base, recorded)
     if build_output:
         checks.append({"name": "build-output", "command": "engine scan of added files",
                        "status": "failed", "paths": build_output})
     failed = [c["name"] for c in checks if c["status"] not in ("passed", "pre-existing")]
     pre_existing = [c["name"] for c in checks if c["status"] == "pre-existing"]
     test_changes, guard_note = _test_changes(
-        full_worktree, full_base, project_config.repo_test_patterns(config, repo))
+        full_worktree, full_base, project_config.repo_test_patterns(config, repo), recorded)
     receipt = {
         "schema_version": 1,
         "repo": repo,
@@ -439,6 +537,8 @@ def main(argv=None):
     parser.add_argument("--worktree", required=True)
     parser.add_argument("--out", required=True)
     parser.add_argument("--base-repo", help="main checkout the branch started from (test-edit guard)")
+    parser.add_argument("--base-commit", default="",
+                        help="the commit the branch started from (default: the run's worktree record)")
     parser.add_argument("--reuse-key", default="",
                         help="reuse an unchanged receipt written with the same key")
     parser.add_argument("--logs", help="folder for each check's log (default: <out>-logs/)")
@@ -451,7 +551,7 @@ def main(argv=None):
                           "summary": f"{args.repo}: [simulated] checks passed"}))
         return 0
     return run_checks(args.root, args.repo, args.worktree, args.out, args.base_repo,
-                      args.reuse_key, args.logs)
+                      args.reuse_key, args.logs, args.base_commit)
 
 
 if __name__ == "__main__":

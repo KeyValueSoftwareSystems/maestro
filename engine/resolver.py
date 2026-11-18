@@ -74,6 +74,7 @@ def wf_start(workflow):
 
 _PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 _MAX_SUBST_PASSES = 5
+_HELD_RE = re.compile(r"\x00(\d+)\x00")
 
 
 # ---------------------------------------------------------------- frames
@@ -199,26 +200,34 @@ class Run:
     # -- placeholder resolution -------------------------------------------
 
     def resolve_text(self, text, frame, missing_ok=False):
+        # A substituted value is held out as an opaque token until the end, so a value that
+        # itself contains ${...} (gate feedback, a typed input) is never expanded: one pass
+        # per text, however deeply the placeholders nest.
+        held = []
+
+        def release(t):
+            return _HELD_RE.sub(lambda m: held[int(m.group(1))], t)
+
         def repl(m):
-            value = self.resolve_ref(m.group(1).strip(), frame, missing_ok)
+            value = self.resolve_ref(release(m.group(1).strip()), frame, missing_ok)
             if value is None:
                 return ""
             if isinstance(value, bool):
-                return "true" if value else "false"
-            if isinstance(value, (list, dict)):
-                return json.dumps(value)
-            return str(value)
+                value = "true" if value else "false"
+            elif isinstance(value, (list, dict)):
+                value = json.dumps(value)
+            held.append(str(value))
+            return f"\x00{len(held) - 1}\x00"
 
-        text = str(text)
+        text = str(text).replace("\x00", "")
         # Innermost-first regex + bounded loop resolves nested placeholders
-        # (e.g. ${memory.knowledge.${inputs.stack}-review}) inside-out. The cap prevents a
-        # resolved value that itself contains ${...} from looping forever.
+        # (e.g. ${memory.knowledge.${inputs.stack}-review}) inside-out.
         for _ in range(_MAX_SUBST_PASSES):
             new = _PLACEHOLDER_RE.sub(repl, text)
             if new == text:
                 break
             text = new
-        return text
+        return release(text)
 
     def resolve_ref(self, ref, frame, missing_ok=False):
         parts = ref.split(".")
@@ -411,8 +420,13 @@ def init_run(slug, workflow_file, inputs, root=".", force=False, mode=None):
 
     workflow = wf.load_file(full)
     declared = workflow.get("inputs") or {}
-    resolved = {"slug": slug}
-    resolved.update(inputs)
+    if inputs.get("slug") not in (None, slug):
+        # artifact paths are built from ${inputs.slug}: another value points them at another run
+        raise RunError(
+            f"input 'slug' is the run's own slug ({slug!r}) and cannot be set to "
+            f"{inputs['slug']!r}; start the other run under that slug instead", code=3,
+        )
+    resolved = {**inputs, "slug": slug}
     for name, spec in declared.items():
         if name in resolved:
             resolved[name] = coerce_input(spec, resolved[name], name)
@@ -464,7 +478,7 @@ def _drop_cursor(run, path):
     run.state["run"]["cursors"][:] = with_out
 
 
-def _enter(run, frame, node_id, via_gate=False):
+def _enter(run, frame, node_id, via_gate=False, _exhausted=()):
     """Move execution onto `node_id` in `frame` (visit caps + re-entry reset apply).
 
     via_gate: the human explicitly routed here through a real gate option — the visit
@@ -481,14 +495,15 @@ def _enter(run, frame, node_id, via_gate=False):
         target = node.get("on_exhausted", "ask")
         if target == "abort":
             _frame_abort(run, frame, reason=f"{path}: visit cap {cap} exhausted")
-        elif target == "ask" or target == node_id:
-            # `ask` (or an on_exhausted that points at this same node) synthesizes the
-            # loop-limit gate. Routing on_exhausted back to self would recurse forever.
+        elif target == "ask" or target == node_id or target in _exhausted:
+            # `ask` (or an on_exhausted that points back at this node, or at one already
+            # exhausted on the way here) synthesizes the loop-limit gate: following it would
+            # recurse forever.
             entry["pending_ask"] = {"kind": "exhausted", "reason": f"visit cap {cap} reached"}
             entry["status"] = "pending"
             _add_cursor(run, path)
         else:
-            _enter(run, frame, target)
+            _enter(run, frame, target, _exhausted=_exhausted + (node_id,))
         return
     if entry.get("status") in ("done", "failed", "skipped"):
         _cascade_reset(run, frame, node_id)
@@ -767,24 +782,21 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
             _cancel_branches(run, parent, node)
             _apply_on_fail(run, parent, node, entry["reason"])
             return
-        if mode == "ask":
-            entry["pending_ask"] = {
-                "kind": "branch_fail", "branch": branch_id,
-                "reason": reason or f"branch {branch_id} failed",
-            }
-            _add_cursor(run, ppath)
-            return
         # continue: fall through to join accounting
 
     join = node.get("join", "all")
     branches = entry.get("branches", {})
     terminal = {b: r for b, r in branches.items() if r.get("status") in ("done", "failed", "skipped")}
     if join == "any" and status == "done":
+        entry.pop("pending_ask", None)  # a branch won: an open question about a failed one is moot
+        _drop_cursor(run, ppath)
         _cancel_branches(run, parent, node, keep=branch_id)
         entry["status"] = "done"
         _finish_visit(run, ppath, entry)
         _advance(run, parent, node)
         return
+    if mode == "ask" and _ask_failed_branch(run, ppath, entry):
+        return  # a failed branch is waiting on the person: the join waits too
     if len(terminal) == len(node.get("branches", [])):
         if join == "any" and not any(r.get("status") == "done" for r in terminal.values()):
             entry["status"] = "failed"
@@ -794,6 +806,23 @@ def _branch_terminal(run, frame, status, outputs, reason=None):
         entry["status"] = "done"
         _finish_visit(run, ppath, entry)
         _advance(run, parent, node)
+
+
+def _ask_failed_branch(run, ppath, entry):
+    """on_branch_fail: ask — put the retry/skip/abort question for the next failed branch not
+    yet asked about. True while a question is pending, so the join never completes over it."""
+    if entry.get("pending_ask"):
+        return True
+    for bid, record in (entry.get("branches") or {}).items():
+        if record.get("status") == "failed" and not record.get("asked"):
+            record["asked"] = True
+            entry["pending_ask"] = {
+                "kind": "branch_fail", "branch": bid,
+                "reason": record.get("reason") or f"branch {bid} failed",
+            }
+            _add_cursor(run, ppath)
+            return True
+    return False
 
 
 def _cancel_branches(run, parent, node, keep=None):
@@ -1510,15 +1539,20 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
     entry = statemod.step_entry(run.state, path)
     if entry.get("pending_ask"):
         raise RunError(f"step {path!r} is waiting on a gate decision, not completion", code=4)
-    if claim and entry.get(CLAIM_ID_KEY) and claim != entry[CLAIM_ID_KEY]:
+    held = entry.get(CLAIM_ID_KEY)
+    if held and not claim:
+        raise RunError(f"step {path!r} was dispatched with a claim: pass it back with --claim; "
+                       f"a result without it cannot be told from a stale worker's", code=4)
+    if claim and held and claim != held:
         raise RunError(f"step {path!r} was re-dispatched after this worker started; its result "
                        f"is refused — complete it with the newer dispatch's claim", code=4)
-    entry.pop(CLAIM_ID_KEY, None)
     kind = ntype(node)
     if kind == "script":
+        entry.pop(CLAIM_ID_KEY, None)
         entry.pop(CLAIM_KEY, None)  # a failed script served again (retry) is not still running
         return _complete_script(run, frame, node, path, entry, exit_code, stdout, telemetry)
     if kind == "agent" and entry.get(CHECKING_KEY) and node_checks(node):
+        entry.pop(CLAIM_ID_KEY, None)
         entry.pop(CLAIM_KEY, None)
         return _complete_check(run, frame, node, path, entry, exit_code, stdout, telemetry)
     entry.pop(CHECKING_KEY, None)  # a rebase removed this step's checks while one was due
@@ -1554,6 +1588,7 @@ def complete_step(run, path, outputs=None, exit_code=None, stdout=None, telemetr
                 f"{', '.join(baseline)} — this step must write fresh output on every visit: "
                 f"re-run the step or call fail.", code=4,
             )
+    entry.pop(CLAIM_ID_KEY, None)  # accepted: a refused result above keeps the claim held
     entry["outputs"] = {k: v for k, v in outputs.items() if isinstance(v, (str, int, float, bool))}
     arts = _artifact_list(run, frame, node)
     if arts:
@@ -2394,6 +2429,8 @@ def _record_synth_gate(run, frame, node, path, entry, ask, option_id):
             entry.pop("pending_ask", None)
             _drop_cursor(run, path)
             entry["branches"][branch_id]["status"] = "skipped"
+            if _ask_failed_branch(run, path, entry):
+                return entry  # another failed branch still needs its answer
             # re-run join accounting via a synthetic terminal check
             terminal = {
                 b: r for b, r in entry["branches"].items()
@@ -2439,6 +2476,36 @@ def reset_all(run):
     _enter(run, frame, frame.start)
 
 
+def _gone_after_edit(run, path):
+    """What `path` needs that the edited workflow files (read fresh: the run's own cache is
+    pinned to the old hashes) no longer have: a node, a parallel branch, a subworkflow's file."""
+    nodes = _nodes_by_id(wf.load_file(os.path.join(run.root, run.state["workflow"]["file"]))["nodes"])
+    segments = path.split("/")
+    for i, seg in enumerate(segments):
+        m = re.match(r"^([a-z0-9_-]+)\[([a-z0-9_-]+)\]$", seg)
+        node = nodes.get(m.group(1) if m else seg)
+        if node is None:
+            return f"node {seg!r}"
+        if i == len(segments) - 1:
+            return None
+        if m:
+            if ntype(node) != "parallel":
+                return f"{seg!r} as a parallel node"
+            branch = next((b for b in node.get("branches", []) if b["id"] == m.group(2)), None)
+            if branch is None:
+                return f"branch {m.group(2)!r} of {m.group(1)!r}"
+            nodes = _nodes_by_id(branch["steps"])
+        else:
+            if ntype(node) != "subworkflow":
+                return f"{seg!r} as a subworkflow"
+            info = run.state["frames"].get("/".join(segments[:i + 1]))
+            full = os.path.join(run.root, (info or {}).get("workflow") or node["workflow"])
+            if not os.path.exists(full):
+                return f"the workflow file {os.path.relpath(full, run.root)!r}"
+            nodes = _nodes_by_id(wf.load_file(full)["nodes"])
+    return None
+
+
 def rebase(run):
     """Accept edited workflow files: re-validate, then re-hash everything recorded."""
     info = run.state["workflow"]
@@ -2453,6 +2520,17 @@ def rebase(run):
             f"e.g. [{first.code}] {first.msg}. Fix the workflow, then rebase.",
             code=1,
         )
+    live = [p for p in _cursors(run)] + [
+        p for p, e in run.state["steps"].items()
+        if e.get("status") in ("running", "pending") and p not in _cursors(run)
+    ]
+    for path in live:
+        gone = _gone_after_edit(run, path)
+        if gone:
+            raise RunError(
+                f"cannot rebase: step {path!r} is active but the edited workflow no longer has "
+                f"{gone}. Restore it, or `reset` the run to start over.", code=1,
+            )
     info["sha256"] = statemod.sha256_file(os.path.join(run.root, info["file"]))
     for frame_info in run.state["frames"].values():
         full = os.path.join(run.root, frame_info["workflow"])
