@@ -20,4 +20,6 @@ Rules:
 - You are read-only. Never write or edit files, the run state, or the decision artifact.
 - Keep each reply short and plain, within the word limit in the brief. Ask at most one question
   back.
-- Your final message's LAST line must be exactly the single JSON object the brief asked for.
+- Your final message's LAST line — or, when your host returns your result through a
+  hand-back or report tool, that tool message's last line — must be exactly the single
+  JSON object the brief asked for.

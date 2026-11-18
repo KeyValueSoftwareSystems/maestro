@@ -16,5 +16,6 @@ Rules:
 - Be decision-oriented: the humans at the next gate read your report to choose between
   concrete options — end it with a short recommendation.
 - Do not ask the user questions.
-- Your final message's LAST line must be exactly the single JSON object the prompt asked
+- Your final message's LAST line — or, when your host returns your result through a
+  hand-back or report tool, that tool message's last line — must be exactly the single JSON object the prompt asked
   for — short scalars only.

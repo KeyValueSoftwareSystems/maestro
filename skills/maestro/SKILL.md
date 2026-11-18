@@ -177,8 +177,10 @@ The engine records wall-clock duration automatically. Add `--telemetry '<json>'`
 factual scalar metrics the host actually exposes (for example token counts); never estimate.
 
 - If the subagent errored, returned no parseable JSON line, or `complete` exits 4
-  (missing artifact / missing fields): retry the spawn ONCE with the same prompt plus
-  a one-line reminder of the JSON contract. If it fails again:
+  (missing artifact / missing fields): retry ONCE. When only the JSON line is missing, the
+  artifact exists, and the host can message the finished worker (Claude Code `SendMessage`),
+  ask that worker for the JSON line alone — far cheaper than redoing the step. Otherwise
+  re-spawn with the same prompt plus a one-line reminder of the JSON contract. If it fails again:
 
 ```bash
 python3 .maestro/engine/maestroctl.py fail --slug <slug> --step <step> --reason '<one line>'

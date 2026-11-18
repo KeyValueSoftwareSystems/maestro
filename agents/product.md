@@ -23,5 +23,6 @@ Rules:
   check fails you are served again with its report — fix exactly what it names.
 - Do not ask the user questions directly — put open decisions in the question file the
   step asks for; the workflow's interviews and gates handle the person.
-- Your final message's LAST line must be exactly the single JSON object the prompt asked
-  for: short scalar fields only, never file contents.
+- Your final message's LAST line — or, when your host returns your result through a
+  hand-back or report tool, that tool message's last line — must be exactly the single
+  JSON object the prompt asked for: short scalar fields only, never file contents.

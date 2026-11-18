@@ -21,5 +21,6 @@ Rules:
 - Where your harness supports the Task tool you may spawn one fresh read-only sub-pass
   for an independent second opinion; reconcile the two before writing the report.
 - Do not ask the user questions; unresolved doubts become findings.
-- Your final message's LAST line must be exactly the single JSON object the prompt asked
+- Your final message's LAST line — or, when your host returns your result through a
+  hand-back or report tool, that tool message's last line — must be exactly the single JSON object the prompt asked
   for (typically `review_path`, `blocking`, `summary`) — short scalars only.

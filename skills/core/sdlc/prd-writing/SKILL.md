@@ -95,9 +95,12 @@ needs more context, include it.
 
 ## Validate before returning
 
-Run the workflow-supplied validator after writing. Allow its mechanical-fix mode to normalize line
-wrapping and acceptance-criteria numbering. If it still reports a defect, repair only that defect
-inside this same call and validate again. Do not return success with a failing artifact.
+Run the workflow-supplied validator after writing, with exactly the arguments supplied. Allow its
+mechanical-fix mode to normalize line wrapping and acceptance-criteria numbering. If it still
+reports a defect, repair only that defect inside this same call and validate again. Do not return
+success with a failing artifact. In normalize mode the supplied check accepts "(to confirm)"
+marks; the strict validator without `--compatible` reports each one, and those are expected gaps,
+not failures: return normally with the number of open gaps in `summary`.
 
 ## Normalize mode
 

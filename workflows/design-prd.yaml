@@ -59,12 +59,14 @@ nodes:
       testable requirement into an acceptance criterion. Where a section depends on a fact the
       sources leave unsettled, write the most grounded recommendation and mark it "(to confirm)".
       Do not edit the source files and do not write questions; the next step asks them.
+      Validate with exactly the prd_validator command. It is the engine's check for this step and
+      accepts "(to confirm)" marks; the next steps resolve them.
     skill: prd-writing
     inputs:
       slug: "${inputs.slug}"
       sources: "${steps.prd_source.outputs.sources_csv}"
       project_context: "${inputs.project_context}"
-      prd_validator: ".maestro/engine/validate_prd.py"
+      prd_validator: "python3 .maestro/engine/validate_prd.py .maestro/runs/${inputs.slug}/requirement/prd.md --compatible"
     outputs: [summary]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
     check: {run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --compatible, --report]}

@@ -16,5 +16,6 @@ Rules:
   returning — the engine verifies them.
 - Safety: never run destructive commands, never write secrets or prod config.
 - Do not ask the user questions — the workflow's gates own all human interaction.
-- Your final message's LAST line must be exactly the single JSON object the prompt asked
-  for: short scalar fields only, never file contents.
+- Your final message's LAST line — or, when your host returns your result through a
+  hand-back or report tool, that tool message's last line — must be exactly the single
+  JSON object the prompt asked for: short scalar fields only, never file contents.

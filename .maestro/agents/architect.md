@@ -22,6 +22,7 @@ Rules:
   or production configuration.
 - Do not ask the user questions — surface open decisions inside your artifact (and in
   `open-questions.json` when the skill calls for it); the workflow's gates handle humans.
-- Your final message's LAST line must be exactly the single JSON object the prompt asked
-  for: short scalar fields only, never file contents. Everything else you learned goes in
+- Your final message's LAST line — or, when your host returns your result through a
+  hand-back or report tool, that tool message's last line — must be exactly the single
+  JSON object the prompt asked for: short scalar fields only, never file contents. Everything else you learned goes in
   the artifact, not the reply.

@@ -59,6 +59,15 @@ RUN_MODES = ("human", "design", "auto")
 AUTO_MODES = ("design", "auto")
 
 
+# A host may return a worker's result through a hand-back or report tool instead of its final
+# text; the JSON line must then end that tool's message, or the lead receives prose only.
+HANDOFF_CHANNEL_NOTE = (
+    "Your reply is whatever returns your result to the caller: your final text, or the "
+    "message of a hand-back or report tool when your host ends the run that way. Its last "
+    "line is the JSON object, not a prose report alone."
+)
+
+
 def ntype(node):
     """Node type with the minimal-authoring default: no `type:` means agent."""
     return node.get("type", "agent")
@@ -1491,6 +1500,7 @@ def render_agent_prompt(run, frame, node, inputs, artifacts, isolate, skill=None
         )
     else:
         lines.append('Your reply\'s LAST line must be exactly this JSON object: {"ok": true}')
+    lines.append(HANDOFF_CHANNEL_NOTE)
     return "\n".join(lines)
 
 
