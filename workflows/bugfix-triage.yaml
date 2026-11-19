@@ -34,7 +34,7 @@ nodes:
   # Either way the triage talks it through with the person; this only tells it where to start.
   - id: assert_requirement
     type: script
-    label: Bug report present?
+    label: Find the bug report
     say: Looking for the bug report.
     run: [python3, .maestro/engine/requirement_serve.py, ".maestro/runs/${inputs.slug}/requirement"]
     next: triage
@@ -92,7 +92,7 @@ nodes:
   # The functional test cases, from the mini PRD's expected behaviours.
   - id: test_cases
     type: subworkflow
-    label: Functional test cases
+    label: Test cases
     say: Writing the test cases that prove the fix.
     workflow: .maestro/workflows/design-tests.yaml
     inputs:
@@ -105,25 +105,28 @@ nodes:
   - id: reproduce_choice
     type: gate
     label: Reproduce the bug first?
-    say: One choice before the fix is planned.
+    say: One choice before I look for the cause.
     prompt: |
-      ${steps.triage.outputs.summary}
-      Affected: ${steps.triage.outputs.repos_csv} · branch ${inputs.branch}
-
       Should I reproduce the bug before proposing a fix?
-      - Reproduce: I start the app on your branch (when the project configures how), confirm the
-        bug and write a test that fails because of it. Slower, but the fix is proven against it.
-      - Skip: I go straight to finding the cause and proposing a fix.
+      Reproducing proves the fix against the real failure, but takes longer.
+      The bug: ${steps.triage.outputs.summary}
+      Affected: ${steps.triage.outputs.repos_csv}, on branch ${inputs.branch}
     options:
-      - {id: reproduce, label: Reproduce it first, to: branch_check}
-      - {id: skip, label: Skip — propose a fix, to: branch_check}
+      - id: reproduce
+        label: "Reproduce it first"
+        description: "I start the app on your branch (when the project says how), confirm the bug and write a test that fails because of it."
+        to: branch_check
+      - id: skip
+        label: "Skip — propose a fix"
+        description: "I go straight to finding the cause and proposing a fix."
+        to: branch_check
 
   # Engine-owned: does every affected repository have the branch (locally or on origin)? Fetches
   # first; creates nothing. Repositories the bug does not touch are never checked.
   - id: branch_check
     type: script
-    label: Branch in every affected repository?
-    say: Checking the branch exists in each affected repository.
+    label: Check the branch in each repository
+    say: Checking your branch exists in each affected repository.
     run: [python3, .maestro/engine/worktrees.py, check-base, --root, ".", --slug, "${inputs.slug}", --branch, "${inputs.branch}", --repos, "${steps.triage.outputs.repos_csv}"]
     on_fail: ask
     routes:
@@ -132,26 +135,33 @@ nodes:
 
   - id: missing_branch
     type: gate
-    label: Branch missing in a repository
-    say: The branch is missing in some repositories; your call.
+    label: Branch missing
+    say: Your branch is missing in some repositories; one decision for you.
     prompt: |
-      ${steps.branch_check.outputs.summary}. ${steps.bug_bases.outputs.problem}
+      Where should the fix start in the repositories that do not have ${inputs.branch}?
       The fix is built on ${inputs.branch}, so these repositories need another starting point:
       ${steps.branch_check.outputs.missing_csv}
-      - Default branch: use each one's default branch. The app may then mix versions; the
-        reproduction notes which branch and commit each repository used.
-      - Another branch: name it, e.g. web=release-2 (or one name for all of them).
-      - Drop: leave these repositories out of the fix; we go back to describing the bug.
+      ${steps.branch_check.outputs.summary}. ${steps.bug_bases.outputs.problem}
     options:
-      - {id: default, label: Use their default branch, to: bug_bases}
-      - {id: named, label: Name another branch, to: bug_bases, input: feedback}
-      - {id: drop, label: Drop these repositories, to: triage}
+      - id: default
+        label: "Use their default branch"
+        description: "Start each from its default branch. The app may then mix versions; the reproduction notes which branch each used."
+        to: bug_bases
+      - id: named
+        label: "Name another branch"
+        description: "Type the branch next, e.g. web=release-2, or one name for all of them."
+        to: bug_bases
+        input: feedback
+      - id: drop
+        label: "Drop these repositories"
+        description: "Leave these repositories out of the fix; we go back to describing the bug."
+        to: triage
 
   # Engine-owned: each repository's base (the branch, or the person's answer for the others),
   # written as the sandbox's base map. A named branch that does not exist asks again.
   - id: bug_bases
     type: script
-    label: Base branch per repository
+    label: "Choose each repository's starting branch"
     say: Settling which branch each repository starts from.
     run: [python3, .maestro/engine/worktrees.py, bases, --root, ".", --slug, "${inputs.slug}", --branch, "${inputs.branch}", --repos, "${steps.triage.outputs.repos_csv}", --choice, "${steps.missing_branch.outputs.choice}", --named, "${steps.missing_branch.outputs.feedback}"]
     routes:
@@ -163,7 +173,7 @@ nodes:
   - id: sandbox
     type: script
     label: Set up the sandbox
-    say: Setting up a sandbox on your branch.
+    say: Setting up a sandbox copy of each affected repository.
     run: [python3, .maestro/engine/worktrees.py, prepare, --root, ".", --slug, "${inputs.slug}", --base-map, ".maestro/runs/${inputs.slug}/.engine/bug-bases.json"]
     timeout: 900
     on_fail: ask
@@ -173,7 +183,7 @@ nodes:
   # loop hands each one out like an implemented repository.
   - id: register_sandbox
     type: script
-    label: Register the sandbox for the fix
+    label: Prepare the sandbox for the fix
     say: Getting the sandbox ready for the fix.
     run: [python3, .maestro/engine/implementation_pool.py, bugfix-start, --root, ".", --slug, "${inputs.slug}", --sandbox, ".maestro/runs/${inputs.slug}/.engine/sandbox.json"]
     on_fail: abort
@@ -242,17 +252,26 @@ nodes:
   - id: not_reproduced
     type: gate
     label: Bug not reproduced
-    say: I could not reproduce the bug; your call.
+    say: I could not reproduce the bug; one decision for you.
     prompt: |
-      I could not make the bug happen: ${steps.reproduce.outputs.summary}
+      I could not make the bug happen. How should we go on?
+      A fix for a bug nobody has seen is a guess, so more details may help.
+      What I tried: ${steps.reproduce.outputs.summary}
       Details: .maestro/runs/${inputs.slug}/qa/reproduction.md
-      - Proceed: look for the cause anyway and propose a fix.
-      - More info: tell me what is missing (steps, data, environment); we go back to describing it.
-      - Reject: stop this run.
     options:
-      - {id: proceed, label: Proceed — propose a fix anyway, to: propose_fix}
-      - {id: more-info, label: More info — tell me what is missing, to: triage, input: feedback}
-      - {id: reject, label: Reject — stop this run, to: abort}
+      - id: proceed
+        label: "Proceed — propose a fix anyway"
+        description: "Look for the cause anyway and propose a fix."
+        to: propose_fix
+      - id: more-info
+        label: "More info — tell me what is missing"
+        description: "Tell me what is missing (steps, data, setup); we go back to describing the bug."
+        to: triage
+        input: feedback
+      - id: reject
+        label: "Reject — stop this run"
+        description: "Stop this run; nothing is fixed."
+        to: abort
 
   # Analyst role: root cause and the proposed change, before any fix is written.
   - id: propose_fix
@@ -296,25 +315,37 @@ nodes:
     label: Fix approval
     say: The proposed fix is ready for your approval.
     prompt: |
-      Proposed fix for ${inputs.feature}, before any code is written:
+      Approve this fix for ${inputs.feature} before any code is written?
+      Once approved, the fix is made and tested, and comes back to you for release.
       Cause: ${steps.propose_fix.outputs.cause}
       Change: ${steps.propose_fix.outputs.change}
       Who is affected: ${steps.propose_fix.outputs.impact}
       Risks: ${steps.propose_fix.outputs.risks}
       Reproduction: ${steps.reproduce.outputs.summary}
       Full proposal: .maestro/runs/${inputs.slug}/design/fix-proposal.md
-
-      - Approve: fix it this way; it is then tested and comes back to you for release.
-      - Revise: tell me what to change; I rework the proposal and ask again.
-      - Re-triage: the bug itself is described wrong; we go back to describing it.
-      - Later: stop here and keep the sandbox; resume with /maestro ${inputs.slug}.
-      - Reject: stop this run.
     options:
-      - {id: approve, label: Approve — fix it this way, to: record_approval}
-      - {id: revise, label: Revise — tell me what to change, to: propose_fix, input: feedback}
-      - {id: re-triage, label: Re-triage — describe the bug again, to: triage, input: feedback}
-      - {id: later, label: Later — stop here and resume when ready, pause: true}
-      - {id: reject, label: Reject — stop this run, to: abort}
+      - id: approve
+        label: "Approve — fix it this way"
+        description: "Make the fix this way; it is tested and comes back to you for release."
+        to: record_approval
+      - id: revise
+        label: "Revise — tell me what to change"
+        description: "Tell me what to change; I rework the proposal and ask again."
+        to: propose_fix
+        input: feedback
+      - id: re-triage
+        label: "Re-triage — describe the bug again"
+        description: "The bug itself is described wrong; we go back to describing it."
+        to: triage
+        input: feedback
+      - id: later
+        label: "Later — stop here and resume when ready"
+        description: "Stop here and keep everything; resume with /maestro ${inputs.slug}."
+        pause: true
+      - id: reject
+        label: "Reject — stop this run"
+        description: "Stop this run; nothing is fixed."
+        to: abort
 
   # Engine-owned: bind the approval to the exact mini PRD and test cases (no plan) and record the
   # repositories in scope; delivery's design check verifies it.

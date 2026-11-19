@@ -26,15 +26,15 @@ start: workspace_sync_initial
 nodes:
   - id: workspace_sync_initial
     type: subworkflow
-    label: Workspace sync (bug start)
-    say: Checking the workspace is up to date.
+    label: Update the repositories
+    say: Checking your repositories are up to date.
     workflow: .maestro/workflows/workspace-sync.yaml
     inputs: {slug: "${inputs.slug}", checkpoint: feature-start}
     next: triage
 
   - id: triage
     type: subworkflow
-    label: Bug triage and fix approval
+    label: Bug and fix approval
     say: Pinning the bug down and agreeing the fix.
     workflow: .maestro/workflows/bugfix-triage.yaml
     # `feedback` carries why delivery or the release sent the bug back. Empty on the first pass.
@@ -49,8 +49,8 @@ nodes:
 
   - id: delivery
     type: subworkflow
-    label: Fix, QA and release
-    say: Fixing, testing and preparing the release.
+    label: "Fix, test and release"
+    say: "Fixing the bug, testing it and preparing the release."
     workflow: .maestro/workflows/delivery.yaml
     inputs:
       slug: "${inputs.slug}"
@@ -68,8 +68,8 @@ nodes:
 
   - id: archive
     type: subworkflow
-    label: Pull requests and archival
-    say: Delivering the fix and filing the lessons.
+    label: Deliver and wrap up
+    say: Delivering the fix and recording the lessons.
     # Runs after release approval and only once a person confirms the archive: delivers the
     # verified fix branches (pull requests target each repository's recorded base), then folds
     # the lessons into memory and the living docs. There is no plan to file.

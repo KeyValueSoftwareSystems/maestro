@@ -19,7 +19,7 @@ start: create
 nodes:
   - id: create
     type: script
-    label: Create the repositories the plan marks new
+    label: Create the new repositories
     say: Creating the new repositories.
     run: [python3, .maestro/engine/greenfield.py, create, --root, ".", --slug, "${inputs.slug}", --plan, ".maestro/runs/${inputs.slug}/.engine/greenfield-plan.json"]
     on_fail: abort
@@ -56,7 +56,7 @@ nodes:
   # scaffold commits, so the next workspace check does not ask to refresh it.
   - id: record_knowledge
     type: script
-    label: Record the new repositories' knowledge
+    label: Record what the new repositories contain
     say: Recording what the new repositories contain.
     run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ".", --evidence, ".maestro/runs/${inputs.slug}/build/scaffold.json"]
     on_fail: abort
@@ -66,8 +66,8 @@ nodes:
   # design's starting point instead of a change since design.
   - id: pin
     type: script
-    label: Pin the new repositories
-    say: Pinning the new repositories.
+    label: "Record the new repositories' starting point"
+    say: Recording the exact starting point of each new repository.
     run: [python3, .maestro/engine/workspace_sync.py, lock, --root, ".", --out, ".maestro/runs/${inputs.slug}/.engine/workspace-lock.json"]
     on_fail: abort
     next: end

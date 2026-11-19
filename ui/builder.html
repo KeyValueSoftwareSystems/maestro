@@ -1146,6 +1146,10 @@ body.has-server #menu-folder { display: none; }
               "label": {
                 "type": "string"
               },
+              "description": {
+                "type": "string",
+                "description": "One plain line telling the person what happens if they pick this option (its consequence). Served with the option; the lead shows it under the label."
+              },
               "to": {
                 "$ref": "#/definitions/routeTarget"
               },
@@ -2152,6 +2156,8 @@ function inspectEdge(box) {
   } else if (e.kind === "option") {
     const o = n.options[e.idx];
     box.appendChild(field("Option label", txt(o.label, v => commit("ol", () => o.label = v))));
+    box.appendChild(field("What happens (shown to the person)", txt(o.description ?? "", v => commit("od", () => v ? o.description = v : delete o.description)),
+      "One plain line: the consequence of picking this option."));
     box.appendChild(field("Target", sel(o.to, targetChoices(nodes), v => commit("to", () => o.to = v))));
   } else if (e.kind === "next") {
     box.appendChild(field("Target", sel(n.next, targetChoices(nodes), v => commit("to", () => n.next = v))));

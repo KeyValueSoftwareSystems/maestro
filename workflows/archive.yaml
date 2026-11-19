@@ -39,27 +39,30 @@ nodes:
   # the slug later archives it.
   - id: confirm_archive
     type: gate
-    label: Archive confirmation
-    say: The release is approved; archiving it is your call.
+    label: Wrap up the feature?
+    say: The release is approved. One last choice before wrapping up.
     prompt: |
-      The release is approved. Archive this feature now?
-      Archiving delivers the code, files the feature's plan as completed and updates the docs/ folder.
+      Wrap up ${inputs.feature} now?
+      Wrapping up delivers the code, files the plan as completed and updates the project docs, so the
+      next feature starts from an accurate picture.
       ${steps.check_release.outputs.delivery_action}
-      - Archive now: deliver the code, file the plan (you confirm any differences from what was
-        built first), then record the lessons.
-      - Not now: you deliver the code yourself; the plan stays in docs/plans/active/ unchanged and
-        docs/ is not updated until you archive with /maestro ${inputs.slug} .maestro/workflows/archive.yaml
     options:
-      - {id: archive, label: Archive now, to: deliver}
-      - {id: skip, label: Not now — I will deliver the code myself, to: end}
+      - id: archive
+        label: "Archive now"
+        description: "Deliver the code, file the plan (you confirm any differences from what was built first), then record the lessons."
+        to: deliver
+      - id: skip
+        label: "Not now — I will deliver the code myself"
+        description: "Nothing is delivered for you; the plan stays in docs/plans/active/ and the docs are not updated until you run /maestro ${inputs.slug} .maestro/workflows/archive.yaml."
+        to: end
 
   # Engine-owned: re-checks each branch is still at its verified commit, then (delivery.mode
   # pull-request) pushes it and opens or reuses a pull request — a draft when autopilot approved
   # the release. Never force-pushes; a failure (gh missing, push rejected) asks a person.
   - id: deliver
     type: script
-    label: Deliver branches or pull requests
-    say: Delivering the branches.
+    label: Deliver the code
+    say: Delivering the code to your repositories.
     run:
       - python3
       - .maestro/engine/deliver.py
@@ -85,7 +88,7 @@ nodes:
   # nothing to file; the lessons are still harvested.
   - id: plan_status
     type: script
-    label: Is there a plan to file?
+    label: Find the plan
     say: Looking for the feature's plan.
     run: [python3, .maestro/engine/plan_doc.py, status, --root, ".", --slug, "${inputs.slug}"]
     routes:
@@ -140,21 +143,27 @@ nodes:
   - id: plan_changes
     type: gate
     label: Plan changes
-    say: What was built differs from the plan; your call on which version to keep.
+    say: What was built differs from the plan; one decision for you.
     prompt: |
-      What was built differs from the approved plan:
-      ${steps.plan_reconcile.outputs.summary}
+      Which plan should be kept as the record of ${inputs.feature}?
+      What was built differs from the approved plan. The code is already delivered; only the filed
+      document changes.
+      Differences: ${steps.plan_reconcile.outputs.summary}
       The full list: .maestro/runs/${inputs.slug}/release/plan-changes.md
-
-      You are deciding which plan is filed as this feature's record in docs/plans/completed/. The
-      code is already delivered; only the document changes.
-      - Accept: file the updated plan, which describes what was built.
-      - Keep: file the plan as approved; the differences stay only in the change list.
-      - Edit: tell me what to change in the update; I redo it and ask you again.
     options:
-      - {id: accept, label: Accept — file the updated plan, to: plan_archive_final}
-      - {id: keep, label: Keep — file the plan as approved, to: plan_archive}
-      - {id: edit, label: Edit — tell me what to change, to: plan_reconcile, input: feedback}
+      - id: accept
+        label: "Accept — file the updated plan"
+        description: "File the updated plan, which describes what was built."
+        to: plan_archive_final
+      - id: keep
+        label: "Keep — file the plan as approved"
+        description: "File the plan as approved; the differences stay only in the change list."
+        to: plan_archive
+      - id: edit
+        label: "Edit — tell me what to change"
+        description: "Tell me what to change in the update; I redo it and ask you again."
+        to: plan_reconcile
+        input: feedback
 
   # Engine-owned: move the plan to docs/plans/completed/<slug>.md with Status: completed. Refuses
   # when a completed plan already exists under the slug (never overwritten).
@@ -186,7 +195,7 @@ nodes:
 
   - id: harvest
     type: subworkflow
-    label: Harvest lessons into memory
+    label: Record the lessons
     say: Recording the lessons from this feature.
     workflow: .maestro/workflows/retrospect.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
@@ -196,8 +205,8 @@ nodes:
   # any with uncommitted changes, or a configured sandbox whose branches were not pushed.
   - id: cleanup
     type: script
-    label: Remove the worktrees Maestro created
-    say: Removing the worktrees Maestro created.
+    label: "Remove the feature's working copies"
+    say: Removing the working copies made for this feature.
     run: [python3, .maestro/engine/worktrees.py, remove, --root, ., --slug, "${inputs.slug}"]
     timeout: 900
     next: end

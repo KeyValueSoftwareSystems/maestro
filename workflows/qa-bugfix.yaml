@@ -30,8 +30,8 @@ start: fix
 nodes:
   - id: fix
     type: agent
-    label: Fix the product bug
-    say: Fixing the bug.
+    label: Fix the bug
+    say: "Fixing the bug in ${inputs.repo}."
     instruction: |
       One fix attempt on branch ${inputs.branch} in exact worktree ${inputs.worktree}, starting
       from commit ${inputs.commit}, for the ${inputs.repo} repository. Read what exists of:
@@ -89,7 +89,8 @@ nodes:
   # Engine-owned: on the first attempt (no re-review yet) nothing is blocking and this proceeds.
   - id: review_resolution
     type: script
-    label: Findings fixed, contested or escalated?
+    label: Check every issue was handled
+    say: "Checking every review issue was fixed, disputed or raised with you."
     run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json"]
     max_visits: 8
     on_exhausted: fix_gate
@@ -100,14 +101,16 @@ nodes:
 
   - id: handoff
     type: script
-    label: Verify the fixed worktree
+    label: Check the fix is committed
+    say: "Checking the fix in ${inputs.repo} is committed and ready."
     run: [python3, .maestro/engine/implementation_pool.py, inspect, --root, ".", --repo, "${inputs.repo}", --branch, "${inputs.branch}", --worktree, "${inputs.worktree}"]
     on_fail: abort
     next: verify
 
   - id: verify
     type: script
-    label: Build, lint and test (engine)
+    label: "Build, lint and test"
+    say: "Building and testing the fix in ${inputs.repo}."
     run:
       - python3
       - .maestro/engine/repo_checks.py
@@ -137,7 +140,8 @@ nodes:
   # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
   - id: review_scope
     type: script
-    label: Previous review round
+    label: Look at the last review
+    say: Looking at the previous review round.
     run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, "code-${inputs.repo}", --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"]
     next: review_head
 
@@ -146,7 +150,8 @@ nodes:
   # fixer may have committed since it last ran.
   - id: review_head
     type: script
-    label: Commit to review (worktree HEAD)
+    label: Pick the commit to review
+    say: Picking the latest commit to review.
     run: [python3, .maestro/engine/implementation_pool.py, inspect, --root, ".", --repo, "${inputs.repo}", --branch, "${inputs.branch}", --worktree, "${inputs.worktree}"]
     on_fail: abort
     max_visits: 10
@@ -154,7 +159,8 @@ nodes:
 
   - id: review
     type: agent
-    label: Re-review the fix
+    label: Review the fix
+    say: "Reviewing the fix in ${inputs.repo}."
     instruction: |
       Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
       ${inputs.commit} (what QA tested) to ${steps.review_head.outputs.commit}, against the
@@ -206,7 +212,8 @@ nodes:
   # Engine-owned: blocking is decided from the findings file, not the reviewer's own flag.
   - id: review_verdict
     type: script
-    label: Blocking review findings?
+    label: Any blocking issues?
+    say: Checking the review for issues that must be fixed.
     run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.review_head.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.repo}.reviewed.json", --root, "."]
     max_visits: 8
     on_exhausted: fix_gate
@@ -220,22 +227,36 @@ nodes:
 
   - id: fix_gate
     type: gate
-    label: Bug-fix escalation
+    label: Fix needs a decision
+    say: "The fix in ${inputs.repo} needs a decision from you."
     prompt: |
-      The bug fix for ${inputs.repo} needs a decision: the fixer escalated (for example, the fix
-      would go beyond the approved proposal), the engine checks or the review still fail after the
-      automated rounds, or a re-review raised a blocking finding late.
+      The fix for ${inputs.repo} needs your decision. How should I go on?
+      The fix would go beyond the approved proposal, or the checks or review still fail after the
+      automatic rounds.
       Fix attempt: ${steps.fix.outputs.fix_summary}
-      Engine checks: ${steps.verify.outputs.summary}
+      Checks: ${steps.verify.outputs.summary}
       Review: ${steps.review.outputs.summary}
-      Blocking findings (engine): ${steps.review_verdict.outputs.summary}
-      Escalated: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
-      Diagnosis: ${inputs.bug_report} ${inputs.bug_path} · Approved proposal: ${inputs.proposal_path}
+      Blocking issues: ${steps.review_verdict.outputs.summary}
+      Raised with you: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
+      The bug: ${inputs.bug_report} ${inputs.bug_path} · Approved fix: ${inputs.proposal_path}
     options:
-      - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
-      - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
-      - {id: accept, label: Keep the current commit (no code review of it) and re-run QA, to: end}
-      - {id: abandon, label: Abort, to: abort}
+      - id: retry
+        label: "One more fix round (with your guidance)"
+        description: "Tell me what to try; I fix, check and review again."
+        to: fix
+        input: guidance
+      - id: review
+        label: "Accept the failing checks, then review"
+        description: "The failing checks stay as they are; the fix still gets a review."
+        to: review_scope
+      - id: accept
+        label: "Keep this fix and test again"
+        description: "Keep the current commit without another review and run the tests again."
+        to: end
+      - id: abandon
+        label: "Stop the run"
+        description: "Stop this run; nothing is delivered."
+        to: abort
 
 outputs:
   commit: "${steps.handoff.outputs.commit}"

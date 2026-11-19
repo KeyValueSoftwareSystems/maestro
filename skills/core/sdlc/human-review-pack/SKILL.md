@@ -69,3 +69,5 @@ without the proof to back it — the review pack is a decision aid, not a rubber
 Return `pack_path`, `recommendation` (`ready` | `changes-requested` | `not-ready`,
 mirroring the pack's "Decision needed" section), and `summary` (one line the human reads
 at the release gate).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

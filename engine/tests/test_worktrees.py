@@ -270,7 +270,7 @@ class WorktreesTest(unittest.TestCase):
         self.deliver(pushed=True)
         _, out = self.remove()
         self.assertFalse(out["removed"])
-        self.assertIn("no worktree.remove", out["summary"])
+        self.assertIn("not how to remove them", out["summary"])
 
     def test_no_record_means_nothing_to_remove(self):
         _, out = self.remove()

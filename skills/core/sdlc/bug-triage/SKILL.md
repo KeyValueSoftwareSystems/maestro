@@ -77,3 +77,5 @@ Read-only on code and branches. Write only the two documents your instructions n
 Return `summary`: one plain sentence for the person saying what the bug is and what the fix must
 restore; and `repos_csv`: the affected repositories, comma-separated, using the configured names
 (for example `api,web`).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

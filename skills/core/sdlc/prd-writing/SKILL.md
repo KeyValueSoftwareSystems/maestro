@@ -155,3 +155,5 @@ edit the client's source documents, other requirements, confirmed context, code,
 Return `summary`: one short sentence stating that the final PRD was written (in normalize mode,
 how many gaps remain open) or which validator defects were repaired. In revision mode also return `needs_clarification`: true only when
 the feedback needs a product decision that must be clarified before editing, else false.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

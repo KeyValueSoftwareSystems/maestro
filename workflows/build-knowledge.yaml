@@ -20,7 +20,8 @@ start: plan_freshness
 nodes:
   - id: plan_freshness
     type: script
-    label: Check living-docs + map freshness
+    label: Check the project docs are current
+    say: Checking whether the project docs are up to date.
     # Combined docs/provenance.yaml + codebase-map gate (no network). refresh_needed false → skip authoring.
     run: [python3, .maestro/engine/workspace_sync.py, plan, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/plan.json", --no-fetch]
     routes:
@@ -29,7 +30,8 @@ nodes:
 
   - id: docs_impact
     type: script
-    label: Will the refresh rewrite verified docs?
+    label: Check for docs a person verified
+    say: Checking whether the refresh would change docs a person verified.
     # Counts the docs a person verified (a rewrite resets them to draft) and writes the 3-line
     # overview the gate shows. No verified docs (first build, or all drafts) → no gate.
     run: [python3, .maestro/engine/docs_rewrite.py, check, --root, ., --plan, ".maestro/runs/${inputs.slug}/.engine/knowledge/plan.json"]
@@ -39,27 +41,34 @@ nodes:
 
   - id: rewrite_gate
     type: gate
-    label: Approve rewriting verified docs
+    label: Rewrite verified docs?
+    say: The refresh would change docs a person verified; one decision for you.
     # Person only: no `auto:` policy, so autopilot stops here too.
     prompt: |
-      The knowledge refresh will edit docs under docs/ that a person has verified.
-
+      May I update project docs that a person has already checked?
+      The refresh keeps the docs in step with the code, but changes text someone verified.
       ${steps.docs_impact.outputs.summary}
-
-      Review with `git diff docs/` afterwards; commit docs/ first if you want a clean baseline.
     options:
-      - {id: approve, label: Approve — refresh the docs, to: plan_maps}
-      - {id: keep, label: Keep the docs as they are, to: end}
+      - id: approve
+        label: "Approve — refresh the docs"
+        description: "I update them; review the changes with git diff docs/ afterwards (commit docs/ first for a clean comparison)."
+        to: plan_maps
+      - id: keep
+        label: "Keep the docs as they are"
+        description: "Nothing is rewritten; the docs may stay behind the code."
+        to: end
 
   - id: already_fresh
     type: script
-    label: Docs already current — skip authoring
+    label: Docs already current
+    say: The project docs are already up to date.
     run: [python3, -c, "import json; print(json.dumps({'domains_written': 0, 'architecture_path': 'docs/architecture.md', 'summary': 'docs already current; skipped authoring'}))"]
     next: ensure_index_state
 
   - id: ensure_index_state
     type: script
-    label: Ensure docs_sha256/evidence on shared index-state
+    label: Prepare the docs record
+    say: Preparing the record of what the docs cover.
     # Template workspace-index may have written commits without docs_sha256; fill those
     # without re-authoring. No-op when provenance is already complete or docs are stale.
     run: [python3, .maestro/engine/workspace_sync.py, ensure-index-state, --root, ., --evidence, docs/architecture.md]
@@ -67,7 +76,8 @@ nodes:
 
   - id: plan_maps
     type: script
-    label: Plan codebase-map refresh
+    label: Plan the code map refresh
+    say: Checking which code maps need a refresh.
     run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: snapshot_maps}
@@ -75,14 +85,16 @@ nodes:
 
   - id: snapshot_maps
     type: script
-    label: Snapshot maps before refresh
+    label: Save the code maps
+    say: Saving a copy of the code maps before the refresh.
     run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/map-snapshot.json"]
     on_fail: abort
     next: snapshot_docs
 
   - id: snapshot_docs
     type: script
-    label: Snapshot living docs before writing
+    label: Save the docs
+    say: Saving a copy of the docs before writing.
     # Lets stamp_docs mark exactly the docs this run wrote or changed.
     run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json"]
     on_fail: abort
@@ -90,7 +102,8 @@ nodes:
 
   - id: extract_inventory
     type: script
-    label: Extract the workspace inventory (engine)
+    label: List what the code contains
+    say: Listing what the code contains.
     # Endpoints, calls, events, jobs, tables and config read from code and contracts (no LLM),
     # so the writer sees them without grepping and never restates them.
     run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/inventory.md"]
@@ -99,7 +112,8 @@ nodes:
 
   - id: build
     type: agent
-    label: Build the knowledge base
+    label: Write the project docs
+    say: Writing the project docs and code maps.
     model: sonnet
     instruction: |
       Scan this workspace and build its living knowledge base under docs/. Read the repos
@@ -151,7 +165,8 @@ nodes:
 
   - id: stamp_docs
     type: script
-    label: Stamp written docs (engine)
+    label: Mark the docs as written
+    say: Marking the docs as freshly written.
     # verified_at = each repo's HEAD, status back to draft, only on docs this run changed.
     run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json"]
     on_fail: abort
@@ -164,7 +179,8 @@ nodes:
 
   - id: record_maps
     type: script
-    label: Record codebase-map commits (engine)
+    label: Record what the code maps cover
+    say: Recording which code the maps describe.
     # Stamp each repo's current HEAD into its map's marker (docs/codebase-maps/<repo>.md), so the next
     # build-knowledge / retrospect run refreshes only the diff. Owned by the engine, not the
     # skill — swapping build-knowledge can't change how incremental tracking works.
@@ -174,14 +190,16 @@ nodes:
 
   - id: record_knowledge
     type: script
-    label: Record living-doc provenance (engine)
+    label: Record where the docs came from
+    say: "Recording where the docs' facts came from."
     run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ., --evidence, docs/architecture.md]
     on_fail: abort
     next: consolidate
 
   - id: consolidate
     type: script
-    label: Render seeded lessons (engine)
+    label: Write down the starting lessons
+    say: Writing down the starting lessons.
     # Folds any authoritative lessons build-knowledge seeded into the memory store. No-op if
     # none were seeded. Deterministic engine step — see .maestro/engine/mem_consolidate.py.
     run: [python3, .maestro/engine/mem_consolidate.py, ".maestro/memory"]

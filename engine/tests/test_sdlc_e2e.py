@@ -376,7 +376,10 @@ class SdlcE2E(unittest.TestCase):
                 # an agent's engine check runs under the agent's step: trace it apart
                 trace.append((act["action"], step + "#check" if act.get("check") else step))
                 if "prompt" in act:
-                    self.prompts.setdefault(step, []).append(act["prompt"])
+                    # a gate's options carry their consequences: read them with the question
+                    said = "\n".join([act["prompt"]] + [o.get("description", "")
+                                                        for o in act.get("options") or []])
+                    self.prompts.setdefault(step, []).append(said)
                 run = resolver.Run("demo", self.tmp)
                 if act["action"] in ("run_agent", "run_lead"):
                     for rel in act.get("artifacts", []):
@@ -860,7 +863,7 @@ class SdlcE2E(unittest.TestCase):
                           if s.startswith(("archive/deliver", "archive/plan", "archive/harvest",
                                            "archive/cleanup"))])
         prompt = self.prompts["archive/confirm_archive"][0]
-        self.assertIn("deliver the code yourself", prompt)
+        self.assertIn("Nothing is delivered for you", prompt)
         # the default delivery mode is `branch`: the question must not promise a push
         self.assertIn("nothing is pushed", prompt)
         # the plan stays where it was approved until the archive runs
@@ -962,7 +965,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertLess(steps.index("delivery/drift_verdict"), steps.index("delivery/review_pack"))
         self.assertEqual([s for a, s in trace if a == "ask_gate"],
                          self.PLAN_ASKED + ["delivery/release_approval"])
-        self.assertIn("Design drift (engine): 1 blocking finding",
+        self.assertIn("Matches the plan: 1 blocking finding",
                       self.prompts["delivery/release_approval"][0])
 
     def test_an_open_major_review_finding_stops_an_autopilot_release(self):
@@ -983,7 +986,7 @@ class SdlcE2E(unittest.TestCase):
         self.assertLess(steps.index("delivery/open_findings"), steps.index("delivery/review_pack"))
         self.assertEqual([s for a, s in trace if a == "ask_gate"],
                          self.PLAN_ASKED + ["delivery/release_approval"])
-        self.assertIn("Open code-review findings (engine): 0 blocking and 2 major",
+        self.assertIn("Open review issues: 0 blocking and 2 major",
                       self.prompts["delivery/release_approval"][0])
 
     def test_each_repository_gets_its_stack_skills(self):

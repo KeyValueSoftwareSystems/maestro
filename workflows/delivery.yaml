@@ -32,7 +32,7 @@ nodes:
   # since approval (an edited PRD or plan, changed test cases) sends the design back first.
   - id: design_check
     type: script
-    label: Approved plan still current?
+    label: Check the plan is unchanged
     say: Checking the approved plan has not changed.
     run: [python3, .maestro/engine/plan_doc.py, verify, --root, ., --slug, "${inputs.slug}"]
     on_fail: abort
@@ -46,13 +46,15 @@ nodes:
   # never carries the "design is current" sentence verify prints when nothing is stale.
   - id: stale_note
     type: script
-    label: Why the design is stale
+    label: Note why the design changed
+    say: The approved design changed; noting why before going back to it.
     run: [python3, .maestro/engine/entry_serve.py, "${steps.design_check.outputs.reasons_summary}"]
     next: end
 
   - id: workspace_sync_pre_impl
     type: subworkflow
-    label: Workspace sync (pre-implementation)
+    label: Update the repositories
+    say: Checking your repositories are up to date before building.
     workflow: .maestro/workflows/workspace-sync.yaml
     inputs: {slug: "${inputs.slug}", checkpoint: pre-implementation, fetch_errors: note}
     max_visits: 8
@@ -66,7 +68,8 @@ nodes:
   # handoffs). Batching repos is a team-workflow choice: the engine still supports `--choice pick`.
   - id: impl_scope_init
     type: script
-    label: Initialize implementation repo pool
+    label: List the repositories to build
+    say: Listing the repositories to build.
     run: [python3, .maestro/engine/implementation_pool.py, init, --root, ., --slug, "${inputs.slug}", --choice, all, --fresh]
     on_fail: abort
     next: worktrees
@@ -76,7 +79,8 @@ nodes:
   # own `git worktree add`. A later pass reuses them; a path this run did not create is refused.
   - id: worktrees
     type: script
-    label: Create the feature's worktrees
+    label: Set up working copies
+    say: Setting up a separate working copy of each repository.
     run: [python3, .maestro/engine/worktrees.py, prepare, --root, ., --slug, "${inputs.slug}"]
     timeout: 900
     on_fail: ask
@@ -84,7 +88,8 @@ nodes:
 
   - id: implement
     type: parallel
-    label: Implementation (repo pool)
+    label: Build the change
+    say: Building the change in each repository.
     join: all
     on_branch_fail: ask
     branches:
@@ -93,6 +98,8 @@ nodes:
         steps:
           - id: claim
             type: script
+            label: Pick the next repository
+            say: Picking the next repository to build.
             run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
             max_visits: 40
             routes:
@@ -100,6 +107,8 @@ nodes:
               - {to: impl}
           - id: impl
             type: subworkflow
+            label: Build one repository
+            say: Building the change in the next repository.
             workflow: .maestro/workflows/impl.yaml
             inputs:
               slug: "${inputs.slug}"
@@ -118,6 +127,8 @@ nodes:
               - {to: record}
           - id: record
             type: script
+            label: Record the built repository
+            say: Recording the finished repository.
             run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
@@ -126,6 +137,8 @@ nodes:
         steps:
           - id: claim
             type: script
+            label: Pick the next repository
+            say: Picking the next repository to build.
             run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
             max_visits: 40
             routes:
@@ -133,6 +146,8 @@ nodes:
               - {to: impl}
           - id: impl
             type: subworkflow
+            label: Build one repository
+            say: Building the change in the next repository.
             workflow: .maestro/workflows/impl.yaml
             inputs:
               slug: "${inputs.slug}"
@@ -151,6 +166,8 @@ nodes:
               - {to: record}
           - id: record
             type: script
+            label: Record the built repository
+            say: Recording the finished repository.
             run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
@@ -159,6 +176,8 @@ nodes:
         steps:
           - id: claim
             type: script
+            label: Pick the next repository
+            say: Picking the next repository to build.
             run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
             max_visits: 40
             routes:
@@ -166,6 +185,8 @@ nodes:
               - {to: impl}
           - id: impl
             type: subworkflow
+            label: Build one repository
+            say: Building the change in the next repository.
             workflow: .maestro/workflows/impl.yaml
             inputs:
               slug: "${inputs.slug}"
@@ -184,6 +205,8 @@ nodes:
               - {to: record}
           - id: record
             type: script
+            label: Record the built repository
+            say: Recording the finished repository.
             run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
@@ -192,6 +215,8 @@ nodes:
         steps:
           - id: claim
             type: script
+            label: Pick the next repository
+            say: Picking the next repository to build.
             run: [python3, .maestro/engine/implementation_pool.py, claim, --root, ., --slug, "${inputs.slug}"]
             max_visits: 40
             routes:
@@ -199,6 +224,8 @@ nodes:
               - {to: impl}
           - id: impl
             type: subworkflow
+            label: Build one repository
+            say: Building the change in the next repository.
             workflow: .maestro/workflows/impl.yaml
             inputs:
               slug: "${inputs.slug}"
@@ -217,6 +244,8 @@ nodes:
               - {to: record}
           - id: record
             type: script
+            label: Record the built repository
+            say: Recording the finished repository.
             run: [python3, .maestro/engine/implementation_pool.py, record, --root, ., --slug, "${inputs.slug}", --repo, "${steps.claim.outputs.repo}", --branch, "${steps.impl.outputs.branch}", --worktree, "${steps.impl.outputs.worktree}", --commit, "${steps.impl.outputs.commit}", --from-worktree]
             on_fail: abort
             next: claim
@@ -224,14 +253,16 @@ nodes:
 
   - id: finalize_implementation
     type: script
-    label: Verify implementation test context
+    label: Check the builds
+    say: Checking every repository was built and tested.
     run: [python3, .maestro/engine/implementation_pool.py, finalize, --root, ., --slug, "${inputs.slug}"]
     on_fail: abort
     next: qa
 
   - id: qa
     type: subworkflow
-    label: QA phase
+    label: Test the feature
+    say: Testing the feature against its test cases.
     workflow: .maestro/workflows/qa.yaml
     inputs:
       slug: "${inputs.slug}"
@@ -247,7 +278,7 @@ nodes:
   # implementations, registered by triage) and fix each one in the loop below.
   - id: bugfix_entry
     type: script
-    label: Queue the repositories to fix
+    label: List the repositories to fix
     say: Lining up the repositories to fix.
     run: [python3, .maestro/engine/implementation_pool.py, bugfix-init, --root, ".", --slug, "${inputs.slug}", --repos-text, "${inputs.bug_repos}"]
     on_fail: abort
@@ -258,14 +289,16 @@ nodes:
   # and re-run QA. QA's visit limit bounds the rounds; then a person decides.
   - id: bugfix_init
     type: script
-    label: Queue the repositories QA found bugs in
+    label: List the repositories with bugs
+    say: Lining up the repositories where testing found bugs.
     run: [python3, .maestro/engine/implementation_pool.py, bugfix-init, --root, ".", --slug, "${inputs.slug}", --repos-text, "${steps.qa.outputs.bug_repos}"]
     on_fail: ask
     next: bugfix_claim
 
   - id: bugfix_claim
     type: script
-    label: Next repository to fix
+    label: Pick the next repository to fix
+    say: Picking the next repository to fix.
     run: [python3, .maestro/engine/implementation_pool.py, bugfix-claim, --root, ".", --slug, "${inputs.slug}"]
     max_visits: 40
     routes:
@@ -274,7 +307,8 @@ nodes:
 
   - id: bugfix
     type: subworkflow
-    label: Fix the QA bug
+    label: Fix the bug
+    say: Fixing the bug in the next repository.
     workflow: .maestro/workflows/qa-bugfix.yaml
     inputs:
       slug: "${inputs.slug}"
@@ -293,7 +327,8 @@ nodes:
 
   - id: bugfix_record
     type: script
-    label: Record the fixed commit
+    label: Record the fix
+    say: Recording the fix.
     run: [python3, .maestro/engine/implementation_pool.py, record, --root, ".", --slug, "${inputs.slug}", --repo, "${steps.bugfix_claim.outputs.repo}", --branch, "${steps.bugfix_claim.outputs.branch}", --worktree, "${steps.bugfix_claim.outputs.worktree}", --from-worktree]
     on_fail: abort
     max_visits: 40
@@ -303,7 +338,8 @@ nodes:
   # when a case for it ran and every case that ran passed.
   - id: ac_trace
     type: script
-    label: Trace acceptance criteria to QA results
+    label: Check every requirement was tested
+    say: Checking each acceptance criterion against the test results.
     run:
       - python3
       - .maestro/engine/ac_trace.py
@@ -322,7 +358,7 @@ nodes:
   # Engine-owned: a bug fix has no plan, so there is nothing to check the code against.
   - id: plan_check
     type: script
-    label: Is there a plan to check the code against?
+    label: Find the plan
     say: Looking for the approved plan.
     run: [python3, .maestro/engine/plan_doc.py, status, --root, ".", --slug, "${inputs.slug}"]
     routes:
@@ -334,7 +370,8 @@ nodes:
   # the engine decides blocking from its findings file.
   - id: drift_check
     type: agent
-    label: Design-vs-code drift check
+    label: Compare the code with the plan
+    say: Checking the code matches the approved plan.
     brief: full
     instruction: |
       Compare the implemented code with the approved design before release. For every repository
@@ -362,7 +399,8 @@ nodes:
 
   - id: drift_verdict
     type: script
-    label: Blocking drift?
+    label: Any serious differences?
+    say: Checking whether any difference from the plan blocks the release.
     run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/drift.findings.json"]
     max_visits: 6
     on_exhausted: assumptions
@@ -375,7 +413,8 @@ nodes:
   # again here because the gates answered since the design stages belong in it.
   - id: assumptions
     type: script
-    label: Collect assumptions and autopilot decisions
+    label: Collect unconfirmed decisions
+    say: Gathering the decisions nobody has confirmed yet.
     run:
       - python3
       - .maestro/engine/decision_log.py
@@ -397,14 +436,16 @@ nodes:
   # major finding (a bug a reviewer found that the author neither fixed nor got withdrawn).
   - id: open_findings
     type: script
-    label: Open code-review findings
+    label: Collect open review issues
+    say: Gathering the review issues nobody resolved.
     run: [python3, .maestro/engine/findings.py, open, --dir, ".maestro/runs/${inputs.slug}/reviews"]
     on_fail: review_pack
     next: review_pack
 
   - id: review_pack
     type: agent
-    label: Human review pack
+    label: Prepare the release summary
+    say: Preparing the release summary for you.
     brief: full
     instruction: |
       Assemble the release review pack for this feature: what was built (per stack),
@@ -444,21 +485,32 @@ nodes:
   - id: release_approval
     type: gate
     label: Release approval
+    say: The feature is ready for your release decision.
     prompt: |
-      Ready to release?
-      Engine verification (build/lint/test receipts): ${steps.finalize_implementation.outputs.verification_summary}
-      Acceptance criteria: ${steps.ac_trace.outputs.summary} (${steps.ac_trace.outputs.path})
-      Design drift (engine): ${steps.drift_verdict.outputs.summary} (.maestro/runs/${inputs.slug}/reviews/drift.md)
-      Open code-review findings (engine): ${steps.open_findings.outputs.summary}
-      Unconfirmed decisions: ${steps.assumptions.outputs.unconfirmed_summary} (${steps.assumptions.outputs.path})
-      Recommendation: ${steps.review_pack.outputs.recommendation}
-      ${steps.review_pack.outputs.summary}
-      Review pack: ${steps.review_pack.outputs.pack_path}
-      QA: ${steps.qa.outputs.qa_summary} · ${steps.qa.outputs.e2e_summary}
+      Release ${inputs.feature}?
+      Approving lets the code be delivered; anything still open below ships with it.
+      Recommendation: ${steps.review_pack.outputs.recommendation}. ${steps.review_pack.outputs.summary}
+      Build and tests: ${steps.finalize_implementation.outputs.verification_summary}
+      Requirements: ${steps.ac_trace.outputs.summary}
+      Matches the plan: ${steps.drift_verdict.outputs.summary}
+      Open review issues: ${steps.open_findings.outputs.summary}
+      Decisions nobody confirmed: ${steps.assumptions.outputs.unconfirmed_summary}
+      Testing: ${steps.qa.outputs.qa_summary} · ${steps.qa.outputs.e2e_summary}
+      Full release summary: ${steps.review_pack.outputs.pack_path}
     options:
-      - {id: approve, label: Approve the release, to: record_release}
-      - {id: revise, label: Send back to design — then describe what to change, to: end, input: feedback}
-      - {id: reject, label: Reject — abort, to: abort}
+      - id: approve
+        label: "Approve the release"
+        description: "Record the approval; next you choose when the code is delivered."
+        to: record_release
+      - id: revise
+        label: "Send back to design"
+        description: "Tell me what to change next; the design is redone and every repository is built again."
+        to: end
+        input: feedback
+      - id: reject
+        label: "Reject"
+        description: "Stop this run; nothing is delivered."
+        to: abort
     # Design and auto modes release only what the engine itself verified (build/lint/test receipts
     # at the exact commits) with every acceptance criterion passing QA, no design drift and no
     # blocking or major review finding left open; anything else stops the run for a person.
@@ -477,6 +529,7 @@ nodes:
   - id: record_release
     type: script
     label: Record the release approval
+    say: Recording your release approval.
     run:
       - python3
       - .maestro/engine/release_record.py

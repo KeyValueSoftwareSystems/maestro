@@ -108,22 +108,22 @@ class SdlcTodoTest(unittest.TestCase):
         built = todo.build(resolver.Run("demo", root))
         self.assertEqual(todo.render(built).splitlines(), [
             "demo · sdlc-main · running",
-            "[x] Workspace sync (feature start)",
-            "[>] Design phase",
+            "[x] Update the repositories",
+            "[>] Design",
             "    [x] Requirement and context",
             "    [x] PRD",
             "    [?] Plan",
-            "          ↳ waiting on you: [plan] Plan approval",
+            "          ↳ waiting on you: Plan approval",
             "    [>] Functional test cases",
-            "          ↳ now: [tests] Functional test cases",
-            "[ ] Implementation, QA and release",
-            "[ ] Pull requests and archival",
+            "          ↳ now: Functional test cases",
+            "[ ] Build, test and release",
+            "[ ] Deliver and wrap up",
         ])
         tasks = todo.flat(built)
         # the plan and the test cases run side by side, each listed as its own stage
-        self.assertIn({"content": "Design phase › Plan — waiting on you: [plan] Plan approval",
+        self.assertIn({"content": "Design › Plan — waiting on you: Plan approval",
                        "status": "in_progress"}, tasks)
-        self.assertEqual(tasks[0], {"content": "Workspace sync (feature start)",
+        self.assertEqual(tasks[0], {"content": "Update the repositories",
                                     "status": "completed"})
         # The scaffold stage is optional (only for a new product): not listed until entered.
         labels = " ".join(task["content"] for task in tasks)

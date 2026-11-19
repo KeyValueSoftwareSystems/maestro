@@ -106,7 +106,7 @@ class ArchivePlanTest(Workspace):
         self.start(mode=mode)
         action = self.advance()
         self.assertEqual((action["action"], action["step"]), ("ask_gate", "confirm_archive"))
-        self.assertIn("docs/plans/active/", action["prompt"])
+        self.assertIn("docs/plans/active/", " ".join(o.get("description", "") for o in action["options"]))
         return self.answer("confirm_archive", "archive")
 
     def read(self, rel):

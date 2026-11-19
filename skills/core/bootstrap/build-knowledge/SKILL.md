@@ -109,3 +109,5 @@ The maps are committed with the rest of `docs/`.
 ## Output contract
 Return `domains_written` (count of domains documented), `architecture_path` (the
 architecture.md you wrote), and `summary` (one line).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

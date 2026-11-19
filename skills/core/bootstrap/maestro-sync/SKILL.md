@@ -121,3 +121,5 @@ Run these **in order**, in this session. Each step consumes the previous step's 
 Return `added` (repo names, comma-separated), `needs_commands` (repos preflight still fails
 on), `e2e_confirmed` (repos whose E2E suite was confirmed this run, comma-separated), `documented` (repos whose docs were written, comma-separated), `domains_written` (domain
 pages created or extended), and `summary` (one line).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

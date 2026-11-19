@@ -468,10 +468,12 @@ def _validate_node(node, ids, declared_inputs, where):
                 err("bad-type", f"gate option {opt['id']!r} label must be a string")
             if "input" in opt and not isinstance(opt["input"], str):
                 err("bad-type", f"gate option {opt['id']!r} input must be a string")
+            if "description" in opt and not isinstance(opt["description"], str):
+                err("bad-type", f"gate option {opt['id']!r} description must be a string")
             if not pause:
                 _check_target(opt["to"], f"option {opt['id']!r}", ids, err)
             for k in opt:
-                if k not in ("id", "label", "to", "input", "pause"):
+                if k not in ("id", "label", "description", "to", "input", "pause"):
                     err("unknown-key", f"gate option has unknown key {k!r}")
         auto = _validate_auto(node, err, keys=("option", "modes", "when"))
         if auto is not None and not isinstance(auto.get("option"), str):

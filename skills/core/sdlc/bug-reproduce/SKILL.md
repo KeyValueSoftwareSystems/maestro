@@ -54,3 +54,5 @@ the regression test (committed on the fix branch) and the report.
 Return `reproduced` — the literal JSON boolean `true` only when you saw the bug happen (in the
 app or in the failing test), else `false` — and `summary`: one plain sentence for the person on
 what you saw and the test that now proves it (or why it did not reproduce).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

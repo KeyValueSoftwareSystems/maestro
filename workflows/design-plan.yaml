@@ -33,7 +33,7 @@ nodes:
   # create, and the scaffold stage builds them before the plan is approved.
   - id: greenfield_check
     type: script
-    label: Existing code or a new product?
+    label: Existing code or new product?
     say: Checking whether the workspace already has code.
     run: [python3, .maestro/engine/greenfield.py, check, --root, "."]
     next: plan_status
@@ -42,7 +42,7 @@ nodes:
   # re-brainstormed; anything else starts or resumes the conversation.
   - id: plan_status
     type: script
-    label: Is there a plan already?
+    label: Find an existing plan
     say: Looking for an existing plan.
     run: [python3, .maestro/engine/plan_doc.py, status, --root, ".", --slug, "${inputs.slug}"]
     routes:
@@ -88,18 +88,22 @@ nodes:
 
   - id: brainstorm_confirm
     type: gate
-    label: Write the plan from the brainstorm?
-    say: The discussion is wrapped up.
+    label: Write the plan?
+    say: The discussion is wrapped up; one choice for you.
     prompt: |
+      Should I write the plan from our discussion?
+      The plan is what gets built, so write it only once the approach feels settled.
       ${steps.brainstorm.outputs.summary}
       Notes: .maestro/runs/${inputs.slug}/decisions/brainstorm.md
-
-      Should I write the plan from this discussion?
-      - Write the plan: I write it from the notes, then ask you to approve it.
-      - Keep talking: we carry on the discussion; nothing is written yet.
     options:
-      - {id: write, label: Write the plan, to: write_plan}
-      - {id: more, label: Keep talking, to: brainstorm}
+      - id: write
+        label: "Write the plan"
+        description: "I write the plan from the notes, then ask you to approve it."
+        to: write_plan
+      - id: more
+        label: "Keep talking"
+        description: "We carry on the discussion; nothing is written yet."
+        to: brainstorm
 
   # Architect role: the only plan writer. A revision applies the feedback only.
   - id: write_plan
@@ -174,23 +178,34 @@ nodes:
     label: Plan approval
     say: The plan is ready for your approval.
     prompt: |
-      The plan for ${inputs.feature} is ready: docs/plans/active/${inputs.slug}.md
+      Approve the plan for ${inputs.feature}?
+      Once approved, the code is written to it; changing the plan later sends the run back here.
       ${steps.write_plan.outputs.summary}
+      The plan: docs/plans/active/${inputs.slug}.md
       ${steps.commit_plan.outputs.say}
-
-      You are deciding whether this plan is what gets built. Once approved, the code is written to
-      it; changing the plan later sends the run back here.
-      - Approve: build from this plan.
-      - Revise: tell me what to change; I edit the plan and ask you again.
-      - Rethink: go back to the discussion, then rewrite the plan.
-      - Later: stop here and keep everything; resume with /maestro ${inputs.slug}.
-      - Reject: stop this run.
     options:
-      - {id: approve, label: Approve — build from this plan, to: record_approval}
-      - {id: revise, label: Revise — tell me what to change, to: write_plan, input: feedback}
-      - {id: rethink, label: Rethink — discuss it again first, to: brainstorm, input: feedback}
-      - {id: later, label: Later — stop here and resume when ready, pause: true}
-      - {id: reject, label: Reject — stop this run, to: abort}
+      - id: approve
+        label: "Approve — build from this plan"
+        description: "Build from this plan."
+        to: record_approval
+      - id: revise
+        label: "Revise — tell me what to change"
+        description: "Tell me what to change; I edit the plan and ask you again."
+        to: write_plan
+        input: feedback
+      - id: rethink
+        label: "Rethink — discuss it again first"
+        description: "Go back to the discussion, then rewrite the plan."
+        to: brainstorm
+        input: feedback
+      - id: later
+        label: "Later — stop here and resume when ready"
+        description: "Stop here and keep everything; resume with /maestro ${inputs.slug}."
+        pause: true
+      - id: reject
+        label: "Reject — stop this run"
+        description: "Stop this run; nothing is built."
+        to: abort
 
   # Engine-owned: bind the approval to the exact PRD and plan, and record the repositories in
   # scope. design.yaml binds the test cases once they are written too.

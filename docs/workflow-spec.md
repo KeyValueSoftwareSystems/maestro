@@ -137,8 +137,8 @@ The validator allows cycles but warns about cycles containing no gate and no scr
 ### Failure
 
 `on_fail: <node-id> | abort | ask` (default `ask`) applies when a node fails after exhausting
-its `retries`. `ask` synthesizes a gate: **Retry / Skip this step / Abort**, with the failure
-reason. Skipping marks the node `skipped` and takes its default route.
+its `retries`. `ask` synthesizes a gate: **Try again / Skip it and continue / Stop the run**,
+naming the step by its label, with the failure reason. Skipping marks the node `skipped` and takes its default route.
 
 ## Which model a step uses
 
@@ -379,14 +379,29 @@ the run mode's autopilot policy (below) answers one without a person.
 ```yaml
 - id: plan_approval
   type: gate
-  prompt: "The plan is ready: docs/plans/active/${inputs.slug}.md. Approve?"
+  say: The plan is ready for your approval.
+  prompt: |
+    Approve the plan for ${inputs.feature}?
+    Once approved, the code is written to it; changing the plan later sends the run back here.
+    The plan: docs/plans/active/${inputs.slug}.md
   options:
-    - {id: approve, label: "Approve — build from this plan", to: record_approval}
-    - {id: revise,  label: "Revise — tell me what to change", to: write_plan, input: feedback}
-    - {id: rethink, label: "Rethink — discuss it again first", to: brainstorm, input: feedback}
-    - {id: later,   label: "Later — stop here and resume when ready", pause: true}
-    - {id: reject,  label: "Reject — stop this run", to: abort}
+    - id: approve
+      label: "Approve — build from this plan"
+      description: "Build from this plan."
+      to: record_approval
+    - id: revise
+      label: "Revise — tell me what to change"
+      description: "Tell me what to change; I edit the plan and ask you again."
+      to: write_plan
+      input: feedback
+    - {id: later, label: "Later — stop here and resume when ready", pause: true}
+    - {id: reject, label: "Reject — stop this run", to: abort}
 ```
+
+**Wording.** The prompt is shown to the person as served, so write it as a decision: what is
+being decided, why it matters (one line), and only the facts needed to choose. Each option's
+optional `description` is its consequence in one plain line; the lead shows it under the label.
+No step ids, skill names or engine terms in either.
 
 `input: <name>` collects free text into `${steps.plan_approval.outputs.<name>}`. A revise option
 is simply an option whose `to:` is a back-edge — re-entry reset cascades automatically. The

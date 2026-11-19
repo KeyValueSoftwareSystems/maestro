@@ -99,3 +99,5 @@ section — QA starts and stops the stack with it.
 Return `created` (whether the config file was new), `updated` (repo names whose empty
 fields were filled), and `summary` (one line, naming the worktree and environment commands when
 added and the E2E suites confirmed).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

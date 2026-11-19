@@ -529,7 +529,7 @@ class ImplRoutingTest(GitWorkspace):
         self.assertIn("- task_ids: t1,t2", prompt)
         self.assertIn(f"on branch `{self.branch}-slice-api`", prompt)
         self.assertEqual(action["outputs"]["commit"], self.head())
-        self.assertTrue(any("Implement slices in parallel" in t for t in self.todos))
+        self.assertTrue(any("Build the parts in parallel" in t for t in self.todos))
 
     def test_at_most_three_slices_run_at_once(self):
         self.groups = {g: [(f"t-{g}", [f"{g}.txt"])] for g in ("a", "b", "c", "d", "e")}
@@ -558,7 +558,7 @@ class ImplRoutingTest(GitWorkspace):
         self.assertEqual(action["outputs"]["stop_gate_choice"], "abandon")
         nodes = self.nodes(trace)
         self.assertEqual(nodes[nodes.index("merge") + 1], "stop_gate")
-        self.assertIn("Slices: slice jobs: needs an unplanned jobs table",
+        self.assertIn("Parts built side by side: slice jobs: needs an unplanned jobs table",
                       self.prompts["stop_gate"][0])
         self.assertEqual(self.head(), base)
 

@@ -59,3 +59,5 @@ Write only the notes file. Never write the plan, code, decision records or any o
 ## Output contract
 
 Return `summary`: one plain sentence naming the agreed direction and how many points stay open.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

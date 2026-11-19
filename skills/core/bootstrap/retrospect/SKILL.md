@@ -95,3 +95,5 @@ wrong while running** — because both are where a future run can do better from
 ## Output contract
 Return `incoming_path` (the JSON file written), `lessons_count` (integer), and `summary`
 (one line).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

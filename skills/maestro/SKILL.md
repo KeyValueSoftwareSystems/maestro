@@ -66,8 +66,8 @@ skip it.
    work done that is not.
 5. Pass agent-returned text into `--outputs` VERBATIM as compact JSON. Do not
    reinterpret, merge, or embellish fields.
-6. **The user sees the feature, never the machinery.** Everything you write in chat follows
-   **Talking to the user**: no engine commands, JSON, step ids, or bookkeeping.
+6. **The person sees the feature, never the machinery.** Everything you write in chat follows
+   **Talking to the person**: no engine commands, JSON, step ids, or bookkeeping.
 
 ## Setup
 
@@ -138,13 +138,11 @@ and completes them before answering; they are listed under `auto_scripts` in the
 action. Never run or complete those steps yourself, and never mention them in chat.
 Likewise, in `design`/`auto` mode the engine records the gates and interviews their policy
 answers and lists them under `autopilot` — a gate with its option and label, an interview with
-how many recommendations it assumed and questions it left open. Tell the user in one line what was
-decided for them ("PRD approved on autopilot"; "PRD questions: 5 assumed, 1 left open — listed
-in the assumption log"), then act on the action itself.
+how many recommendations it assumed and questions it left open. Tell the person in one line what
+was decided for them ("PRD approved on autopilot"), then act on the action itself.
 
-**Progress lines.** Every served action carries `say`: one plain line about what is happening.
-Print exactly that line as the progress message for the action (nothing else for routine steps),
-and only when it differs from the last one you printed.
+Every served action carries `say`, its one progress line for the person; **Talking to the person**
+says when and how to print it.
 
 **Keep the loop moving.** After every mutation command, immediately act on the FOLLOWING action
 it printed — do NOT end your turn between a report and the next
@@ -355,13 +353,12 @@ engine applies the node's retries/on_fail.
 
 Ask the human for the CHOICE ONLY. Use the host-native selector when available:
 `AskUserQuestion` on Claude Code, or `request_user_input` on Codex. Use the action's option
-labels verbatim. If the current host/mode exposes neither selector, print the prompt + numbered
+labels verbatim, each with its `description` (what that choice leads to) as the option's
+description. If the current host/mode exposes neither selector, print the prompt + numbered
 options in chat, explicitly ask for the number or option label, and WAIT for a reply — never
-guess, never default, re-ask on ambiguity. The served `prompt` is written for you, not for the
-human: put the decision to them in plain words (**Talking to the user**) — what happened, what
-each choice leads to, every fact the choice depends on — without its step ids, file names,
-config keys or engine terms. Only the option labels stay verbatim. Then record the choice
-WITHOUT `--input`, even when that option advertises an `input` field:
+guess, never default, re-ask on ambiguity. The served `prompt` is already written for the person
+(**Talking to the person**): show it as served. Then record the choice WITHOUT `--input`, even
+when that option advertises an `input` field:
 
 ```bash
 python3 .maestro/engine/maestroctl.py gate-record --slug <slug> --step <step> \
@@ -402,14 +399,14 @@ parked on `ask_input` across turns until non-blank text is recorded.
 ### `paused`
 
 The person chose to decide later (for example "Later" at the plan approval). The run keeps
-everything and asks the same question when resumed. Print one plain line with the resume command
-for this host — `/maestro <slug>` on Claude Code and Cursor, `$maestro <slug>` on Codex (the
-action's `resume` field names it) — e.g. "Paused at the plan approval. Run `/maestro <slug>` when
-you are ready to decide." Then stop: do not call `next` again in this session.
+everything and asks the same question when resumed. Print one line with the resume command for
+this host (see **Talking to the person**) — `/maestro <slug>` on Claude Code and Cursor,
+`$maestro <slug>` on Codex (the action's `resume` field names it). Then stop: do not call `next`
+again in this session.
 
 ### `done` / `failed`
 
-Stop looping and close the run in a few plain lines (see **Talking to the user**). On `done`:
+Stop looping and close the run in a few plain lines (see **Talking to the person**). On `done`:
 what was delivered — the branches or pull requests from `outputs`, said as sentences, not as a
 field map — and that the feature's documents are in `.maestro/runs/<slug>/` (its
 `requirement/`, `design/`, `decisions/`, `reviews/` and `release/` folders). On `failed`: what
@@ -488,36 +485,39 @@ means nothing moved: keep the list as it is. In a harness without a task list, s
 When the human asks what is happening, `python3 .maestro/engine/maestroctl.py todo --slug <slug>`
 prints the same checklist for the terminal.
 
-## Talking to the user
+## Talking to the person
 
-The user is building a feature, not operating an engine. Write as a senior colleague running the
-project would: friendly, professional, brief. They need three things — what just finished, what
-is happening now, what you need from them.
+The person is building a feature, not operating an engine. Write as a senior colleague running
+the project would: friendly, professional, brief. Every message they see is plain language, with
+no step ids, skill names, agent types, models, file paths, hashes, JSON, exit codes or engine
+commands unless they need one to act (the resume command, a file they asked for). Run engine
+commands silently, with a short plain description where the host shows one ("Check what comes
+next"). Name the work, not the machinery: *the design review*, not *`arch_review`*; never
+"subagent", "worker", "dispatch", "wave", "ledger" or "claim".
 
-**Never show the machinery** unless the user asks about it: engine commands and their output
-(`maestroctl`, action names, JSON, exit codes, claims), bookkeeping (the ledger, workflow
-validation, memory and decision-log updates, hashes, the task list refreshing), and internal
-names (step ids, skill names, agent types, models, "subagent", "worker", "dispatch", "wave").
-Name the work instead: *the design review*, not *`arch_review`*. Run engine commands silently,
-with a short plain description where the host shows one ("Check what comes next").
+- **Progress — no decision needed: one line.** Every served action carries `say`, one plain line
+  about what is happening or about to happen ("Checking the fix against the project's tests.").
+  Print exactly that line and nothing else, and only when it differs from the last one you
+  printed. Engine helper scripts, bookkeeping and task-list refreshes get no message; the task
+  list shows progress. A finished stage is one line from the `todo` checklist: what is done and
+  what comes next ("The plan is approved. Next I build it in the 2 repositories.").
+- **Decisions — gates and interviews: short and complete.** A gate's served `prompt` already
+  says what is being decided, why it matters and the facts needed to choose; show it as served
+  and offer each option's label verbatim with its `description` (the consequence). Add nothing,
+  drop nothing. An interview question shows its title, prompt, one-line reason and options —
+  never ids, `topic`, `kind`, `must_resolve` or field names; keep served wording verbatim (it is
+  the recorded decision), put the recommendation first marked *(Recommended)* with each trade-off
+  as the option's description. Introduce a round once ("A few product decisions before I write
+  the PRD — 4 questions."), then confirm in one line what was captured instead of reading the
+  answers back.
+- **Agent results: one plain sentence.** A worker's `summary` is written for the person. Relay it
+  as one sentence only when it tells them something they need (a stage outcome, a problem); never
+  artifact contents, transcripts or recaps.
+- **Errors and stops: one or two lines.** What went wrong, in plain words, and what the person can
+  do next. Hiding the machinery never means hiding a problem (hard rule 4). Logs, exit codes and
+  the step table only when asked — then YOU run `maestroctl status --slug <slug>` and summarise it.
+- **Paused: one line with the resume command**, e.g. "Paused at the plan approval. Run
+  `/maestro <slug>` when you are ready to decide."
+- **Resuming: one line** — where the feature stands and what happens next.
 
-**Speak only when something changed for the user**, in one to three plain sentences:
-
-- *A stage finished* — what is done, what comes next, whether you need them. Stage names come
-  from the `todo` checklist, in plain words: "The plan is approved. Next I build it in the 2
-  repositories and test it."
-- *Long work starts* — the action's `say` line: "Writing the plan."
-- *You need them* — one sentence on what the decision is for, then ask.
-- *Something failed or is being redone* — what went wrong and what happens next. Hiding the
-  machinery never means hiding a problem (hard rule 4).
-- *Resuming* — where the feature stands and what happens next.
-
-Routine steps inside a stage get no message; the task list shows progress. No headings, tables,
-emoji, "Step 4/12", narration of your own process, recaps, artifact contents or transcripts.
-
-**Questions are for reading, not decoding.** Show the question, its one-line reason and the
-options — never ids, `topic`, `kind`, `must_resolve` or field names. Keep served wording
-verbatim (it is the recorded decision); put the recommended option first, marked
-*(Recommended)*, with each trade-off as the option's description. Introduce a round once ("A few
-product decisions before I write the PRD — 4 questions."), and afterwards confirm in one line
-what was captured instead of reading the answers back.
+No headings, tables, emoji, "Step 4/12", narration of your own process, or recaps.

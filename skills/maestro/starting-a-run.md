@@ -1,6 +1,6 @@
 # Starting a run without a slug
 
-Part of the `maestro` lead skill; its hard rules apply.
+Part of the `maestro` lead skill; its hard rules and **Talking to the person** apply.
 
 Ask the engine what runs exist before deciding whether this is a resume or a new feature:
 
@@ -18,8 +18,8 @@ list, explicitly ask for the number or slug, and WAIT; plain text is the require
 not a failed gate.
 
 - **Resume** → use the chosen slug and continue to Setup (init is a no-op resume).
-- **`status: unreadable`** → the ledger has a git merge conflict or cannot be parsed; show
-  the engine's `problem` text and stop. The human resolves or restores the file; never edit
+- **`status: unreadable`** → the run's saved state has a git merge conflict or cannot be read;
+  say so in one line (with the file the `problem` names, so they can fix it) and stop. The human resolves or restores the file; never edit
   it yourself, and never pass `--force` unless the human explicitly asks to start over.
 - **No runs exist, or Start new, description already supplied** →
   derive a concise kebab-case slug from the description: its two to five key words (drop filler

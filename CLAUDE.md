@@ -413,7 +413,11 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
   at that gate (`next` serves `paused`, `maestroctl runs` lists it) and resuming asks the same
   question again. An `auto:` policy never names a pause option. Any node may carry `say:`, one
   plain progress line the lead shows the person when the step starts (linted for length and
-  engine internals). An input may list `enum:` values; `init` refuses anything else.
+  engine internals); every shipped node has one. A gate option may carry `description:`, its
+  consequence in one plain line, served with the option. Shipped gate prompts are written for
+  the person (question first, why it matters, the facts to choose by) and shown as served;
+  `engine/tests/test_plain_language.py` guards the wording. An input may list `enum:` values;
+  `init` refuses anything else.
 - **Loops are back-edges**, not a construct: any route may target an earlier node.
   Entering a `done` node cascade-resets it plus reachable done steps. Every node has a
   visit cap (`max_visits` → `defaults.max_visits` → 10); exceeding it routes to

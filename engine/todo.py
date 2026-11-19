@@ -26,14 +26,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 
 import resolver
 
 STAGE_TYPES = ("subworkflow", "parallel")
 HUMAN_TYPES = ("gate", "interview")
 _TERMINAL = ("end", "abort")
-_BRANCH_SEG = re.compile(r"^([a-z0-9_-]+)\[([a-z0-9_-]+)\]$")
 
 
 def _label(node):
@@ -85,9 +83,6 @@ def _now(run, path):
         label = _label(node)
     except resolver.RunError:
         label = path.rsplit("/", 1)[-1]
-    branches = [m.group(2) for m in map(_BRANCH_SEG.match, path.split("/")[:-1]) if m]
-    if branches:
-        label = f"[{branches[-1]}] {label}"
     if (run.state["steps"].get(path) or {}).get("paused"):
         # "approve later": still the person's to answer, once they resume the run
         return {"label": f"{label} (paused)", "step": path, "waiting": True, "paused": True}
@@ -184,8 +179,9 @@ _MARK = {"done": "[x]", "skipped": "[-]", "running": "[>]", "waiting": "[?]",
 
 
 def _now_text(now):
-    waiting = [n["label"] for n in now if n["waiting"]]
-    working = [n["label"] for n in now if not n["waiting"]]
+    # parallel branches doing the same kind of step read as one plain line, not a list of copies
+    waiting = list(dict.fromkeys(n["label"] for n in now if n["waiting"]))
+    working = list(dict.fromkeys(n["label"] for n in now if not n["waiting"]))
     parts = []
     if waiting:
         parts.append("waiting on you: " + ", ".join(waiting))

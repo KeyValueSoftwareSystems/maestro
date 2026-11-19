@@ -17,8 +17,8 @@ start: plan_maps
 nodes:
   - id: plan_maps
     type: script
-    label: Plan codebase-map refresh
-    say: Checking which codebase maps need a refresh.
+    label: Plan the code map refresh
+    say: Checking which code maps need a refresh.
     run: [python3, .maestro/engine/codebase_scan.py, plan, --root, .]
     routes:
       - {when: "${steps.plan_maps.outputs.stale} == true", to: snapshot_maps}
@@ -26,23 +26,23 @@ nodes:
 
   - id: snapshot_maps
     type: script
-    label: Snapshot maps before refresh
-    say: Saving the codebase maps before the refresh.
+    label: Save the code maps
+    say: Saving a copy of the code maps before the refresh.
     run: [python3, .maestro/engine/codebase_scan.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/map-snapshot.json"]
     on_fail: abort
     next: snapshot_docs
 
   - id: snapshot_docs
     type: script
-    label: Snapshot living docs before the refresh
-    say: Saving the docs before the refresh.
+    label: Save the docs
+    say: Saving a copy of the docs before the refresh.
     run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json"]
     on_fail: abort
     next: extract_inventory
 
   - id: extract_inventory
     type: script
-    label: Extract the workspace inventory (engine)
+    label: List what the code contains
     say: Listing what the code contains.
     run: [python3, .maestro/engine/living_docs.py, extract, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/inventory.md"]
     on_fail: abort
@@ -50,7 +50,7 @@ nodes:
 
   - id: retrospect
     type: agent
-    label: Distill lessons
+    label: Distill the lessons
     say: Distilling the lessons from this feature.
     instruction: |
       Harvest the finished run for feature "${inputs.slug}". Read its ledger
@@ -112,8 +112,8 @@ nodes:
 
   - id: stamp_docs
     type: script
-    label: Stamp refreshed docs (engine)
-    say: Stamping the refreshed docs.
+    label: Mark the docs as refreshed
+    say: Marking the docs as refreshed.
     run: [python3, .maestro/engine/living_docs.py, stamp, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json"]
     on_fail: abort
     routes:
@@ -126,8 +126,8 @@ nodes:
 
   - id: record_maps
     type: script
-    label: Record codebase-map commits (engine)
-    say: Recording which commits the maps describe.
+    label: Record what the code maps cover
+    say: Recording which code the maps describe.
     # Stamp each repo's current HEAD into its map's marker (docs/codebase-maps/<repo>.md) so the
     # NEXT feature refreshes only the diff. Engine-owned (not the skill) so swapping retrospect
     # can't change how incremental tracking works.
@@ -137,15 +137,15 @@ nodes:
 
   - id: record_knowledge
     type: script
-    label: Record living-doc provenance (engine)
-    say: Recording where the docs' facts came from.
+    label: Record where the docs came from
+    say: "Recording where the docs' facts came from."
     run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ., --evidence, ".maestro/memory/incoming/${inputs.slug}.json"]
     on_fail: abort
     next: consolidate
 
   - id: consolidate
     type: script
-    label: Consolidate memory (engine)
+    label: Fold the lessons into memory
     say: Folding the lessons into memory.
     # Deterministic reduce step: fold incoming/* into candidates/, count DISTINCT runs,
     # promote past the threshold (config memory.promote_threshold, else 3) into knowledge/,

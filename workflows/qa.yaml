@@ -22,7 +22,8 @@ start: env_up
 nodes:
   - id: env_up
     type: script
-    label: Start the QA environment
+    label: Start the app for testing
+    say: Starting the app for testing.
     run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, "${inputs.implementation_manifest}", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 1800
     on_fail: ask
@@ -31,13 +32,15 @@ nodes:
   # Whether the workspace has an E2E suite, from the `e2e` commands init/sync confirmed.
   - id: e2e_plan
     type: script
-    label: Find the project's E2E suite
+    label: "Find the project's end-to-end tests"
+    say: "Looking for the project's own end-to-end tests."
     run: [python3, .maestro/engine/qa_env.py, plan, --root, "."]
     next: qa_run
 
   - id: qa_run
     type: agent
-    label: Run the test cases (E2E suite when the project has one)
+    label: Run the test cases
+    say: Running the test cases against the feature.
     brief: full
     instruction: |
       Test the functional test-case catalog at .maestro/runs/${inputs.slug}/design/test-cases.md
@@ -107,7 +110,8 @@ nodes:
   # diagnosed like any QA failure.
   - id: e2e_suite
     type: script
-    label: Project e2e suites (engine)
+    label: "Run the project's end-to-end tests"
+    say: "Running the project's own end-to-end tests."
     run: [python3, .maestro/engine/qa_env.py, e2e, --root, ".", --manifest, "${inputs.implementation_manifest}", --out, ".maestro/runs/${inputs.slug}/qa/e2e-receipt.json", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 3600
     max_visits: 50  # as qa_run: a person's extra fix round re-runs the suites too
@@ -118,7 +122,8 @@ nodes:
 
   - id: qa_fix
     type: agent
-    label: Fix failures
+    label: Fix test failures
+    say: Fixing what the tests found.
     instruction: |
       One fix attempt: diagnose the failures in .maestro/runs/${inputs.slug}/qa/report.md and, when
       the project's e2e suites failed (${steps.e2e_suite.outputs.summary}), the receipt at
@@ -153,21 +158,34 @@ nodes:
 
   - id: qa_gate
     type: gate
-    label: QA escalation
+    label: Testing needs a decision
+    say: Testing still fails; one decision for you.
     prompt: |
-      QA is still failing after the automated fix rounds, or the fix step escalated.
+      Testing still fails after the automatic fix rounds, or the fixer asked for help. How should I go on?
+      Releasing with failures ships known problems, so you decide.
       Last run: ${steps.qa_run.outputs.summary}
-      Project e2e: ${steps.e2e_suite.outputs.summary}
-      Last fix attempt: ${steps.qa_fix.outputs.fix_summary}
+      Project's end-to-end tests: ${steps.e2e_suite.outputs.summary}
+      Last fix: ${steps.qa_fix.outputs.fix_summary}
       Report: .maestro/runs/${inputs.slug}/qa/report.md
     options:
-      - {id: retry, label: One more fix round (with your guidance), to: qa_fix, input: guidance}
-      - {id: accept, label: Accept with known failures, to: env_down}
-      - {id: abandon, label: Abort, to: abort}
+      - id: retry
+        label: "One more fix round (with your guidance)"
+        description: "Tell me what to try; I fix and test again."
+        to: qa_fix
+        input: guidance
+      - id: accept
+        label: "Accept with known failures"
+        description: "Go on to the release; the failures are listed in the release summary."
+        to: env_down
+      - id: abandon
+        label: "Stop the run"
+        description: "Stop this run; nothing is delivered."
+        to: abort
 
   - id: env_down
     type: script
-    label: Stop the QA environment
+    label: Stop the app
+    say: Stopping the app.
     run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, "${inputs.implementation_manifest}", --logs, ".maestro/runs/${inputs.slug}/.engine/logs/qa"]
     timeout: 900
     next: end

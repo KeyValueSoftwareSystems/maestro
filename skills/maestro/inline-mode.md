@@ -1,11 +1,12 @@
 # Inline mode — a host with no subagent tool
 
-Part of the `maestro` lead skill; its hard rules apply.
+Part of the `maestro` lead skill; its hard rules and **Talking to the person** apply: working
+inline changes nothing the person sees — still only each action's `say` line, never the served
+prompt or your working.
 
 No subagent tool (Cursor, or a Codex installation with subagents disabled)? Switch to
 **inline mode** and
-tell the user once: *"No subagent support here — running steps inline and sequentially;
-per-step models are ignored (everything runs on this session's model)."*
+tell the person once: *"Running every step here in this session, one at a time."*
 
 - Always call `next`/mutating commands with `--serial` so the engine serves parallel
   branches one step at a time (never expect `run_agents`).

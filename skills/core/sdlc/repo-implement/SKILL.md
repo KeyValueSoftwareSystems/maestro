@@ -150,3 +150,5 @@ the approved design does not describe) and `escalation` (one line naming what ne
 `None`). When you stop, still return every field: the branch and worktree you created and the
 last commit, or empty strings if you created none. The engine verifies that branch, worktree, and
 commit agree before QA can start.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

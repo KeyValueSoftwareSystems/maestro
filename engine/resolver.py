@@ -509,7 +509,7 @@ def _enter(run, frame, node_id, via_gate=False, _exhausted=()):
             # `ask` (or an on_exhausted that points back at this node, or at one already
             # exhausted on the way here) synthesizes the loop-limit gate: following it would
             # recurse forever.
-            entry["pending_ask"] = {"kind": "exhausted", "reason": f"visit cap {cap} reached"}
+            entry["pending_ask"] = {"kind": "exhausted", "reason": f"it has run {cap} times"}
             entry["status"] = "pending"
             _add_cursor(run, path)
         else:
@@ -1147,7 +1147,10 @@ def _check_action(run, frame, node, path):
 
 def _gate_action(run, frame, node, path):
     options = [
-        {"id": o["id"], "label": o["label"], **({"input": o["input"]} if o.get("input") else {}),
+        {"id": o["id"], "label": o["label"],
+         **({"description": run.resolve_text(o["description"], frame, missing_ok=True)}
+            if o.get("description") else {}),
+         **({"input": o["input"]} if o.get("input") else {}),
          **({"pause": True} if o.get("pause") else {})}
         for o in node["options"]
     ]
@@ -1203,29 +1206,42 @@ def _gate_input_action(run, frame, node, path, entry):
 
 def _synth_gate_action(run, path, node, entry):
     ask = entry["pending_ask"]
+    # recovery questions name the step the way the person sees it: its label, not its path
+    name = node.get("label") if isinstance(node.get("label"), str) and node["label"].strip() \
+        else path.rsplit("/", 1)[-1].replace("_", " ")
     if ask["kind"] == "fail":
         options = [
-            {"id": "retry", "label": "Retry this step"},
-            {"id": "skip", "label": "Skip this step and continue"},
-            {"id": "abort", "label": "Abort the run"},
+            {"id": "retry", "label": "Try again", "description": "Run this step again."},
+            {"id": "skip", "label": "Skip it and continue",
+             "description": "Carry on without this step's result."},
+            {"id": "abort", "label": "Stop the run",
+             "description": "Stop here; the work finished so far is kept."},
         ]
-        prompt = f"Step `{path}` failed: {ask.get('reason', 'unknown error')}. How should we proceed?"
+        prompt = (f"\u201c{name}\u201d did not finish: {ask.get('reason', 'unknown error')}. "
+                  "How should we go on?")
         if ask.get("unchecked"):
             options = [o for o in options if o["id"] != "skip"]
-            prompt += " Its output never passed the engine's check, so it cannot be skipped."
+            prompt += " Its result never passed its check, so it cannot be skipped."
     elif ask["kind"] == "exhausted":
         options = [
-            {"id": "continue", "label": "Run it once more anyway"},
-            {"id": "abort", "label": "Abort the run"},
+            {"id": "continue", "label": "Run it once more",
+             "description": "Allow one more pass of this step."},
+            {"id": "abort", "label": "Stop the run",
+             "description": "Stop here; the work finished so far is kept."},
         ]
-        prompt = f"Step `{path}` hit its repeat limit ({ask.get('reason')}). Continue anyway?"
+        prompt = (f"\u201c{name}\u201d reached its repeat limit ({ask.get('reason')}) without "
+                  "settling. Run it once more anyway?")
     else:  # branch_fail
         options = [
-            {"id": "retry", "label": f"Retry branch {ask['branch']}"},
-            {"id": "skip", "label": f"Skip branch {ask['branch']} and continue"},
-            {"id": "abort", "label": "Abort the run"},
+            {"id": "retry", "label": "Try that part again",
+             "description": "Run the failed part again."},
+            {"id": "skip", "label": "Skip that part and continue",
+             "description": "Carry on without the failed part's result."},
+            {"id": "abort", "label": "Stop the run",
+             "description": "Stop here; the work finished so far is kept."},
         ]
-        prompt = f"Branch `{ask['branch']}` of `{path}` failed: {ask.get('reason')}. How should we proceed?"
+        prompt = (f"One part of \u201c{name}\u201d failed: {ask.get('reason')}. "
+                  "How should we go on?")
     return {"action": "ask_gate", "step": path, "prompt": prompt, "options": options,
             "synthesized": ask["kind"]}
 

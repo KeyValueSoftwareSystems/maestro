@@ -17,7 +17,8 @@ start: assert_requirement
 nodes:
   - id: assert_requirement
     type: script
-    label: Requirement present?
+    label: Find the requirement
+    say: Looking for the requirement you gave.
     run: [python3, .maestro/engine/requirement_serve.py, ".maestro/runs/${inputs.slug}/requirement"]
     routes:
       - {when: "${steps.assert_requirement.outputs.state} == have", to: project_context}
@@ -26,20 +27,31 @@ nodes:
   - id: requirement_intake
     type: gate
     label: No requirement found
+    say: I found no requirement for this feature; one choice for you.
     prompt: |
-      No requirement files in .maestro/runs/${inputs.slug}/requirement/.
-
-      How do you want to supply the requirement for "${inputs.feature}"? Put any reference
-      links (Figma, tickets, docs) in a file in that folder too.
+      How do you want to give me the requirement for "${inputs.feature}"?
+      Everything that follows is built from it, and I found no files for it yet.
+      Requirement folder: .maestro/runs/${inputs.slug}/requirement/ (put reference links to designs,
+      tickets or docs in a file there too)
     options:
-      - {id: add-files, label: I'll add files now — re-check, to: assert_requirement}
-      - {id: clarify, label: Clarify it with me, to: project_context}
-      - {id: reject, label: Abort the run, to: abort}
+      - id: add-files
+        label: "I'll add files now — re-check"
+        description: "Drop the files in the folder, then pick this; I read every one."
+        to: assert_requirement
+      - id: clarify
+        label: "Clarify it with me"
+        description: "We work it out together in a short conversation."
+        to: project_context
+      - id: reject
+        label: "Abort the run"
+        description: "Stop here; nothing is built."
+        to: abort
 
   - id: project_context
     type: agent
     execution: lead
-    label: Summarize project context
+    label: Summarize the project
+    say: Reading the project to sum up its context.
     instruction: |
       State this project's product context in at most three short sentences. Read only root
       AGENTS.md / CLAUDE.md, docs/architecture.md (System context and repos, Domain map,

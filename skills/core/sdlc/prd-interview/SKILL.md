@@ -149,3 +149,5 @@ and writes the confirmed context artifact.
 
 Depending on the served mode, return `project_context`, `feature_goal`, or `summary`. Each value is
 a short scalar, never document contents.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

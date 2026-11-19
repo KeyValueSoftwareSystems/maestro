@@ -57,22 +57,22 @@ selector fall back to a numbered text prompt.
 **Seeing what's happening.** The run keeps your agent's own task list in step with the engine:
 each stage of the flow is a todo (done, in progress, waiting on you, still to come), the running
 stage expands into its parts, and the open step is named — e.g.
-`Design phase › Plan — waiting on you: Plan approval`. The same checklist is one command away in any
+`Design › Plan — waiting on you: Plan approval`. The same checklist is one command away in any
 terminal:
 
 ```
 $ python3 .maestro/engine/maestroctl.py todo --slug my-feature
 my-feature · sdlc-main · running
-[x] Workspace sync (feature start)
-[>] Design phase
+[x] Update the repositories
+[>] Design
     [x] Requirement and context
     [x] PRD
     [>] Plan and test cases
         [?] Plan
-              ↳ waiting on you: [plan] Plan approval
+              ↳ waiting on you: Plan approval
         [x] Functional test cases
-[ ] Implementation, QA and release
-[ ] Pull requests and archival
+[ ] Build, test and release
+[ ] Deliver and wrap up
 ```
 
 On first run the lead agent scaffolds `.maestro/runs/my-feature/requirement/`. Drop any requirement files in there (PRDs, tickets, notes, reference links — every file is read); the shipped pipeline then **builds a PRD** (`requirement/prd.md`) before the plan:

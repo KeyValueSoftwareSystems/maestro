@@ -25,15 +25,15 @@ start: workspace_sync_initial
 nodes:
   - id: workspace_sync_initial
     type: subworkflow
-    label: Workspace sync (feature start)
-    say: Checking the workspace is up to date.
+    label: Update the repositories
+    say: Checking your repositories are up to date.
     workflow: .maestro/workflows/workspace-sync.yaml
     inputs: {slug: "${inputs.slug}", checkpoint: feature-start}
     next: design
 
   - id: design
     type: subworkflow
-    label: Design phase
+    label: Design
     say: Designing the change.
     workflow: .maestro/workflows/design.yaml
     # `feedback` carries a revise gate's note back into the design phase so a regenerated
@@ -49,7 +49,7 @@ nodes:
 
   - id: delivery
     type: subworkflow
-    label: Implementation, QA and release
+    label: "Build, test and release"
     say: Building, testing and preparing the release.
     workflow: .maestro/workflows/delivery.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
@@ -64,8 +64,8 @@ nodes:
 
   - id: archive
     type: subworkflow
-    label: Pull requests and archival
-    say: Delivering the branches and filing the lessons.
+    label: Deliver and wrap up
+    say: Delivering the code and recording the lessons.
     # Runs AFTER release approval and only once a person confirms the archive (never autopilot):
     # delivers the verified branches (or opens pull requests, per maestro.config.yaml
     # delivery.mode), then folds this run's lessons into memory and the living docs. A person

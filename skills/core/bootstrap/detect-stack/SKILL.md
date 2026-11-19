@@ -124,3 +124,5 @@ Return `stacks` (the detected stack tokens, comma-separated), `installed_count` 
 agents installed), `repos` (one entry per repo: `name`, `stacks` for that repo, the
 `evidence` files you already cited, and `e2e`, the E2E suite proposal above), and `summary` (one line naming the stacks and harness
 targets). Do not write those fields to `maestro.config.yaml`.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

@@ -101,5 +101,7 @@ findings file.
 
 ## Output contract
 
-Return `review_path`, literal boolean `blocking`, and a one-line `summary` (verdict and the
-count of blocking findings) as last-line JSON.
+Return `review_path`, literal boolean `blocking`, and a one-line `summary` (whether the code is
+ready and how many issues must be fixed) as last-line JSON.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

@@ -27,7 +27,8 @@ start: tasks
 nodes:
   - id: tasks
     type: agent
-    label: Task DAG
+    label: Plan the tasks
+    say: "Breaking the change in ${inputs.stack} into tasks."
     instruction: |
       Produce the parallel task DAG for the ${inputs.stack} repository from the approved plan at
       docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktree): this
@@ -63,7 +64,8 @@ nodes:
   # implementer and reviewer load exactly those facts.
   - id: facts
     type: script
-    label: Collect the facts the plan cites
+    label: Gather the rules the plan cites
+    say: Gathering the project rules the plan relies on.
     run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, "docs/plans/active/${inputs.slug}.md", --out, ".maestro/runs/${inputs.slug}/.engine/facts/${inputs.stack}.md"]
     routes:
       - {when: "${steps.tasks.outputs.fanout} == true", to: slices}
@@ -73,7 +75,8 @@ nodes:
   # slice worktree; the engine merges them into the feature branch (impl-slices.yaml).
   - id: slices
     type: subworkflow
-    label: Implement slices in parallel
+    label: Build the parts in parallel
+    say: "Building the change in ${inputs.stack} in parts, side by side."
     workflow: .maestro/workflows/impl-slices.yaml
     inputs:
       slug: "${inputs.slug}"
@@ -89,7 +92,8 @@ nodes:
 
   - id: implement
     type: agent
-    label: Implement slices
+    label: Write the code
+    say: "Writing the code in ${inputs.stack}."
     instruction: |
       Implement the ${inputs.stack} repository for this feature from
       .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json — every slice, with tests. The
@@ -130,22 +134,29 @@ nodes:
 
   - id: stop_gate
     type: gate
-    label: Implementation needs a decision
+    label: Building needs a decision
+    say: "Building ${inputs.stack} needs a decision from you."
     prompt: |
-      The ${inputs.stack} implementation stopped because the work needs something the approved
-      design does not describe.
+      Building ${inputs.stack} needs something the approved plan does not describe. How should I go on?
+      Guessing could build the wrong thing, so you decide.
       Task planning: ${steps.tasks.outputs.escalation}
-      Implementation: ${steps.implement.outputs.escalation}
-      Slices: ${steps.slices.outputs.escalation}
-      Continue with your guidance (it reaches the task plan and the implementation), or stop. A change
-      to the design itself goes back through design: abort here and revise the plan.
+      Building: ${steps.implement.outputs.escalation}
+      Parts built side by side: ${steps.slices.outputs.escalation}
     options:
-      - {id: continue, label: Continue with my guidance, to: tasks, input: guidance}
-      - {id: abandon, label: Stop this stack — nothing is recorded for it and the other repositories carry on, to: end}
+      - id: continue
+        label: "Continue with my guidance"
+        description: "Tell me what to do; it guides the task plan and the code. A change to the plan itself goes back through design instead."
+        to: tasks
+        input: guidance
+      - id: abandon
+        label: "Stop this repository"
+        description: "Nothing is built for ${inputs.stack}; the other repositories carry on."
+        to: end
 
   - id: handoff
     type: script
-    label: Verify live feature worktree
+    label: Check the code is committed
+    say: "Checking the code in ${inputs.stack} is committed and ready."
     run:
       - python3
       - .maestro/engine/implementation_pool.py
@@ -174,7 +185,8 @@ nodes:
   # A missing config fails closed (on_fail ask) instead of passing silently.
   - id: verify
     type: script
-    label: Build, lint and test (engine)
+    label: "Build, lint and test"
+    say: "Building and testing ${inputs.stack}."
     run:
       - python3
       - .maestro/engine/repo_checks.py
@@ -206,7 +218,8 @@ nodes:
   # every name they rely on. Never blocks: the result goes to the reviewer. None written: skipped.
   - id: domain_rules
     type: script
-    label: Team rules vs this branch (engine)
+    label: "Check the team's rules"
+    say: "Checking the change against the team's written rules."
     run: [python3, .maestro/engine/living_docs.py, rules, --root, ".", --repo, "${inputs.stack}", --worktree, "${steps.handoff.outputs.worktree}", --out, ".maestro/runs/${inputs.slug}/build/${inputs.stack}/domain-rules.json"]
     max_visits: 10
     on_exhausted: review_scope
@@ -216,7 +229,8 @@ nodes:
   # Engine-owned: keeps the previous round's findings so the verdict can tell new ones apart.
   - id: review_scope
     type: script
-    label: Previous review round
+    label: Look at the last review
+    say: Looking at the previous review round.
     run: [python3, .maestro/engine/review_scope.py, prepare, --dir, ".maestro/runs/${inputs.slug}/reviews", --state-dir, ".maestro/runs/${inputs.slug}/.engine/reviews", --name, "code-${inputs.stack}", --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json"]
     next: review_head
 
@@ -225,7 +239,8 @@ nodes:
   # the fixer may have committed since `handoff` last ran.
   - id: review_head
     type: script
-    label: Commit to review (worktree HEAD)
+    label: Pick the commit to review
+    say: Picking the latest commit to review.
     run:
       - python3
       - .maestro/engine/implementation_pool.py
@@ -251,6 +266,7 @@ nodes:
   - id: review
     type: agent
     label: Code review
+    say: "Reviewing the code in ${inputs.stack}."
     instruction: |
       Review the ${inputs.stack} implementation on branch
       ${steps.handoff.outputs.branch} at exact commit ${steps.review_head.outputs.commit}
@@ -334,7 +350,8 @@ nodes:
   # `tests_passed` and `checks_passed` never do.
   - id: review_verdict
     type: script
-    label: Blocking review findings?
+    label: Any blocking issues?
+    say: Checking the review for issues that must be fixed.
     run: [python3, .maestro/engine/findings.py, verdict, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json", --previous, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.baseline.json", --round, "${steps.review.visits}", --commit, "${steps.review_head.outputs.commit}", --reviewed, ".maestro/runs/${inputs.slug}/.engine/reviews/code-${inputs.stack}.reviewed.json", --root, "."]
     max_visits: 8
     on_exhausted: impl_gate
@@ -348,7 +365,8 @@ nodes:
 
   - id: fix
     type: agent
-    label: Fix findings
+    label: Fix the review issues
+    say: Fixing the issues the review found.
     instruction: |
       One fix attempt on branch ${steps.handoff.outputs.branch} in exact worktree
       ${steps.handoff.outputs.worktree}. Address what sent you here:
@@ -406,7 +424,8 @@ nodes:
   # checks alone (no blocking finding) proceeds.
   - id: review_resolution
     type: script
-    label: Findings fixed, contested or escalated?
+    label: Check every issue was handled
+    say: "Checking every review issue was fixed, disputed or raised with you."
     run: [python3, .maestro/engine/findings.py, resolve, --findings, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.findings.json", --resolutions, ".maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json"]
     max_visits: 8
     on_exhausted: impl_gate
@@ -417,21 +436,35 @@ nodes:
 
   - id: impl_gate
     type: gate
-    label: Implementation escalation
+    label: Fixes need a decision
+    say: "Fixing ${inputs.stack} needs a decision from you."
     prompt: |
-      The ${inputs.stack} implementation needs a decision: the automated fix or review rounds ran
-      out, the fixer escalated, or a re-review raised a blocking finding late.
-      Engine checks: ${steps.verify.outputs.summary}
+      ${inputs.stack} still has problems after the automatic fix and review rounds. How should I go on?
+      The rounds are used up, the fixer asked for help, or a late review found a blocking issue.
+      Checks: ${steps.verify.outputs.summary}
       Last review: ${steps.review.outputs.summary}
-      Blocking findings (engine): ${steps.review_verdict.outputs.summary}
-      Escalated: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
+      Blocking issues: ${steps.review_verdict.outputs.summary}
+      Raised with you: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
       Last fix: ${steps.fix.outputs.fix_summary}
       Branch: ${steps.handoff.outputs.branch}
     options:
-      - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
-      - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}
-      - {id: accept, label: Accept as-is without a code review of this commit — I'll handle the rest, to: end}
-      - {id: abandon, label: Stop this stack — nothing is recorded for it and the other repositories carry on, to: end}
+      - id: retry
+        label: "One more fix round (with your guidance)"
+        description: "Tell me what to try; I fix, check and review again."
+        to: fix
+        input: guidance
+      - id: review
+        label: "Accept the failing checks, then review"
+        description: "The failing checks stay as they are; the code still gets a review."
+        to: review_scope
+      - id: accept
+        label: "Accept as it is"
+        description: "Keep this commit without another review; you handle what is left."
+        to: end
+      - id: abandon
+        label: "Stop this repository"
+        description: "Nothing is recorded for ${inputs.stack}; the other repositories carry on."
+        to: end
 
 # A person who stops this stack ends the child through a gate option instead of aborting the run:
 # the parent routes on the gate's choice (`abandon`) and records nothing for the repository.

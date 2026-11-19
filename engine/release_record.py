@@ -80,8 +80,8 @@ def _delivery_action(root):
         config = {}
     mode = (config.get("delivery") or {}).get("mode") or "branch"
     if mode == "pull-request":
-        return "Delivery pushes each verified branch and opens (or reuses) a pull request."
-    return "Delivery reports the verified branches ready to merge; nothing is pushed."
+        return "Delivering pushes each checked branch and opens (or reuses) a pull request."
+    return "Delivering lists the checked branches ready to merge; nothing is pushed."
 
 
 def main(argv=None):

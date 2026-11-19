@@ -117,3 +117,5 @@ inline. Never parallelize these steps because each consumes the previous step's 
 Return `stacks` (detected stack tokens, comma-separated), `installed_count` (skills + agents
 installed), `domains_written` (count from build-knowledge, or `0` if skipped), and `summary`
 (one line).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

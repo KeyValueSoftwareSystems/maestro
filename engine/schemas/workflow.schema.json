@@ -551,6 +551,10 @@
               "label": {
                 "type": "string"
               },
+              "description": {
+                "type": "string",
+                "description": "One plain line telling the person what happens if they pick this option (its consequence). Served with the option; the lead shows it under the label."
+              },
               "to": {
                 "$ref": "#/definitions/routeTarget"
               },

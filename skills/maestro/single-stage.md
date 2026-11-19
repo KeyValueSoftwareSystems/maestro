@@ -1,6 +1,6 @@
 # Running one stage on an existing feature
 
-Part of the `maestro` lead skill; its hard rules apply.
+Part of the `maestro` lead skill; its hard rules and **Talking to the person** apply.
 
 **One stage on an existing feature** — `/maestro <slug> .maestro/workflows/design-plan.yaml
 path=major` (or `path=minor`; or `design-tests.yaml`) runs just that stage's own workflow with the
@@ -12,7 +12,7 @@ written from the PRD alone). `bugfix.yaml` is not a stage: it is the whole bug-f
 on its own with only a bug report (or none: the triage asks). `archive.yaml` (a feature whose archive was answered
 "Not now") needs `build/manifest.json` and `release.json`, which the full pipeline
 writes when the release is approved. If `init` exits 3 with "already runs <other workflow>", the slug's
-ledger belongs to another run: ask the user (native selector) to confirm "run this stage here;
-the previous ledger is kept as `.engine/ledgers/replaced-<time>.yaml`", and only on a yes re-run
+ledger belongs to another run: ask the user (native selector) to confirm "Run this stage here?
+The earlier run's record is kept.", and only on a yes re-run
 `init` with `--force`. Never pass `--force` unprompted. The stage ends at its own `done`; its
 documents stay in the feature folder for the full pipeline to pick up later.

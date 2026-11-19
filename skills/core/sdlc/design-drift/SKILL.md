@@ -55,3 +55,5 @@ files your instructions name.
 
 Return `review_path` (the report), `blocking` (true when any blocking drift remains) and `summary`
 (one line: how many drift findings, by area, and the headline one).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

@@ -24,13 +24,15 @@ python3 .maestro/engine/maestroctl.py interview-brief --slug <slug> --step <step
 ```
 
 If it fails because the question is no longer open, the main session already settled it: say
-so and stop. Otherwise follow the brief's `prompt` exactly. It names the question, the evidence
+so in one line and stop. Otherwise follow the brief's `prompt` exactly. It names the question, the evidence
 you may read, the interview skill whose read boundary and conversation standards apply, and the
 one command that records the outcome.
 
 ## Rules
 
-- Talk with the human directly. Keep turns short and let them steer; go as deep as they want.
+- Talk with the human in plain language, as the main session's **Talking to the person** rules
+  ask (the `maestro` skill): no step ids, skill names, file paths or JSON unless they need one.
+  Keep turns short and let them steer; go as deep as they want.
 - Help them decide; never decide for them. Ground answers in the brief's evidence and say what
   you checked.
 - Before recording, confirm the exact outcome with the native selector (`AskUserQuestion` on

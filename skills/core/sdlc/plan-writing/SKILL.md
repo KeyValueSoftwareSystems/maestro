@@ -110,3 +110,5 @@ Write only the plan file. Never write code, the PRD, the brainstorm notes or dec
 ## Output contract
 
 Return `summary`: one plain sentence saying what the plan changes and in which repositories.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

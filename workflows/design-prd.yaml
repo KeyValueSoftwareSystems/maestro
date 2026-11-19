@@ -32,7 +32,7 @@ start: check_existing_prd
 nodes:
   - id: check_existing_prd
     type: script
-    label: Check existing PRD fast path
+    label: Check for an existing PRD
     say: Checking whether a PRD already exists.
     run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report, --compatible, --type, "${inputs.path}"]
     routes:
@@ -44,7 +44,7 @@ nodes:
   # prd.original.md before anything is written.
   - id: prd_source
     type: script
-    label: Client PRD or short request?
+    label: Read the requirement
     say: Looking at the requirement you gave.
     run: [python3, .maestro/engine/prd_source.py, --requirement, ".maestro/runs/${inputs.slug}/requirement"]
     routes:
@@ -56,7 +56,7 @@ nodes:
   # The check is the compatible one: "(to confirm)" marks stay until the writer folds answers in.
   - id: normalize_prd
     type: agent
-    label: Product — restructure the client PRD
+    label: Restructure your PRD
     say: Restructuring your PRD into the standard shape.
     model: sonnet
     instruction: |
@@ -83,7 +83,7 @@ nodes:
   - id: prepare_prd
     type: agent
     execution: lead
-    label: Product — goal and open questions
+    label: Goal and open questions
     say: Working out the feature goal and what still needs your answer.
     instruction: |
       First restate the requested feature outcome as feature_goal, in at most two short
@@ -180,7 +180,7 @@ nodes:
 
   - id: prd_interview
     type: interview
-    label: Clarify material product decisions
+    label: Product questions
     say: A few product questions for you.
     skill: prd-interview
     context: |
@@ -206,24 +206,28 @@ nodes:
 
   - id: clarity_limit
     type: gate
-    label: PRD clarity checkpoint
-    say: Product questions are still open after eight rounds.
+    label: Questions still open
+    say: Product questions are still open after eight rounds; one choice for you.
     prompt: |
-      Eight Grill rounds are complete and unresolved product facts remain. Confirmed decisions are saved at
-      .maestro/runs/${inputs.slug}/decisions/prd.json.
-
-      Maestro will not write the PRD while those facts are unresolved. Continue the focused
-      interview, or stop this run?
+      Keep going with product questions, or stop?
+      I will not write the PRD while key product facts are open, and eight rounds of questions have
+      not settled them. Your answers so far are saved.
     options:
-      - {id: more, label: Continue with focused questions, to: prepare_prd}
-      - {id: reject, label: Abort the run, to: abort}
+      - id: more
+        label: "Continue with focused questions"
+        description: "Another short round on just the open facts."
+        to: prepare_prd
+      - id: reject
+        label: "Abort the run"
+        description: "Stop this run; your answers so far stay saved."
+        to: abort
 
   # Product role, job 2: the only PRD writer. A revision is a targeted edit; only feedback that
   # needs a new product decision goes back through the Grill loop ('rescope' is the full restart).
   - id: write_prd
     type: agent
     execution: lead
-    label: Product — write the PRD
+    label: Write the PRD
     say: Writing the PRD.
     instruction: |
       PRD approval choice (empty before the first approval): ${steps.prd_approval.outputs.choice}.
@@ -313,21 +317,32 @@ nodes:
     label: PRD approval
     say: The PRD is ready for your review.
     prompt: |
-      PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
-
+      Approve the PRD for ${inputs.feature}?
+      The plan and the test cases are written from it; technical choices come later, in the plan.
+      The PRD: .maestro/runs/${inputs.slug}/requirement/prd.md
       ${steps.prd_source.outputs.summary}
+      Project context: ${inputs.project_context}
+      Feature goal: ${steps.prepare_prd.outputs.feature_goal}
       Decisions: ${steps.sync_decisions.outputs.summary} (${steps.sync_decisions.outputs.md_path})
-      Project context (agent summary): ${inputs.project_context}
-      Feature goal (agent summary): ${steps.prepare_prd.outputs.feature_goal}
-
-      Material product decisions and relevant edge cases were clarified before writing. Confirm the concise PRD is
-      accurate, and correct the context or goal here if either is wrong; design/technical concerns
-      are handled later, in the plan.
     options:
-      - {id: approve, label: Approve — continue the design, to: end}
-      - {id: revise, label: Request changes — targeted edit of this PRD, to: write_prd, input: feedback}
-      - {id: rescope, label: Correct the feature goal and regenerate, to: prepare_prd, input: feedback}
-      - {id: reject, label: Reject — abort the run, to: abort}
+      - id: approve
+        label: "Approve — continue the design"
+        description: "Go on to the plan and the test cases."
+        to: end
+      - id: revise
+        label: "Request changes"
+        description: "Tell me what to change; I edit this PRD and ask again."
+        to: write_prd
+        input: feedback
+      - id: rescope
+        label: "Correct the feature goal"
+        description: "The context or goal is wrong; tell me how and I redo the questions and the PRD."
+        to: prepare_prd
+        input: feedback
+      - id: reject
+        label: "Reject — abort the run"
+        description: "Stop this run; nothing is built."
+        to: abort
     # Only autopilot approves the PRD itself; design mode keeps the person on the requirement.
     auto: {option: approve, modes: [auto]}
 

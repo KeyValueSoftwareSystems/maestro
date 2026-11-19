@@ -74,3 +74,5 @@ change list your instructions name.
 
 Return `changed` (true when at least one difference was found, else false) and `summary`: one
 plain sentence for the person naming the differences (or saying the code matches the plan).
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

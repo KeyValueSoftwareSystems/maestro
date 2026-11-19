@@ -642,9 +642,9 @@ def remove(root, slug):
     root = os.path.realpath(root)
     record = load_record(root, slug)
     if not record or not record.get("repos"):
-        return {"removed": False, "kept_csv": "", "summary": "No worktrees recorded for this feature"}
+        return {"removed": False, "kept_csv": "", "summary": "No working copies were made for this feature"}
     if record.get("removed"):
-        return {"removed": True, "kept_csv": "", "summary": "Worktrees already removed"}
+        return {"removed": True, "kept_csv": "", "summary": "The working copies are already removed"}
     ours = {repo: e for repo, e in record["repos"].items() if e.get("created_by_maestro")}
     dirty = []
     for repo, entry in ours.items():
@@ -655,28 +655,28 @@ def remove(root, slug):
                 dirty.append(repo)
     if dirty:
         return {"removed": False, "kept_csv": ",".join(ours),
-                "summary": f"Kept the worktrees: uncommitted changes in {', '.join(dirty)}"}
+                "summary": f"Kept the working copies: uncommitted changes in {', '.join(dirty)}"}
 
     if record.get("mode") == "configured":
         settings = _settings(root) or {}
         if not record.get("create_ran"):
             return {"removed": False, "kept_csv": ",".join(ours),
-                    "summary": "Kept the worktrees: Maestro did not create them"}
+                    "summary": "Kept the working copies: Maestro did not create them"}
         if not settings.get("remove"):
             return {"removed": False, "kept_csv": ",".join(ours),
-                    "summary": "Kept the sandbox: no worktree.remove in maestro.config.yaml"}
+                    "summary": "Kept the working copies: maestro.config.yaml says how to create them but not how to remove them"}
         if not _pushed(root, slug):
             return {"removed": False, "kept_csv": ",".join(ours),
-                    "summary": "Kept the sandbox: its branches were not pushed (delivery.mode "
-                               "branch); remove it after merging"}
+                    "summary": "Kept the working copies: their branches were not pushed; remove "
+                               "them after merging"}
         command = _command(settings["remove"], root, slug)
         log = run_layout.path(slug, root, f"{run_layout.LOGS_DIR}/worktrees/remove.log")
         result = repo_checks._run(command, root, project_config.DEFAULT_TIMEOUT_S, log,
                                   {"MAESTRO_SLUG": slug, "MAESTRO_ROOT": root})
         if result["status"] != "passed":
             return {"removed": False, "kept_csv": ",".join(ours),
-                    "summary": f"worktree.remove failed (exit {result['exit_code']}); remove the "
-                               f"sandbox by hand"}
+                    "summary": f"Could not remove the working copies (exit {result['exit_code']}); "
+                               f"remove them by hand"}
         removed = list(ours)
     else:
         discovered = dict(codebase_scan.discover_repos(root))
@@ -705,7 +705,7 @@ def remove(root, slug):
     branches = ", ".join(sorted({e.get("branch", "") for e in ours.values() if e.get("branch")}))
     note = "" if record.get("mode") == "configured" else f"; branches kept: {branches}"
     return {"removed": True, "kept_csv": "",
-            "summary": f"Removed the worktrees for {', '.join(removed)}{note}"}
+            "summary": f"Removed the working copies for {', '.join(removed)}{note}"}
 
 
 def main(argv=None):

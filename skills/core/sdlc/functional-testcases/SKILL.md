@@ -83,5 +83,7 @@ deterministic; scope and out-of-scope stated. Do not automate — the QA step tu
 into executable checks.
 
 ## Output contract
-Return `test_cases_path`, `case_count`, and `coverage_summary` (2–3 sentences: journeys
-covered, notable negatives/edges, anything deferred).
+Return `test_cases_path`, `case_count`, and `coverage_summary` (2–3 plain sentences:
+journeys covered, notable negatives/edges, anything deferred).
+The person reads `coverage_summary` as it is: plain sentences, with no ids, file paths or jargon;
+technical detail stays in the artifact.

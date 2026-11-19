@@ -53,3 +53,5 @@ cloud resources; infrastructure definitions are files only — never apply them.
 ## Output contract
 
 Return `summary`: one line naming each repository scaffolded and its stack.
+The person reads `summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.

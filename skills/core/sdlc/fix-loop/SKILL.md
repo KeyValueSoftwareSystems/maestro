@@ -91,7 +91,7 @@ the root cause (or best hypothesis), files changed, and remaining risk — and l
 decide whether to re-invoke. Escalation is success, not failure.
 
 ## Output contract
-Return `root_cause` (one line, or the hypothesis), `fix_summary` (files changed + what
+Return `root_cause` (one line, or the hypothesis), `fix_summary` (what
 changed), `checks_passed`, and `escalate` (true when a hard-stop trigger above was hit). When the
 caller asks for them (a suite run against frozen product code), also return `product_bug` (true
 when the product, not the test, is wrong) and `bug_repos` (the comma-separated repositories to
@@ -99,3 +99,5 @@ fix; empty otherwise).
 `checks_passed` MUST be the literal JSON boolean `true` or `false` (true only if the targeted
 checks actually ran AND passed after your fix) — never a count or status phrase. It is your
 own report; a caller may still re-run the checks independently before trusting it.
+The person reads `fix_summary` as it is: write it as one plain sentence of the outcome, with no ids,
+file paths or jargon; technical detail stays in the artifact.
