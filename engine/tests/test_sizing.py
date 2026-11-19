@@ -157,9 +157,9 @@ class SizingTest(unittest.TestCase):
     def test_a_bad_item_list_does_not_discard_the_facts(self):
         # a domain with no doc page fails the agent's check, but sizing still reads the facts
         self.repo("api")
-        os.makedirs(os.path.join(self.root, "docs", "technical"))
-        with open(os.path.join(self.root, "docs", "technical", "notes.md"), "w") as fh:
-            fh.write("---\ndoc: technical\ndomain: notes\nid_prefix: NT\n---\n")
+        os.makedirs(os.path.join(self.root, "docs"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "notes.md"), "w") as fh:
+            fh.write("---\ndoc: domain\ndomain: notes\nid_prefix: NT\n---\n")
         bad = [{"name": "billing", "reason": "r", "evidence": "e"}]
         result = self.size_with(self.facts(["web", "api"], schema_version=3, domains=bad))
         self.assertEqual(result["path"], "light", result["reasons"])

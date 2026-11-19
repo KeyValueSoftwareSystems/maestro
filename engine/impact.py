@@ -16,7 +16,7 @@ never a verdict: the engine (sizing.py) decides the design path from them.
                                    # (an architecture document answers these) | rollout | detail
    "summary": "one line",
    # what the feature touches, each item with a reason and its evidence:
-   "domains": [{"name": "payments", "reason": "...", "evidence": "docs/functional/payments.md"}],
+   "domains": [{"name": "payments", "reason": "...", "evidence": "docs/payments.md"}],
    "tables": [...], "jobs": [...], "queues": [...],       # same item shape
    "endpoints": [{"name": "POST /v1/fee-groups", "reason": "...", "evidence": "...",
                   "consumers": ["web: FeeGroupsScreen"]}],  # consumers also allowed on queues
@@ -108,7 +108,7 @@ def _check_docs(root, lists, issues):
     if domains:
         for item in lists["domains"]:
             if item["name"] not in domains:
-                issues.append(f"domains: {item['name']!r} has no docs/functional or docs/technical page")
+                issues.append(f"domains: {item['name']!r} has no docs/<domain>.md page")
 
 
 def match_scenarios(root, texts):

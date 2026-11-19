@@ -47,7 +47,7 @@ differs, report a blocking integrity finding instead of reviewing another checko
   list changed test files, say for each whether the approved design justifies it. A weakened,
   skipped or deleted assertion without that basis is a blocker.
 - **Domain rules** (only when the workspace has them: the `## Invariants and consistency` and
-  `## Change scenarios` sections of `docs/technical/<domain>.md`, or
+  `## Change scenarios` sections of `docs/<domain>.md`, or
   `docs/impact/side-effects.yaml`) — the diff breaks no invariant (`<PREFIX>-INV-NNN`); a moved or
   renamed enforcing line keeps its ID comment; for each
   change scenario whose `when_changing` files or symbols the diff touches, the places it lists

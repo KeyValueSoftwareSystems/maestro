@@ -33,7 +33,8 @@ nodes:
   - id: snapshot_docs
     type: script
     label: Snapshot living docs before the refresh
-    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json"]
+    # --migrate first moves an old-layout docs/ into one doc per domain, content unchanged.
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json", --migrate]
     on_fail: abort
     next: extract_inventory
 
@@ -54,22 +55,22 @@ nodes:
       artifacts and design documents under .maestro/runs/${inputs.slug}/ (requirement/, design/,
       decisions/, reviews/, build/, qa/, release/; .engine/ holds only the engine's working
       files). Then do BOTH:
-      1. Add to / refresh the living docs — functional, technical AND architectural — for the
-         domains this feature touched, in the shared format (docs-format.md in the
-         build-knowledge skill). Functional: the business rules the feature added or changed
-         (BR rows with edge and source, from the approved PRD and gate feedback), new states,
-         flows, terms and open questions. Technical: failure behaviour and gotchas the reviews
-         raised, and the invariants and change scenarios the run relied on or discovered as
-         proposals (§Proposed rules and scenarios, with the anchor that enforces each), for the
-         team to accept. Invariants and change scenarios are team-owned: never edit §Invariants and consistency, §Change scenarios, §Platform-wide
+      1. Add to / refresh the living docs — each touched domain's docs/<domain>.md AND the
+         architecture — in the shared format (docs-format.md in the build-knowledge skill).
+         Product sections: the business rules the feature added or changed (BR rows with edge
+         and source, from the approved PRD and gate feedback), new states, flows, terms and open
+         questions. Engineering sections: failure behaviour and gotchas the reviews raised, and
+         the invariants and change scenarios the run relied on or discovered as proposals
+         (§Proposed rules and scenarios, with the anchor that enforces each), for the team to
+         accept. Say each fact once, in its own section; cite it by ID elsewhere. Invariants and change scenarios are team-owned: never edit §Invariants and consistency, §Change scenarios, §Platform-wide
          invariants or docs/impact/side-effects.yaml (the engine restores them); write what you
          find under §Proposed rules and scenarios instead.
          Architecture: new repos or providers, cross-repo flows, and a Domain map row for any
-         NEW domain (which gets both files). A new business rule takes the next
+         NEW domain (which gets its own docs/<domain>.md). A new business rule takes the next
          free ID; never renumber or reuse one; a fact the feature made untrue becomes
          `Retired YYYY-MM-DD: <why>`. Never restate what the extracted inventory (the
-         `inventory` input) lists, and never edit docs/_generated/, docs/_index/, a generated:
-         block or verified_at — the engine regenerates and stamps them. ALSO refresh each
+         `inventory` input) lists, and never edit docs/architecture.mmd, docs/code-to-facts.md,
+         a generated: block or verified_at — the engine regenerates and stamps them. ALSO refresh each
          affected repo's codebase map (docs/codebase-maps/<repo>.md): run
          `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed
          since the map was last recorded — update ONLY those areas (new/changed flows,

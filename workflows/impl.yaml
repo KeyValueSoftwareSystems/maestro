@@ -200,7 +200,7 @@ nodes:
       - {to: fix}
 
   # Engine-owned and optional: when the team has written invariants and change scenarios
-  # (docs/technical/<domain>.md, docs/impact/side-effects.yaml), check this branch still matches
+  # (docs/<domain>.md, docs/impact/side-effects.yaml), check this branch still matches
   # every name they rely on. Never blocks: the result goes to the reviewer. None written: skipped.
   - id: domain_rules
     type: script

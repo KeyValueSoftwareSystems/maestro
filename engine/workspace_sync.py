@@ -397,22 +397,17 @@ def _knowledge_status(root, repos, state_path):
                 path = entry.get("path") or f"codebase/{name}"
                 recorded[name] = {"path": path, "commit": entry.get("commit", "")}
     architecture = os.path.join(root, "docs", "architecture.md")
-    technical = os.path.join(root, "docs", "technical")
-    functional = os.path.join(root, "docs", "functional")
-    has_technical = os.path.isdir(technical) and any(
-        name.endswith(".md") for name in os.listdir(technical)
-    )
-    has_functional = os.path.isdir(functional) and any(
-        name.endswith(".md") for name in os.listdir(functional)
-    )
+    # an old-layout docs/ (functional/ + technical/) is not missing: the refresh migrates it
+    has_domains = bool(living_docs.legacy_dirs(root)) or any(
+        d.kind == "domain" for d in living_docs.load_docs(root))
     stale_repos = sorted(name for name, value in current.items() if recorded.get(name) != value)
     removed_repos = sorted(set(recorded) - set(current))
     missing_docs = (not os.path.isfile(architecture) or os.path.getsize(architecture) == 0
-                    or not has_technical or not has_functional)
+                    or not has_domains)
     docs_hash_stale = False
     if isinstance(state, dict) and state.get("docs_sha256"):
         docs_hash_stale = state["docs_sha256"] != _docs_hash(root)
-    # Docs written before format v2.3 (no front-matter) are rewritten by the next refresh.
+    # Docs in the old layout, or without front-matter, are migrated or rewritten by the next refresh.
     format_stale = not missing_docs and not living_docs.current_format(root)
     return {
         "stale": bool(stale_repos or removed_repos or missing_docs or docs_hash_stale
@@ -480,13 +475,14 @@ def _summary(repos, knowledge, map_stale, lock_drift):
         lines.append("- " + "; ".join(bits))
     if knowledge["stale"]:
         if knowledge.get("format_stale"):
-            lines.append("- Living docs predate format v2.3; the refresh rewrites them.")
+            lines.append(f"- Living docs predate format {living_docs.FORMAT_VERSION}; the refresh "
+                         "migrates or rewrites them.")
         if knowledge.get("docs_hash_stale") and not (
                 knowledge["stale_repos"] or knowledge["removed_repos"] or knowledge["missing_docs"]):
             lines.append("- Living docs content changed since last index (docs_sha256 drift).")
         else:
             names = ", ".join(knowledge["stale_repos"] or knowledge["removed_repos"] or ["workspace"])
-            lines.append(f"- Living technical/functional knowledge needs refresh: {names}.")
+            lines.append(f"- Living domain docs need refresh: {names}.")
     if map_stale:
         lines.append("- Codebase maps need refresh: " + ", ".join(map_stale) + ".")
     if lock_drift:
@@ -680,13 +676,9 @@ def cmd_record_knowledge(root, evidence, state_path=DEFAULT_INDEX_STATE, only=No
     if not os.path.isfile(architecture) or os.path.getsize(architecture) == 0:
         print("FAIL: docs/architecture.md is missing or empty", file=sys.stderr)
         return 1
-    for surface in ("technical", "functional"):
-        directory = os.path.join(root, "docs", surface)
-        if not os.path.isdir(directory) or not any(
-                name.endswith(".md") and os.path.getsize(os.path.join(directory, name)) > 0
-                for name in os.listdir(directory)):
-            print(f"FAIL: docs/{surface}/ has no non-empty Markdown domain docs", file=sys.stderr)
-            return 1
+    if not any(d.kind == "domain" and d.text.strip() for d in living_docs.load_docs(root)):
+        print("FAIL: docs/ has no domain doc (docs/<domain>.md with doc: domain)", file=sys.stderr)
+        return 1
     now = _now()
     discovered = codebase_scan.discover_repos(root)
     previous = {}

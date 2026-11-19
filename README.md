@@ -179,8 +179,8 @@ Replace `claude-code` with your agent's [install target](#works-with-your-agent)
 Codex). On Hermes Agent, run `hermes skills trust` first.
 
 This detects your tech stack, installs only the matching skills, and builds the **knowledge
-base**: an architecture overview of how your repos connect, functional and technical docs per area
-in `docs/` (checked by the engine; inventories generated from the code under `docs/_generated/`),
+base**: an architecture overview of how your repos connect, one doc per area in `docs/` (checked by
+the engine; each with an inventory generated from the code),
 and a codebase map per repo in `docs/codebase-maps/`.
 
 You don't need to maintain the docs by hand. Maestro records which commit each doc describes, so

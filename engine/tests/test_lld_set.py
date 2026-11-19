@@ -215,9 +215,9 @@ class LldSetTest(unittest.TestCase):
 
     def test_impact_scope_survives_a_wrong_item_list(self):
         # a domain with no doc page fails the agent's check, not the repositories it named
-        os.makedirs(os.path.join(self.root, "docs", "technical"), exist_ok=True)
-        with open(os.path.join(self.root, "docs", "technical", "notes.md"), "w") as fh:
-            fh.write("---\ndoc: technical\ndomain: notes\nid_prefix: NT\n---\n")
+        os.makedirs(os.path.join(self.root, "docs"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "notes.md"), "w") as fh:
+            fh.write("---\ndoc: domain\ndomain: notes\nid_prefix: NT\n---\n")
         self.write("impact.json", json.dumps({
             "schema_version": 3, "repos": [{"name": "web", "change": "new screen"}],
             "interface_change": "none", "data_change": "none", "infrastructure_change": False,

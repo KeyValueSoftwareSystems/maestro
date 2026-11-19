@@ -70,8 +70,8 @@ Run these **in order**, in this session. Each step consumes the previous step's 
       the existing `docs/`; then
       - write each target's **full** codebase map at `docs/codebase-maps/<name>.md` (without
         the marker line);
-      - for each domain a target implements: a domain with no page yet gets new
-        `docs/technical/<domain>.md` and `docs/functional/<domain>.md`; an existing domain
+      - for each domain a target implements: a domain with no page yet gets a new
+        `docs/<domain>.md`; an existing domain
         page the target takes part in is extended in place to cover it. Never rewrite what a
         page says about other repos; never edit the team's invariants and change scenarios
         (`## Invariants and consistency`, `## Change scenarios`, `## Platform-wide invariants`,

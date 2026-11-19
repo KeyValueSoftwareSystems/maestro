@@ -12,10 +12,10 @@ import impact  # noqa: E402
 import impact_trace  # noqa: E402
 
 PAGES = {
-    "fees": "---\ndoc: technical\ndomain: fees\nid_prefix: FC\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| FC-INV-001 | A student is charged a fee once per cycle. |\n",
-    "payments": "---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n"
+    "fees": "---\ndoc: domain\ndomain: fees\nid_prefix: FC\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| FC-INV-001 | A student is charged a fee once per cycle. |\n",
+    "payments": "---\ndoc: domain\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n"
                 "\n## Change scenarios\n| ID | When changing | Also affects |\n| --- | --- | --- |\n| PL-CS-001 | Payment links | Reminders |\n",
-    "whatsapp": "---\ndoc: technical\ndomain: whatsapp\nid_prefix: WA\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| WA-INV-001 | Never message an opted-out parent. |\n",
+    "whatsapp": "---\ndoc: domain\ndomain: whatsapp\nid_prefix: WA\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| WA-INV-001 | Never message an opted-out parent. |\n",
 }
 SIDE_EFFECTS = """version: 1
 scenarios:
@@ -63,7 +63,7 @@ class ImpactTraceTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         subprocess.run(["git", "init", "-q", os.path.join(self.root, "codebase", "backend")], check=True)
         for name, text in PAGES.items():
-            self.write(f"docs/technical/{name}.md", text)
+            self.write(f"docs/{name}.md", text)
         self.write("docs/impact/side-effects.yaml", SIDE_EFFECTS)
         self.impact = self.write("impact.json", json.dumps(FEE_GROUPS))
 

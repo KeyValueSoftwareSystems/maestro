@@ -7,16 +7,24 @@ the ID and anchor checks, the inventories extracted from code and contracts, the
 `verified_at` stamp, and the cited-fact snippets steps load. Swapping a skill cannot change any
 of it. Format: skills/core/bootstrap/build-knowledge/docs-format.md.
 
+Layout: docs/architecture.md and one docs/<domain>.md per domain (rules, invariants, gotchas and
+the generated connections and inventory blocks), docs/architecture.mmd, docs/code-to-facts.md.
+
 Commands (all take --root, default .):
   check    [--write] [--nightly] [--today YYYY-MM-DD] [--report]
            Rules R1–R8 below. --write first regenerates every generated file and block.
+  show     DOMAIN [--part product|engineering|inventory] [--section NAME]...
+           print only part of a domain doc, so a step loads only what it needs
+  migrate                    move the old layout (functional/, technical/, _generated/, _index/)
+                             into one docs/<domain>.md per domain; nothing to move = no-op
   extract  --out PATH        workspace-wide inventory (Markdown) for the writer to read
   snippet  IDS               one line per ID, as steps receive it (comma-separated IDs)
   cited    --from PATH... --out PATH [--repos a,b]   the rows behind every ID the given files
            cite (missing files are skipped); with --repos, also those repos' domain doc paths
   domains  [--repos a,b] [--impact impact.json]   the domains (and their doc paths) whose Domain
            map row names one of the repos; every domain when none is named or none matches
-  snapshot --out PATH        hash every doc, and keep the team-owned content, before a writer runs
+  snapshot --out PATH [--migrate]   hash every doc, and keep the team-owned content, before a
+           writer runs; --migrate first moves an old-layout docs/ into the current one
   stamp    [--snapshot PATH] set verified_at (and status: draft) on docs new or changed since
   status                     are there team-owned invariants and change scenarios?
   rules    [--repo R --worktree W] [--out F]   the team's rules and scenarios against the code
@@ -31,7 +39,7 @@ R6 every app call reaches a served route · R7 structure: front-matter, headings
 owned unknowns, rows that stand alone, Domain map ↔ files · R8 token budgets (warning) ·
 R9 (with --locked-from) a writer changed team-owned content: the engine restores it.
 
-Team-owned: invariants (INV) and change scenarios (CS) — technical docs' "Invariants and
+Team-owned: invariants (INV) and change scenarios (CS) — domain docs' "Invariants and
 consistency" and "Change scenarios", architecture's "Platform-wide invariants", and
 docs/impact/side-effects.yaml. People write them; a model only proposes, under "Proposed rules
 and scenarios". In a writer's check, a problem inside team-owned content is a warning for the team.
@@ -51,7 +59,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import wf  # noqa: E402
 
-FORMAT_VERSION = "2.3"
+FORMAT_VERSION = "3.0"
 ID_KINDS = ("BR", "INV", "CS")
 ARCH_PREFIX = "ARCH"
 PREFIX_RE = r"[A-Z][A-Z0-9]{1,5}"
@@ -90,40 +98,47 @@ FORMAT = {
                   "Platform-wide invariants", "Proposed rules and scenarios",
                   "Conventions and boundaries", "Glossary and aliases"],
     },
-    "functional": {
-        "required": ["Purpose and actors", "Business rules", "Open questions and owned unknowns"],
+    "domain": {
+        "required": ["Purpose and actors", "Business rules", "Invariants and consistency",
+                     "Change scenarios", "Open questions and known gaps", "Cross-repo connections",
+                     "Inventory"],
         "order": ["Purpose and actors", "Glossary and aliases", "Business rules", "States and flows",
-                  "Open questions and owned unknowns"],
+                  "Invariants and consistency", "Change scenarios", "Proposed rules and scenarios",
+                  "Failure, concurrency and idempotency", "Gotchas", "Open questions and known gaps",
+                  "Cross-repo connections", "Inventory"],
     },
-    "technical": {
-        "required": ["Invariants and consistency", "Change scenarios", "Cross-repo connections",
-                     "Known gaps and tech debt"],
-        "order": ["Invariants and consistency", "Change scenarios", "Proposed rules and scenarios",
-                  "Cross-repo connections", "Failure, concurrency and idempotency", "Gotchas",
-                  "Known gaps and tech debt"],
-    },
+}
+# What each step reads of a domain doc (`show --part`): the product sections (the PRD interview,
+# without code), the engineering ones (design, review), and the generated inventory.
+PARTS = {
+    "product": ["Purpose and actors", "Glossary and aliases", "Business rules", "States and flows",
+                "Open questions and known gaps"],
+    "engineering": ["Invariants and consistency", "Change scenarios", "Proposed rules and scenarios",
+                    "Failure, concurrency and idempotency", "Gotchas", "Open questions and known gaps",
+                    "Cross-repo connections"],
+    "inventory": ["Inventory"],
 }
 # The first table of these sections must carry exactly these columns (case-insensitive).
 TABLE_COLUMNS = {
     ("architecture", "System context and repos"):
         ["Repo or provider", "Kind", "Purpose", "Owns data", "Runs on"],
-    ("architecture", "Domain map"): ["Domain", "Purpose", "Repos", "Owner", "Technical", "Functional"],
+    ("architecture", "Domain map"): ["Domain", "Purpose", "Repos", "Owner", "Doc"],
     ("architecture", "Cross-repo flows and contracts"):
         ["From", "To", "Operation / event", "Protocol", "Sync", "Auth", "Contract"],
     ("architecture", "Platform-wide invariants"):
         ["ID", "Invariant", "Where (repo · path · symbol)", "Consistency"],
     ("architecture", "Glossary and aliases"):
         ["Term", "Meaning", "Code names and aliases", "Not to be confused with"],
-    ("functional", "Glossary and aliases"):
+    ("domain", "Glossary and aliases"):
         ["Term", "Meaning", "Code names and aliases", "Not to be confused with"],
-    ("functional", "Business rules"): ["ID", "Rule", "Edge", "Why / source"],
-    ("functional", "States and flows"): ["From", "To", "Trigger", "Actor", "Guard"],
-    ("technical", "Invariants and consistency"):
+    ("domain", "Business rules"): ["ID", "Rule", "Edge", "Why / source"],
+    ("domain", "States and flows"): ["From", "To", "Trigger", "Actor", "Guard"],
+    ("domain", "Invariants and consistency"):
         ["ID", "Invariant", "Enforces", "Where (repo · path · symbol)", "Consistency", "Tested by"],
-    ("technical", "Change scenarios"): ["ID", "When changing", "Also affects", "Verify with", "Source"],
+    ("domain", "Change scenarios"): ["ID", "When changing", "Also affects", "Verify with", "Source"],
     ("architecture", "Proposed rules and scenarios"):
         ["Kind", "Proposal", "Where (repo · path · symbol)", "Evidence"],
-    ("technical", "Proposed rules and scenarios"):
+    ("domain", "Proposed rules and scenarios"):
         ["Kind", "Proposal", "Where (repo · path · symbol)", "Evidence"],
 }
 # Owned by the project's people, never by a model: invariants and change scenarios. A writer step
@@ -131,8 +146,7 @@ TABLE_COLUMNS = {
 # writes what it finds under "Proposed rules and scenarios" for the team to accept.
 TEAM_SECTIONS = {
     "architecture": ("Platform-wide invariants",),
-    "functional": (),
-    "technical": ("Invariants and consistency", "Change scenarios"),
+    "domain": ("Invariants and consistency", "Change scenarios"),
 }
 PROPOSALS = "Proposed rules and scenarios"
 PROPOSAL_KINDS = ("invariant", "change scenario")
@@ -145,23 +159,28 @@ SIDE_EFFECT_NAMES = (("tables", "table"), ("queues", "queue"), ("endpoints", "en
 # Which ID kinds each doc may define, and in which section.
 DEFINES = {
     "architecture": {"INV": "Platform-wide invariants"},
-    "functional": {"BR": "Business rules"},
-    "technical": {"INV": "Invariants and consistency", "CS": "Change scenarios"},
+    "domain": {"BR": "Business rules", "INV": "Invariants and consistency", "CS": "Change scenarios"},
 }
 FM_KEYS = {
     "architecture": ["doc", "id_prefix", "owner", "repos", "verified_at", "reviewed", "status"],
-    "functional": ["doc", "domain", "id_prefix", "owner", "repos", "verified_at", "reviewed", "status"],
-    "technical": ["doc", "domain", "id_prefix", "owner", "repos", "code_roots", "verified_at",
-                  "reviewed", "status"],
+    "domain": ["doc", "domain", "id_prefix", "owner", "repos", "code_roots", "verified_at",
+               "reviewed", "status"],
 }
 STATUSES = ("draft", "verified")
-BUDGET = {"architecture": 3000, "functional": 2000, "technical": 2500}
+# Generated blocks do not count: nobody writes them, and steps read them one part at a time.
+BUDGET = {"architecture": 3000, "domain": 4000}
 STALE_DAYS = 30
 
-GEN_DIR = "_generated"
-INDEX_DIR = "_index"
+DIAGRAM = "architecture.mmd"
+INDEX = "code-to-facts.md"
+# Top-level names that are not domain docs, so no domain may take them.
+RESERVED = ("architecture", "code-to-facts")
+# The layout before format 3: two written docs per domain and generated files in folders.
+LEGACY_DIRS = ("functional", "technical", "_generated", "_index")
 CONNECTIONS = "connections"
+INVENTORY = "inventory"
 FACTS = "facts"
+GENERATED_SECTIONS = {"Cross-repo connections": CONNECTIONS, "Inventory": INVENTORY}
 INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")
 INVENTORY_SECTIONS = ("APIs", "Events", "Jobs", "Data", "Config")
 
@@ -330,8 +349,11 @@ class Doc:
         return out
 
     def items(self):
-        """(section, header|None, row cells | bullet text) for every table row and bullet."""
+        """(section, header|None, row cells | bullet text) for every table row and bullet. The
+        generated inventory is left out: its rows come from code, not from a writer."""
         for section in self.headings:
+            if section == "Inventory":
+                continue
             for header, rows in self.tables(section):
                 for row in rows:
                     yield section, header, row
@@ -345,23 +367,43 @@ def _cells(line):
 
 
 def load_docs(root):
+    """architecture.md, then every top-level docs/<name>.md that is a domain doc: its front-matter
+    says `doc: domain`, or the Domain map links it. Other Markdown in docs/ is not ours."""
     docs = []
-    arch = os.path.join(root, "docs", "architecture.md")
-    if os.path.isfile(arch):
-        docs.append(Doc(arch, root, "architecture"))
-    for kind in ("functional", "technical"):
-        folder = os.path.join(root, "docs", kind)
-        if os.path.isdir(folder):
-            for name in sorted(os.listdir(folder)):
-                if name.endswith(".md"):
-                    docs.append(Doc(os.path.join(folder, name), root, kind))
+    base = os.path.join(root, "docs")
+    arch_path = os.path.join(base, "architecture.md")
+    arch = Doc(arch_path, root, "architecture") if os.path.isfile(arch_path) else None
+    if arch:
+        docs.append(arch)
+    linked = {os.path.normpath(os.path.join(base, r["doc"])) for r in domain_map(arch) if r["doc"]}
+    if os.path.isdir(base):
+        for name in sorted(os.listdir(base)):
+            path = os.path.join(base, name)
+            stem = os.path.splitext(name)[0]
+            if not name.endswith(".md") or stem in RESERVED or not os.path.isfile(path):
+                continue
+            doc = Doc(path, root, "domain")
+            if doc.fm.get("doc") == "domain" or os.path.normpath(path) in linked:
+                docs.append(doc)
     return docs
 
 
+def legacy_dirs(root):
+    """The old-layout folders under docs/ that still hold Markdown (migrate moves them)."""
+    found = []
+    for name in LEGACY_DIRS:
+        folder = os.path.join(root, "docs", name)
+        if os.path.isdir(folder) and any(f.endswith((".md", ".mmd"))
+                                         for _b, _d, files in os.walk(folder) for f in files):
+            found.append(name)
+    return found
+
+
 def current_format(root):
-    """True when every written doc carries v2.3 front-matter (a `doc:` key)."""
+    """True when the docs use the current layout and every doc carries its `doc:` front-matter."""
     docs = load_docs(root)
-    return bool(docs) and all(d.fm.get("doc") == d.kind for d in docs)
+    return (bool(docs) and not legacy_dirs(root)
+            and all(d.fm.get("doc") == d.kind for d in docs))
 
 
 def known_prefixes(docs):
@@ -394,6 +436,9 @@ def check_structure(doc, repos, report):
     if kind != "architecture" and doc.domain and doc.domain != stem:
         report.err("R7", doc.rel, f"domain: {doc.domain} does not match the file name",
                    f"name the file {doc.domain}.md or fix domain:")
+    if kind != "architecture" and doc.domain in RESERVED:
+        report.err("R7", doc.rel, f"{doc.domain} is a reserved name, not a domain",
+                   "give the domain another name")
     if kind == "architecture" and doc.prefix and doc.prefix != ARCH_PREFIX:
         report.err("R7", doc.rel, f"architecture's id_prefix must be {ARCH_PREFIX}",
                    f"set id_prefix: {ARCH_PREFIX}")
@@ -454,7 +499,7 @@ def check_structure(doc, repos, report):
         if section == PROPOSALS and header and first.lower() not in PROPOSAL_KINDS:
             report.err("R7", f"{doc.rel} §{section}", f"proposal kind '{first}'",
                        f"write one of: {', '.join(PROPOSAL_KINDS)}")
-    tokens = len(doc.text) // 4
+    tokens = len(strip_generated(doc.text)) // 4
     if tokens > BUDGET[kind]:
         report.warn("R8", doc.rel, f"about {tokens} tokens, budget {BUDGET[kind]}; cut anything an "
                     "agent can find in code, or split the domain")
@@ -462,7 +507,7 @@ def check_structure(doc, repos, report):
 
 
 def domain_map(arch):
-    """[{domain, repos[], technical, functional}] from architecture's Domain map table."""
+    """[{domain, repos[], doc}] from architecture's Domain map table (doc: the linked file)."""
     rows = []
     if not arch:
         return rows
@@ -470,13 +515,11 @@ def domain_map(arch):
         names = [h.lower() for h in header]
         for row in table_rows:
             cell = dict(zip(names, row + [""] * (len(names) - len(row))))
-            links = {key: (LINK_RE.search(cell.get(key, "")) or [None, None])[1]
-                     for key in ("technical", "functional")}
+            link = LINK_RE.search(cell.get("doc", ""))
             rows.append({
                 "domain": cell.get("domain", ""),
                 "repos": [r.strip() for r in re.split(r"[,;]", cell.get("repos", "")) if r.strip()],
-                "technical": links["technical"],
-                "functional": links["functional"],
+                "doc": link.group(1) if link else None,
             })
     return rows
 
@@ -487,29 +530,30 @@ def check_domain_map(root, docs, report):
         report.err("R7", "architecture.md", "docs/architecture.md is missing",
                    "write it; every other doc is reached from its Domain map")
         return
+    legacy = legacy_dirs(root)
+    if legacy:
+        report.err("R7", "docs/", "the old layout is still here (" + ", ".join(
+            f"{name}/" for name in legacy) + "); every domain now has one docs/<domain>.md",
+                   "run living_docs.py migrate, then check --write")
     listed = set()
     for row in domain_map(arch):
-        for kind in ("technical", "functional"):
-            link = row[kind]
-            if not link:
-                report.err("R7", "architecture.md §Domain map", f"{row['domain']} has no {kind} link",
-                           f"link {kind}/{row['domain']}.md")
-                continue
-            target = os.path.normpath(os.path.join(root, "docs", link))
-            listed.add(target)
-            if not os.path.isfile(target):
-                report.err("R7", "architecture.md §Domain map", f"{row['domain']} links {link}, "
-                           "which does not exist", "write the doc, or fix the link")
+        link = row["doc"]
+        if not link:
+            report.err("R7", "architecture.md §Domain map", f"{row['domain']} has no doc link",
+                       f"link [{row['domain']}]({row['domain']}.md)")
+            continue
+        target = os.path.normpath(os.path.join(root, "docs", link))
+        listed.add(target)
+        if os.path.dirname(target) != os.path.normpath(os.path.join(root, "docs")):
+            report.err("R7", "architecture.md §Domain map", f"{row['domain']} links {link}, which "
+                       "is not directly under docs/", f"link {row['domain']}.md")
+        elif not os.path.isfile(target):
+            report.err("R7", "architecture.md §Domain map", f"{row['domain']} links {link}, "
+                       "which does not exist", "write the doc, or fix the link")
     for doc in docs:
         if doc.kind != "architecture" and os.path.normpath(doc.path) not in listed:
             report.err("R7", doc.rel, "this doc has no row in architecture's Domain map",
-                       "add a Domain map row linking both of the domain's docs")
-    names = {(d.kind, os.path.basename(d.path)) for d in docs if d.kind != "architecture"}
-    for kind, other in (("functional", "technical"), ("technical", "functional")):
-        for k, name in sorted(names):
-            if k == kind and (other, name) not in names:
-                report.err("R7", f"{kind}/{name}", f"the domain has no {other} doc",
-                           f"write {other}/{name}; every domain has both")
+                       "add a Domain map row linking the domain's doc")
     prefixes = {}
     for doc in docs:
         if doc.kind != "architecture" and doc.prefix and doc.domain:
@@ -1299,12 +1343,11 @@ def inventory_sections(inv, roots=None, domain_text=None):
     }
 
 
-def gen_inventory(domain, inv, roots, domain_text):
-    out = [f"# {domain}: generated inventory",
-           "> Generated by living_docs.py from code and contracts. Never edit by hand. "
-           "Read one section at a time.", ""]
+def gen_inventory(inv, roots, domain_text):
+    """The domain doc's generated Inventory block: one ### part per kind of thing."""
+    out = []
     for name, lines in inventory_sections(inv, roots, domain_text).items():
-        out += [f"## {name}", *lines, ""]
+        out += [f"### {name}", *lines, ""]
     return "\n".join(out)
 
 
@@ -1400,7 +1443,7 @@ def gen_facts_blocks(repos, anchors, defs, opted_in):
 
 
 def strip_generated(text):
-    for name in (FACTS, CONNECTIONS):
+    for name in (FACTS, CONNECTIONS, INVENTORY):
         text = re.sub(rf"\n*<!-- generated:{name} begin[^>]*-->.*?<!-- generated:{name} end -->\n?",
                       "\n", text, flags=re.S)
     return text.rstrip("\n")
@@ -1430,7 +1473,7 @@ def _sync_file(path, content, write, label, report):
 
 def _sync_block(path, name, content, write, label, report, heading=None):
     text = read_text(path) or ""
-    begin, end = block_markers(name, "code" if name == CONNECTIONS else "docs/")
+    begin, end = block_markers(name, "docs/" if name == FACTS else "code")
     match = block_re(name).search(text)
     if not match:
         if not write:
@@ -1440,9 +1483,11 @@ def _sync_block(path, name, content, write, label, report, heading=None):
             new_text = text.rstrip("\n") + "\n\n" + content + "\n"
         else:
             block = f"{begin}\n{content}{end}"
+            text = text if text.endswith("\n") else text + "\n"
             pattern = re.compile(rf"^## {re.escape(heading)}\n(?:(?:None\.)?\s*\n)*", re.M)
             if pattern.search(text):
                 new_text = pattern.sub(lambda m: f"## {heading}\n{block}\n\n", text, count=1)
+                new_text = new_text.rstrip("\n") + "\n"  # a block at the end leaves no blank line
             else:
                 report.err("R4", label, f"no '## {heading}' section to hold the generated block",
                            f"add '## {heading}'")
@@ -1633,11 +1678,11 @@ def enforce_lock(root, snapshot, write, report):
 
 SIDE_EFFECTS_STARTER = """\
 # Change scenarios, machine-readable: "if you change X, also check Y". Written by the team, never by
-# a model. Each scenario is also a row in the domain's docs/technical/<domain>.md under
+# a model. Each scenario is also a row in the domain's docs/<domain>.md under
 # "## Change scenarios", with the same ID. Maestro's engine checks every name below still exists.
 #
-# - id: PL-CS-001                    # <PREFIX>-CS-NNN, defined in docs/technical/<domain>.md
-#   domain: payment-links            # the technical doc whose table lists it
+# - id: PL-CS-001                    # <PREFIX>-CS-NNN, defined in docs/<domain>.md
+#   domain: payment-links            # the domain doc whose table lists it
 #   summary: Disabling a payment link
 #   rules: [PL-INV-004]              # invariants at risk (<PREFIX>-INV-NNN or ARCH-INV-NNN)
 #   repo: backend                    # default repository for the names below ("repo:name" overrides)
@@ -1768,13 +1813,13 @@ def check_side_effects(root, repos, docs, defs, report):
         where = f"{SIDE_EFFECTS} {sid or '#' + str(number)}"
         if not re.fullmatch(rf"{PREFIX_RE}-CS-\d{{3}}", sid):
             report.err("R1", where, "each scenario needs an ID like PL-CS-001",
-                       "use the ID of its row in the technical doc's Change scenarios", team=True)
+                       "use the ID of its row in the domain doc's Change scenarios", team=True)
             continue
         if sid in seen:
             report.err("R1", where, "duplicate scenario ID", "give each scenario its own ID", team=True)
         seen.add(sid)
         if sid not in in_tables:
-            report.warn("R2", where, "no row in any technical doc's Change scenarios table")
+            report.warn("R2", where, "no row in any domain doc's Change scenarios table")
         elif scenario.get("domain") and scenario.get("domain") != in_tables[sid].domain:
             report.err("R2", where, f"domain '{scenario.get('domain')}' but its row is in "
                        f"{in_tables[sid].rel}", "make the two agree", team=True)
@@ -1822,7 +1867,7 @@ def rules_status(root):
         summary = f"{len(rules)} invariants, {len(scenarios)} change scenarios ({', '.join(domains)})"
     else:
         summary = ("no team-owned rules yet: the team writes invariants and change scenarios in "
-                   "docs/technical/<domain>.md and docs/impact/side-effects.yaml (optional)")
+                   "docs/<domain>.md and docs/impact/side-effects.yaml (optional)")
     return {"present": present, "rule_count": len(rules), "scenario_count": len(scenarios),
             "domains_csv": ",".join(domains), "side_effects": items is not None, "summary": summary}
 
@@ -1928,36 +1973,23 @@ def run_check(root, write=False, nightly=False, today=None, locked_from=None):
         report.warn("R4", "extract", warning)
     # Generated output first (with --write), so the anchors and citations below see it.
     arch = next((d for d in docs if d.kind == "architecture"), None)
-    gen = os.path.join(root, "docs", GEN_DIR)
-    _sync_file(os.path.join(gen, "diagrams", "architecture.mmd"), gen_diagram(arch), write,
-               f"{GEN_DIR}/diagrams/architecture.mmd", report)
+    _sync_file(os.path.join(root, "docs", DIAGRAM), gen_diagram(arch), write, DIAGRAM, report)
     for doc in docs:
-        if doc.kind != "technical" or not doc.domain:
+        if doc.kind != "domain" or not doc.domain:
             continue
         roots = [str(r) for r in doc.fm.get("code_roots") or []]
-        functional = next((d for d in docs if d.kind == "functional" and d.domain == doc.domain), None)
-        domain_text = doc.text + (functional.text if functional else "")
-        _sync_file(os.path.join(gen, f"{doc.domain}.inventory.md"),
-                   gen_inventory(doc.domain, inv, roots, domain_text), write,
-                   f"{GEN_DIR}/{doc.domain}.inventory.md", report)
+        # the written text only: a name the last inventory listed must not keep itself in scope
+        domain_text = strip_generated(doc.text)
         _sync_block(doc.path, CONNECTIONS, gen_connections(inv, roots), write, doc.rel, report,
                     heading="Cross-repo connections")
+        _sync_block(doc.path, INVENTORY, gen_inventory(inv, roots, domain_text), write, doc.rel,
+                    report, heading="Inventory")
     if write:
         docs = load_docs(root)
         report_ids = Report()
         defs = collect_ids(docs, report_ids)
-    wanted = {f"{d.domain}.inventory.md" for d in docs if d.kind == "technical" and d.domain}
-    if os.path.isdir(gen):
-        for name in sorted(os.listdir(gen)):
-            if name.endswith(".inventory.md") and name not in wanted:
-                if write:
-                    os.remove(os.path.join(gen, name))
-                else:
-                    report.err("R4", f"{GEN_DIR}/{name}", "inventory of a domain that has no technical doc",
-                               "run living_docs.py check --write")
     anchors, by_doc = collect_anchors(repos, docs, defs, report)
-    _sync_file(os.path.join(root, "docs", INDEX_DIR, "code-to-facts.md"), gen_index(anchors), write,
-               f"{INDEX_DIR}/code-to-facts.md", report)
+    _sync_file(os.path.join(root, "docs", INDEX), gen_index(anchors), write, INDEX, report)
     opted_in = [r for r in settings.get("facts_blocks") or [] if isinstance(r, str)]
     blocks = gen_facts_blocks(repos, anchors, defs, opted_in)
     for target, block in sorted(blocks.items()):
@@ -1991,7 +2023,8 @@ def run_check(root, write=False, nightly=False, today=None, locked_from=None):
 # --------------------------------------------------------------------------- stamp, cited, domains
 
 def doc_hashes(root):
-    return {d.rel: _sha(d.text) for d in load_docs(root)}
+    """Each doc's hash without its generated blocks: regenerating them is not a writer's change."""
+    return {d.rel: _sha(strip_generated(d.text)) for d in load_docs(root)}
 
 
 def stamp(root, snapshot=None):
@@ -2003,7 +2036,7 @@ def stamp(root, snapshot=None):
             before = json.load(fh).get("docs", {})
     stamped = []
     for doc in load_docs(root):
-        if snapshot is not None and before.get(doc.rel) == _sha(doc.text):
+        if snapshot is not None and before.get(doc.rel) == _sha(strip_generated(doc.text)):
             continue
         match = re.match(r"---\n(.*?)\n---\n", doc.text, re.S)
         if not match:
@@ -2056,6 +2089,211 @@ def domains_for(root, repos_filter=None):
     return rows
 
 
+# --------------------------------------------------------------------------- show
+
+def _strip_markers(text):
+    return "\n".join(line for line in text.split("\n")
+                     if not re.match(r"<!-- generated:\w+ (?:begin|end)\b", line)).strip("\n")
+
+
+def _inventory_part(text, name):
+    """One ### part (APIs, Events, …) of the Inventory section's text."""
+    match = re.search(rf"^### {re.escape(name)}\n(.*?)(?=^### |\Z)", text, re.S | re.M)
+    return match.group(1).strip("\n") if match else None
+
+
+def show(root, domain, part=None, sections=None):
+    """The chosen sections of one domain doc as Markdown, or None when no such domain."""
+    doc = next((d for d in load_docs(root) if d.kind == "domain"
+                and (d.domain == domain or os.path.splitext(os.path.basename(d.path))[0] == domain)),
+               None)
+    if doc is None:
+        return None
+    order = FORMAT["domain"]["order"]
+    wanted = list(PARTS[part]) if part else ([] if sections else list(order))
+    extra = [name for name in sections or [] if name not in wanted]
+    fm = doc.fm
+    lines = [f"# {doc.domain or domain}",
+             f"> docs/{doc.rel} · prefix {doc.prefix or 'None.'} · repos "
+             f"{', '.join(map(str, fm.get('repos') or [])) or 'None.'} · code_roots "
+             f"{', '.join(map(str, fm.get('code_roots') or [])) or 'None.'} · status "
+             f"{fm.get('status') or 'None.'}", ""]
+    for heading in [h for h in order if h in wanted] + extra:
+        if heading in INVENTORY_SECTIONS:
+            body = _inventory_part(_strip_markers(doc.section_text("Inventory") or ""), heading)
+        else:
+            body = doc.section_text(heading)
+            body = _strip_markers(body) if body is not None and heading in GENERATED_SECTIONS else body
+        if body is not None:
+            lines += [f"## {heading}", body or "None.", ""]
+    return "\n".join(lines).rstrip("\n") + "\n"
+
+
+# --------------------------------------------------------------------------- migrate (layout < 3)
+
+_OLD_LINK_RE = re.compile(r"\]\((?:\.\./|\./)?(?:functional|technical)/([\w.-]+\.md)")
+_OLD_INVENTORY_RE = re.compile(r"(?:\.\./)?_generated/([\w.-]+)\.inventory\.md")
+_OLD_DIAGRAM_RE = re.compile(r"(?:\.\./)?_generated/diagrams/architecture\.mmd")
+
+
+def _relink(text):
+    text = _OLD_LINK_RE.sub(r"](\1", text)
+    text = _OLD_INVENTORY_RE.sub(r"\1.md", text)
+    text = _OLD_DIAGRAM_RE.sub(DIAGRAM, text)
+    return re.sub(r"\b(?:functional|technical)/(\w[\w-]*)\.md\b", r"\1.md", text)
+
+
+def _preamble(doc):
+    """Text between the front-matter and the first section, without the note and the title."""
+    head = doc.body.split("\n## ", 1)[0] if not doc.body.startswith("## ") else ""
+    keep = [line for line in head.split("\n") if not line.startswith(("> ", "# "))]
+    return "\n".join(keep).strip("\n")
+
+
+def _merged_front_matter(main, other, domain):
+    match = re.match(r"---\n(.*?)\n---\n", main.text, re.S)
+    lines = match.group(1).split("\n") if match else [f"domain: {domain}"]
+    lines = _set_fm(lines, "doc", "domain", after="doc")
+    lines = _set_fm(lines, "domain", domain, after="doc")
+    repos = [str(r) for r in (main.fm.get("repos") or [])]
+    for name in (other.fm.get("repos") or []) if other else []:
+        if str(name) not in repos:
+            repos.append(str(name))
+    lines = _set_fm(lines, "repos", "[" + ", ".join(repos) + "]", after="owner")
+    if "code_roots" not in main.fm:
+        roots = (other.fm.get("code_roots") if other else None) or []
+        lines = _set_fm(lines, "code_roots", "[" + ", ".join(map(str, roots)) + "]", after="repos")
+    for key in ("id_prefix", "owner", "reviewed"):
+        if key not in main.fm and other and key in other.fm:
+            raw = re.search(rf"^{key}\s*:.*$", re.match(r"---\n(.*?)\n---\n", other.text, re.S)
+                            .group(1), re.M)
+            if raw:
+                lines = _set_fm(lines, key, raw.group(0).split(":", 1)[1].strip(), after="domain")
+    statuses = {d.fm.get("status") for d in (main, other) if d}
+    if statuses != {"verified"}:
+        lines = _set_fm(lines, "status", "draft", after="reviewed")
+    return "---\n" + "\n".join(lines) + "\n---\n"
+
+
+def _merge_domain(domain, functional, technical):
+    main, other = (technical, functional) if technical else (functional, None)
+    order = FORMAT["domain"]["order"]
+    found = {}
+    for doc in (functional, technical):
+        if doc:
+            for heading in doc.headings:
+                if heading not in found:
+                    found[heading] = doc.section_text(heading)
+    gaps = [found.pop(name, None) for name in ("Open questions and owned unknowns",
+                                               "Known gaps and tech debt")]
+    gaps = [g for g in gaps if not _empty(g)]
+    found["Open questions and known gaps"] = "\n".join(gaps) or "None."
+    found.setdefault("Inventory", "None.")
+    out = [_merged_front_matter(main, other, domain).rstrip("\n"),
+           f"> {domain}. Shared terms are in architecture.md.", "", f"# {domain}", ""]
+    intro = "\n\n".join(p for p in (_preamble(d) for d in (functional, technical) if d) if p)
+    if intro:
+        out += [intro, ""]
+    unknown = [h for h in found if h not in order]
+    for heading in [h for h in order if h in found and h not in GENERATED_SECTIONS] + unknown \
+            + [h for h in order if h in GENERATED_SECTIONS]:
+        out += [f"## {heading}", found.get(heading) or "None.", ""]
+    return _relink("\n".join(out).rstrip("\n") + "\n")
+
+
+def _migrate_domain_map(text):
+    """architecture.md: the Domain map's Technical and Functional links become one Doc link."""
+    lines = text.split("\n")
+    flags = fence_flags(lines)[0]
+    in_map, header = False, None
+    for i, line in enumerate(lines):
+        if not flags[i] and line.startswith("## "):
+            in_map, header = line[3:].strip() == "Domain map", None
+            continue
+        if not in_map or not line.startswith("|"):
+            if in_map and header and not line.startswith("|"):
+                in_map = False
+            continue
+        cells = _cells(line)
+        if header is None:
+            header = [c.lower() for c in cells]
+            if "technical" not in header and "functional" not in header:
+                in_map = False
+                continue
+            keep = [c for c, h in zip(cells, header) if h not in ("technical", "functional")]
+            lines[i] = "| " + " | ".join(keep + ["Doc"]) + " |"
+            continue
+        if re.match(r"\|\s*:?-", line):
+            lines[i] = "| " + " | ".join(["---"] * (len(header) - 1)) + " |"
+            continue
+        cell = dict(zip(header, cells + [""] * (len(header) - len(cells))))
+        link = None
+        for key in ("technical", "functional"):
+            match = LINK_RE.search(cell.get(key, ""))
+            if match:
+                link = os.path.basename(match.group(1))
+                break
+        name = cell.get("domain", "") or (os.path.splitext(link)[0] if link else "")
+        keep = [c for c, h in zip(cells, header) if h not in ("technical", "functional")]
+        lines[i] = "| " + " | ".join(keep + [f"[{name}]({link or name + '.md'})"]) + " |"
+    return _relink("\n".join(lines))
+
+
+def migrate(root):
+    """Move an old-layout docs/ (format 2.x: functional/ + technical/ + _generated/ + _index/)
+    into one docs/<domain>.md per domain. Content moves verbatim, team-owned sections included;
+    nothing is rewritten but the headings that merge, the links and the front-matter. A domain
+    whose docs/<domain>.md already exists is left for a person. No old layout: no-op."""
+    root = os.path.abspath(root)
+    base = os.path.join(root, "docs")
+    result = {"migrated": [], "skipped": [], "removed": []}
+    if not legacy_dirs(root):
+        return result
+    names = set()
+    for kind in ("functional", "technical"):
+        folder = os.path.join(base, kind)
+        if os.path.isdir(folder):
+            names |= {os.path.splitext(n)[0] for n in os.listdir(folder) if n.endswith(".md")}
+    for name in sorted(names):
+        paths = {k: os.path.join(base, k, f"{name}.md") for k in ("functional", "technical")}
+        target = os.path.join(base, f"{name}.md")
+        if os.path.exists(target) or name in RESERVED:
+            result["skipped"].append(name)
+            continue
+        loaded = {k: Doc(p, root, k) if os.path.isfile(p) else None for k, p in paths.items()}
+        domain = str((loaded["technical"] or loaded["functional"]).fm.get("domain") or name)
+        write_text(target, _merge_domain(domain if domain == name else name,
+                                         loaded["functional"], loaded["technical"]))
+        for path in paths.values():
+            if os.path.isfile(path):
+                os.remove(path)
+                result["removed"].append(os.path.relpath(path, root))
+        result["migrated"].append(name)
+    arch = os.path.join(base, "architecture.md")
+    if os.path.isfile(arch):
+        text = read_text(arch) or ""
+        new = _migrate_domain_map(text)
+        if new != text:
+            write_text(arch, new)
+    generated = [os.path.join(base, "_generated", "diagrams", "architecture.mmd"),
+                 os.path.join(base, "_index", "code-to-facts.md")]
+    gen_dir = os.path.join(base, "_generated")
+    if os.path.isdir(gen_dir):
+        generated += [os.path.join(gen_dir, n) for n in os.listdir(gen_dir)
+                      if n.endswith(".inventory.md")]
+    for path in generated:
+        if os.path.isfile(path):
+            os.remove(path)
+            result["removed"].append(os.path.relpath(path, root))
+    for name in ("functional", "technical", os.path.join("_generated", "diagrams"), "_generated",
+                 "_index"):
+        try:
+            os.rmdir(os.path.join(base, name))  # only when empty: anything else stays for a person
+        except OSError:
+            pass
+    return result
+
+
 # --------------------------------------------------------------------------- minimal docs
 _MIN_ARCHITECTURE = """---
 doc: architecture
@@ -2077,9 +2315,9 @@ A demo product used by tests.
 {repo_rows}
 
 ## Domain map
-| Domain | Purpose | Repos | Owner | Technical | Functional |
-| --- | --- | --- | --- | --- | --- |
-| {domain} | The demo domain | {repos} | demo team | [technical](technical/{domain}.md) | [functional](functional/{domain}.md) |
+| Domain | Purpose | Repos | Owner | Doc |
+| --- | --- | --- | --- | --- |
+| {domain} | The demo domain | {repos} | demo team | [{domain}]({domain}.md) |
 
 ## Cross-repo flows and contracts
 None.
@@ -2088,34 +2326,8 @@ None.
 None.
 """
 
-_MIN_FUNCTIONAL = """---
-doc: functional
-domain: {domain}
-id_prefix: DM
-owner: "demo team"
-repos: [{repos}]
-verified_at: {{}}
-reviewed: {{by: null, date: null}}
-status: verified
----
-> {domain} functional. How it is built is in technical/{domain}.md.
-
-# {domain}: Functional
-
-## Purpose and actors
-The demo domain lets a user save a draft.
-
-## Business rules
-| ID | Rule | Edge | Why / source |
-| --- | --- | --- | --- |
-| DM-BR-001 | A draft belongs to one user. | None. | Demo requirement |
-
-## Open questions and owned unknowns
-None.
-"""
-
-_MIN_TECHNICAL = """---
-doc: technical
+_MIN_DOMAIN = """---
+doc: domain
 domain: {domain}
 id_prefix: DM
 owner: "demo team"
@@ -2125,9 +2337,17 @@ verified_at: {{}}
 reviewed: {{by: null, date: null}}
 status: verified
 ---
-> {domain} technical. Rules DM-BR-* are in functional/{domain}.md.
+> {domain}. Shared terms are in architecture.md.
 
-# {domain}: Technical
+# {domain}
+
+## Purpose and actors
+The demo domain lets a user save a draft.
+
+## Business rules
+| ID | Rule | Edge | Why / source |
+| --- | --- | --- | --- |
+| DM-BR-001 | A draft belongs to one user. | None. | Demo requirement |
 
 ## Invariants and consistency
 None.
@@ -2135,13 +2355,31 @@ None.
 ## Change scenarios
 None.
 
+## Open questions and known gaps
+None.
+
 ## Cross-repo connections
 <!-- generated:connections begin; from code by living_docs.py; do not edit -->
 None.
 <!-- generated:connections end -->
 
-## Known gaps and tech debt
+## Inventory
+<!-- generated:inventory begin; from code by living_docs.py; do not edit -->
+### APIs
 None.
+
+### Events
+None.
+
+### Jobs
+None.
+
+### Data
+None.
+
+### Config
+None.
+<!-- generated:inventory end -->
 """
 
 
@@ -2151,8 +2389,7 @@ def write_minimal_docs(root, domain, repos):
     values = {"domain": domain, "repos": names, "roots": ", ".join(f"{r}/src" for r in repos),
               "repo_rows": "\n".join(f"| {r} | service | Demo {r} | None. | local |" for r in repos)}
     for rel, template in (("docs/architecture.md", _MIN_ARCHITECTURE),
-                          (f"docs/functional/{domain}.md", _MIN_FUNCTIONAL),
-                          (f"docs/technical/{domain}.md", _MIN_TECHNICAL)):
+                          (f"docs/{domain}.md", _MIN_DOMAIN)):
         path = os.path.join(root, rel)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         write_text(path, template.format(**values))
@@ -2200,6 +2437,15 @@ def main(argv=None):
     p = sub.add_parser("snapshot")
     p.add_argument("--root", default=".")
     p.add_argument("--out", required=True)
+    p.add_argument("--migrate", action="store_true", help="first move an old-layout docs/ (migrate)")
+    p = sub.add_parser("show")
+    p.add_argument("domain")
+    p.add_argument("--root", default=".")
+    p.add_argument("--part", choices=sorted(PARTS))
+    p.add_argument("--section", action="append", default=[],
+                   help="a ## heading, or an inventory part (APIs, Events, Jobs, Data, Config)")
+    p = sub.add_parser("migrate")
+    p.add_argument("--root", default=".")
     p = sub.add_parser("stamp")
     p.add_argument("--root", default=".")
     p.add_argument("--snapshot")
@@ -2267,8 +2513,8 @@ def main(argv=None):
         lines += [f"- {snippet(defs, i)}" for i in found] or ["None. The inputs cite no living-doc IDs."]
         write_text(out, "\n".join(lines) + "\n")
         print(json.dumps({"facts_path": args.out, "cited_count": len(found), "cited_csv": ",".join(found),
-                          "technical_paths": ", ".join(f"docs/{r['technical']}" for r in rows
-                                                       if r["technical"]) or "None"}))
+                          "doc_paths": ", ".join(f"docs/{r['doc']}" for r in rows if r["doc"])
+                          or "None", "domains_csv": ",".join(r["domain"] for r in rows)}))
         return 0
     if args.cmd == "domains":
         wanted = [r.strip() for r in args.repos.split(",") if r.strip()]
@@ -2284,17 +2530,32 @@ def main(argv=None):
         rows = domains_for(args.root, wanted)
         if wanted and not rows:
             rows = domains_for(args.root)
-        tech = [f"docs/{r['technical']}" for r in rows if r["technical"]]
-        func = [f"docs/{r['functional']}" for r in rows if r["functional"]]
         print(json.dumps({"domains_csv": ",".join(r["domain"] for r in rows),
-                          "technical_paths": ", ".join(tech) or "None",
-                          "functional_paths": ", ".join(func) or "None",
+                          "doc_paths": ", ".join(f"docs/{r['doc']}" for r in rows if r["doc"]) or "None",
                           "domain_count": len(rows)}))
         return 0
     if args.cmd == "snapshot":
+        moved = migrate(args.root) if args.migrate else {"migrated": []}
         write_text(args.out, json.dumps({"docs": doc_hashes(args.root), "team": team_snapshot(args.root)},
                                         indent=2, sort_keys=True) + "\n")
-        print(json.dumps({"snapshot_path": args.out}))
+        print(json.dumps({"snapshot_path": args.out, "migrated_count": len(moved["migrated"]),
+                          "migrated_csv": ",".join(moved["migrated"])}))
+        return 0
+    if args.cmd == "show":
+        text = show(args.root, args.domain, args.part, args.section)
+        if text is None:
+            names = sorted(d.domain for d in load_docs(args.root) if d.kind == "domain" and d.domain)
+            print(f"no domain doc for {args.domain}; domains: {', '.join(names) or 'none'}",
+                  file=sys.stderr)
+            return 1
+        sys.stdout.write(text)
+        return 0
+    if args.cmd == "migrate":
+        result = migrate(args.root)
+        result.update({"migrated_count": len(result["migrated"]),
+                       "next": "python3 .maestro/engine/living_docs.py check --root . --write"
+                       if result["migrated"] else ""})
+        print(json.dumps(result))
         return 0
     if args.cmd == "stamp":
         snapshot = args.snapshot if args.snapshot and os.path.isfile(args.snapshot) else None

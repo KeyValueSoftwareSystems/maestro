@@ -7,7 +7,7 @@ verified_at: {}
 reviewed: {by: "Ravi K.", date: 2026-11-02}
 status: verified
 ---
-> Start here, then open one domain doc. A diagram for people is in _generated/diagrams/architecture.mmd.
+> Start here, then open one domain doc. A diagram for people is in architecture.mmd.
 
 # Architecture
 
@@ -22,9 +22,9 @@ CoFee collects fees for small institutions such as dance schools and tuition cen
 | WhatsApp Business (Meta) | external | Approved template messages to payers | None. | external |
 
 ## Domain map
-| Domain | Purpose | Repos | Owner | Technical | Functional |
-| --- | --- | --- | --- | --- | --- |
-| payment-links | One Cashfree link per invoice, shared by its payers | cofee-backend, cofee-payer-app, cofee-admin-app | payments pod (lead: Meera S.) | [technical](technical/payment-links.md) | [functional](functional/payment-links.md) |
+| Domain | Purpose | Repos | Owner | Doc |
+| --- | --- | --- | --- | --- |
+| payment-links | One Cashfree link per invoice, shared by its payers | cofee-backend, cofee-payer-app, cofee-admin-app | payments pod (lead: Meera S.) | [payment-links](payment-links.md) |
 
 ## Cross-repo flows and contracts
 | From | To | Operation / event | Protocol | Sync | Auth | Contract |

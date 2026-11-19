@@ -18,7 +18,7 @@ Your instructions name the approved PRD and the impact assessment path. Read eac
 codebase map (`docs/codebase-maps/<name>.md`), the workspace architecture summary when there is one, and
 only the source needed to confirm where a behaviour lives. When the workspace has invariants
 and change scenarios (the `## Invariants and consistency` and `## Change scenarios` sections of
-`docs/technical/<domain>.md`, or `docs/impact/side-effects.yaml`), read those of the domains the
+`docs/<domain>.md`, or `docs/impact/side-effects.yaml`), read those of the domains the
 feature touches; without them, carry on as usual. Standalone? read the PRD the user names
 and write the assessment to a path you choose (and tell the user where).
 
@@ -41,8 +41,8 @@ and write the assessment to a path you choose (and tell the user where).
    - `compatibility_risk` — clients already deployed (old app versions, other teams' consumers)
      break if the repositories ship in the wrong order.
 4. **List what it touches**, each item with a one-line `reason` and an `evidence` pointer (the map
-   entry, doc section or `file:line` that shows it): the `domains` (a `docs/technical/<domain>.md` or
-   `docs/functional/<domain>.md` page name), the `tables` read or written in a new way, the scheduled
+   entry, doc section or `file:line` that shows it): the `domains` (a `docs/<domain>.md` page
+   name), the `tables` read or written in a new way, the scheduled
    or background `jobs`, the `queues` or topics published or consumed (new or reused), the
    `endpoints` added, changed or newly called, each with its `consumers` (the app screens and
    clients that call it), the `<PREFIX>-INV-NNN` `rules` at risk, and the `<PREFIX>-CS-NNN`
@@ -97,19 +97,19 @@ and write the assessment to a path you choose (and tell the user where).
  "infrastructure_change": false,
  "compatibility_risk": false,
  "open_decisions": [{"kind": "data-model", "question": "Does a pending transfer own the ticket or only reserve it?",
-                     "evidence": "docs/technical/tickets.md#invariants-and-consistency"},
+                     "evidence": "docs/tickets.md#invariants-and-consistency"},
                     {"kind": "rollout", "question": "Ship the backend before the transfer screen?",
                      "evidence": "PRD AC-03"}],
  "summary": "one line",
  "domains": [{"name": "tickets", "reason": "transfers are a ticket lifecycle change",
-              "evidence": "docs/technical/tickets.md"}],
+              "evidence": "docs/tickets.md"}],
  "tables": [{"name": "ticket_transfers", "reason": "new table", "evidence": "backend/docs/codebase-map.md#data"}],
  "jobs": [{"name": "transfer-expiry", "reason": "expires pending transfers", "evidence": "backend/jobs/expiry.go:12"}],
  "queues": [{"name": "notify.send", "reason": "reused to tell the recipient",
              "evidence": "backend/notify/send.go:30", "consumers": ["notifier"]}],
  "endpoints": [{"name": "POST /v1/tickets/{id}/transfers", "reason": "new", "evidence": "backend/docs/codebase-map.md#api",
                 "consumers": ["web: TicketScreen", "mobile: TicketDetail"]}],
- "rules": [{"id": "TK-INV-001", "reason": "a ticket has one owner at a time", "evidence": "docs/technical/tickets.md"}],
+ "rules": [{"id": "TK-INV-001", "reason": "a ticket has one owner at a time", "evidence": "docs/tickets.md"}],
  "scenarios": [{"id": "TK-CS-002", "reason": "changing ticket ownership", "evidence": "docs/impact/side-effects.yaml"}]}
 ```
 

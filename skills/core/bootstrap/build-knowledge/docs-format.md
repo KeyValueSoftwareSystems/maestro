@@ -1,4 +1,4 @@
-<!-- docs-format v2.3. Maestro (skills/core/bootstrap/build-knowledge/docs-format.md) and
+<!-- docs-format v3.0. Maestro (skills/core/bootstrap/build-knowledge/docs-format.md) and
      dev-workspace-template (skills/workspace-index/docs-format.md) each ship this file so each
      works on its own. When the format changes, update both. -->
 
@@ -19,15 +19,15 @@ written by hand or by a model.
 AGENTS.md                         workspace map + rules that apply everywhere
 docs/
   architecture.md                 written · level 0, read first
-  functional/<domain>.md          written · business rules, states, terms
-  technical/<domain>.md           TEAM · invariants, change scenarios
-                                  written · proposals, failure, gotchas, known gaps
-                                  generated · one block (Cross-repo connections)
+  <domain>.md                     one file per domain:
+                                    written · business rules, states, terms
+                                    TEAM · invariants, change scenarios
+                                    written · proposals, failure, gotchas, open questions and gaps
+                                    generated · two blocks (Cross-repo connections, Inventory)
+  architecture.mmd                generated · from architecture's flows table
+  code-to-facts.md                generated · checker only, never loaded into a prompt
   impact/side-effects.yaml        TEAM · change scenarios, machine-readable
   product/                        people · feature-catalog.md, prd-index.md, analytics-events.md
-  _generated/<domain>.inventory.md  generated · APIs, events, jobs, data, config
-  _generated/diagrams/architecture.mmd  generated · from architecture's flows table
-  _index/code-to-facts.md         generated · checker only, never loaded into a prompt
   provenance.yaml                 generated
   codebase-maps/<name>.md         written · one map per repo
 <repo>/<folder>/AGENTS.md|CLAUDE.md  generated facts block, only in repos that opt in
@@ -43,8 +43,14 @@ folder name); `<repo>` is that repository's checkout.
 - **Generated** files and blocks come from Maestro's `living_docs.py check --write`; never edit
   them. Without Maestro they are not produced, and the written docs keep this format.
 
-Readers open the architecture first, then one domain, then one inventory section, repo map, or
-the rows a task cites. Nobody loads all of `docs/`.
+Readers open the architecture first, then one part of one domain doc (its product sections, its
+engineering sections, or one inventory part), a repo map, or the rows a task cites. Nobody loads
+all of `docs/`, or a whole domain doc when one part answers the question. With Maestro,
+`living_docs.py show <domain> --part product|engineering|inventory` prints just that part.
+
+Before format 3 each domain had two written docs (`functional/`, `technical/`) and generated
+files under `_generated/` and `_index/`. Maestro's `living_docs.py migrate` moves them into this
+layout, content unchanged.
 
 **Domains** are the bounded contexts the code is organised around (`auth`, `payment-links`).
 Name them in kebab-case. A domain may span several repos. Do not name domains after repos unless
@@ -58,12 +64,12 @@ refreshes in place: update existing rows, add rows and files for new facts, keep
 
    ```yaml
    ---
-   doc: technical                 # architecture | functional | technical
-   domain: payment-links          # functional and technical only; equals the file name
+   doc: domain                    # architecture | domain
+   domain: payment-links          # domain docs only; equals the file name
    id_prefix: PL                  # 2–6 capitals, one per domain; architecture uses ARCH
    owner: "Unknown. (ask: tech lead, since 2026-11-10)"   # a person or team; never invented
    repos: [cofee-backend, cofee-payer-app]
-   code_roots: [cofee-backend/internal/links]             # technical only: <repo>/<path> the domain lives in
+   code_roots: [cofee-backend/internal/links]             # domain only: <repo>/<path> the domain lives in
    verified_at: {}                # written by the tool after each refresh; never by hand
    reviewed: {by: null, date: null}   # a person fills this when they review the doc
    status: draft                  # draft | verified; the tool resets it to draft on every rewrite
@@ -71,9 +77,9 @@ refreshes in place: update existing rows, add rows and files for new facts, keep
    ```
 
    Never invent an owner or reviewer. A writer leaves `status: draft`; a person sets `verified`.
-2. **IDs.** Only three kinds of fact take an ID: `<PREFIX>-BR-NNN` business rule (functional,
-   written), `<PREFIX>-INV-NNN` invariant (technical; `ARCH-INV-NNN` in architecture; team) and
-   `<PREFIX>-CS-NNN` change scenario (technical; team). Always three digits. A new fact takes the
+2. **IDs.** Only three kinds of fact take an ID: `<PREFIX>-BR-NNN` business rule (written),
+   `<PREFIX>-INV-NNN` invariant (team; `ARCH-INV-NNN` in architecture) and `<PREFIX>-CS-NNN`
+   change scenario (team), each in its own section of the domain doc. Always three digits. A new fact takes the
    next free number (`living_docs.py next <PREFIX>`); never reuse or renumber. To retire a fact,
    keep its row and start its second cell with `Retired YYYY-MM-DD:` and why. Proposals, alerts,
    edge cases and findings take no ID. Code and tests cite the invariant they enforce
@@ -87,25 +93,25 @@ refreshes in place: update existing rows, add rows and files for new facts, keep
 6. **Headings.** Only the `##` headings listed for the doc, in that order. A required heading is
    always present, with `None.` when there is nothing to say; an optional one is left out when
    empty. Tables use exactly the listed columns.
-7. **One home per fact.** A rule's wording lives in functional; where it is enforced and how it is
-   tested lives in technical; endpoints, events, jobs, tables and config live only in the
-   generated inventory; shared terms live in architecture, domain terms in functional. Cite by
-   ID instead of restating. No build or test commands (those live in `maestro.config.yaml` and
-   each repo's instructions).
-8. **Budgets**, in tokens (about 4 characters each): architecture 3,000, functional 2,000,
-   technical 2,500. Over budget, cut what an agent can find in code, or split the domain.
+7. **One home per fact.** A rule's wording lives in Business rules; where it is enforced and how
+   it is tested lives in its invariant row; endpoints, events, jobs, tables and config live only
+   in the generated inventory; shared terms live in architecture, domain terms in the domain's
+   glossary. Every other section cites the ID instead of restating the fact. No build or test
+   commands (those live in `maestro.config.yaml` and each repo's instructions).
+8. **Budgets**, in tokens (about 4 characters each): architecture 3,000, domain 4,000 not counting
+   its generated blocks. Over budget, cut what an agent can find in code, or split the domain.
 
 ## `docs/architecture.md`
 
-Note: `> Start here, then open one domain doc. A diagram for people is in _generated/diagrams/architecture.mmd.`
+Note: `> Start here, then open one domain doc. A diagram for people is in architecture.mmd.`
 Title `# Architecture`. Sections (R = required):
 
 1. `## System context and repos` (R): two sentences on the product and who uses it, then a table
    `| Repo or provider | Kind | Purpose | Owns data | Runs on |`, one row per repo and external
    provider. Runs on names where it is deployed and the anchor of its infrastructure definition
    when one exists.
-2. `## Domain map` (R): `| Domain | Purpose | Repos | Owner | Technical | Functional |`, one row per
-   domain, linking both of its docs. Every domain doc has a row; every link exists.
+2. `## Domain map` (R): `| Domain | Purpose | Repos | Owner | Doc |`, one row per domain, the Doc
+   cell linking `[<domain>](<domain>.md)`. Every domain doc has a row; every link exists.
 3. `## Cross-repo flows and contracts` (R):
    `| From | To | Operation / event | Protocol | Sync | Auth | Contract |`, one row per connection,
    the contract as an anchor or `<provider> API (external)`. The diagram is generated from it.
@@ -119,11 +125,14 @@ Title `# Architecture`. Sections (R = required):
 7. `## Glossary and aliases`: `| Term | Meaning | Code names and aliases | Not to be confused with |`,
    only terms shared by several domains.
 
-## `docs/functional/<domain>.md`
+## `docs/<domain>.md`
 
-Note: `> <domain> functional. How it is built is in technical/<domain>.md. Shared terms are in architecture.md.`
-Title `# <domain>: Functional`. The PRD interview reads this without reading code, so existing
-behaviour must be clear from it alone.
+Note: `> <domain>. Shared terms are in architecture.md.`
+Title `# <domain>`. The sections come in three parts, in this order, so a reader can take one
+part alone. The product part must make existing behaviour clear without reading code (the PRD
+interview reads only that part).
+
+Product part:
 
 1. `## Purpose and actors` (R): what the domain does, who acts and from which screen or surface,
    what is out of scope and which domain owns that. At most five sentences.
@@ -133,36 +142,41 @@ behaviour must be clear from it alone.
 4. `## States and flows`: `| From | To | Trigger | Actor | Guard |` per main entity (write
    `Entity: state` in From), the guard citing a BR; then one bullet per main flow, naming each
    surface in order.
-5. `## Open questions and owned unknowns` (R): bullets, each with its owned `Unknown.`, or `None.`
 
-## `docs/technical/<domain>.md`
+Engineering part:
 
-Note: `> <domain> technical. Rules <PREFIX>-BR-* are in functional/<domain>.md. Endpoints, events, jobs, data and config are generated in _generated/<domain>.inventory.md.`
-Title `# <domain>: Technical`.
-
-1. `## Invariants and consistency` (R, TEAM):
+5. `## Invariants and consistency` (R, TEAM):
    `| ID | Invariant | Enforces | Where (repo · path · symbol) | Consistency | Tested by |`, or `None.`
    Enforces cites the BR or ARCH-INV it protects. Consistency says transactional (and by what:
    index, lock, transaction) or eventual (and how soon). Tested by is a test anchor or an owned
    unknown.
-2. `## Change scenarios` (R, TEAM): `| ID | When changing | Also affects | Verify with | Source |`,
+6. `## Change scenarios` (R, TEAM): `| ID | When changing | Also affects | Verify with | Source |`,
    or `None.` When changing names the thing and its anchor; also affects names what breaks
    elsewhere (citing IDs, other domains, apps); verify with names test anchors. Each scenario may
    also be an entry in `docs/impact/side-effects.yaml` with the same ID (see below).
-3. `## Proposed rules and scenarios`: written by the model, as in architecture: what it found that
+7. `## Proposed rules and scenarios`: written by the model, as in architecture: what it found that
    the team has not written, each with its anchor and evidence, no ID.
-4. `## Cross-repo connections` (R): only the generated block below. Never write inside it.
-
-   ```
-   <!-- generated:connections begin; from code by living_docs.py; do not edit -->
-   <!-- generated:connections end -->
-   ```
-
-5. `## Failure, concurrency and idempotency`: bullets for races, retries, late or duplicate
+8. `## Failure, concurrency and idempotency`: bullets for races, retries, late or duplicate
    arrivals and timeouts, each citing the ID it protects.
-6. `## Gotchas`: bullets for code not to copy (with its anchor and what to use instead),
+9. `## Gotchas`: bullets for code not to copy (with its anchor and what to use instead),
    extension points, and alerts with where to start looking.
-7. `## Known gaps and tech debt` (R): bullets, or `None.`
+
+Both parts:
+
+10. `## Open questions and known gaps` (R): bullets, or `None.`: product questions, each with its
+    owned `Unknown.`, then tech debt and gaps.
+
+Generated part (never write inside the blocks; write the heading and the empty markers):
+
+11. `## Cross-repo connections` (R): each app call, the repo and handler it reaches.
+12. `## Inventory` (R): `### APIs`, `### Events`, `### Jobs`, `### Data`, `### Config`.
+
+    ```
+    <!-- generated:connections begin; from code by living_docs.py; do not edit -->
+    <!-- generated:connections end -->
+    <!-- generated:inventory begin; from code by living_docs.py; do not edit -->
+    <!-- generated:inventory end -->
+    ```
 
 ## `docs/impact/side-effects.yaml` (TEAM)
 
@@ -173,7 +187,7 @@ anchors, no folded text); `living_docs.py scaffold` writes a starter.
 ```yaml
 version: 1
 scenarios:
-  - id: PL-CS-001                   # the row's ID in the technical doc
+  - id: PL-CS-001                   # the row's ID in the domain doc
     domain: payment-links
     summary: Disabling a payment link
     rules: [PL-INV-004]             # invariants at risk
@@ -193,13 +207,13 @@ scenarios:
 
 Never edit these; `living_docs.py check --write` rewrites them from code and contracts:
 
-- `_generated/<domain>.inventory.md`: `## APIs` (operation, owner repo, handler, called by,
-  contract), `## Events` (producers, consumers), `## Jobs`, `## Data` (tables), `## Config` (keys,
-  defaults; secrets never shown). Scoped to the domain's `code_roots`, plus anything its docs
-  name. Read one section at a time.
-- The `Cross-repo connections` block: each app call, the repo and handler it reaches.
-- `_generated/diagrams/architecture.mmd`: for people; agents read the flows table.
-- `_index/code-to-facts.md`: which IDs cite each anchor. For the checker only.
+- Each domain doc's `Inventory` block: `### APIs` (operation, owner repo, handler, called by,
+  contract), `### Events` (producers, consumers), `### Jobs`, `### Data` (tables), `### Config`
+  (keys, defaults; secrets never shown). Scoped to the domain's `code_roots`, plus anything its
+  written sections name. Read one part at a time.
+- Each domain doc's `Cross-repo connections` block: each app call, the repo and handler it reaches.
+- `architecture.mmd`: for people; agents read the flows table.
+- `code-to-facts.md`: which IDs cite each anchor. For the checker only.
 - **Facts blocks**, in repos listed under `docs.facts_blocks` in `maestro.config.yaml`: each
   folder's existing `AGENTS.md` or `CLAUDE.md` gets the rows anchored in that folder, so an agent
   editing there sees them.
@@ -214,8 +228,8 @@ Java/Kotlin. A project adds its own under `docs.extract` (see `docs/project-conf
 or wrongly placed IDs (R1); an ID cited in docs, run artifacts or code that is never defined (R2);
 an anchor, or a name in `side-effects.yaml`, that does not resolve (R3); generated output that is
 stale or hand-edited (R4); an app call no repo serves (R6); front-matter, headings, table
-columns, unowned unknowns, rows that do not stand alone, or a Domain map that does not match the
-files (R7); and, in a writer's check (`--locked-from`), any change to the team's content, which
+columns, unowned unknowns, rows that do not stand alone, a Domain map that does not match the
+files, or the old folder layout (R7); and, in a writer's check (`--locked-from`), any change to the team's content, which
 the engine restores (R9). It warns when anchored code changed since `verified_at` or a doc is
 still draft (R5), when an invariant is cited in no code or test (R2), and when a doc is over
 budget (R8). In a writer's check, a problem inside the team's content is a warning for the team.

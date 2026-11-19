@@ -12,7 +12,8 @@ runs in the lead agent's context and talks to the user directly; never delegate 
 
 ## Read boundary
 
-Read only the workflow-supplied requirement, decision log, architecture and technical docs,
+Read only the workflow-supplied requirement, decision log, architecture and the engineering part
+of the domain docs,
 codebase maps, and earlier brainstorm notes. Open a source file only to check a specific claim the
 conversation depends on. Do not scan the repository broadly.
 

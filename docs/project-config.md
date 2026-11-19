@@ -145,7 +145,7 @@ cause. The result is cached per base commit and command, so a slow build runs on
 Pre-existing **test** failures are different: the engine cannot show the feature's tests pass, so
 the release verdict is `baseline-failing` and autopilot leaves the release to a person.
 
-The living docs' generated inventories (`docs/_generated/`) come from contracts in any stack
+The living docs' generated inventories (the `Inventory` block of each `docs/<domain>.md`) come from contracts in any stack
 (OpenAPI, AsyncAPI, SQL migrations, `.env.example`, Kubernetes CronJobs) and built-in patterns for
 Go, Python, JS/TS, Dart and Java/Kotlin routes, client calls, events, jobs and config. When the
 project registers routes or publishes events its own way, add a `docs.extract` pattern: a Python

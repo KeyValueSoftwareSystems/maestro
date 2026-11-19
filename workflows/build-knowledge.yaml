@@ -1,7 +1,7 @@
-# Build the codebase knowledge base by scanning the code: docs/architecture.md plus per-domain
-# functional + technical docs (format: docs-format.md in the build-knowledge skill). The engine
-# extracts and generates everything the code already lists (docs/_generated/), checks the docs
-# the agent writes (living_docs.py) and stamps them.
+# Build the codebase knowledge base by scanning the code: docs/architecture.md plus one
+# docs/<domain>.md per domain (format: docs-format.md in the build-knowledge skill). The engine
+# generates everything the code already lists (the generated blocks in each domain doc), checks
+# the docs the agent writes (living_docs.py) and stamps them.
 # Also (optionally) seeds cross-cutting review lessons into the memory store, which the engine
 # consolidates. Run once per workspace (recommended before your first feature): /build-knowledge
 # Re-runnable — refresh in place. Skips the authoring agent when maps + knowledge provenance
@@ -9,7 +9,7 @@
 version: 1
 name: build-knowledge
 title: Build the knowledge base
-description: Build docs/ (architecture + functional and technical per domain) from the codebase.
+description: Build docs/ (architecture + one doc per domain) from the codebase.
 inputs:
   slug: {type: string, default: bootstrap, description: throwaway run id for the bootstrap}
   feature: {type: string, default: knowledge-bootstrap}
@@ -83,8 +83,9 @@ nodes:
   - id: snapshot_docs
     type: script
     label: Snapshot living docs before writing
-    # Lets stamp_docs mark exactly the docs this run wrote or changed.
-    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json"]
+    # Lets stamp_docs mark exactly the docs this run wrote or changed. --migrate first moves an
+    # old-layout docs/ (functional/ + technical/) into one doc per domain, content unchanged.
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json", --migrate]
     on_fail: abort
     next: extract_inventory
 
@@ -111,18 +112,19 @@ nodes:
       numbers), owned unknowns, budgets. Then:
       1. Identify the domains (kebab-case bounded contexts); give each an id_prefix and
          code_roots.
-      2. For EACH domain write docs/functional/<domain>.md (purpose and actors, glossary,
-         business rules as BR rows with edge and source, states and flows, open questions) and
-         docs/technical/<domain>.md (failure/concurrency/idempotency, gotchas, known gaps, and
-         the invariants and change scenarios you find, as proposals with the anchor that
-         enforces each; the Cross-repo connections section holds only the empty generated block
-         markers). Invariants and change scenarios are team-owned: never edit §Invariants and consistency, §Change scenarios, §Platform-wide
-         invariants or docs/impact/side-effects.yaml (the engine restores them); write what you
-         find under §Proposed rules and scenarios instead. A new
-         technical doc's §Invariants and consistency and §Change scenarios say None. Read the
-         code that enforces each rule before proposing it.
+      2. For EACH domain write ONE doc, docs/<domain>.md: purpose and actors, glossary,
+         business rules as BR rows with edge and source, states and flows; then
+         failure/concurrency/idempotency, gotchas, the invariants and change scenarios you find
+         (as proposals with the anchor that enforces each), and one list of open questions and
+         known gaps. Say each fact once, in its own section, and cite it by ID elsewhere. The
+         Cross-repo connections and Inventory sections hold only the generated block markers.
+         Invariants and change scenarios are team-owned: never edit §Invariants and consistency,
+         §Change scenarios, §Platform-wide invariants or docs/impact/side-effects.yaml (the
+         engine restores them); write what you find under §Proposed rules and scenarios instead.
+         A new doc's §Invariants and consistency and §Change scenarios say None. Read the code
+         that enforces each rule before proposing it.
       3. Write docs/architecture.md: system context and repos (with Runs on), the Domain map
-         linking both files of every domain, cross-repo flows and contracts, conventions and
+         linking each domain's doc, cross-repo flows and contracts, conventions and
          boundaries, shared glossary; platform-wide invariants you find go under its
          §Proposed rules and scenarios.
       4. For EACH repo write docs/codebase-maps/<repo>.md — the standing per-repo grounding the HLD
@@ -137,8 +139,8 @@ nodes:
          ({"slug":"bootstrap","lessons":[{"domain":"backend-review","key":"<kebab>","text":"...",
          "authoritative":true}]}) — the engine renders those; do not write knowledge/ yourself.
       Never restate what the inventory lists, never invent an owner or reviewer, and never edit
-      docs/_generated/, docs/_index/, a generated: block or verified_at — the engine writes
-      those. Re-run = refresh in place; keep IDs stable and human edits intact.
+      docs/architecture.mmd, docs/code-to-facts.md, a generated: block or verified_at — the
+      engine writes those. Re-run = refresh in place; keep IDs stable and human edits intact.
     skill: build-knowledge
     inputs:
       inventory: ".maestro/runs/${inputs.slug}/.engine/knowledge/inventory.md"

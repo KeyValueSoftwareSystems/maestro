@@ -17,7 +17,9 @@ context.
 
 Read only paths explicitly supplied by the workflow, requirement files, explicit references,
 root `AGENTS.md` / `CLAUDE.md`, and maintained summaries under `docs/` such as
-`architecture.md`, `functional/` and `product/`. Never inspect application source, search
+`architecture.md`, the product part of the touched domains' docs (purpose, glossary, business
+rules, states and flows, open questions; not the engineering sections or the generated
+inventory) and `product/`. Never inspect application source, search
 parent/home/Desktop directories, or widen the scan because a summary is missing. Say what is
 unknown and ask.
 

@@ -76,7 +76,7 @@ nodes:
     next: lld_facts
 
   # Engine-owned: the living-doc rows the approved PRD and HLD cite (rules, invariants, change
-  # scenarios), plus the technical docs of the in-scope repositories' domains.
+  # scenarios), plus the docs of the in-scope repositories' domains.
   - id: lld_facts
     type: script
     label: Collect the cited living-doc facts
@@ -106,8 +106,9 @@ nodes:
       .maestro/runs/${inputs.slug}/design/openapi.yaml when it exists, confirmed LLD decisions, and for each
       repository its codebase map (docs/codebase-maps/<repo>.md), guidance, manifest, and only the
       source/tests around the affected seam. Do not scan broadly. The living-doc facts the PRD and
-      HLD cite are at ${steps.lld_facts.outputs.facts_path}; the domains' technical docs are
-      ${steps.lld_facts.outputs.technical_paths}. Settle what an invariant or change scenario
+      HLD cite are at ${steps.lld_facts.outputs.facts_path}; the domains' docs are
+      ${steps.lld_facts.outputs.doc_paths} (read the engineering part:
+      `python3 .maestro/engine/living_docs.py show <domain> --part engineering`). Settle what an invariant or change scenario
       already answers instead of asking it.
 
       Decide normal implementation details from clear existing conventions. Ask only unresolved
@@ -238,8 +239,8 @@ nodes:
       ${steps.lld_scope_init.outputs.lld_paths_csv}
       Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/design/openapi.yaml when it exists,
       the confirmed decisions at .maestro/runs/${inputs.slug}/decisions/lld.json, each repository's
-      guidance and maintained map, the cited living-doc facts and the domains' technical docs (the
-      `living_docs` input), and the bounded source/test evidence already inspected. Keep every
+      guidance and maintained map, the cited living-doc facts and the engineering part of the
+      domains' docs (the `living_docs` input; `python3 .maestro/engine/living_docs.py show <domain> --part engineering`), and the bounded source/test evidence already inspected. Keep every
       invariant the facts list, check each change scenario they name, and cite those IDs where
       the LLD relies on them.
 
@@ -280,7 +281,7 @@ nodes:
       post_questions_path: ".maestro/runs/${inputs.slug}/.engine/queues/lld-post.json"
       lld_validator: ".maestro/engine/validate_lld.py"
       question_validator: ".maestro/engine/validate_prd_questions.py"
-      living_docs: "${steps.lld_facts.outputs.facts_path}; ${steps.lld_facts.outputs.technical_paths}"
+      living_docs: "${steps.lld_facts.outputs.facts_path}; ${steps.lld_facts.outputs.doc_paths}"
       lessons: "${memory.knowledge.repo-design}"
     outputs: [summary, contract_change_needed, contract_change]
     artifact: ".maestro/runs/${inputs.slug}/.engine/queues/lld-post.json"

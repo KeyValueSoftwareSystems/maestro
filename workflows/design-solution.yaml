@@ -63,7 +63,7 @@ nodes:
       slug: "${inputs.slug}"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
       impact_path: ".maestro/runs/${inputs.slug}/design/impact.json"
-      domain_pages: "docs/functional/"
+      domain_pages: "docs/<domain>.md, one per domain (the Domain map in docs/architecture.md links each)"
       change_scenarios: "docs/impact/side-effects.yaml"
     outputs: [impact_summary, repos_csv]
     artifact: ".maestro/runs/${inputs.slug}/design/impact.json"

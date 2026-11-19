@@ -47,7 +47,7 @@ nodes:
 
       Safe updates use fast-forward only. Dirty, detached or diverged repositories are never
       modified automatically. A documentation refresh runs only when commit provenance says
-      the living technical/functional knowledge or codebase maps are stale — for example after
+      the living domain docs or codebase maps are stale — for example after
       commits made outside Maestro. Continuing uses committed HEADs; uncommitted application
       changes are not part of the feature lock or its implementation worktrees.
 
@@ -120,8 +120,9 @@ nodes:
   - id: snapshot_docs
     type: script
     label: Snapshot living docs before refresh
-    # Lets the stamp step below mark exactly the docs this refresh rewrote.
-    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/docs-snapshot.json"]
+    # Lets the stamp step below mark exactly the docs this refresh rewrote. --migrate first moves
+    # an old-layout docs/ into one doc per domain, content unchanged.
+    run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/docs-snapshot.json", --migrate]
     on_fail: abort
     next: extract_inventory
 
@@ -146,8 +147,8 @@ nodes:
       For every stale repo, update its codebase map (docs/codebase-maps/<repo>.md) only where the changed files alter
       modules, flows, execution modes, APIs or conventions. Do not touch its engine-owned
       maestro-codebase-map marker. In the domains the changes touch, update the rows of
-      docs/functional/<domain>.md (business rules) and docs/technical/<domain>.md (failure
-      behaviour, gotchas, known gaps) whose anchored code changed, keeping every ID stable; a
+      docs/<domain>.md (business rules, failure behaviour, gotchas, known gaps) whose anchored
+      code changed, keeping every ID stable and each fact in one section; a
       new fact takes the next free number. Invariants and change scenarios are team-owned: never
       edit them or docs/impact/side-effects.yaml (the engine restores them); when changed code
       breaks one, say so in the audit and propose the fix under §Proposed rules and scenarios.
@@ -155,8 +156,8 @@ nodes:
       otherwise preserve it byte-for-byte. Create missing knowledge surfaces when this is the first indexed run.
       Follow docs-format.md in the build-knowledge skill. Endpoints, events, jobs, tables,
       config and cross-repo calls are generated (the extracted inventory is the `inventory`
-      input): never restate them, and never edit docs/_generated/, docs/_index/, a generated:
-      block or verified_at. Preserve unrelated sections and human edits. Do not edit
+      input): never restate them, and never edit docs/architecture.mmd, docs/code-to-facts.md,
+      a generated: block or verified_at. Preserve unrelated sections and human edits. Do not edit
       application code. Fix only what the check reports as an ERROR: warnings (token budgets,
       anchors changed, draft docs) do not fail it, and an error that needs a change outside
       docs/ (an R6 call no repository serves) is not yours; name it in the audit and stop.

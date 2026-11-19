@@ -1,3 +1,3 @@
 # internal/links
-- Read docs/functional/payment-links.md before changing this package.
+- Read docs/payment-links.md before changing this package.
 - Run: make test PKG=./internal/links/...

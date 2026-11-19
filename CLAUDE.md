@@ -326,19 +326,24 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`docs/provenance.yaml`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
-- **`living_docs.py`** — the deterministic half of the living docs (format v2.3,
-  `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R9: ID format/placement,
+- **`living_docs.py`** — the deterministic half of the living docs (format 3: `docs/architecture.md`
+  plus ONE `docs/<domain>.md` per domain — product sections, engineering sections, generated
+  blocks; `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R9: ID format/placement,
   every cited ID defined in docs, run artifacts and code, every invariant cited in code (warning),
   `repo · path · symbol` anchors and `docs/impact/side-effects.yaml` names resolve, generated
   output current, staleness vs `verified_at`, app calls reach a served route, structure, token
   budgets; `--write` regenerates first), `extract` (inventories from contracts and code —
   OpenAPI, AsyncAPI, SQL, `.env.example`, CronJobs, built-in Go/Python/JS/Dart/Java patterns,
-  `docs.extract` from maestro.config.yaml — into `docs/_generated/`, the technical doc's
-  connections block, the diagram, `docs/_index/code-to-facts.md` and opt-in facts blocks in folder
-  `AGENTS.md`/`CLAUDE.md`), `snapshot`/`stamp` (`verified_at` = HEAD and `status: draft` on docs a
-  writer changed), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD, implement
-  and review load), `domains` (doc paths for the repos `impact.json` names). **Team-owned
-  content** — invariants (`INV`) and change scenarios (`CS`): technical `## Invariants and
+  `docs.extract` from maestro.config.yaml — into each domain doc's connections and inventory
+  blocks, `docs/architecture.mmd`, `docs/code-to-facts.md` and opt-in facts blocks in folder
+  `AGENTS.md`/`CLAUDE.md`), `show` (one part of a domain doc — `--part product|engineering|
+  inventory` or `--section` — so a step never loads the whole file), `snapshot`/`stamp`
+  (`verified_at` = HEAD and `status: draft` on docs a writer changed; generated blocks do not
+  count as a change), `migrate` (the pre-3 layout — `functional/` + `technical/` + `_generated/`
+  + `_index/` — into one doc per domain, content verbatim; the writer workflows run it as
+  `snapshot --migrate`), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD,
+  implement and review load), `domains` (doc paths for the repos `impact.json` names). **Team-owned
+  content** — invariants (`INV`) and change scenarios (`CS`): a domain doc's `## Invariants and
   consistency` / `## Change scenarios`, architecture `## Platform-wide invariants`,
   `side-effects.yaml` — is written by people only. The build-knowledge, retrospect and
   workspace-sync writers run `check --write --locked-from <snapshot>` as their handoff check: R9
@@ -346,8 +351,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   rules and scenarios`), and a problem inside it is a warning for the team, not the writer's to
   fix. `status`/`rules` (`--repo/--worktree`: the team's rules against a feature's branch; never
   blocks — `impl.yaml`'s `domain_rules` step hands it to the reviewer)/`scaffold`/`next`. Guide:
-  `docs/domain-rules.md`. workspace_sync counts a facts-block-only change as managed and pre-v2.3
-  docs as stale.
+  `docs/domain-rules.md`. workspace_sync counts a facts-block-only change as managed and pre-3 docs
+  (old layout, or no front-matter) as stale.
 - **`install_workflows.py`** — `install.sh`'s workflow upgrader: per file, add / replace an
   byte-identical stock copy (strict hash, CRLF-normalised, against `.maestro/workflow-manifest.json`
   and `engine/workflow_releases.json`, every version ever shipped) / keep a local edit and write
@@ -535,13 +540,13 @@ injected via `${memory.knowledge.<domain>}`). A lesson promotes into knowledge o
 immediately).
 
 There is a **second knowledge surface**: the committed living docs under `docs/` —
-`docs/architecture.md` (repos, Domain map, cross-repo flows, `ARCH-INV` invariants) and per
-domain `docs/functional/<domain>.md` (business rules `BR`) + `docs/technical/<domain>.md`
-(invariants `INV`, change scenarios `CS`, failure, gotchas). `build-knowledge` authors the
-judgement from the codebase; `retrospect` refreshes touched domains after a feature;
-`engine/living_docs.py` generates everything the code lists (`docs/_generated/`), checks the
-format and IDs, and stamps `verified_at`. Steps load only what they need: the touched domains'
-docs, and from LLD on only the rows the design cites. It coexists with the injected lessons store.
+`docs/architecture.md` (repos, Domain map, cross-repo flows, `ARCH-INV` invariants) and one
+`docs/<domain>.md` per domain (business rules `BR`; invariants `INV`, change scenarios `CS`,
+failure, gotchas; generated connections and inventory), each fact said once. `build-knowledge`
+authors the judgement from the codebase; `retrospect` refreshes touched domains after a feature;
+`engine/living_docs.py` generates everything the code lists (the generated blocks), checks the
+format and IDs, and stamps `verified_at`. Steps load only what they need: one part of the touched
+domains' docs (`living_docs.py show`), and from LLD on only the rows the design cites. It coexists with the injected lessons store.
 
 **The load-bearing separation (swappable skills):** the consolidation *functionality* —
 counting distinct runs, the threshold, promotion, pruning, rendering — is deterministic

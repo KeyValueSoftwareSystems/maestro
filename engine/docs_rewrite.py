@@ -3,7 +3,7 @@
 
   docs_rewrite.py check [--root .] [--plan <workspace_sync plan json>]
 
-Reads the living docs under docs/ (architecture, functional, technical) and, optionally, the
+Reads the living docs under docs/ (architecture and one doc per domain) and, optionally, the
 freshness plan that says why a refresh is due. A rewrite resets every doc it changes to
 `status: draft`, so when any doc is `verified` the person approves first.
 
@@ -26,7 +26,7 @@ def _why(plan):
     if k.get("removed_repos"):
         parts.append("repos removed: " + ", ".join(k["removed_repos"]))
     if k.get("format_stale"):
-        parts.append("docs predate format v2.3")
+        parts.append(f"docs predate format {living_docs.FORMAT_VERSION}")
     if k.get("docs_hash_stale"):
         parts.append("docs were edited since the last index")
     if (plan or {}).get("map_stale_repos"):
@@ -41,13 +41,13 @@ def check(root, plan_path=None):
     if plan_path and os.path.isfile(plan_path):
         with open(plan_path, encoding="utf-8") as fh:
             plan = json.load(fh)
-    kinds = {k: sum(1 for d in docs if d.kind == k) for k in ("architecture", "functional", "technical")}
+    kinds = {k: sum(1 for d in docs if d.kind == k) for k in ("architecture", "domain")}
     summary = "\n".join([
         f"- docs/ holds {len(docs)} living docs ({kinds['architecture']} architecture, "
-        f"{kinds['functional']} functional, {kinds['technical']} technical); {verified} verified by a person.",
+        f"{kinds['domain']} domain); {verified} verified by a person.",
         f"- A refresh will update them in place because {_why(plan)}.",
         "- Rewritten docs go back to `draft` for re-verification; the team's invariants and change "
-        "scenarios are restored untouched, and docs/_generated/ is regenerated.",
+        "scenarios are restored untouched, and the generated blocks are regenerated.",
     ])
     return {"needs_approval": verified > 0, "doc_count": len(docs),
             "verified_count": verified, "summary": summary}

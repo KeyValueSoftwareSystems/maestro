@@ -22,21 +22,21 @@ Neither ever makes a running run non-deterministic (see "Reading: frozen at init
 
 ## Surface 1 — the living docs (`docs/`)
 
-Built from the code, organised as a docs tree; committed and human-editable. Format v2.3:
+Built from the code, one file per domain; committed and human-editable. Format 3.0:
 `skills/core/bootstrap/build-knowledge/docs-format.md`.
 
 ```
 docs/
 ├── architecture.md              # written: repos, Domain map, cross-repo flows; team: ARCH-INV
-├── functional/<domain>.md       # written: business rules (BR), states and flows, terms, unknowns
-├── technical/<domain>.md        # team: invariants (INV), change scenarios (CS)
-│                                #   written: proposals, failure, gotchas; generated: connections
+├── <domain>.md                  # product part, written: business rules (BR), states and flows, terms
+│                                # engineering part: team: invariants (INV), change scenarios (CS);
+│                                #   written: proposals, failure, gotchas; open questions and gaps
+│                                # generated: connections, inventory (APIs, events, jobs, tables, config)
+├── architecture.mmd             # engine: diagram from the flows table
+├── code-to-facts.md             # engine: anchor → IDs, for the checker only
 ├── impact/side-effects.yaml     # team: change scenarios, machine-readable
 ├── codebase-maps/<repo>.md      # written: one map per repo
-├── product/                     # people: feature catalog, PRD index, analytics events
-├── _generated/<domain>.inventory.md   # engine: APIs, events, jobs, tables, config from code
-├── _generated/diagrams/architecture.mmd
-└── _index/code-to-facts.md      # engine: anchor → IDs, for the checker only
+└── product/                     # people: feature catalog, PRD index, analytics events
 ```
 
 - **Written, team-owned, generated.** The docs hold only judgement an agent cannot cheaply read
@@ -55,14 +55,17 @@ docs/
   generated output, staleness, app calls vs routes, structure, budgets, and any change to the
   team's content, which the engine restores) and `stamp` (each changed doc's `verified_at` = repo
   HEAD, `status: draft` until a person sets `verified`). Swapping a skill cannot change any of it.
-  Docs from before v2.3 (no front-matter) make the freshness plan stale, so the next refresh
-  rewrites them.
+  Docs from before format 3 (`functional/` + `technical/`, or no front-matter) make the freshness
+  plan stale; the writer's `snapshot --migrate` moves the old layout into one doc per domain,
+  content unchanged (`living_docs.py migrate` does it by hand), and the refresh rewrites the rest.
 - **Facts blocks** (opt-in, `docs.facts_blocks` in maestro.config.yaml): each folder's existing
   `AGENTS.md`/`CLAUDE.md` in those repos gets the rows anchored there, so an agent editing that
   folder sees them. A repo whose only change is a regenerated block still counts as clean.
-- **Who reads what.** PRD steps: architecture's Domain map and glossary, `product/`, and the
-  touched domains' functional docs. HLD steps: architecture plus the technical docs of the
-  domains `impact.json` names. LLD, implement and review: the cited rows and the codebase maps.
+- **Who reads what.** Each step reads one part of a domain doc, printed by
+  `living_docs.py show <domain> --part product|engineering|inventory` (or `--section APIs` for one
+  inventory part). PRD steps: architecture's Domain map and glossary, `product/`, and the touched
+  domains' product part. HLD steps: architecture plus the engineering part of the domains
+  `impact.json` names. LLD, implement and review: the cited rows and the codebase maps.
 - **`docs/provenance.yaml`** is the shared provenance record (Maestro + template
   workspace-index): the exact commit and branch of every repository these docs were last
   assessed against, plus hashes of the docs and refresh evidence. `/maestro` compares it after

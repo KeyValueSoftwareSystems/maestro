@@ -24,8 +24,8 @@ One id ties the places together, so a search finds all of them.
 
 | Place | What goes there |
 |-------|-----------------|
-| `docs/technical/<domain>.md` `## Invariants and consistency` | `<PREFIX>-INV-NNN` rows: the invariant, the business rule it enforces, where the code enforces it, how it stays consistent, the test that proves it |
-| `docs/technical/<domain>.md` `## Change scenarios` | `<PREFIX>-CS-NNN` rows: when changing this, what else is affected, which tests verify it |
+| `docs/<domain>.md` `## Invariants and consistency` | `<PREFIX>-INV-NNN` rows: the invariant, the business rule it enforces, where the code enforces it, how it stays consistent, the test that proves it |
+| `docs/<domain>.md` `## Change scenarios` | `<PREFIX>-CS-NNN` rows: when changing this, what else is affected, which tests verify it |
 | `docs/architecture.md` `## Platform-wide invariants` | `ARCH-INV-NNN` rows every repository keeps |
 | `docs/impact/side-effects.yaml` | The same change scenarios, machine-readable |
 | Code and tests | `// PL-INV-001: why` where the rule is enforced; the id in the name or comment of the test that proves it |
@@ -47,7 +47,7 @@ free ones. To retire a rule, keep its row and start its second cell with `Retire
 ```
 
 Write an invariant only for something that must hold. A description of today's behaviour is a
-business rule (`PL-BR-NNN` in the functional doc), not an invariant.
+business rule (`PL-BR-NNN` under the same doc's `## Business rules`), not an invariant.
 
 ## Proposals
 
@@ -67,13 +67,13 @@ proposal row. To reject one, delete the row.
 ## `docs/impact/side-effects.yaml`
 
 `living_docs.py scaffold` writes an empty starter. Each scenario has a row with the same ID in its
-technical doc:
+domain doc:
 
 ```yaml
 version: 1
 scenarios:
   - id: PL-CS-001
-    domain: payment-links           # the technical doc whose table lists it
+    domain: payment-links           # the domain doc whose table lists it
     summary: Disabling a payment link
     rules: [PL-INV-004]             # invariants at risk; each must be defined
     repo: backend                   # default repository for the names below

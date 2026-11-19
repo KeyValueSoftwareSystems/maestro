@@ -62,9 +62,9 @@ class ImpactTest(unittest.TestCase):
                 self.assertIn(issue, result["issues_summary"])
 
     def test_v2_items_need_reason_evidence_and_defined_ids(self):
-        os.makedirs(os.path.join(self.root, "docs", "technical"))
-        with open(os.path.join(self.root, "docs", "technical", "payments.md"), "w") as fh:
-            fh.write("---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n")
+        os.makedirs(os.path.join(self.root, "docs"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "payments.md"), "w") as fh:
+            fh.write("---\ndoc: domain\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n")
         ok = {"name": "payment_links", "reason": "new column", "evidence": "docs/codebase-map.md"}
         good = self.check(self.doc([{"name": "web", "change": "x"}], schema_version=2, tables=[ok],
                                    rules=[{"id": "PL-INV-001", "reason": "r", "evidence": "e"}]))
@@ -74,7 +74,7 @@ class ImpactTest(unittest.TestCase):
             ({"rules": [{"id": "PL-INV-009", "reason": "r", "evidence": "e"}]}, "not defined"),
             ({"rules": [{"id": "PL-1", "reason": "r", "evidence": "e"}]}, "not a <PREFIX>-INV-NNN"),
             ({"scenarios": [{"id": "PL-CS-001", "reason": "r", "evidence": "e"}]}, "not defined in the living docs"),
-            ({"domains": [{"name": "billing", "reason": "r", "evidence": "e"}]}, "'billing' has no docs/functional"),
+            ({"domains": [{"name": "billing", "reason": "r", "evidence": "e"}]}, "'billing' has no docs/"),
         ]
         for extra, issue in cases:
             with self.subTest(issue=issue):
@@ -123,9 +123,9 @@ class ImpactTest(unittest.TestCase):
                 self.assertIn(issue, result["issues_summary"])
 
     def test_core_only_keeps_the_facts_when_an_item_list_is_wrong(self):
-        os.makedirs(os.path.join(self.root, "docs", "technical"))
-        with open(os.path.join(self.root, "docs", "technical", "auth.md"), "w") as fh:
-            fh.write("---\ndoc: technical\ndomain: auth\nid_prefix: AU\n---\n")
+        os.makedirs(os.path.join(self.root, "docs"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "auth.md"), "w") as fh:
+            fh.write("---\ndoc: domain\ndomain: auth\nid_prefix: AU\n---\n")
         doc = self.facts(domains=[{"name": "authentication", "reason": "r", "evidence": "e"}])
         self.assertFalse(self.check(doc)["valid"])  # the agent's check stays strict
         loaded, issues = impact.load(self.root, self.path, core_only=True)
@@ -138,9 +138,9 @@ class ImpactTest(unittest.TestCase):
 
     def test_prd_triggers_scenario_merge(self):
         os.makedirs(os.path.join(self.root, "docs", "impact"))
-        os.makedirs(os.path.join(self.root, "docs", "technical"))
-        with open(os.path.join(self.root, "docs", "technical", "payments.md"), "w") as fh:
-            fh.write("---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n")
+        os.makedirs(os.path.join(self.root, "docs"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "payments.md"), "w") as fh:
+            fh.write("---\ndoc: domain\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One active link per invoice. |\n")
         with open(os.path.join(self.root, "docs", "impact", "side-effects.yaml"), "w") as fh:
             fh.write("version: 1\nscenarios:\n  - id: PL-CS-001\n    summary: Disabling a link\n"
                      "    rules: [PL-INV-001]\n    when_changing: [links.Service.Disable]\n"
@@ -180,9 +180,9 @@ class ImpactTest(unittest.TestCase):
 
     def test_a_scenario_the_docs_cannot_back_is_not_saved_by_validate(self):
         os.makedirs(os.path.join(self.root, "docs", "impact"))
-        os.makedirs(os.path.join(self.root, "docs", "technical"))
-        with open(os.path.join(self.root, "docs", "technical", "payments.md"), "w") as fh:
-            fh.write("---\ndoc: technical\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One. |\n")
+        os.makedirs(os.path.join(self.root, "docs"), exist_ok=True)
+        with open(os.path.join(self.root, "docs", "payments.md"), "w") as fh:
+            fh.write("---\ndoc: domain\ndomain: payments\nid_prefix: PL\n---\n## Invariants and consistency\n| ID | Invariant |\n| --- | --- |\n| PL-INV-001 | One. |\n")
         with open(os.path.join(self.root, "docs", "impact", "side-effects.yaml"), "w") as fh:
             fh.write("version: 1\nscenarios:\n  - id: PL-CS-001\n    summary: s\n"
                      "    when_changing: [links.Service.Disable]\n    also_impacts:\n      domains: [ghost]\n")

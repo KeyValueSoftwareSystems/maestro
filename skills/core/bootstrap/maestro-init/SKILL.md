@@ -58,7 +58,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
    AskUserQuestion — **Refresh the docs** or **Keep the docs as they are** (set
    `domains_written=0`, skip to step 6b) — and wait for the answer. Then load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
-   write the per-domain technical + functional docs, the architecture diagram, and a
+   write one doc per domain, the architecture diagram, and a
    codebase map per repo under `docs/codebase-maps/`. Capture `domains_written` and `architecture_path`.
 6. **Record exact provenance**
    - **6a (after authoring in step 5):** run
@@ -73,7 +73,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
    zero model call when nothing changed.
 7. **Domain rules (optional)** — run `python3 .maestro/engine/living_docs.py status --root .`.
    Invariants that must never break (`<PREFIX>-INV-NNN`) and change scenarios
-   (`<PREFIX>-CS-NNN`) are written by the project's people in `docs/technical/<domain>.md`
+   (`<PREFIX>-CS-NNN`) are written by the project's people in `docs/<domain>.md`
    (`## Invariants and consistency`, `## Change scenarios`) and `docs/impact/side-effects.yaml`;
    Maestro uses them when they exist and runs fine without them.
    - **`present=true`** — run `python3 .maestro/engine/living_docs.py rules --root .` and report
@@ -84,7 +84,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
      the team adds them under `docs/`. Options: **Create the starter file** (run
      `python3 .maestro/engine/living_docs.py scaffold --root .`, then point them at
      `docs/impact/side-effects.yaml`, the `## Invariants and consistency` / `## Change scenarios`
-     sections of each `docs/technical/<domain>.md`, and the proposals build-knowledge left under
+     sections of each `docs/<domain>.md`, and the proposals build-knowledge left under
      `## Proposed rules and scenarios`, as described in `.maestro/docs/domain-rules.md`) or
      **Skip, no domain rules**. Either answer finishes init.
    Never write or invent rules yourself: the team decides what the rules are.
