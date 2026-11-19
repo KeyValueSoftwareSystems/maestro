@@ -13,7 +13,7 @@ through the engine's bookkeeping:
                       <name>.resolutions.json (architecture, lld-readiness, drift, code-<repo>)
       build/          what was built: manifest.json, <repo>/tasks.json + verify.json
       qa/             how it was tested: the suite, report.md, results.json
-      release/        what ships: review-pack.md, ac-trace.md, delivery.json
+      release/        what ships: review-pack.md, ac-trace.md, delivery.json, plan-changes.md
       .engine/        the engine's working files: question queues, review baselines, sync plans,
                       snapshots, logs, replaced ledgers. Nothing here is written for reading.
 
@@ -57,6 +57,7 @@ BRAINSTORM = "decisions/brainstorm.md"
 FIX_PROPOSAL = "design/fix-proposal.md"
 MANIFEST = "build/manifest.json"
 DELIVERY = "release/delivery.json"
+PLAN_CHANGES = "release/plan-changes.md"
 
 # -- the engine's working files ------------------------------------------------------------
 MEMORY_SNAPSHOT = f"{ENGINE}/memory-snapshot.json"
@@ -68,6 +69,7 @@ LLD_APPROVAL = f"{ENGINE}/lld-approval.json"
 PLAN_SCOPE = f"{ENGINE}/plan-scope.json"
 PLAN_APPROVAL = f"{ENGINE}/plan-approval.json"
 PLAN_COMMITS = f"{ENGINE}/plan-commits.json"
+PLAN_FINAL = f"{ENGINE}/plan-final.md"
 SANDBOX = f"{ENGINE}/sandbox.json"
 BUG_BASES = f"{ENGINE}/bug-bases.json"
 POOL = f"{ENGINE}/implementation-pool.json"

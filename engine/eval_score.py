@@ -49,10 +49,15 @@ def _outputs(state, path):
 
 
 def _plan_valid(slug, root, plan_type):
-    """Whether the active plan passes its validator now (None when there is no active plan)."""
-    if plan_type not in plan_doc.TYPES or not os.path.isfile(plan_doc.active_path(slug, root)):
+    """Whether the plan passes its validator now: the active plan, or the completed one once the
+    run archived it (None when there is neither)."""
+    if plan_type not in plan_doc.TYPES:
         return None
-    return not plan_doc.validate(slug, root, plan_type)
+    if os.path.isfile(plan_doc.active_path(slug, root)):
+        return not plan_doc.validate(slug, root, plan_type)
+    if os.path.isfile(plan_doc.completed_path(slug, root)):
+        return not plan_doc.validate(slug, root, plan_type, completed=True)
+    return None
 
 
 def _minutes(state):

@@ -13,8 +13,9 @@ promotion and rendering — none of that is your concern, so a replacement skill
 emit the same drop for the memory system to keep working.
 
 ## Inputs
-Your instruction names the run to read (its ledger + artifacts) and the single incoming JSON
-file to write. Standalone? Write to a path you choose and tell the user.
+Your instruction names the run to read (its ledger + artifacts), the feature's completed plan
+when it has one (the record of what was built: decisions, repositories, interfaces, data and
+infrastructure changes) and the single incoming JSON file to write. Standalone? Write to a path you choose and tell the user.
 
 The two things worth remembering are **what the user asked to change** and **what went
 wrong while running** — because both are where a future run can do better from the start.
@@ -27,9 +28,9 @@ wrong while running** — because both are where a future run can do better from
    out-of-band instructions the user gave mid-run — they are requested changes too. Read the
    requirement itself (under `.maestro/<slug>/requirement/`) to frame each as the gap it
    closed. Turn each into forward-looking guidance so the NEXT run gets it right the first
-   time — e.g. "list endpoints must paginate — requested at contract review on add-orders".
+   time — e.g. "list endpoints must paginate — requested at plan approval on add-orders".
 2. **Capture the issues faced while running.** Operational problems during the run: steps
-   that failed or retried, loops that hit their visit cap, contract-check / QA / build
+   that failed or retried, loops that hit their visit cap, plan-check / QA / build
    breakages, worktree or merge trouble — anything (from `visits`/`attempts`/`status`,
    failure reasons, and the artifacts) that made the run stumble. Turn each into a lesson
    that helps a future run avoid it.
@@ -40,11 +41,12 @@ wrong while running** — because both are where a future run can do better from
      (from the approved PRD's acceptance criteria and the gate feedback) as `BR` rows with their
      edge and source; new states, flows, terms and open questions.
    - **Technical** (`docs/technical/<domain>.md`) — new failure and concurrency behaviour and
-     the gotchas the reviews raised. The invariants the design relied on and the change
+     the gotchas the reviews raised. The invariants the completed plan relied on and the change
      scenarios the run discovered (what else broke or had to change, which tests verify it) go
      under `## Proposed rules and scenarios`, without an ID, for the team to accept.
    - **Architectural** (`docs/architecture.md`) — a new repo or provider, a new or changed
-     cross-repo flow, a new domain (a Domain map row linking both of its files).
+     cross-repo flow, a new domain (a Domain map row linking both of its files). Take these from
+     the completed plan's repositories, interfaces and infrastructure, as built.
    - **Never the team's rules.** `## Invariants and consistency`, `## Change scenarios`,
      `## Platform-wide invariants` and `docs/impact/side-effects.yaml` belong to the project's
      people: leave them exactly as they are. The engine restores any change to them.

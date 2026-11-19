@@ -1,7 +1,11 @@
 # Post-release phase (invoked by sdlc-main.yaml after release approval, or on its own later): a
-# person confirms the archive, then deliver the verified branches and harvest lessons into memory.
+# person confirms the archive, then deliver the verified branches, file the feature's plan as
+# completed and harvest lessons into memory.
 #   check the release record -> confirm (person only) -> deliver (branch report, or push + pull
-#   requests per maestro.config.yaml) -> harvest -> cleanup
+#   requests per maestro.config.yaml) -> plan status -> [reconcile the plan with the delivered
+#   commits -> plan changes (person only, when they differ)] -> archive the plan + commit
+#   -> harvest -> cleanup
+# A run without an active plan (a bugfix, or a plan already archived) goes straight to harvest.
 # Nothing is merged here: a person merges the pull requests (or the reported branches).
 version: 1
 name: archive
@@ -24,21 +28,27 @@ nodes:
   - id: check_release
     type: script
     label: Check the release was approved
+    say: Checking the release was approved.
     run: [python3, .maestro/engine/release_record.py, check, --root, ., --slug, "${inputs.slug}", --manifest, "${inputs.manifest}"]
     on_fail: abort
     next: confirm_archive
 
   # Always a person: no `auto:` policy, so an autopilot release stops here too. "Not now" ends the
-  # stage with nothing pushed, no lessons harvested, the living docs untouched and the worktrees kept
-  # (the person pushes from them); running this workflow on the slug later archives it.
+  # stage with nothing pushed, no lessons harvested, the plan left in docs/plans/active/, the living
+  # docs untouched and the worktrees kept (the person pushes from them); running this workflow on
+  # the slug later archives it.
   - id: confirm_archive
     type: gate
     label: Archive confirmation
+    say: The release is approved; archiving it is your call.
     prompt: |
-      Release approved. Archive this feature now?
-      Archiving delivers the code and updates the docs/ folder. ${steps.check_release.outputs.delivery_action}
-      Not now: you deliver the code yourself, and docs/ is not updated until you archive with
-      /maestro ${inputs.slug} .maestro/workflows/archive.yaml
+      The release is approved. Archive this feature now?
+      Archiving delivers the code, files the feature's plan as completed and updates the docs/ folder.
+      ${steps.check_release.outputs.delivery_action}
+      - Archive now: deliver the code, file the plan (you confirm any differences from what was
+        built first), then record the lessons.
+      - Not now: you deliver the code yourself; the plan stays in docs/plans/active/ unchanged and
+        docs/ is not updated until you archive with /maestro ${inputs.slug} .maestro/workflows/archive.yaml
     options:
       - {id: archive, label: Archive now, to: deliver}
       - {id: skip, label: Not now — I will deliver the code myself, to: end}
@@ -49,6 +59,7 @@ nodes:
   - id: deliver
     type: script
     label: Deliver branches or pull requests
+    say: Delivering the branches.
     run:
       - python3
       - .maestro/engine/deliver.py
@@ -68,11 +79,115 @@ nodes:
       - "${steps.check_release.outputs.release_by}"
     timeout: 900
     on_fail: ask
+    next: plan_status
+
+  # Engine-owned: no active plan (a bugfix run, or the plan was archived by an earlier pass) means
+  # nothing to file; the lessons are still harvested.
+  - id: plan_status
+    type: script
+    label: Is there a plan to file?
+    say: Looking for the feature's plan.
+    run: [python3, .maestro/engine/plan_doc.py, status, --root, ".", --slug, "${inputs.slug}"]
+    routes:
+      - {when: "${steps.plan_status.outputs.active} == true", to: plan_reconcile}
+      - {to: harvest}
+
+  # Architect role: does the delivered code still match the plan? Proposes the final plan (only
+  # differences the commits evidence) and a plain change list; the person picks which is kept.
+  # Re-entered with the person's feedback from plan_changes.
+  - id: plan_reconcile
+    type: agent
+    label: Compare the plan with what was built
+    say: Comparing the plan with what was built.
+    agent: architect
+    model: sonnet
+    instruction: |
+      Compare the approved plan at docs/plans/active/${inputs.slug}.md (in the workspace root) with
+      what was delivered. For every repository in ${inputs.manifest}, read the diff from where its
+      branch left the main line to its listed commit, in its listed worktree. Start from the drift
+      check's report .maestro/runs/${inputs.slug}/reviews/drift.md and its findings
+      .maestro/runs/${inputs.slug}/reviews/drift.findings.json when they exist.
+      The person's feedback on your last proposal (empty on the first pass): ${steps.plan_changes.outputs.feedback}
+
+      Write the proposed final plan to .maestro/runs/${inputs.slug}/.engine/plan-final.md: the
+      approved plan with only the differences the commits show applied, in the same template, its
+      header's Status set to completed. Write the plain change list to
+      .maestro/runs/${inputs.slug}/release/plan-changes.md (one line per difference, with the
+      repository and commit that shows it; one line saying the code matches the plan when there
+      are none). Change nothing the commits do not show. Do not edit the approved plan itself.
+    skill: plan-reconcile
+    inputs:
+      slug: "${inputs.slug}"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
+      manifest_path: "${inputs.manifest}"
+      drift_report: ".maestro/runs/${inputs.slug}/reviews/drift.md"
+      drift_findings: ".maestro/runs/${inputs.slug}/reviews/drift.findings.json"
+      final_plan_path: ".maestro/runs/${inputs.slug}/.engine/plan-final.md"
+      changes_path: ".maestro/runs/${inputs.slug}/release/plan-changes.md"
+      feedback: "${steps.plan_changes.outputs.feedback}"
+    outputs: [changed, summary]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/.engine/plan-final.md"
+      - ".maestro/runs/${inputs.slug}/release/plan-changes.md"
+    fresh: true
+    max_visits: 5
+    routes:
+      - {when: "${steps.plan_reconcile.outputs.changed} == true", to: plan_changes}
+      - {to: plan_archive}
+
+  # Always a person: no `auto:` policy. The code is delivered either way; this only decides which
+  # version of the plan is kept as the feature's record.
+  - id: plan_changes
+    type: gate
+    label: Plan changes
+    say: What was built differs from the plan; your call on which version to keep.
+    prompt: |
+      What was built differs from the approved plan:
+      ${steps.plan_reconcile.outputs.summary}
+      The full list: .maestro/runs/${inputs.slug}/release/plan-changes.md
+
+      You are deciding which plan is filed as this feature's record in docs/plans/completed/. The
+      code is already delivered; only the document changes.
+      - Accept: file the updated plan, which describes what was built.
+      - Keep: file the plan as approved; the differences stay only in the change list.
+      - Edit: tell me what to change in the update; I redo it and ask you again.
+    options:
+      - {id: accept, label: Accept — file the updated plan, to: plan_archive_final}
+      - {id: keep, label: Keep — file the plan as approved, to: plan_archive}
+      - {id: edit, label: Edit — tell me what to change, to: plan_reconcile, input: feedback}
+
+  # Engine-owned: move the plan to docs/plans/completed/<slug>.md with Status: completed. Refuses
+  # when a completed plan already exists under the slug (never overwritten).
+  - id: plan_archive
+    type: script
+    label: File the plan as completed
+    say: Filing the plan as completed.
+    run: [python3, .maestro/engine/plan_doc.py, archive, --root, ".", --slug, "${inputs.slug}"]
+    on_fail: ask
+    next: plan_commit
+
+  # The same, with the reconciled plan the person accepted in place of the approved text.
+  - id: plan_archive_final
+    type: script
+    label: File the updated plan as completed
+    say: Filing the updated plan as completed.
+    run: [python3, .maestro/engine/plan_doc.py, archive, --root, ".", --slug, "${inputs.slug}", --final, ".maestro/runs/${inputs.slug}/.engine/plan-final.md"]
+    on_fail: ask
+    next: plan_commit
+
+  # Engine-owned: one commit of the move (and any accepted changes) in the workspace root. Never
+  # fails the run: a skipped commit is reported in `say`.
+  - id: plan_commit
+    type: script
+    label: Save the completed plan
+    say: Saving the completed plan.
+    run: [python3, .maestro/engine/plan_doc.py, commit, --root, ".", --slug, "${inputs.slug}", --event, completed]
     next: harvest
 
   - id: harvest
     type: subworkflow
     label: Harvest lessons into memory
+    say: Recording the lessons from this feature.
     workflow: .maestro/workflows/retrospect.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     next: cleanup
@@ -82,6 +197,7 @@ nodes:
   - id: cleanup
     type: script
     label: Remove the worktrees Maestro created
+    say: Removing the worktrees Maestro created.
     run: [python3, .maestro/engine/worktrees.py, remove, --root, ., --slug, "${inputs.slug}"]
     timeout: 900
     next: end
@@ -89,5 +205,7 @@ nodes:
 outputs:
   archive: "${steps.confirm_archive.outputs.choice}"
   delivery: "${steps.deliver.outputs.summary}"
+  plan: "${steps.plan_commit.outputs.say}"
+  plan_choice: "${steps.plan_changes.outputs.choice}"
   pull_requests: "${steps.deliver.outputs.pr_urls_csv}"
   worktrees: "${steps.cleanup.outputs.summary}"

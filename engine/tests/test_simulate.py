@@ -74,8 +74,13 @@ class SimulatorTest(unittest.TestCase):
         self.assertEqual(code, 0)
         manifest = os.path.join(self.root, ".maestro", "runs", "sim", "build", "manifest.json")
         self.assertTrue(os.path.isfile(manifest))
-        with open(os.path.join(self.root, "docs", "plans", "active", "sim.md")) as fh:
-            self.assertIn(f"Type: {path}", fh.read())
+        # the archive stage filed the plan as completed (the simulated code matches it)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "docs", "plans", "active", "sim.md")))
+        with open(os.path.join(self.root, "docs", "plans", "completed", "sim.md")) as fh:
+            text = fh.read()
+        self.assertIn(f"Type: {path}", text)
+        self.assertIn("Status: completed", text)
+        self.assertNotIn("simulated reconcile", text)
         with open(os.path.join(self.root, ".maestro", "runs", "sim", ".engine",
                                "plan-approval.json")) as fh:
             self.assertIn("design/test-cases.md", fh.read())

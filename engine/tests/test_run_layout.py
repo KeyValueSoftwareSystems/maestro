@@ -51,13 +51,13 @@ class ShippedWorkflowsTest(unittest.TestCase):
         named = {rel for _name, rel in self.paths()}
         for rel in (run_layout.PRD, run_layout.TEST_CASES, run_layout.BRAINSTORM,
                     run_layout.DECISION_LOG, run_layout.WORKSPACE_LOCK, run_layout.stage_record("PRD"),
-                    run_layout.queue("prd"),
+                    run_layout.queue("prd"), run_layout.PLAN_FINAL, run_layout.PLAN_CHANGES,
                     run_layout.receipt("${inputs.stack}"), run_layout.reviewed("${inputs.repo}")):
             self.assertIn(rel, named)
 
     def test_workflows_name_the_plan_where_the_engine_keeps_it(self):
         plan = run_layout.plan_active("${inputs.slug}")
-        for name in ("design-plan.yaml", "impl.yaml", "qa.yaml", "delivery.yaml"):
+        for name in ("design-plan.yaml", "impl.yaml", "qa.yaml", "delivery.yaml", "archive.yaml"):
             with open(os.path.join(REPO, "workflows", name), encoding="utf-8") as fh:
                 self.assertIn(plan, fh.read(), name)
 
@@ -78,9 +78,9 @@ class PlanLayoutTest(unittest.TestCase):
         self.assertEqual(run_layout.plan_completed("csv-export"),
                          "docs/plans/completed/csv-export.md")
         for rel in (run_layout.PLAN_SCOPE, run_layout.PLAN_APPROVAL, run_layout.SANDBOX,
-                    run_layout.BUG_BASES, run_layout.PLAN_COMMITS):
+                    run_layout.BUG_BASES, run_layout.PLAN_COMMITS, run_layout.PLAN_FINAL):
             self.assertTrue(rel.startswith(f"{run_layout.ENGINE}/"), rel)
-        for rel in (run_layout.BRAINSTORM, run_layout.FIX_PROPOSAL):
+        for rel in (run_layout.BRAINSTORM, run_layout.FIX_PROPOSAL, run_layout.PLAN_CHANGES):
             self.assertIn(rel.split("/")[0], run_layout.FOLDERS)
 
 

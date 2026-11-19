@@ -40,6 +40,7 @@ import validate as validatemod  # noqa: E402
 import codebase_scan  # noqa: E402
 import living_docs  # noqa: E402
 import lld_set  # noqa: E402
+import plan_doc  # noqa: E402
 import run_layout  # noqa: E402
 
 
@@ -237,6 +238,17 @@ def _stub_agent(root, act, slug=None):
             with open(full, "w", encoding="utf-8") as fh:
                 fh.write(_simulated_plan(root, plan.group(1), kind.group(1) if kind else "major"))
             continue
+        final = re.fullmatch(r"\.maestro/runs/([^/]+)/" + re.escape(run_layout.PLAN_FINAL),
+                             rel.replace(os.sep, "/"))
+        if final:
+            # the reconciled plan: the active plan as built (the simulated code matches it), plus
+            # a unique marker so the `fresh` check sees new proof on every visit
+            active = plan_doc.active_path(final.group(1), root)
+            text = open(active, encoding="utf-8").read() if os.path.isfile(active) else "# plan\n"
+            with open(full, "w", encoding="utf-8") as fh:
+                fh.write(plan_doc.stamp_completed(text)
+                         + f"\n<!-- simulated reconcile {time.time_ns()} -->\n")
+            continue
         if rel.endswith("/impact.json"):
             # every repository the workspace has; unique per write for the `fresh` check
             names = [name for name, _path in codebase_scan.discover_repos(root)]
@@ -333,7 +345,7 @@ def _stub_agent(root, act, slug=None):
             root, "simulated", [name for name, _path in codebase_scan.discover_repos(root)])
     bool_values = {"blocking": False, "tests_passed": True, "passed": True,
                    "checks_passed": True, "risky": False, "contract_change_needed": False,
-                   "needs_clarification": False}
+                   "needs_clarification": False, "changed": False}
     numeric_fields = {"task_count", "slice_count", "case_count", "failed_count",
                       "lessons_count"}
     outputs = {}

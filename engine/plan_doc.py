@@ -198,10 +198,10 @@ def _prd_acs(path):
     return ids
 
 
-def validate(slug, root=".", plan_type="major", prd=None):
-    """[issues] for the active plan ([] = valid)."""
-    path = active_path(slug, root)
-    rel = run_layout.plan_active(slug)
+def validate(slug, root=".", plan_type="major", prd=None, completed=False):
+    """[issues] for the active plan ([] = valid); `completed` checks the archived one instead."""
+    path = completed_path(slug, root) if completed else active_path(slug, root)
+    rel = run_layout.plan_completed(slug) if completed else run_layout.plan_active(slug)
     if not os.path.isfile(path):
         return [f"the plan is missing at {rel}"]
     with open(path, encoding="utf-8") as fh:

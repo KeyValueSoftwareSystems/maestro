@@ -259,6 +259,13 @@ class ArchiveTest(Base):
         _code, out, _ = run("status", "--root", self.root, "--slug", SLUG)
         self.assertEqual(out["path"], "docs/plans/completed/demo.md")
 
+    def test_the_completed_plan_can_be_validated(self):
+        self.major()
+        self.assertTrue(run("archive", "--root", self.root, "--slug", SLUG)[1]["archived"])
+        self.assertEqual(plan_doc.validate(SLUG, self.root, "major", completed=True), [])
+        self.assertIn("the plan is missing at docs/plans/active/demo.md",
+                      plan_doc.validate(SLUG, self.root, "major"))
+
     def test_final_replaces_content_and_minor_gets_a_status(self):
         self.major()
         final = self.write("final.md", MINOR)
