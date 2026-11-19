@@ -87,6 +87,16 @@ nodes:
     # old-layout docs/ (functional/ + technical/) into one doc per domain, content unchanged.
     run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json", --migrate]
     on_fail: abort
+    next: snapshot_sources
+
+  - id: snapshot_sources
+    type: script
+    label: Snapshot the team's source docs
+    # Every file under docs/ that Maestro does not write, plus docs.sources from
+    # maestro.config.yaml: the team's own documents. The writer may add to them, never rewrite
+    # them; the copies (git-ignored) let the engine put them back.
+    run: [python3, .maestro/engine/source_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/knowledge/sources"]
+    on_fail: abort
     next: extract_inventory
 
   - id: extract_inventory
@@ -103,7 +113,15 @@ nodes:
     label: Build the knowledge base
     model: sonnet
     instruction: |
-      Scan this workspace and build its living knowledge base under docs/. Read the repos
+      Scan this workspace and build its living knowledge base under docs/. First read the
+      team's own documents (the `sources` input): they come first. Where they describe a domain,
+      feature or rule, the living docs follow them and cite them as the source; never contradict
+      one. Where the code disagrees with one, still follow the document, add the difference to
+      the domain doc's Open questions and known gaps, and list it in
+      .maestro/runs/${inputs.slug}/.engine/knowledge/source-conflicts.json as
+      {"conflicts":[{"source":"<its path>","source_says":"…","code_says":"…","evidence":"repo · path · symbol","doc":"docs/<domain>.md"}]}
+      for a person to decide. You may add to a source document; never change or remove what
+      it says (the engine puts the original back and asks a person). Then read the repos
       under codebase/ (or the single repo), each repo's AGENTS.md / CLAUDE.md /
       .cursor/rules, any existing docs/, and the workspace inventory (the `inventory` input):
       every endpoint, call between repos, event, job, table and config key the engine extracted.
@@ -141,14 +159,51 @@ nodes:
       Never restate what the inventory lists, never invent an owner or reviewer, and never edit
       docs/architecture.mmd, docs/code-to-facts.md, a generated: block or verified_at — the
       engine writes those. Re-run = refresh in place; keep IDs stable and human edits intact.
+      A person's answer on the conflicts, if any: ${steps.source_gate.outputs.feedback}
     skill: build-knowledge
     inputs:
       inventory: ".maestro/runs/${inputs.slug}/.engine/knowledge/inventory.md"
+      sources: "${steps.snapshot_sources.outputs.paths_csv}"
     outputs: [domains_written, architecture_path, summary]
     artifact: "docs/architecture.md"
-    # Regenerates the generated files and blocks, then checks the format, IDs and anchors; a
-    # failure sends the report back to this agent.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json", --report]}
+    check:
+      # The team's documents first: a rewrite is put back and kept as a proposal, the conflict
+      # list is checked, and the person's report is written.
+      - {run: [python3, .maestro/engine/source_docs.py, guard, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/knowledge/sources", --conflicts, ".maestro/runs/${inputs.slug}/.engine/knowledge/source-conflicts.json", --report, ".maestro/runs/${inputs.slug}/decisions/source-conflicts.md"]}
+      # Regenerates the generated files and blocks, then checks the format, IDs and anchors; a
+      # failure sends the report back to this agent.
+      - {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/knowledge/docs-snapshot.json", --report]}
+    next: source_review
+
+  - id: source_review
+    type: script
+    label: Any conflicts with the team's docs?
+    run: [python3, .maestro/engine/source_docs.py, review, --snapshot, ".maestro/runs/${inputs.slug}/.engine/knowledge/sources"]
+    routes:
+      - {when: "${steps.source_review.outputs.has_source_conflicts} == true", to: source_gate}
+      - {to: stamp_docs}
+
+  - id: source_gate
+    type: gate
+    label: Decide the conflicts with your documents
+    # Person only: no `auto:` policy, so autopilot stops here too. The team's documents win
+    # until a person says otherwise.
+    prompt: |
+      The knowledge build found conflicts with your team's own documents. Nothing of yours was
+      changed: the living docs follow your documents for now.
+
+      ${steps.source_review.outputs.summary}
+    options:
+      - {id: keep, label: Keep my documents as they are — they are right, to: stamp_docs}
+      - {id: apply, label: Apply Maestro's proposed edits to my documents, to: apply_sources}
+      - {id: revise, label: Tell the writer what to change — then describe it, to: build, input: feedback}
+
+  - id: apply_sources
+    type: script
+    label: Apply the approved edits to the source docs (engine)
+    # Writes each proposal only where the document is still exactly as snapshotted.
+    run: [python3, .maestro/engine/source_docs.py, apply, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/knowledge/sources"]
+    on_fail: abort
     next: stamp_docs
 
   - id: stamp_docs

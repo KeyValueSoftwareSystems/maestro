@@ -34,6 +34,20 @@ repository serves, which needs a change to app code or to `docs.ignore_calls` in
 `maestro.config.yaml`) is not yours: say so in your report instead of editing around it. Run the
 checker once after your edits, not after each one; a run takes seconds to minutes.
 
+## The team's own documents come first
+People often drop their own documents into the workspace: a product spec, a domain write-up, an
+exported wiki page. Your instruction lists them (any file under `docs/` that is not a living doc,
+plus the ones the project configures). They outrank what you infer from the code:
+- **Read them first**, and follow them: a business rule, term or flow they state is written as
+  they state it, citing the document as its source. Never contradict one.
+- **Where the code disagrees**, still follow the document. Add the difference to the domain's
+  open questions and list it in the conflict file your instruction names, with what the
+  document says, what the code does and the `repo · path · symbol` that shows it. A person
+  decides; you never pick a side.
+- **Add, never overwrite.** You may append to a team document (a missing detail, a cross-link).
+  Never change or remove what it says, and never delete or rename it: the engine puts the
+  original back and shows your version to a person as a proposal.
+
 ## What you write, and what you never write
 - **Write only judgement**: purpose and actors, business rules with their edge cases, states and
   flows, failure and concurrency behaviour, gotchas, known gaps, owned unknowns.
@@ -109,8 +123,9 @@ The maps are committed with the rest of `docs/`.
 
 ## Safety
 - Read-only against application code; write only the written docs (`docs/architecture.md`,
-  `docs/<domain>.md`, `docs/codebase-maps/`) and the optional memory incoming
-  drop named in your instruction. Never edit application code or generated files.
+  `docs/<domain>.md`, `docs/codebase-maps/`), additions to the team's documents, the conflict
+  file and the optional memory incoming drop named in your instruction. Never create other files
+  under `docs/`, and never edit application code or generated files.
 
 ## Output contract
 Return `domains_written` (count of domains documented), `architecture_path` (the

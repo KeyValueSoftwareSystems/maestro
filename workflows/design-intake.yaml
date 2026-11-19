@@ -44,7 +44,9 @@ nodes:
     instruction: |
       State this project's product context in at most three short sentences. Read only root
       AGENTS.md / CLAUDE.md, docs/architecture.md (System context and repos, Domain map,
-      Glossary and aliases), docs/product/ when present, the product part of the docs of the
+      Glossary and aliases), the team's own documents that concern the request (listed by
+      `python3 .maestro/engine/source_docs.py list`; they come first, and where the living docs
+      disagree with one, the document wins), the product part of the docs of the
       domains the request touches (pick them from the Domain map; read each with
       `python3 .maestro/engine/living_docs.py show <domain> --part product`), and every file under
       .maestro/runs/${inputs.slug}/requirement/, including

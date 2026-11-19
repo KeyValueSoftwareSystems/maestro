@@ -275,6 +275,13 @@ repos:
 
 ## Other folders under `docs/`
 
-`docs/product/` is kept by people: `feature-catalog.md` (one row per shipped feature),
-`prd-index.md` (every approved PRD) and `analytics-events.md` (every tracked event). Writers
-leave it and any other folder (`impact/`, `prds/`) alone.
+Every other file under `docs/` is the team's own: a document people put there (a product spec,
+a domain write-up, `docs/product/feature-catalog.md`, a PDF), plus anything `docs.sources` in
+maestro.config.yaml lists outside `docs/`. These **source docs** outrank the living docs: a living
+doc follows them, cites them as the source of a rule, and never contradicts one; where the code
+disagrees, the difference goes to Open questions and known gaps and to a person. A writer may
+append to a source doc but never changes, removes, renames or deletes what it holds: the engine
+(`source_docs.py`) puts the original back and keeps the writer's version as a proposal for a
+person. A writer creates no other file under `docs/`. `docs/architecture.md` is Maestro's path:
+a team document there must move (for example to `docs/product/architecture.md`) before the first
+build.

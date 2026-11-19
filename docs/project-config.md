@@ -77,7 +77,17 @@ docs:                           # optional; the living docs (engine/living_docs.
   ignore_calls:                 # optional; client calls R6 must not check (third parties, unextracted services)
     - "POST /pg/orders/sessions"     # fnmatch against `METHOD /path` ...
     - "*trial-mode/mock-data*"       # ... or against the caller anchor `repo · path · function`
+  sources:                      # optional; the team's own documents outside docs/ (globs from the root)
+    - "specs/**"                # every file under docs/ that Maestro does not write already counts
 ```
+
+**Source docs** (`engine/source_docs.py`) are the team's own documents: every file under `docs/`
+that is not a living doc, generated output or a codebase map, plus `docs.sources`. They outrank
+the living docs. A docs writer (build-knowledge, retrospect, workspace sync) may append to one;
+any other change is put back by the engine and kept as a proposal, and a conflict between a
+document and the code is listed for a person. Both stop at a person-only gate (keep the
+documents, apply the proposals, or send the writer back with directions); autopilot does not
+answer it. The report is `decisions/source-conflicts*.md` in the run.
 
 Repository names are the ones Maestro discovers: each git repo under `codebase/`, or the
 workspace root itself in a single-repo layout.

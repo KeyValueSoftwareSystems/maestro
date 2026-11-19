@@ -353,6 +353,17 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   blocks — `impl.yaml`'s `domain_rules` step hands it to the reviewer)/`scaffold`/`next`. Guide:
   `docs/domain-rules.md`. workspace_sync counts a facts-block-only change as managed and pre-3 docs
   (old layout, or no front-matter) as stale.
+- **`source_docs.py`** — the team's own documents (every file under `docs/` Maestro does not
+  write, plus `docs.sources` globs from maestro.config.yaml): they outrank the living docs. The
+  docs writers (build-knowledge, retrospect, workspace-sync) run `snapshot` before (git-ignored
+  copies under the run's `.engine/…/sources/`) and `guard` as their first handoff check: an
+  addition (every original line kept, in order) stays; any other change, a deletion or a touched
+  binary is put back and kept as a proposal; the writer's reported conflicts (document vs code)
+  are checked; a new non-living file under `docs/` fails the check. `review` routes to a
+  person-only gate (no `auto:`): keep the documents, `apply` the proposals (only where the source
+  is unchanged since the snapshot), or send the writer back with feedback. Report:
+  `decisions/source-conflicts*.md`. A team `docs/architecture.md` (no `doc:` front-matter, no
+  provenance) stops the snapshot with a request to move it.
 - **`install_workflows.py`** — `install.sh`'s workflow upgrader: per file, add / replace an
   byte-identical stock copy (strict hash, CRLF-normalised, against `.maestro/workflow-manifest.json`
   and `engine/workflow_releases.json`, every version ever shipped) / keep a local edit and write

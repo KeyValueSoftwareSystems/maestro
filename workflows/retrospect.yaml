@@ -36,6 +36,16 @@ nodes:
     # --migrate first moves an old-layout docs/ into one doc per domain, content unchanged.
     run: [python3, .maestro/engine/living_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json", --migrate]
     on_fail: abort
+    next: snapshot_sources
+
+  - id: snapshot_sources
+    type: script
+    label: Snapshot the team's source docs
+    # The team's own documents (every file under docs/ Maestro does not write, plus docs.sources):
+    # the writer may add to them, never rewrite them; the copies (git-ignored) let the engine
+    # put them back.
+    run: [python3, .maestro/engine/source_docs.py, snapshot, --root, ., --out, ".maestro/runs/${inputs.slug}/.engine/retrospect/sources"]
+    on_fail: abort
     next: extract_inventory
 
   - id: extract_inventory
@@ -89,18 +99,62 @@ nodes:
          gets it right first time. Choose each `key` so another run seeing the same pattern
          picks the SAME key (that is how the engine corroborates). Do NOT set authoritative.
          Do NOT write knowledge/ or candidates/ — the engine renders those.
+      The team's own documents (the `sources` input) come first: the living docs follow them and
+      cite them, never contradict them. Where the code disagrees with one, follow the document,
+      add the difference to the domain doc's Open questions and known gaps, and list it in
+      .maestro/runs/${inputs.slug}/.engine/retrospect/source-conflicts.json as
+      {"conflicts":[{"source":"<its path>","source_says":"…","code_says":"…","evidence":"repo · path · symbol","doc":"docs/<domain>.md"}]}
+      for a person to decide. You may add to a source document; never change or remove what it
+      says (the engine puts the original back and asks a person).
       Fix only what the docs check reports as an ERROR: warnings (token budgets, anchors changed,
       draft docs) do not fail it, and an error that needs a change outside docs/ (an R6 call no
       repository serves) is not yours; say so in your summary and stop.
+      A person's answer on the conflicts with the team's documents, if any: ${steps.source_gate.outputs.feedback}
     skill: retrospect
     model: sonnet
     inputs:
       slug: "${inputs.slug}"
       inventory: ".maestro/runs/${inputs.slug}/.engine/retrospect/inventory.md"
+      sources: "${steps.snapshot_sources.outputs.paths_csv}"
     outputs: [incoming_path, lessons_count, summary]
     artifact: ".maestro/memory/incoming/${inputs.slug}.json"
     # Regenerates the generated files and blocks, then checks the format, IDs and anchors.
-    check: {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json", --report]}
+    check:
+      # The team's documents first: a rewrite is put back and kept as a proposal, the conflict
+      # list is checked, and the person's report is written.
+      - {run: [python3, .maestro/engine/source_docs.py, guard, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/sources", --conflicts, ".maestro/runs/${inputs.slug}/.engine/retrospect/source-conflicts.json", --report, ".maestro/runs/${inputs.slug}/decisions/source-conflicts-retrospect.md"]}
+      - {run: [python3, .maestro/engine/living_docs.py, check, --root, ., --write, --locked-from, ".maestro/runs/${inputs.slug}/.engine/retrospect/docs-snapshot.json", --report]}
+    next: source_review
+
+  - id: source_review
+    type: script
+    label: Any conflicts with the team's docs?
+    run: [python3, .maestro/engine/source_docs.py, review, --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/sources"]
+    routes:
+      - {when: "${steps.source_review.outputs.has_source_conflicts} == true", to: source_gate}
+      - {to: stamp_docs}
+
+  - id: source_gate
+    type: gate
+    label: Decide the conflicts with your documents
+    # Person only: no `auto:` policy, so autopilot stops here too. The team's documents win
+    # until a person says otherwise.
+    prompt: |
+      The docs refresh found conflicts with your team's own documents. Nothing of yours was
+      changed: the living docs follow your documents for now.
+
+      ${steps.source_review.outputs.summary}
+    options:
+      - {id: keep, label: Keep my documents as they are — they are right, to: stamp_docs}
+      - {id: apply, label: Apply Maestro's proposed edits to my documents, to: apply_sources}
+      - {id: revise, label: Tell the writer what to change — then describe it, to: retrospect, input: feedback}
+
+  - id: apply_sources
+    type: script
+    label: Apply the approved edits to the source docs (engine)
+    # Writes each proposal only where the document is still exactly as snapshotted.
+    run: [python3, .maestro/engine/source_docs.py, apply, --root, ., --snapshot, ".maestro/runs/${inputs.slug}/.engine/retrospect/sources"]
+    on_fail: abort
     next: stamp_docs
 
   - id: stamp_docs

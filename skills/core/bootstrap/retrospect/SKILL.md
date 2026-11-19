@@ -48,6 +48,12 @@ wrong while running** — because both are where a future run can do better from
    - **Never the team's rules.** `## Invariants and consistency`, `## Change scenarios`,
      `## Platform-wide invariants` and `docs/impact/side-effects.yaml` belong to the project's
      people: leave them exactly as they are. The engine restores any change to them.
+   - **The team's own documents come first.** Any other file under `docs/` (and any the project
+     configures) is a document people put there. The living docs follow it and never contradict
+     it; where the delivered code disagrees, add the difference to the domain's open questions and
+     to the conflict file your instruction names, for a person to decide. You may append to such
+     a document, never change, remove or delete what it says: the engine puts the original back
+     and shows your version to a person.
    - **Per-repo codebase map** (`docs/codebase-maps/<name>.md` for each affected repo) — run
      `python3 .maestro/engine/codebase_scan.py plan` to get, per repo, the files changed since
      the map was last recorded; update ONLY those areas (new/changed flows, execution modes,
@@ -88,7 +94,8 @@ wrong while running** — because both are where a future run can do better from
 ## Safety
 - Read-only against application code; writes are limited to the incoming JSON drop named in
   your instruction and the living docs it refreshes (the central `docs/` tree, including
-  `docs/codebase-maps/`). Never edit application code or run state.
+  `docs/codebase-maps/`), additions to the team's documents and the conflict file. Never create
+  other files under `docs/`, and never edit application code or run state.
 
 ## Output contract
 Return `incoming_path` (the JSON file written), `lessons_count` (integer), and `summary`

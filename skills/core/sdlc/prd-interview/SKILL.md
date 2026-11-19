@@ -19,7 +19,9 @@ Read only paths explicitly supplied by the workflow, requirement files, explicit
 root `AGENTS.md` / `CLAUDE.md`, and maintained summaries under `docs/` such as
 `architecture.md`, the product part of the touched domains' docs (purpose, glossary, business
 rules, states and flows, open questions; not the engineering sections or the generated
-inventory) and `product/`. Never inspect application source, search
+inventory) and the team's own documents (a product spec, a domain write-up). The team's
+documents come first: where a summary disagrees with one, follow the document and ask about the
+difference. Never inspect application source, search
 parent/home/Desktop directories, or widen the scan because a summary is missing. Say what is
 unknown and ask.
 

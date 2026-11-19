@@ -36,8 +36,14 @@ docs/
 ├── code-to-facts.md             # engine: anchor → IDs, for the checker only
 ├── impact/side-effects.yaml     # team: change scenarios, machine-readable
 ├── codebase-maps/<repo>.md      # written: one map per repo
-└── product/                     # people: feature catalog, PRD index, analytics events
+└── product/, any other file      # people: source docs (feature catalog, specs, write-ups, PDFs)
 ```
+
+- **The team's documents come first.** Every file under `docs/` that Maestro does not write (and
+  `docs.sources` in maestro.config.yaml) is a source doc: the living docs follow it and never
+  contradict it. A writer may append to one; `engine/source_docs.py` puts back any other change
+  and keeps it as a proposal, and a conflict with the code is reported. A person decides both at
+  a gate (no autopilot).
 
 - **Written, team-owned, generated.** The docs hold only judgement an agent cannot cheaply read
   from code: business rules, gotchas, owned unknowns (written by the model, reviewed by people),
@@ -63,7 +69,7 @@ docs/
   folder sees them. A repo whose only change is a regenerated block still counts as clean.
 - **Who reads what.** Each step reads one part of a domain doc, printed by
   `living_docs.py show <domain> --part product|engineering|inventory` (or `--section APIs` for one
-  inventory part). PRD steps: architecture's Domain map and glossary, `product/`, and the touched
+  inventory part). PRD steps: architecture's Domain map and glossary, the team's source docs, and the touched
   domains' product part. HLD steps: architecture plus the engineering part of the domains
   `impact.json` names. LLD, implement and review: the cited rows and the codebase maps.
 - **`docs/provenance.yaml`** is the shared provenance record (Maestro + template
