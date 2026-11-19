@@ -56,11 +56,11 @@ class DecisionLogTest(unittest.TestCase):
                                ".maestro/runs/demo/decisions/decision-log.md", "--stage",
                                "PRD=.maestro/runs/demo/decisions/prd.json,"
                                ".maestro/runs/demo/.engine/queues/prd.json", "--stage",
-                               "HLD=.maestro/runs/demo/decisions/hld.json", *extra])
+                               "PLAN=.maestro/runs/demo/decisions/plan.json", *extra])
         return json.loads(out.getvalue())
 
     def validate(self, doc, decisions=None):
-        queue = self.write(".engine/queues/hld.json", {"schema_version": 2, "audit": {
+        queue = self.write(".engine/queues/plan.json", {"schema_version": 2, "audit": {
             "unresolved": ["gap"], "contradictions": []}, **doc})
         # the feature's decisions: the folder that holds every stage's record
         errors, _, out = vq.validate(queue, decisions_path=decisions,
@@ -145,11 +145,11 @@ class DecisionLogTest(unittest.TestCase):
         errors, _ = self.validate({"questions": [follow]})
         self.assertEqual(errors, [])
         # once the follow-up is recorded, a second one is refused
-        hld = self.write("decisions/hld.json", {"decisions": [
+        plan = self.write("decisions/plan.json", {"decisions": [
             {"id": "retention-legal", "topic": "export-retention", "follow_up_of": "retention",
              "answer": "30 days unless legal hold", "source": "user-answer"}]})
         again = question("retention-again", "export-retention", follow_up_of="retention")
-        errors, _ = self.validate({"questions": [again]}, decisions=hld)
+        errors, _ = self.validate({"questions": [again]}, decisions=plan)
         self.assertTrue(any("already had its one follow-up" in e for e in errors), errors)
         wrong = question("x", "export-format", follow_up_of="retention")
         errors, _ = self.validate({"questions": [wrong]})

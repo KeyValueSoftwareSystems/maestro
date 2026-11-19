@@ -41,7 +41,7 @@ class ImplementationPoolTest(unittest.TestCase):
         git(self.repo, "commit", "-q", "-m", "initial")
         run_dir = os.path.join(self.root, ".maestro", "runs", "feature-x")
         os.makedirs(os.path.join(run_dir, ".engine"))
-        with open(os.path.join(run_dir, ".engine", "lld-scope.json"), "w") as fh:
+        with open(os.path.join(run_dir, ".engine", "plan-scope.json"), "w") as fh:
             json.dump({"selected": ["mobile-app"], "remaining": []}, fh)
 
     def create_feature_worktree(self):
@@ -55,17 +55,12 @@ class ImplementationPoolTest(unittest.TestCase):
         git(worktree, "commit", "-q", "-m", "feature")
         return worktree, branch, git(worktree, "rev-parse", "HEAD")
 
-    def test_the_plan_scope_wins_over_the_old_lld_scope(self):
+    def test_the_plan_scope_names_the_designed_repositories(self):
         engine = os.path.join(self.root, ".maestro", "runs", "feature-x", ".engine")
-        with open(os.path.join(engine, "plan-scope.json"), "w") as fh:
-            json.dump({"selected": ["mobile-app"]}, fh)
         with open(os.path.join(engine, "lld-scope.json"), "w") as fh:
-            json.dump({"selected": ["gone-repo"]}, fh)
+            json.dump({"selected": ["gone-repo"]}, fh)   # a retired file is not read
         code, out = run("list", "--root", self.root, "--slug", "feature-x")
         self.assertEqual((code, out["designed_csv"]), (0, "mobile-app"))
-        os.remove(os.path.join(engine, "plan-scope.json"))
-        code, out = run("list", "--root", self.root, "--slug", "feature-x")
-        self.assertEqual(out["designed_csv"], "gone-repo")  # a run designed before the plan
 
     def test_bugfix_start_registers_the_sandbox_and_the_fix_loop_hands_it_out(self):
         branch = "fix/feature-x-mobile-app"
@@ -316,7 +311,7 @@ class ImplementationPoolTest(unittest.TestCase):
         git(web, "add", "README.md")
         git(web, "commit", "-q", "-m", "initial")
         selection_path = os.path.join(
-            self.root, ".maestro", "runs", "feature-x", ".engine", "lld-scope.json",
+            self.root, ".maestro", "runs", "feature-x", ".engine", "plan-scope.json",
         )
         with open(selection_path, "w") as fh:
             json.dump({"selected": ["mobile-app", "web"], "remaining": []}, fh)

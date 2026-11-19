@@ -196,20 +196,16 @@ class PreflightTest(unittest.TestCase):
         self.assertIn("repos.backend.timeout_s", errors)
         self.assertIn("delivery.mode", errors)
 
-    def test_repo_role_and_infrastructure_level(self):
-        self.write(VALID.replace("    stack: go\n", "    stack: go\n    role: infra\n")
-                   + "infrastructure: {level: iac}\n")
+    def test_repo_role(self):
+        self.write(VALID.replace("    stack: go\n", "    stack: go\n    role: infra\n"))
         self.assertEqual(self.codes("error"), [])
-        self.write(VALID.replace("    stack: go\n", "    stack: go\n    role: platform\n")
-                   + "infrastructure: {level: lots, owner: ops}\n")
-        errors = self.codes("error")
-        self.assertIn(("config-shape", "repos.backend.role"), errors)
-        self.assertIn(("config-shape", "infrastructure.level"), errors)
-        self.assertIn(("config-unknown-key", "infrastructure.owner"), errors)
+        self.write(VALID.replace("    stack: go\n", "    stack: go\n    role: platform\n"))
+        self.assertIn(("config-shape", "repos.backend.role"), self.codes("error"))
 
     def test_design_sync_restart_is_always_or_cited(self):
         self.write(VALID + "design: {sync_restart: cited, light_max_criteria: 3}\n")
-        self.assertEqual(self.codes("error"), [])
+        self.assertEqual(self.codes("error"), [])  # the retired key only warns
+        self.assertIn(("config-unknown-key", "design.light_max_criteria"), self.codes("warning"))
         self.write(VALID + "design: {sync_restart: sometimes, other: 1}\n")
         errors = self.codes("error")
         self.assertIn(("config-shape", "design.sync_restart"), errors)

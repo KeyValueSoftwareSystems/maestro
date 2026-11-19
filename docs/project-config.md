@@ -45,13 +45,10 @@ environment:                    # optional: bring the stack up for QA
   start: docker compose up -d --build
   ready: ./scripts/wait-for-health   # recommended; QA starts only after it passes (preflight warns without it)
   stop: docker compose down
-infrastructure:                 # optional; overrides the detected level for HLD questions
-  level: iac                    # none | containers | iac
 design:                         # optional
-  light_max_criteria: 5         # only without a valid impact assessment: most acceptance criteria a light (no HLD) design may have (default 5)
   sync_restart: cited           # cited (default) | always. Pre-implementation sync moved repo commits after the design
                                 # was approved: `cited` redoes it only when a changed file is one the design cites or a
-                                # migration (compares paths in the HLD/LLDs, not behaviour); `always` redoes the design
+                                # migration (compares paths in the plan, not behaviour); `always` redoes the design
                                 # for any moved commit
 models:                         # optional; which model each agent step runs on
   default: sonnet               # used by a workflow that sets no defaults.model (the shipped ones do)
@@ -175,7 +172,7 @@ Calls found in mock, fixture and storybook files are skipped automatically. A ca
 (a payment gateway, say) or to a service whose routes the extractor cannot see is listed under
 `docs.ignore_calls` so it stops failing every docs step.
 
-Every review loop (architecture review of the HLD, LLD readiness check, code review) stops after
+Every review loop (the code review of each repository, and of each bug fix) stops after
 `reviews.max_rounds` reviews; any blocking finding still open then goes to the person at that
 stage's gate instead of another revision round. A re-review sees only the changes since its last
 round, and a blocking finding first raised on a re-review that the revision did not introduce is

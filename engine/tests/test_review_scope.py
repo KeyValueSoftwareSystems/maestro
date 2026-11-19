@@ -15,7 +15,7 @@ class ReviewScopeTest(unittest.TestCase):
         self.dir = tempfile.mkdtemp(prefix="review-scope-")
         self.addCleanup(shutil.rmtree, self.dir, ignore_errors=True)
         self.reviews = os.path.join(self.dir, "reviews")
-        self.doc = os.path.join(self.dir, "lld-backend.md")
+        self.doc = os.path.join(self.dir, "plan-backend.md")
         self.findings = os.path.join(self.reviews, "findings.json")
 
     def write(self, path, text):
@@ -24,23 +24,23 @@ class ReviewScopeTest(unittest.TestCase):
             fh.write(text)
 
     def prepare(self):
-        return review_scope.prepare(self.reviews, "lld", [self.doc], self.findings)
+        return review_scope.prepare(self.reviews, "plan", [self.doc], self.findings)
 
     def diff(self, result):
         with open(result["diff_path"]) as fh:
             return fh.read()
 
-    def baseline(self, name="lld", folder=None):
+    def baseline(self, name="plan", folder=None):
         with open(os.path.join(folder or self.reviews, f"{name}.baseline.json")) as fh:
             return json.load(fh)
 
     def test_first_round_then_only_the_changes(self):
-        self.write(self.doc, "# LLD\n\nretry: none\n")
+        self.write(self.doc, "# Plan\n\nretry: none\n")
         first = self.prepare()
         self.assertEqual((first["rereview"], first["previous_findings"]), (False, ""))
         self.assertIn("First review", self.diff(first))
         self.write(self.findings, json.dumps({"findings": [{"id": "LR-1"}]}))
-        self.write(self.doc, "# LLD\n\nretry: once, after 5 s\n")
+        self.write(self.doc, "# Plan\n\nretry: once, after 5 s\n")
         second = self.prepare()
         self.assertTrue(second["rereview"])
         self.assertEqual(second["changed_csv"], self.doc)
@@ -56,24 +56,24 @@ class ReviewScopeTest(unittest.TestCase):
     def test_one_baseline_file_per_review_and_no_copies_of_the_documents(self):
         """The last round's text lives in one file: no folder of document copies for a search
         (or an agent) to mistake for the documents."""
-        self.write(self.doc, "# LLD\n\nretry: none\n")
-        other = os.path.join(self.dir, "lld-web.md")
-        self.write(other, "# LLD web\n")
+        self.write(self.doc, "# Plan\n\nretry: none\n")
+        other = os.path.join(self.dir, "plan-web.md")
+        self.write(other, "# Plan web\n")
         state = os.path.join(self.dir, ".engine", "reviews")
-        review_scope.prepare(self.reviews, "lld", [self.doc, other], self.findings, state)
-        self.assertEqual(sorted(os.listdir(state)), ["lld.baseline.json", "lld.diff"])
+        review_scope.prepare(self.reviews, "plan", [self.doc, other], self.findings, state)
+        self.assertEqual(sorted(os.listdir(state)), ["plan.baseline.json", "plan.diff"])
         self.assertEqual(os.listdir(self.reviews), [])  # the reviewer's folder holds only reports
         kept = self.baseline(folder=state)
-        self.assertEqual(kept["files"], {self.doc: "# LLD\n\nretry: none\n",
-                                         other: "# LLD web\n"})
+        self.assertEqual(kept["files"], {self.doc: "# Plan\n\nretry: none\n",
+                                         other: "# Plan web\n"})
         self.assertIsNone(kept["finding_ids"])  # no review round has happened yet
         # a document added for the second round shows whole in the diff
-        new = os.path.join(self.dir, "lld-infra.md")
-        self.write(new, "# LLD infra\n")
-        second = review_scope.prepare(self.reviews, "lld", [self.doc, other, new], self.findings,
+        new = os.path.join(self.dir, "plan-infra.md")
+        self.write(new, "# Plan infra\n")
+        second = review_scope.prepare(self.reviews, "plan", [self.doc, other, new], self.findings,
                                       state)
         self.assertEqual(second["changed_csv"], new)
-        self.assertIn("+# LLD infra", self.diff(second))
+        self.assertIn("+# Plan infra", self.diff(second))
 
     def test_code_review_keeps_only_the_previous_findings(self):
         result = review_scope.prepare(self.reviews, "code-review", [], self.findings)

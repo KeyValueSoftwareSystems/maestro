@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""Serve the next state of the HLD open-question loop (workflows/design.yaml).
+"""Serve the next state of an open-question loop (a workflow's script node; no shipped
+workflow uses it today).
 
 Reads open-questions.json and prints a JSON object to stdout describing what the
 workflow should do next:
@@ -15,7 +16,7 @@ oq_record_batch.py applies the combined reply back. qids_csv/questions_md are st
 (not the per-repo list) on purpose: `complete --stdout` (resolver._complete_script)
 only parses the LAST line of stdout as JSON and keeps only scalar output fields.
 
-The design workflow's script node routes on the `state` output field — the canonical
+A workflow's script node routes on the `state` output field — the canonical
 example of the "script stdout JSON becomes routable outputs" pattern.
 
 Usage: python3 engine/oq_serve.py <path-to-open-questions.json>
@@ -72,7 +73,7 @@ def main() -> None:
         }))
         return
 
-    # 2. Any resolved-but-unfolded answer -> refine the HLD.
+    # 2. Any resolved-but-unfolded answer -> refine the document.
     if any(q.get("status") == "resolved" for q in questions):
         print(json.dumps({"state": "refine"}))
         return

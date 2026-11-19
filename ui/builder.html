@@ -1454,9 +1454,9 @@ const LINT_RULES = JSON.parse($("#lint-rules").textContent);
 const RESERVED = ["end", "abort"];
 const NODE_TYPES = ["agent", "gate", "interview", "script", "parallel", "subworkflow"];
 const ICONS = { agent: "✦", gate: "◈", interview: "?", script: "$", parallel: "⋔", subworkflow: "⧉" };
-const SKILL_CATALOG = ["prd-interview","prd-writing","hld-interview","hld-writing","lld-interview","lld-writing",
-  "api-contract","functional-testcases","architecture-review","repo-tasks","repo-implement","repo-review",
-  "fix-loop","qa-automation","human-review-pack","design-correction-fold","build-knowledge","retrospect"];
+const SKILL_CATALOG = ["prd-interview","prd-writing","plan-brainstorm","plan-writing","plan-reconcile",
+  "functional-testcases","design-drift","bug-triage","bug-reproduce","fix-proposal","repo-tasks",
+  "repo-implement","repo-review","fix-loop","qa-automation","human-review-pack","build-knowledge","retrospect"];
 const AGENT_CATALOG = ["product","architect","implementer","reviewer","qa","analyst","general","planner"];
 const MODEL_CATALOG = ["haiku","sonnet","opus"];
 const YAML_DUMP_OPTS = { lineWidth: -1, noRefs: true, noCompatMode: true };
@@ -1983,7 +1983,7 @@ function inspectNode(box) {
     sec.appendChild(field("Execution", sel(n.execution || "worker", ["worker", "lead"], v => commit("execution", () => { if (v === "worker") delete n.execution; else n.execution = v; })), "Lead runs this step in the current session without spawning a worker."));
     sec.appendChild(field("Artifact file(s) it must write", txt(Array.isArray(n.artifact) ? n.artifact.join(", ") : n.artifact,
       v => commit("art", () => { const list = v.split(",").map(s => s.trim()).filter(Boolean); if (!list.length) delete n.artifact; else n.artifact = list.length > 1 ? list : list[0]; }),
-      { mono: true, placeholder: ".maestro/${inputs.slug}/hld.md" }), "The engine refuses to mark the step done unless these exist non-empty."));
+      { mono: true, placeholder: "docs/plans/active/${inputs.slug}.md" }), "The engine refuses to mark the step done unless these exist non-empty."));
     sec.appendChild(field("Returned fields (comma-separated)", txt((n.outputs || []).join(", "),
       v => commit("outs", () => { const list = v.split(",").map(s => s.trim()).filter(Boolean); if (list.length) n.outputs = list; else delete n.outputs; }),
       { mono: true, placeholder: "summary" })));
@@ -2395,8 +2395,8 @@ const PRESETS = {
   agent: { type: "agent", instruction: "" },
   product: { type: "agent", agent: "product", skill: "prd-writing", label: "Write the PRD",
     instruction: "Write the PRD for this feature from the requirement and the confirmed decisions.", outputs: ["summary"] },
-  architect: { type: "agent", agent: "architect", skill: "hld-writing", label: "Design",
-    instruction: "Write the design for this feature from the approved requirement.", outputs: ["summary"] },
+  architect: { type: "agent", agent: "architect", skill: "plan-writing", label: "Write the plan",
+    instruction: "Write the plan for this feature from the approved requirement.", outputs: ["summary"] },
   implementer: { type: "agent", agent: "implementer", label: "Implement",
     instruction: "Implement the approved design, with tests. Report results honestly.", outputs: ["summary", "tests_passed"] },
   reviewer: { type: "agent", agent: "reviewer", label: "Review",

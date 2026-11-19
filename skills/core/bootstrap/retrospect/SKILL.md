@@ -73,8 +73,8 @@ wrong while running** — because both are where a future run can do better from
    }
    ```
 
-   - `domain` — the consuming SDLC role the lesson helps (`plan`, `backend-design`,
-     `backend-review`, `architecture-review`, or `codebase` for cross-cutting facts).
+   - `domain` — the consuming SDLC role the lesson helps (`plan` for the plan
+     writer, `<stack>-review` such as `backend-review`, or `codebase` for cross-cutting facts).
    - `key` — a short, stable, kebab-case identifier for the *pattern*. Pick it so a DIFFERENT
      run observing the same pattern would choose the SAME key — that is how the engine
      corroborates across runs. Do not encode the slug or a date in the key.

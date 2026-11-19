@@ -57,8 +57,9 @@ Before the first feature, tell Maestro how to build and test your code
 
 ## What you get
 
-- **One feature across several repos.** One PRD and one design cover the whole feature. Each
-  affected repo gets its own detailed design and branch, and all of them share one API contract.
+- **One feature across several repos.** One PRD and one plan cover the whole feature: what
+  changes in each repo, and the exact interfaces between them. Each affected repo gets its own
+  branch.
 - **A knowledge base of all your repos.** Architecture, and per area the business rules
   (functional) and the invariants and change scenarios (technical, written by your team and never
   changed by a model), each with a stable ID, plus a codebase map per repo. Endpoints, events, jobs, tables and config are generated from the code,
@@ -220,30 +221,45 @@ and its place in `docs/architecture.md`. Existing entries and other repos' docs 
    $maestro add phone OTP login        # Codex
    ```
    Maestro names the run `add-phone-otp-login` and creates `.maestro/runs/add-phone-otp-login/`.
+   It asks whether this is a **major** change (a new feature or one across repos: a full PRD and
+   plan) or a **minor** one (small and contained: a mini PRD and a 5-10 line plan); add
+   `path=major` or `path=minor` to skip the question. A name already used by another run or plan
+   is refused.
 2. **Add your requirements (optional).** Put notes, tickets or an existing PRD (any format) in
    `.maestro/runs/<feature>/requirement/`. A full PRD is restructured, and only what it leaves
    open is asked. If the folder is empty, Maestro asks you instead.
 3. **Answer its questions.** Maestro asks only about decisions it can't make on its own. Each
    question shows a recommendation and alternatives. Pick one, type your own answer, or say you
    want to discuss it.
-4. **Approve at gates.** At each approval point you choose **Approve** or **Revise** (and say what
-   to change). Want fewer stops? Say "run it on autopilot" when you start (Maestro then stops only
-   when a check fails), or "only stop for design approval".
-5. **Find the results** in `.maestro/runs/<feature>/`, one folder per kind: `requirement/` (the
-   PRD), `design/` (HLD, API contract, repository designs, test cases), `decisions/`,
+4. **Talk the design through.** Before the plan is written, Maestro's architect brainstorms the
+   change with you: you lead, it suggests and challenges, and you say when you are done.
+5. **Approve at gates.** At each approval point you choose **Approve** or **Revise** (and say what
+   to change); at the plan approval you can also say **Later** to pause the run until you come
+   back. Want fewer stops? Say "run it on autopilot" when you start (Maestro still stops for the
+   brainstorm, the plan approval and the archive; otherwise only when a check fails), or "only stop for design
+   approval".
+6. **Find the results.** The plan is `docs/plans/active/<feature>.md` in your workspace,
+   committed as it changes; when the feature is archived it moves to `docs/plans/completed/`.
+   Everything else is in `.maestro/runs/<feature>/`, one folder per kind: `requirement/` (the
+   PRD), `design/` (test cases), `decisions/` (the decision log and the brainstorm notes),
    `reviews/`, `build/`, `qa/` and `release/` (the review pack and the branches or pull requests
    ready to merge).
 
-**When the feature spans several repos,** one design covers all of them:
+**When the feature spans several repos,** one plan covers all of them:
 
 ```
-one PRD → one high-level design → one API contract → a detailed design per repo
+one PRD → brainstorm → one plan (each repo's design + the interfaces between them)
    → each repo built and tested on its own branch → QA across repos → pull requests
 ```
 
 Before designing, and again before building, Maestro fetches the latest code of every repo and
-pins the exact commits the design is based on. A small change in one repo skips the high-level
-design, and an empty workspace gets its new repos created for you.
+pins the exact commits the plan is based on. An empty workspace gets its new repos created for
+you.
+
+**Fix a bug:** `/maestro fix-otp-timeout bugfix branch=main` pins the bug down with you, sets up a
+sandbox on that branch for each affected repo, reproduces the bug with a failing test, and shows
+you the fix it proposes before writing any. After QA, each pull request targets the branch its
+repo was fixed on.
 
 **See progress.** Your agent's task list shows each stage. You can also run:
 
@@ -256,15 +272,14 @@ python3 .maestro/engine/maestroctl.py todo --slug add-phone-otp-login
 
 **Run one phase only:** `/maestro my-feature .maestro/workflows/design.yaml`
 
-**Run one stage on an existing feature:** `/maestro my-feature .maestro/workflows/design-hld.yaml`
-(or `design-contract.yaml`, `design-lld.yaml`, `design-tests.yaml`) runs that stage with the feature's existing
-documents. If the feature already has a run ledger, Maestro asks first and keeps the old one
+**Run one stage on an existing feature:** `/maestro my-feature .maestro/workflows/design-plan.yaml
+path=major` (or `design-tests.yaml`) runs that stage with the feature's existing documents. If the feature already has a run ledger, Maestro asks first and keeps the old one
 (`.engine/ledgers/replaced-<time>.yaml`).
 
-**Write an HLD or LLD without Maestro:** call the skill with your own inputs, e.g. `/lld-writing`
-(`$lld-writing` in Codex) with the feature, the HLD, contract and decisions files, the
-repositories and where each LLD goes. No queue or validators: a missing blocking decision is asked
-in chat, and a contract change is reported in chat. `/hld-writing` works the same way.
+**Write a plan without Maestro:** call the skill with your own inputs, e.g. `/plan-writing`
+(`$plan-writing` in Codex) with the feature, the PRD or requirement and the type (major or minor).
+No validators run; it tells you where it wrote the plan. `/plan-brainstorm` and `/prd-writing`
+work the same way.
 
 **See where the time goes:** every run keeps a timing
 profile (`/maestro my-feature --no-profile` opts out) at `.maestro/runs/my-feature/.engine/profile.md`: work, human and idle time per stage and step.

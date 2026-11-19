@@ -63,8 +63,8 @@ class SyncTest(unittest.TestCase):
         self.assertIsNotNone(vendor, "vendored js-yaml block missing")
         import tempfile
         for name in ("sdlc-main", "delivery", "design",
-                     "design-intake", "design-prd", "design-hld", "design-lld",
-                     "design-contract", "design-tests", "impl", "qa"):
+                     "design-intake", "design-prd", "design-plan", "design-tests",
+                     "bugfix", "bugfix-triage", "impl", "qa"):
             path = os.path.join(ROOT, "workflows", f"{name}.yaml")
             with open(path, encoding="utf-8") as fh:
                 original_text = fh.read()

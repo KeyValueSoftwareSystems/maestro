@@ -14,8 +14,8 @@ step later automates or checks. Write cases only; never edit app code, never wri
 code or framework specs (that is the QA step's job). Every case must be justified by an
 acceptance criterion.
 
-The catalog answers *what must be true*, not *how the system says it*: the design (HLD, contract,
-LLDs) settles exact status codes, error codes, field names and messages, and the QA step looks
+The catalog answers *what must be true*, not *how the system says it*: the design (the plan and
+its Interfaces section) settles exact status codes, error codes, field names and messages, and the QA step looks
 them up there when it runs a case. Keeping the catalog to the requirement means a design change
 never rewrites it, and a design that cannot meet a case shows up as a failing case, not as a
 case quietly bent to fit.

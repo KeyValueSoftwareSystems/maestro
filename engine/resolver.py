@@ -6,9 +6,9 @@ every state transition (`complete_step` / `record_gate` / `fail_step`). Routing,
 placeholder substitution, visit caps, back-edge cascade resets, parallel joins and
 subworkflow nesting all happen here, in plain Python, testable without any LLM.
 
-Path ids: top-level node `author_hld`; inside subworkflow node `design` →
-`design/author_hld`; inside branch `backend` of parallel node `author_llds` →
-`author_llds[backend]/backend_design`.
+Path ids: top-level node `write_plan`; inside subworkflow node `design` →
+`design/write_plan`; inside branch `backend` of parallel node `build_repos` →
+`build_repos[backend]/implement`.
 """
 
 from __future__ import annotations
@@ -671,7 +671,7 @@ def _cascade_reset(run, frame, node_id):
     "Downstream" = forward-reachable from the target, minus the target's own ancestors.
     Excluding ancestors is what keeps a back-edge inside a loop (e.g. oq_record ->
     oq_serve) from cascading around the cycle and wiping the very upstream steps the
-    target consumes (author_hld's HLD). Without it, re-entering a looped node silently
+    target consumes (the document its writer produced). Without it, re-entering a looped node silently
     resets its inputs; with it, each node still re-runs when the flow reaches it again
     (entering a done node triggers its own cascade), so nothing is left stale.
     """

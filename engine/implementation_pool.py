@@ -158,10 +158,8 @@ def _fail(message):
 
 
 def _design_selection(slug, root):
-    # the approved plan's scope; a run designed before the plan document kept it in lld-scope
+    # the approved plan's scope (plan_doc.py approve)
     selection_path = run_layout.path(slug, root, run_layout.PLAN_SCOPE)
-    if not os.path.isfile(selection_path):
-        selection_path = run_layout.path(slug, root, run_layout.LLD_SCOPE)
     try:
         selection = _read(selection_path)
     except (OSError, ValueError) as exc:

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The feature's plan: one document in the workspace root that replaces the HLD, LLDs and API contract.
+"""The feature's plan: one document in the workspace root that holds the whole design.
 
 The plan lives at `docs/plans/active/<slug>.md` while the feature is built and moves to
 `docs/plans/completed/<slug>.md` when it is archived. It is written by a swappable skill; this

@@ -1,8 +1,7 @@
 # Design child: requirement folder -> project context summary. No confirmation stops: the
 # summary is shown at PRD approval, where the human corrects it. Reference links and files go
-# in the requirement folder. Entered by design.yaml first, and again for a product or
-# cross-cutting architecture-review revision. The lead reads maintained summaries and
-# requirement inputs only; it never scans application source. Its outputs ground the PRD phase.
+# in the requirement folder. Entered by design.yaml first. The lead reads maintained summaries
+# and requirement inputs only; it never scans application source. Its outputs ground the PRD phase.
 version: 1
 name: design-intake
 title: Intake

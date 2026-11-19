@@ -15,7 +15,7 @@ Maestro isn't trying to replace a durable production orchestrator or an autonomo
 ## How the engine works
 
 ```
-       you: /maestro or $maestro my-feature
+       you: /maestro my-feature path=major|minor   (or: /maestro my-bug bugfix branch=<b>)
                      │
        ┌─────────────▼──────────────┐    .maestro/engine/maestroctl.py (stdlib python3)
        │  LEAD AGENT (your session) │───► next → ONE action as JSON
@@ -52,7 +52,7 @@ The one-liner above installs the core pack. To finish setting the repo up, open 
 run **`/maestro-init`** (Claude Code/Cursor) or **`$maestro-init`** (Codex) once. It:
 
 1. **detects your stack** (`detect-stack`) and re-runs the installer with the matching `--stack …`, so only the core pack + the per-stack skills your code actually uses get installed;
-2. **builds the living-docs knowledge base** (`build-knowledge`) — `docs/architecture.md` plus per-domain functional (business rules) and technical (invariants, change scenarios) docs under `docs/`, with endpoints, events, jobs, tables and config generated from the code by `living_docs.py`, plus one codebase map per repo at **`docs/codebase-maps/<name>.md`** (the standing grounding each HLD reads before choosing an architecture), which the design and review steps read as context.
+2. **builds the living-docs knowledge base** (`build-knowledge`) — `docs/architecture.md` plus per-domain functional (business rules) and technical (invariants, change scenarios) docs under `docs/`, with endpoints, events, jobs, tables and config generated from the code by `living_docs.py`, plus one codebase map per repo at **`docs/codebase-maps/<name>.md`** (the standing grounding each plan reads before choosing a design), which the design and review steps read as context.
 
 The codebase map is **commit-tracked and incremental**: the engine (`codebase_scan.py`) records, in each map's marker, the commit of the repo it reflects, so re-running (and the post-feature refresh in the archive phase) only re-examines the diff since that commit — not the whole repo. The maps are committed with the rest of `docs/`.
 
@@ -105,7 +105,14 @@ cannot read your repository or write a workflow file through it.
 python3 .maestro/engine/maestroctl.py status --slug my-feature              # step table, gates, active steps
 python3 .maestro/engine/maestroctl.py validate .maestro/workflows/my.yaml   # lint a workflow before running it
 python3 .maestro/engine/maestroctl.py preflight                             # check maestro.config.yaml (docs/project-config.md)
+python3 .maestro/engine/maestroctl.py runs                                  # every run, with its status; paused runs show "paused": true
+python3 .maestro/engine/maestroctl.py slug-check my-feature                 # is a new slug free (no run folder, no plan)?
 ```
+
+A slug names one feature for good. `init` resumes an existing run under it, but refuses to start
+a new one on a slug that already has a plan under `docs/plans/active/` or `docs/plans/completed/`
+(a delivered feature is refused even with `--force`). `slug-check` also refuses a slug with a run
+folder, so a new feature gets a new name.
 
 **Run modes.** `init --mode human|design|auto` (the lead passes it when you ask for a mode)
 decides which gates the engine answers itself from each gate's `auto:` policy — see
@@ -123,6 +130,8 @@ If a run gets stuck, `reset --slug <slug> --step <id> --cascade` and `rebase --s
 
 A run is durable and does **not** have to finish in one turn. All progress lives in the engine ledger (`.maestro/runs/<slug>/state.yaml`), so you can close the session anytime and pick up later — resume with `/maestro <slug>` or `$maestro <slug>` and it continues from the exact step, re-running nothing.
 
+Some approvals offer **Later** (the plan approval, a bug's fix approval): picking it pauses the run where it is and keeps everything, worktrees and slug included. Nothing expires a paused run; `maestroctl runs` lists it as paused so it is not forgotten. `/maestro <slug>` resumes it and asks the same question again.
+
 Sometimes the lead agent ends its turn *mid-run* — after a long step, or because the harness ended the turn. That's normal and loses nothing; just resume. Whether the loop **auto-continues** past such a pause depends on your harness:
 
 - **Claude Code — auto-continue with an opt-in Stop hook.** Maestro ships `.maestro/engine/stop_hook.py`: while a run still has autonomous work pending it keeps the loop going, and it steps aside (lets the turn end) at every human gate and when the run finishes — the human stays in charge at gates. It's read-only and **off by default**. Enable it by adding to `.claude/settings.json`:
@@ -137,7 +146,7 @@ Sometimes the lead agent ends its turn *mid-run* — after a long step, or becau
   }
   ```
 
-- **Cursor — resume manually.** Cursor has no hook system, so the loop can't auto-continue; when it pauses, just re-run the `/maestro <slug>` command. Tip: run **phase-by-phase** (`/maestro <slug> .maestro/workflows/design.yaml`, then implementation) to keep each session short — a long single-session run is the most common cause of a mid-run stop.
+- **Cursor — resume manually.** Cursor has no hook system, so the loop can't auto-continue; when it pauses, just re-run the `/maestro <slug>` command. Tip: run **phase-by-phase** (`/maestro <slug> .maestro/workflows/design.yaml path=major`, then implementation) to keep each session short — a long single-session run is the most common cause of a mid-run stop.
 
 - **Codex — resume from the durable ledger.** Native subagents can run independent Maestro
   actions in parallel. If the lead turn pauses or you close the task, invoke `$maestro <slug>`
@@ -150,8 +159,8 @@ Maestro is a shared, paved road, not a per-developer toy: keep the flows in a ce
 
 The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine** and is git-tracked on purpose (so a run resumes on any machine). Team ownership follows ledger ownership:
 
-- **One owner per slug at a time.** One developer drives a feature's run; its ledger, documents
-  and every repository's LLD live under `.maestro/runs/<slug>/`. A team that wants people working
+- **One owner per slug at a time.** One developer drives a feature's run; its ledger and documents
+  live under `.maestro/runs/<slug>/`, and its plan at `docs/plans/active/<slug>.md`. A team that wants people working
   in parallel can copy the workflow and add parallel branches.
 - **Resolving a state conflict:** never hand-merge `state.yaml`. The engine refuses to run on a
   ledger with conflict markers and never overwrites it. Take one side, then run `python3 .maestro/engine/maestroctl.py status --slug <slug>` to see where it stands and continue, or `reset --slug <slug> --step <id> --cascade` to redo from a known-good step.
@@ -181,6 +190,10 @@ The run ledger `.maestro/runs/<slug>/state.yaml` is written **only by the engine
   A workflow that changes still halts an in-flight run until `maestroctl rebase --slug <slug>`.
   On the next `/maestro` resume, an old run is detected and
   upgraded once only after your confirmation.
+- **Runs started before the plan document** (designed with an HLD, LLDs and an API contract):
+  finish them before upgrading, or restart them with `init --force`. Their ledgers name design
+  steps and engine scripts the new version no longer has; the installer leaves the retired
+  workflow files in place, but the engine cannot run them.
 - **Runs from before the folders-by-kind layout** (flat run folders, ledger `run_format` 3) are
   moved into it by `init` and `rebase`, or by hand with
   `python3 .maestro/engine/maestroctl.py migrate --slug <slug>` (`--dry-run` lists what would
@@ -224,13 +237,14 @@ After install, in your project repo:
 .agents/skills/  Codex repo-scoped copy of the same flattened skill pack; invoke with `$`
 .maestro/
   engine/     the deterministic engine (validate · init · next · complete · gate-record
-              · interview-record · interview-record-batch · interview-brief · gate-input-record · fail · reset · rebase · status · todo · graph · note · runs)
+              · interview-record · interview-record-batch · interview-brief · gate-input-record · fail · reset · rebase · status · todo · graph · note · runs · slug-check)
               + ui_server.py + schemas
               + stop_hook.py (opt-in Claude Code auto-continue hook — see "Pausing & resuming")
               + codebase_scan.py (per-repo codebase-map commit tracking for incremental refresh)
   workflows/  the example pack: sdlc-main / workspace-sync / design / impl / qa,
               split into small stages: sdlc-main's delivery,
-              design's design-intake / -prd / -hld / -contract / -lld,
+              design's design-intake / -prd / -plan / -tests,
+              bugfix (with bugfix-triage),
               plus archive / build-knowledge / retrospect — customize or replace
   ui/         builder.html (single-file visual editor)
   docs/       workflow-spec.md (the workflow spec)
@@ -238,6 +252,8 @@ After install, in your project repo:
   index/      sync plans / locks (living-doc provenance lives in docs/provenance.yaml)
   runs/<slug>/  everything for one feature: requirement/ + all artifacts + state.yaml
 docs/
+  plans/active/<slug>.md     the feature's plan while it is built (committed in the workspace root)
+  plans/completed/<slug>.md  the plan as built, moved here at archive
   provenance.yaml  shared living-doc provenance (commits, branches, docs hash)
 maestro       repo-local dev wrapper: `maestro ui` (serve the builder) + `maestro install` + `maestro help`
 ```

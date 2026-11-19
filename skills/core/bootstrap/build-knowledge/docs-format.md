@@ -166,7 +166,7 @@ Title `# <domain>: Technical`.
 
 ## `docs/impact/side-effects.yaml` (TEAM)
 
-Optional: the change scenarios, machine-readable, so feature-impact can follow them into every
+Optional: the change scenarios, machine-readable, so the plan brainstorm and the build can follow them into every
 repository they reach and the engine can check every name still exists. Maestro's YAML subset (no
 anchors, no folded text); `living_docs.py scaffold` writes a starter.
 

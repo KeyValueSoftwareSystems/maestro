@@ -13,7 +13,6 @@ import unittest
 from contextlib import redirect_stderr, redirect_stdout
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-import lld_set  # noqa: E402
 import maestroctl  # noqa: E402
 import run_layout  # noqa: E402
 import state as statemod  # noqa: E402
@@ -231,9 +230,13 @@ class MigrationTest(unittest.TestCase):
         self.assertEqual(sha(self.path("design/lld/api.md")), approved["lld/api.md"])
 
     def test_an_approved_design_is_still_approved(self):
+        """The approval record's hashes still match the moved documents."""
         self.migrate()
-        self.assertEqual(lld_set.selected("demo", self.root), ["api"])
-        self.assertEqual(lld_set.stale_reasons("demo", self.root), [])
+        self.assertEqual(self.read(".engine/lld-scope.json")["selected"], ["api"])
+        approval = self.read(".engine/lld-approval.json")
+        self.assertEqual(approval["hld_sha256"], sha(self.path("design/hld.md")))
+        self.assertEqual(approval["contract_sha256"], sha(self.path("design/openapi.yaml")))
+        self.assertEqual(approval["llds"], {"api": sha(self.path("design/lld/api.md"))})
 
     def test_review_copies_become_one_baseline_keyed_by_the_new_paths(self):
         self.migrate()
@@ -353,7 +356,8 @@ class MigrationTest(unittest.TestCase):
         result = json.loads(out)
         self.assertIn("folders-by-kind layout", result["migrated"])
         self.assertTrue(os.path.isfile(self.path("design/hld.md")))
-        self.assertEqual(lld_set.stale_reasons("demo", self.root), [])
+        self.assertEqual(self.read(".engine/lld-approval.json")["llds"],
+                         {"api": sha(self.path("design/lld/api.md"))})
         self.assertEqual(len(os.listdir(statemod.ledgers_dir("demo", self.root))), 2)
 
 

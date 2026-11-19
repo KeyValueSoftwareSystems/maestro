@@ -44,7 +44,7 @@ def question(qid, status="open", options=("A", "B", "C")):
     if status in ("resolved", "folded"):
         resolution = {"kind": "picked", "answer": options[0]}
     elif status == "deferred":
-        resolution = {"kind": "skip", "answer": "Deferred to LLD"}
+        resolution = {"kind": "skip", "answer": "Deferred to the plan"}
     return {"id": qid, "question": f"Q for {qid}?", "why": "because",
             "options": list(options), "status": status, "resolution": resolution}
 

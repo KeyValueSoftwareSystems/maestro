@@ -2,8 +2,8 @@
 
 Score each criterion 1–5.
 
-- **contract_first** — the contract defines the new `status` field (type, allowed values, that it
-  is additive) before either LLD; both LLDs and both implementations follow it exactly.
+- **interface_first** — the plan's Interfaces section defines the new `status` field (type,
+  allowed values, that it is additive); both implementations follow it exactly.
 - **compatibility** — existing fields and callers are untouched; the change is additive.
 - **architecture_judgement** — ownership is clear (the API derives status; the client only shows
   it); no new services, queues or caches for a derived field.

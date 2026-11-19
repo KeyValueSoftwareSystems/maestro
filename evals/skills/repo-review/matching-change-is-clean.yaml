@@ -2,7 +2,7 @@ skill: repo-review
 name: matching-change-is-clean
 prompt: |
   Review this change and reply with the findings file JSON, then your last-line JSON.
-  LLD: GET /exports is admin-only (403 {"error": {"code": "forbidden"}} otherwise) and refuses
+  Plan: GET /exports is admin-only (403 {"error": {"code": "forbidden"}} otherwise) and refuses
   more than 50,000 rows with 422 {"error": {"code": "export_too_large", "limit": 50000}}.
   Task list: t1 view + permission, t2 row-limit check; both done. Engine checks passed; no
   existing test file changed.

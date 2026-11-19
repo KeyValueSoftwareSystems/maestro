@@ -131,7 +131,7 @@ The user may not know an answer. That is a normal outcome, not a failure — hel
 - Do not write or edit `prd.md` during this skill.
 - Do not silently assume a material product fact: when it is unknown and answers differ, ask.
 - State each idea once. Prefer bullets or one short paragraph.
-- Do not ask technical-design questions; those belong to HLD/LLD.
+- Do not ask technical-design questions; those belong to the plan's brainstorm.
 - Do not turn PRD headings into questions.
 - Do not combine decisions with “and,” nested alternatives, or multiple question marks.
 - Do not mark the queue clear merely because every earlier question has an answer.

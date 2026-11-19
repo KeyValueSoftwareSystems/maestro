@@ -69,7 +69,7 @@ class WorktreesTest(unittest.TestCase):
         self.run_dir = statemod.feature_dir(SLUG, self.root)
         os.makedirs(os.path.join(self.run_dir, ".engine"))
         os.makedirs(os.path.join(self.run_dir, "release"))
-        with open(os.path.join(self.run_dir, ".engine", "lld-scope.json"), "w") as fh:
+        with open(os.path.join(self.run_dir, ".engine", "plan-scope.json"), "w") as fh:
             json.dump({"selected": list(self.repos)}, fh)
         self.assertEqual(call(pool, "init", "--root", self.root, "--slug", SLUG,
                               "--choice", "all", "--fresh")[0], 0)

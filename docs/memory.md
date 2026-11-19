@@ -46,7 +46,7 @@ docs/
   contracts (OpenAPI, AsyncAPI, migrations, `.env.example`, CronJobs, plus Go/Python/JS/Dart/Java
   patterns and the project's own under `docs.extract`) — never written by a model.
 - **IDs and anchors.** `<PREFIX>-BR-NNN`, `-INV-NNN`, `-CS-NNN` (and `ARCH-INV-NNN`), stable for
-  life; code is pointed at as `repo · path · symbol`. Designs, LLDs and code comments cite IDs, and
+  life; code is pointed at as `repo · path · symbol`. Plans and code comments cite IDs, and
   steps load only the cited rows (`living_docs.py cited`).
 - **`build-knowledge`** (`/build-knowledge`) writes the tree once per workspace, re-runnable;
   **`retrospect`** updates the touched domains after a feature; workspace sync refreshes what a
@@ -61,8 +61,9 @@ docs/
   `AGENTS.md`/`CLAUDE.md` in those repos gets the rows anchored there, so an agent editing that
   folder sees them. A repo whose only change is a regenerated block still counts as clean.
 - **Who reads what.** PRD steps: architecture's Domain map and glossary, `product/`, and the
-  touched domains' functional docs. HLD steps: architecture plus the technical docs of the
-  domains `impact.json` names. LLD, implement and review: the cited rows and the codebase maps.
+  touched domains' functional docs. The plan brainstorm and writer: architecture, the codebase
+  maps and the technical docs of the domains the change touches. Implement and review: the rows
+  the plan cites and the codebase maps.
 - **`docs/provenance.yaml`** is the shared provenance record (Maestro + template
   workspace-index): the exact commit and branch of every repository these docs were last
   assessed against, plus hashes of the docs and refresh evidence. `/maestro` compares it after
@@ -81,12 +82,9 @@ workspace.
 .maestro/memory/
 ├── knowledge/                # engine-RENDERED, injected — the ONLY tier runs read
 │   ├── codebase.md           # shared facts/conventions — injectable into any step
-│   ├── plan.md               # per-consumer: filename == consuming skill name
-│   ├── backend-design.md
-│   ├── frontend-design.md
-│   ├── backend-review.md
-│   ├── frontend-review.md
-│   └── architecture-review.md
+│   ├── plan.md               # per-consumer: the plan writer
+│   ├── backend-review.md     # <stack>-review: that stack's code reviewer
+│   └── frontend-review.md
 ├── candidates/               # engine-owned LEDGER — evidence, not injected
 │   └── <domain>.json         # [{key, text, slugs:[...], authoritative}] — count == #slugs
 ├── incoming/                 # per-run structured drops (race-free write surface)
@@ -192,7 +190,7 @@ are git-tracked, so a bad lesson or merge is reviewable and revertible.
 bootstrap (once/umbrella)  ──►  docs/{technical,functional}/<domain>.md + docs/architecture.md
         │                       (+ seed cross-cutting lessons)            (/build-knowledge)
         ▼
-feature run inits ──► freezes lessons snapshot ──► HLD/design/review steps read docs/ + lessons
+feature run inits ──► freezes lessons snapshot ──► plan/build/review steps read docs/ + lessons
         │
         ▼
 release approved ──► a person confirms the archive ("Not now" = none of this until

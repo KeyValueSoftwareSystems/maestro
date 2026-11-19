@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate a feature-specific clarification queue (PRD, HLD or LLD) without using a model.
+"""Validate a feature-specific clarification queue (the PRD interview's) without using a model.
 
 Besides structure, a schema-version-2 queue is checked against the feature's recorded decisions
 (`--log`: the folder that holds every stage's interview record) and the stage's own decisions:
@@ -35,11 +35,6 @@ PRD_SECTION_TITLES = {
     "non-goals", "functional scope", "non-functional requirements",
     "constraints and assumptions", "acceptance criteria",
     "dependencies and risks", "priorities and phasing", "references",
-    "decision summary", "context and scope", "proposed design",
-    "key decisions and trade-offs", "delivery and risks", "open questions",
-    "change summary", "existing seam", "proposed changes", "data model and migrations",
-    "api and client contract", "state and flows", "failure and operational behavior",
-    "implementation sequence", "verification",
 }
 
 

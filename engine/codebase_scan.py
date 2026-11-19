@@ -22,7 +22,7 @@ Commands
         * current     — HEAD == recorded commit: nothing changed, skip.
       Also emits top-level `stale` (bool — any repo not `current`) and `stale_repos`
       (names of those repos), so a workflow `script` node can route on a plain scalar
-      without inspecting the per-repo array (used by design-hld.yaml's pre-HLD freshness gate).
+      without inspecting the per-repo array (used by workspace-sync.yaml and build-knowledge.yaml).
       Read-only (git reads + file reads). Prints a JSON plan on stdout.
 
   record [--root .] [--maps-dir docs/codebase-maps]

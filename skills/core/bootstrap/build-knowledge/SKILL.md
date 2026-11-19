@@ -80,7 +80,7 @@ checker once after your edits, not after each one; a run takes seconds to minute
    `{"slug": "bootstrap", "lessons": [{"domain": "backend-review", "key": "<kebab>",
    "text": "...", "authoritative": true}]}`. The engine renders these; you do not.
 
-## Per-repo codebase map (the HLD's primary grounding)
+## Per-repo codebase map (the plan's primary grounding)
 For EACH repo — in an umbrella workspace, each repo under `codebase/`; single repo, the repo
 itself — write **`docs/codebase-maps/<name>.md`** (`map_path` in the plan below gives each one) in
 the shape docs-format.md gives: entry points and key modules; how the repo is built, tested and

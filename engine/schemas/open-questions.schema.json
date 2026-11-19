@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://keyvalue.systems/sdlc/open-questions.schema.json",
-  "title": "SDLC open-questions.json — HLD open-question loop state",
+  "title": "SDLC open-questions.json — open-question loop state",
   "type": "object",
   "additionalProperties": false,
   "required": ["schema_version", "feature_slug", "questions"],

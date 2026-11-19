@@ -43,4 +43,4 @@ tags: [stack:docker, patterns, infra]
 
 - `docker build` for each changed image, `docker compose config` to validate the Compose files,
   and the repository's image scan or lint (hadolint, trivy) when present.
-- The LLD names each service, image, port, variable and volume added or changed.
+- The feature's plan names each service, image, port, variable and volume added or changed.

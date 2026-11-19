@@ -4,7 +4,7 @@
 Cheap regression tests for skill edits, before the full evaluation set. Each case is a YAML file
 (the engine's YAML subset) under a cases directory, one folder per skill:
 
-  skill: hld-interview                 # the installed skill the case exercises
+  skill: prd-interview                 # the installed skill the case exercises
   name: no-infra-questions-without-infra
   prompt: |                            # self-contained: everything the skill needs is inline
     ...

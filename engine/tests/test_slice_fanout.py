@@ -48,7 +48,7 @@ def task(tid, group, writes, depends_on=()):
 def plan(repo, groups):
     """groups: {group_id: [(task id, writes, depends_on), ...]} in plan order."""
     return {"schema_version": 1, "stack": repo, "feature_slug": SLUG,
-            "context_manifest": {"read_once": ["lld"], "reference": []},
+            "context_manifest": {"read_once": ["plan"], "reference": []},
             "slices": [{"group_id": g, "task_ids": [t[0] for t in ts]} for g, ts in groups.items()],
             "tasks": [task(t[0], g, t[1], t[2] if len(t) > 2 else ()) for g, ts in groups.items()
                       for t in ts]}

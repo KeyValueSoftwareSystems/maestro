@@ -5,12 +5,12 @@ through the engine's bookkeeping:
     .maestro/runs/<slug>/
       state.yaml      the ledger (engine only)
       requirement/    what was asked: the person's files, prd.md
-      design/         what will be built: hld.md, openapi.yaml, lld/<repo>.md, test-cases.md,
-                      impact.json + impact-trace.md, open-questions.json
+      design/         what will be built: test-cases.md, fix-proposal.md (bugfix). The plan
+                      itself lives in the workspace root: docs/plans/active/<slug>.md
       decisions/      what was decided: decision-log.md (unconfirmed decisions first), each
-                      stage's interview record (prd.json, hld.json, lld.json), hld-brainstorm.md
+                      stage's interview record (prd.json), brainstorm.md
       reviews/        what reviewers found: <name>.md + <name>.findings.json, and the author's
-                      <name>.resolutions.json (architecture, lld-readiness, drift, code-<repo>)
+                      <name>.resolutions.json (drift, code-<repo>)
       build/          what was built: manifest.json, <repo>/tasks.json + verify.json
       qa/             how it was tested: the suite, report.md, results.json
       release/        what ships: review-pack.md, ac-trace.md, delivery.json, plan-changes.md
@@ -44,13 +44,7 @@ FOLDERS = ("requirement", "design", "decisions", "reviews", "build", "qa", "rele
 # -- documents a person reads or approves ------------------------------------------------
 REQUIREMENT_DIR = "requirement"
 PRD = "requirement/prd.md"
-HLD = "design/hld.md"
-OPEN_QUESTIONS = "design/open-questions.json"
-CONTRACT = "design/openapi.yaml"
-LLD_DIR = "design/lld"
 TEST_CASES = "design/test-cases.md"
-IMPACT = "design/impact.json"
-IMPACT_TRACE = "design/impact-trace.md"
 DECISIONS_DIR = "decisions"
 DECISION_LOG = "decisions/decision-log.md"
 BRAINSTORM = "decisions/brainstorm.md"
@@ -64,8 +58,6 @@ MEMORY_SNAPSHOT = f"{ENGINE}/memory-snapshot.json"
 RUN_BRIEF = f"{ENGINE}/run-brief.md"
 PROFILE_JSON = f"{ENGINE}/profile.json"
 PROFILE_MD = f"{ENGINE}/profile.md"
-LLD_SCOPE = f"{ENGINE}/lld-scope.json"
-LLD_APPROVAL = f"{ENGINE}/lld-approval.json"
 PLAN_SCOPE = f"{ENGINE}/plan-scope.json"
 PLAN_APPROVAL = f"{ENGINE}/plan-approval.json"
 PLAN_COMMITS = f"{ENGINE}/plan-commits.json"
@@ -81,10 +73,6 @@ QUEUES_DIR = f"{ENGINE}/queues"
 LOGS_DIR = f"{ENGINE}/logs"
 PR_BODIES_DIR = f"{ENGINE}/pr-bodies"
 PROMPTS_DIR = f"{ENGINE}/prompts"
-
-
-def lld(repo):
-    return f"{LLD_DIR}/{repo}.md"
 
 
 # -- the feature's plan: in the workspace root, not the run folder (it outlives the run) ------
@@ -138,9 +126,11 @@ def is_engine_file(rel_to_root):
 
 
 # -- the flat layout of run_format 3, and where each of its files lives now -------------------
-# First match wins. `{repo}` rules come last: a repository's folder was any top-level folder
+# Runs of that format were designed with the retired HLD/LLD/contract stages, so their design
+# files keep the places those stages used (no constant names them any more). First match wins. `{repo}` rules come last: a repository's folder was any top-level folder
 # that was not one of the fixed ones.
 _FIXED_TOP = {"qa", "requirement", "reviews", "lld", "logs", "delivery", "worktrees", *FOLDERS}
+_LEGACY_IMPACT_TRACE = "design/impact-trace.md"
 _DROPPED = "<dropped>"       # derived content: removed, nothing replaces the file
 _CONVERTED = "<converted>"   # folded into another file by migrate()
 LEGACY = [(re.compile(f"^(?:{old})$"), new) for old, new in (
@@ -153,8 +143,8 @@ LEGACY = [(re.compile(f"^(?:{old})$"), new) for old, new in (
     (r"logs/(?P<name>.+)", f"{LOGS_DIR}/steps/{{name}}"),
     (r"workspace-lock\.json", WORKSPACE_LOCK),
     (r"infra-profile\.json", f"{ENGINE}/infra-profile.json"),
-    (r"lld-repos\.json", LLD_SCOPE),
-    (r"lld/approval\.json", LLD_APPROVAL),
+    (r"lld-repos\.json", f"{ENGINE}/lld-scope.json"),
+    (r"lld/approval\.json", f"{ENGINE}/lld-approval.json"),
     (r"implementation-repos\.json", POOL),
     (r"worktrees\.json", WORKTREES),
     (r"worktrees/(?P<name>.+)", f"{LOGS_DIR}/worktrees/{{name}}"),
@@ -164,14 +154,14 @@ LEGACY = [(re.compile(f"^(?:{old})$"), new) for old, new in (
     (r"scaffold\.json", "build/scaffold.json"),
     (r"greenfield-plan\.json", f"{ENGINE}/greenfield-plan.json"),
     # design
-    (r"hld\.md", HLD),
-    (r"open-questions\.json", OPEN_QUESTIONS),
-    (r"openapi\.yaml", CONTRACT),
-    (r"lld/(?P<repo>[^/]+)\.md", f"{LLD_DIR}/{{repo}}.md"),
-    (r"lld", LLD_DIR),
+    (r"hld\.md", "design/hld.md"),
+    (r"open-questions\.json", "design/open-questions.json"),
+    (r"openapi\.yaml", "design/openapi.yaml"),
+    (r"lld/(?P<repo>[^/]+)\.md", "design/lld/{repo}.md"),
+    (r"lld", "design/lld"),
     (r"test-cases\.md", TEST_CASES),
-    (r"impact\.json", IMPACT),
-    (r"impact-trace\.md", IMPACT_TRACE),
+    (r"impact\.json", "design/impact.json"),
+    (r"impact-trace\.md", _LEGACY_IMPACT_TRACE),
     (r"design-facts\.md", DESIGN_FACTS),
     # decisions
     (r"decision-log\.md", DECISION_LOG),
@@ -405,12 +395,12 @@ def migrate(slug, root=".", dry_run=False, force=False):
     if dry_run:
         return report
     # an impact report written with no assessment lists nothing (it is no longer written at all)
-    trace = os.path.join(run_dir, *IMPACT_TRACE.split("/"))
+    trace = os.path.join(run_dir, *_LEGACY_IMPACT_TRACE.split("/"))
     try:
         with open(trace, encoding="utf-8") as fh:
             if "| — | no impacted items listed |" in fh.read():
                 os.remove(trace)
-                report["removed"].append(IMPACT_TRACE)
+                report["removed"].append(_LEGACY_IMPACT_TRACE)
     except OSError:
         pass
     _prune_empty(run_dir)

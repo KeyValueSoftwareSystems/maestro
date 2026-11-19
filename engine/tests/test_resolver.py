@@ -573,7 +573,7 @@ start: ask
 nodes:
   - id: ask
     type: interview
-    skill: hld-interview
+    skill: prd-interview
     context: "Feature: booking"
     questions_artifact: ".maestro/runs/${inputs.slug}/questions.json"
     batch_size: 12
@@ -581,7 +581,7 @@ nodes:
     discuss:
       inputs:
         codebase_map: "docs/codebase-map.md"
-    artifact: ".maestro/runs/${inputs.slug}/hld-context.json"
+    artifact: ".maestro/runs/${inputs.slug}/prd-context.json"
     next: end
 """
 
@@ -612,13 +612,13 @@ class InterviewDiscussionBriefTest(Sim):
         self.assertEqual((brief["action"], brief["mode"], brief["section"]),
                          ("discuss", "subagent", "reminders"))
         self.assertEqual((brief["agent_type"], brief["model"], brief["skill"]),
-                         ("discussant", "opus", "hld-interview"))
+                         ("discussant", "opus", "prd-interview"))
         prompt = brief["prompt"]
         for expected in ("Who owns reminders?", "The booking service.",
                          "Alternative 1: A new scheduler — Cleaner, but a new deploy.",
                          "owning service", "codebase_map: docs/codebase-map.md",
-                         "confirmed_decisions: .maestro/runs/feat/hld-context.json",
-                         "`.claude/skills/hld-interview/SKILL.md`", "Feature: booking",
+                         "confirmed_decisions: .maestro/runs/feat/prd-context.json",
+                         "`.claude/skills/prd-interview/SKILL.md`", "Feature: booking",
                          '"status":"open|ready"', "under 120 words"):
             self.assertIn(expected, prompt)
         self.assertNotIn("interview-record-batch", prompt)
@@ -672,7 +672,7 @@ class InterviewDiscussionBriefTest(Sim):
 
 # An upstream producer feeds a loop (serve <-> ask); a later gate can revise back to the
 # producer. Re-entering `serve` inside the loop must not cascade around the cycle and wipe
-# the producer's outputs — the exact bug seen live (author_hld.hld_summary went null while
+# the producer's outputs — the exact bug seen live (a document writer's summary output went null while
 # the open-questions loop ran).
 CASCADE_UPSTREAM_WF = """\
 version: 1
@@ -715,7 +715,7 @@ class CascadeUpstreamTest(Sim):
         action = self.nxt()
         self.assertEqual(action["step"], "produce")
         self.touch(".maestro/feat/out.md")
-        action = self.complete("produce", {"summary": "the HLD summary"})
+        action = self.complete("produce", {"summary": "the plan summary"})
         self.assertEqual(action["step"], "serve")
         action = self.complete("serve", {"state": "ask"})
         self.assertEqual((action["action"], action["step"]), ("ask_gate", "ask"))
@@ -724,7 +724,7 @@ class CascadeUpstreamTest(Sim):
         self.assertEqual(action["step"], "serve")
         st = self.state()
         # THE REGRESSION: produce is upstream of serve; its output must be intact.
-        self.assertEqual(st["steps"]["produce"]["outputs"], {"summary": "the HLD summary"})
+        self.assertEqual(st["steps"]["produce"]["outputs"], {"summary": "the plan summary"})
         self.assertEqual(st["steps"]["produce"]["status"], "done")
         # serve itself did re-run (reset on re-entry)
         self.assertEqual(st["steps"]["serve"]["visits"], 2)
@@ -1452,7 +1452,7 @@ class ResumeTest(Sim):
         self.assertEqual(len(kept), 1)
 
     def test_other_workflow_on_a_live_slug_needs_force_and_keeps_the_old_ledger(self):
-        # A stage workflow started on an existing feature (/maestro <slug> design-lld.yaml).
+        # A stage workflow started on an existing feature (/maestro <slug> design-plan.yaml).
         self.start(self.write_wf("w.yaml", BACKEDGE_WF))
         other = self.write_wf("stage.yaml", BACKEDGE_WF)
         with self.assertRaises(resolver.RunError) as ctx:

@@ -272,15 +272,10 @@ returns the next action, so continue immediately. The engine ledger and the gene
 interview record (the path the interview node names, `decisions/prd.json` in the shipped
 pack) are the durable source of truth; do not maintain a competing draft.
 
-Exception: when an LLD interview reply explicitly changes an approved PRD or HLD decision, record
-the answer normally, but before acting on the returned next action follow **Capturing out-of-band
-input** and ask how to handle that design change. This does not reinterpret an ordinary repository
-answer; it applies only when the human or served question identifies a real upstream change.
-
 ### `ask_interview_batch`
 
 A full Grill round, run as a conversation in three phases. Preflight the served skill (`prd-
-interview`, `hld-interview`, or `lld-interview`) and record nothing until all three are done
+interview` in the shipped pack) and record nothing until all three are done
 (the only exception is the partial record before a side-chat handoff).
 
 **1. Collect.** When `presentation` is `popup`, use the host's native question UI
@@ -324,10 +319,7 @@ queue does not re-ask what was explored; never put the human's answer there. The
 whole batch before recording anything, so one malformed response cannot partially update the run.
 Continue immediately with the returned action.
 
-Exception: after the atomic record, if an LLD response explicitly changes an approved PRD or HLD
-decision, pause before acting on the returned action and follow **Capturing out-of-band input** for
-that response. Never analyze or interrupt between popup chunks; change handling happens only after
-the complete batch is durably recorded.
+Never analyze or interrupt between popup chunks.
 
 ### `wait`
 

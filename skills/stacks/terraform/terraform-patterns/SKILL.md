@@ -1,6 +1,6 @@
 ---
 name: terraform-patterns
-description: Terraform reference for designing and reviewing infrastructure changes — module structure, state and environments, safe plans, capacity and scaling settings, networking, secrets, and change safety. Use when a feature's HLD or LLD changes Terraform-managed infrastructure.
+description: Terraform reference for designing and reviewing infrastructure changes — module structure, state and environments, safe plans, capacity and scaling settings, networking, secrets, and change safety. Use when a feature's plan changes Terraform-managed infrastructure.
 allowed-tools: Read, Grep, Glob, Bash
 tags: [stack:terraform, patterns, infra]
 ---
@@ -23,7 +23,7 @@ tags: [stack:terraform, patterns, infra]
   and outputs the application needs (endpoints, ARNs/ids, secret names) — never hard-coded ids.
 - **Capacity is a variable per environment**: instance counts, autoscaling min/max and target,
   database instance class and storage, queue retention, cache node size. State the production
-  value in the HLD and why it meets the PRD's targets.
+  value in the feature's plan and why it meets the PRD's targets.
 - **Networking**: new services join the existing VPC/subnets and security groups; open only the
   ports and sources the interface needs; private by default, public only behind the existing
   load balancer or gateway.
@@ -37,17 +37,17 @@ tags: [stack:terraform, patterns, infra]
 
 ## Change safety
 
-- Read the plan for every environment: any `destroy` or `forces replacement` on a stateful
+- Read the Terraform plan for every environment: any `destroy` or `forces replacement` on a stateful
   resource (database, volume, bucket, queue) is a design problem, not a detail — use
   `create_before_destroy`, `moved` blocks, or a migration step.
 - Renames use `moved {}` blocks; never delete-and-recreate to rename.
 - Roll out to non-production first; production changes that cause downtime need a window or a
-  blue/green path stated in the HLD.
+  blue/green path stated in the feature's plan.
 - Pin provider and module versions; upgrade them in their own change.
 
 ## Verifying
 
 - `terraform fmt -check`, `terraform validate`, and a plan per environment in CI; a policy or lint
   step (tflint, checkov, tfsec) when the repository has one.
-- The LLD for an infrastructure repository names each resource added or changed, its per-environment
+- The feature's plan names, for an infrastructure repository, each resource added or changed, its per-environment
   values, and the plan output it expects (adds/changes, no destroys of stateful resources).

@@ -1,6 +1,6 @@
 ---
 name: kubernetes-patterns
-description: Kubernetes, Helm and Kustomize reference for designing and reviewing workload changes — deployments, probes, resources and autoscaling, disruption budgets, config and secrets, networking and ingress, jobs, rollout, and observability. Use when a feature's HLD or LLD changes Kubernetes-managed workloads.
+description: Kubernetes, Helm and Kustomize reference for designing and reviewing workload changes — deployments, probes, resources and autoscaling, disruption budgets, config and secrets, networking and ingress, jobs, rollout, and observability. Use when a feature's plan changes Kubernetes-managed workloads.
 allowed-tools: Read, Grep, Glob, Bash
 tags: [stack:kubernetes, patterns, infra]
 ---
@@ -57,5 +57,5 @@ tags: [stack:kubernetes, patterns, infra]
 
 - `helm lint` / `helm template` or `kustomize build` for every environment, then schema validation
   (kubeconform) and the repository's policy checks when present.
-- The LLD for the chart or manifests names each object added or changed and its per-environment
+- The feature's plan names, for the chart or manifests, each object added or changed and its per-environment
   values (replicas, resources, autoscaling bounds).

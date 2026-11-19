@@ -51,7 +51,7 @@ defaults:                   # optional per-workflow fallbacks
 start: first_node_id        # entry node
 nodes: [ ... ]              # the graph (see node types)
 outputs:                    # optional; values surfaced to a calling workflow / final report
-  hld_path: ".maestro/${inputs.slug}/hld.md"
+  plan_path: "docs/plans/active/${inputs.slug}.md"
 ui: { ... }                 # optional, free-form editor metadata — engine ignores, round-trips
 ```
 
@@ -110,7 +110,7 @@ Every node routes with exactly one of:
 next: <node-id>             # unconditional
 routes:                     # first matching wins
   - {when: "${steps.review.outputs.blocking} == true", to: fix}
-  - {to: contract_gate}     # last entry MUST be the default (no `when`)
+  - {to: approval}          # last entry MUST be the default (no `when`)
 ```
 
 Gate nodes route through their `options` instead (below). Reserved targets:
@@ -158,23 +158,24 @@ The workhorse. `execution: worker` (default) spawns a subagent; `execution: lead
 served prompt in the current session without spawning one.
 
 ```yaml
-- id: write_hld
+- id: write_plan
   type: agent
+  label: Write the plan     # optional: the short name the builder and the todo list show
+  say: Writing the plan.    # optional: one plain line the lead prints when the step is served
   instruction: |            # REQUIRED — what this step must do, in plain language.
-    Write the high-level design from the approved PRD and accepted architecture decisions.
-    Emit deferred choices separately and propose follow-up questions only for genuinely new gaps.
-  skill: hld-writing        # optional pin: agent loads the installed skill by name
+    Write the plan from the approved PRD and the brainstorm notes. Name every repository it
+    changes, and write exact interface shapes when more than one repository is involved.
+  skill: plan-writing       # optional pin: agent loads the installed skill by name
                             # (BY NAME, not a path — could be yours or a 3rd-party pack).
                             # Omit for "auto": harness skill-discovery picks the best match.
   agent: architect          # the role doing the job (agents/<role>.md); defaults.agent, else general
-  execution: lead           # keep the clarified architecture context in the main session
+  execution: lead           # keep the brainstorm's context in the main session
   inputs:                   # optional map, passed verbatim into the subagent prompt
     feature: "${inputs.feature}"
     slug: "${inputs.slug}"
-  outputs: [hld_summary]    # fields the agent must return as last-line JSON (small scalars)
+  outputs: [summary]        # fields the agent must return as last-line JSON (small scalars)
   artifact:                # string or list; engine refuses to mark the step done unless every
-    - ".maestro/${inputs.slug}/hld.md"
-    - ".maestro/${inputs.slug}/hld-post-questions.json"
+    - "docs/plans/active/${inputs.slug}.md"
                             # artifact exists non-empty ("proof, not promises"). The engine
                             # injects owned paths into the prompt.
   fresh: true               # optional: at least one artifact must be new or changed since
@@ -182,12 +183,17 @@ served prompt in the current session without spawning one.
                             # round's report. Omit where an unchanged file is a valid result.
   retries: 1                # re-dispatches on failure before on_fail applies (default 1)
   check:                    # optional: the engine checks the output on hand-off (below)
-    - {run: [python3, .maestro/engine/validate_prd_questions.py, ".maestro/${inputs.slug}/hld-post-questions.json", --report]}
-    - {run: [python3, .maestro/engine/validate_hld.py, ".maestro/${inputs.slug}/hld.md", --report]}
-  routes:                   # routes may read the checks' outputs (here: the post-check's state)
-    - {when: "${steps.write_hld.outputs.state} == ask", to: hld_post_interview}
-    - {to: arch_review}
+    run: [python3, .maestro/engine/plan_doc.py, validate, --root, ".", --slug, "${inputs.slug}",
+          --type, "${inputs.path}", --prd, ".maestro/runs/${inputs.slug}/requirement/prd.md"]
+  routes:                   # routes may read the checks' outputs (here: the plan's repositories)
+    - {when: "${steps.write_plan.outputs.new_repos_csv}", to: scaffold}
+    - {to: commit_plan}
 ```
+
+**Progress line.** `say:` (any node type) is one plain line, under about 100 characters, that
+the lead prints when the engine serves the step — what is happening, for the person. The engine
+adds it to the served action as `say`; without one, the node's `label` stands in. It holds no
+`${steps.…}` references and no line breaks (`validate` warns, `say-style`).
 
 The node owns *what/where/when* — `instruction`, `inputs`, `artifact`, `outputs`, ordering —
 and the engine renders all of them into the subagent prompt. A `skill` supplies only *how*.
@@ -197,7 +203,7 @@ unchanged either way.
 
 Use `execution: lead` only for small, context-continuous work such as confirming and writing
 a PRD. A lead step runs in the long-lived lead session, whose context only grows over a run and
-is re-read on every turn, so a large write there (the repository LLDs, tens of KB of output) makes
+is re-read on every turn, so a large write there (tens of KB of output) makes
 every later turn slower and dearer. Give a big write its own worker context (`execution: worker`
 with an explicit `model`) and pass it what it needs as files named in `inputs`. The action prompt remains the authority: it should name a narrow read/write boundary.
 Pinned skills are resolved only from the active repository's `.agents/skills/`,
@@ -305,7 +311,7 @@ a queue may list `settled` points (`{topic, title, decision, source}`) the evide
 stage's decision artifact), `--require-topics` and `--root`, the validator refuses a decided topic
 unless it is that decision's one follow-up, and a `settled` source that does not exist. Both
 arrays must be empty before an empty queue may declare the interview clear. With
-`validate_prd_questions.py --require-direction` (the shipped HLD and LLD queues), an empty queue
+`validate_prd_questions.py --require-direction` (no shipped queue sets it today), an empty queue
 in a stage where the human answered anything also needs a confirmed `direction` decision no older
 than any other decision, so a design document is never written from answers the human has not seen
 assembled. A stage whose points were all settled by evidence asks nothing and needs no direction. The engine appends each completed queue, including its
@@ -371,28 +377,34 @@ A human decision. Options ARE the outgoing edges. Gates are **never** skipped on
 the run mode's autopilot policy (below) answers one without a person.
 
 ```yaml
-- id: hld_approval
+- id: plan_approval
   type: gate
-  prompt: "HLD ready: ${steps.write_hld.outputs.hld_summary}. Approve?"
+  prompt: "The plan is ready: docs/plans/active/${inputs.slug}.md. Approve?"
   options:
-    - {id: approve, label: "Approve — write the repository LLDs", to: end}
-    - {id: revise,  label: "Targeted edit", to: write_hld, input: feedback}
-    - {id: rethink, label: "Re-clarify and regenerate", to: prepare_hld_questions, input: feedback}
-    - {id: reject,  label: "Reject — abort", to: abort}
+    - {id: approve, label: "Approve — build from this plan", to: record_approval}
+    - {id: revise,  label: "Revise — tell me what to change", to: write_plan, input: feedback}
+    - {id: rethink, label: "Rethink — discuss it again first", to: brainstorm, input: feedback}
+    - {id: later,   label: "Later — stop here and resume when ready", pause: true}
+    - {id: reject,  label: "Reject — stop this run", to: abort}
 ```
 
-`input: <name>` collects free text into `${steps.hld_approval.outputs.<name>}`. A revise option
+`input: <name>` collects free text into `${steps.plan_approval.outputs.<name>}`. A revise option
 is simply an option whose `to:` is a back-edge — re-entry reset cascades automatically. The
-shipped PRD/HLD/LLD gates keep re-iteration cheap: `revise` goes to a `revise_*` step that edits
-only the affected sections and re-validates, returning to the clarification loop only when it
-reports `needs_clarification`; the full pass is a separate option (`rescope` / `rethink`).
+shipped PRD and plan gates keep re-iteration cheap: `revise` goes back to the writer, which applies
+only the feedback as a targeted edit; the full pass is a separate option (`rethink`).
+
+**Pausing.** An option with `pause: true` ("approve later") takes no `to` and no `input`.
+Recording it leaves the gate unanswered and pauses the run: `next` serves only `{"action":
+"paused", "step", "resume"}` until the person resumes it, and `maestroctl runs` lists the run as
+paused. Resuming (`init` on the slug, i.e. `/maestro <slug>`) asks the same question again. An
+`auto:` policy never names a pause option (`gate-pause-option`): autopilot never pauses.
 
 **Autopilot policy.** A run starts in a mode (`init --mode human|design|auto`, default `human`).
 In `human` mode every gate asks. In `design` and `auto` mode a gate with an `auto:` policy may
 be answered by the engine itself:
 
 ```yaml
-  auto: {option: approve, modes: [auto], when: "${steps.arch_review.outputs.blocking} == false"}
+  auto: {option: approve, modes: [auto], when: "${steps.prd_check.outputs.valid} == true"}
 ```
 
 `option` must name an option with no `input` and no `to: abort`. `modes` defaults to
@@ -409,14 +421,13 @@ JSON object, its fields become the step's outputs and are routable. Validators c
 `valid`, `state`, or another small routing field.
 
 ```yaml
-- id: validate_hld
+- id: design_check
   type: script
-  run: ["python3", "engine/validate_hld.py", ".maestro/${inputs.slug}/hld.md",
-        "--open-questions", ".maestro/${inputs.slug}/open-questions.json"]
+  run: [python3, .maestro/engine/plan_doc.py, verify, --root, ., --slug, "${inputs.slug}"]
   timeout: 60               # seconds, optional (default 300)
   routes:
-    - {when: "${steps.validate_hld.outputs.valid} == false", to: write_hld}
-    - {to: hld_approval}
+    - {when: "${steps.design_check.outputs.stale} == true", to: stale_note}
+    - {to: workspace_sync_pre_impl}
 ```
 
 A validator that only sends its writer back on failure is simpler as that agent's `check:`.
@@ -427,37 +438,34 @@ Static fork with inline branch subgraphs. The node itself joins; branch results 
 `${steps.<id>.branches.<branch-id>.outputs.<field>}`.
 
 ```yaml
-- id: author_llds
+- id: plan_and_tests
   type: parallel
   join: all                 # all | any (default all)
   on_branch_fail: fail_all  # fail_all | continue | ask (default fail_all)
   branches:
-    - id: backend
-      start: backend_design
+    - id: plan
+      start: plan
       steps:
-        - id: backend_design
-          type: agent
-          instruction: Write the backend low-level design from the HLD.
-          skill: backend-design
-          artifact: ".maestro/${inputs.slug}/lld/backend.md"
+        - id: plan
+          type: subworkflow
+          workflow: .maestro/workflows/design-plan.yaml
+          inputs: {slug: "${inputs.slug}", path: "${inputs.path}"}
           next: end         # `end` inside a branch = branch complete
-    - id: frontend
-      start: frontend_design
+    - id: tests
+      start: tests
       steps: [ ... ]
-  next: contract
+  next: bind_test_cases
 ```
 
-The shipped design workflow writes every repository's LLD in one run of `design-lld.yaml`: one
-grouped interview, one worker-written file per repository (`design/lld/<repo>.md`), `lld_set.py validate`
-over the whole set, a readiness check, and one approval gate. It is the last stage of
-`design-solution.yaml`, which `design.yaml` runs as one branch of a `parallel` node after PRD
-approval; the other branch, `design-tests.yaml`, writes the functional test cases from the PRD at
-the same time. Approval runs
-`lld_set.py approve`, which records the HLD, contract and per-LLD hashes; delivery's first step,
-`lld_set.py verify`, sends a design that changed after approval back through design. Generic
-`parallel` remains useful when independent branches can run at once in one run.
+The shipped design workflow runs the plan and the functional test cases this way after PRD
+approval. `design-plan.yaml` holds the brainstorm with the person, one plan document
+(`docs/plans/active/<slug>.md`, checked by `plan_doc.py validate --type major|minor`), its commit
+and the plan approval; `design-tests.yaml` writes the test cases from the PRD at the same time.
+Approval runs `plan_doc.py approve`, which records the PRD and plan hashes and the repositories in
+scope (`design.yaml` binds the test cases once both branches are done); delivery's first step,
+`plan_doc.py verify`, sends a plan that changed after approval back through design.
 
-After LLD approval, delivery implements every repository in the approved design.
+After plan approval, delivery implements every repository the plan names.
 `implementation_pool.py init --choice all --fresh` starts each pass afresh, so a release sent back
 to design rebuilds every repository against the new design. `worktrees.py prepare` then creates
 each repository's worktree once per feature (its own `git worktree add`, or `worktree.create` from
@@ -487,7 +495,7 @@ as one wave; elsewhere (`next --serial`) branches run one at a time.
 ### `subworkflow`
 
 Runs another workflow file inline. The child's `outputs:` map becomes the step's outputs; child
-steps are namespaced in state (`design/hld/write_hld`). Maximum nesting depth: 4.
+steps are namespaced in state (`design/prd/write_prd`). Maximum nesting depth: 4.
 
 A child cannot route into its parent: it ends (`end`) with outputs the parent routes on, or
 aborts (`abort` marks the subworkflow step failed and applies its `on_fail`). It reads its own
@@ -498,8 +506,8 @@ child at its `start` with fresh child state.
 This is how a large workflow splits into small stages, so no single graph overloads the reader.
 The shipped `sdlc-main.yaml` owns only the stage order and the loops between stages (`design`,
 `delivery`, `archive`); `design.yaml` owns only ordering (`design-intake`, `design-prd`,
-then `design-solution` (`design-hld`, `design-contract` when the HLD lists interfaces,
-`design-lld`) beside `design-tests`). Each stage keeps its own back-edges, and each
+then `design-plan` beside `design-tests`). `bugfix.yaml` composes `bugfix-triage`, `delivery`
+(entered at its bug-fix loop) and `archive` the same way. Each stage keeps its own back-edges, and each
 stage node sets `on_fail: abort` so a rejection fails the parent exactly as an inline step would.
 
 A human decision that must leave its stage ("send back to design") ends the child through a gate

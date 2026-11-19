@@ -5,7 +5,7 @@
     {
       "id": "q1",
       "question": "Should saved searches be per-user or shareable across a team?",
-      "why": "Drives the data model and authz — blocks the LLD.",
+      "why": "Drives the data model and authz — blocks the plan.",
       "options": ["Per-user only", "Team-shareable", "Both, with a visibility flag"],
       "status": "open",
       "resolution": null
@@ -29,10 +29,10 @@
     {
       "id": "q4",
       "question": "Do we localize saved-search names at launch?",
-      "why": "Non-blocking for the HLD; can be settled in the LLD.",
+      "why": "Non-blocking; can be settled during the build.",
       "options": ["Yes at launch", "Defer to a later release"],
       "status": "deferred",
-      "resolution": { "kind": "skip", "answer": "Deferred to LLD" }
+      "resolution": { "kind": "skip", "answer": "Deferred" }
     }
   ]
 }

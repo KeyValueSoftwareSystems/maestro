@@ -1,5 +1,5 @@
 # Design child: the plan — one document at docs/plans/active/<slug>.md that says what gets built,
-# where and why. It replaces the HLD, the API contract and the repository LLDs.
+# where and why: the design for every repository, and the interfaces between them.
 #
 #   greenfield? -> plan status -> brainstorm (person-led) -> write? -> write plan -> commit
 #   -> [scaffold] -> plan approval -> record approval

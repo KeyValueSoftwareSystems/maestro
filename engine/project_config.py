@@ -56,7 +56,6 @@ RECOMMENDED_COMMANDS = ("lint", "security", "e2e")
 REPO_KEYS = {"stack", "role", "commands", "timeout_s", "test_patterns", "e2e"}
 E2E_STATUSES = ("verified", "none")
 REPO_ROLES = ("app", "infra")
-INFRASTRUCTURE_LEVELS = ("none", "containers", "iac")
 # Paths that count as test files for the test-edit guard (fnmatch; `*` crosses `/`).
 DEFAULT_TEST_PATTERNS = (
     "test/*", "tests/*", "*/test/*", "*/tests/*", "__tests__/*", "*/__tests__/*",
@@ -451,32 +450,24 @@ def check(config, discovered):
                                 "no `ready` command; QA will treat the stack as up as soon as "
                                 "`start` returns — add a health probe (e.g. curl -fsS …/health)",
                                 "environment.ready"))
-    if "infrastructure" in config:
-        infrastructure = config["infrastructure"]
-        _check_strings("infrastructure", infrastructure, {"level"}, "infrastructure", issues)
-        if isinstance(infrastructure, dict) and infrastructure.get("level") not in (
-                None, *INFRASTRUCTURE_LEVELS):
-            issues.append(Issue("error", "config-shape",
-                                f"must be one of: {', '.join(INFRASTRUCTURE_LEVELS)}",
-                                "infrastructure.level"))
     if "design" in config:
         design = config["design"]
         if not isinstance(design, dict):
             issues.append(Issue("error", "config-shape", "`design` must be a mapping", "design"))
         else:
             for key, value in design.items():
-                if key not in ("light_max_criteria", "sync_restart"):
-                    issues.append(Issue("error", "config-unknown-key",
-                                        f"unknown key `{key}` (allowed: light_max_criteria, "
-                                        "sync_restart)", f"design.{key}"))
-                elif key == "sync_restart":
-                    if value not in ("always", "cited"):
-                        issues.append(Issue("error", "config-shape",
-                                            "must be `always` or `cited`", "design.sync_restart"))
-                elif not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-                    issues.append(Issue("error", "config-shape",
-                                        "must be a positive whole number of acceptance criteria",
+                if key == "light_max_criteria":
+                    # read by the retired full/light design choice; the run's type decides now
+                    issues.append(Issue("warning", "config-unknown-key",
+                                        "`light_max_criteria` is no longer used; remove it",
                                         "design.light_max_criteria"))
+                elif key != "sync_restart":
+                    issues.append(Issue("error", "config-unknown-key",
+                                        f"unknown key `{key}` (allowed: sync_restart)",
+                                        f"design.{key}"))
+                elif value not in ("always", "cited"):
+                    issues.append(Issue("error", "config-shape",
+                                        "must be `always` or `cited`", "design.sync_restart"))
     if "reviews" in config:
         reviews = config["reviews"]
         if not isinstance(reviews, dict):

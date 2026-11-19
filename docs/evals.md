@@ -22,21 +22,22 @@ Checking needs no model, so it is cheap to run on every change.
 `evals/cases/<case>/` is one end-to-end feature: `case.yaml` (the requirement, the repositories
 and their commands, the run mode, and what a good run achieves), `workspace/` (fixture
 repositories) and `rubric.md` (what a judge grades). The set covers a small single-repository
-change (the light path), two repositories changing in step under an unchanged interface (still
-the light path, with a ship order), a cross-repository field (contract first) and a background
-job with Terraform (infrastructure questions and an infrastructure LLD).
+change (a minor plan), two repositories changing in step under an unchanged interface (a minor
+plan with a ship order), a cross-repository field (a major plan whose Interfaces section
+both repositories follow) and a background job with Terraform (a major plan with an
+Infrastructure section).
 
 ```bash
 python3 engine/eval_setup.py --case evals/cases/infra-queue --dest /tmp/eval-infra
-# install Maestro into /tmp/eval-infra and run the printed /maestro command (auto mode);
-# at the archive confirmation — the one gate auto mode leaves to you — answer "Archive now"
+# install Maestro into /tmp/eval-infra and run the printed /maestro command (auto mode); auto
+# mode still leaves the brainstorm, the plan approval and the archive confirmation to you
 python3 engine/eval_score.py score --root /tmp/eval-infra --case evals/cases/infra-queue \
     --judge judge.json --out reports/infra-queue.json
 python3 engine/eval_score.py summary --reports reports/*.json --baseline evals/baseline.json
 ```
 
-`score` is deterministic: run status, design path, infrastructure level, questions asked and
-rounds per stage, acceptance criteria, whether the PRD and HLD pass their validators, engine
+`score` is deterministic: run status, change type (major or minor), questions asked and
+rounds per stage, acceptance criteria, whether the PRD and the plan pass their validators, engine
 verification per repository, the acceptance-criteria trace, design drift, fix rounds, gates a
 person answered, wall time — each checked against the case's `expect:`. `check_rounds` (hand-offs
 a job made before its engine check passed) is reported alongside, not checked. The judge is a fresh

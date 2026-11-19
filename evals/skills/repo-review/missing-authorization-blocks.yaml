@@ -2,7 +2,7 @@ skill: repo-review
 name: missing-authorization-blocks
 prompt: |
   Review this change and reply with the findings file JSON, then your last-line JSON.
-  LLD: GET /exports is admin-only — non-admins get 403 {"error": {"code": "forbidden"}}.
+  Plan: GET /exports is admin-only — non-admins get 403 {"error": {"code": "forbidden"}}.
   Engine checks passed. Diff (reports/views.py):
     +class ExportView(APIView):
     +    permission_classes = [IsAuthenticated]

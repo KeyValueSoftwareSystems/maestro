@@ -15,7 +15,7 @@ import findings  # noqa: E402
 
 def finding(fid, severity="blocking", status="open"):
     return {"id": fid, "severity": severity, "status": status, "area": "scale",
-            "finding": f"{fid} problem", "evidence": "hld.md#Proposed design"}
+            "finding": f"{fid} problem", "evidence": "plan.md#Design"}
 
 
 class FindingsTest(unittest.TestCase):

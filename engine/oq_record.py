@@ -51,7 +51,7 @@ def apply_choice(q, choice, answer_text=""):
         q["resolution"] = {"kind": "you-decide", "answer": "(plan's discretion — refine picks a default)"}
     elif choice == "skip":
         q["status"] = "deferred"
-        q["resolution"] = {"kind": "skip", "answer": "Deferred to LLD"}
+        q["resolution"] = {"kind": "skip", "answer": "Deferred"}
     else:
         raise ValueError(f"unknown choice: {choice}")
 

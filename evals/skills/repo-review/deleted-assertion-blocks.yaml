@@ -7,7 +7,7 @@ prompt: |
   Diff tests/test_totals.py:
     -    assert order.total == Decimal("108.00")
     +    assert order.total is not None
-  The approved LLD did not change how totals are calculated.
+  The approved plan did not change how totals are calculated.
 must_include:
   - '"blocking"\s*:\s*true'
   - 'test_totals'

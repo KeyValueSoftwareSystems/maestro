@@ -14,7 +14,7 @@ Commands (all take --root, default .):
   snippet  IDS               one line per ID, as steps receive it (comma-separated IDs)
   cited    --from PATH... --out PATH [--repos a,b]   the rows behind every ID the given files
            cite (missing files are skipped); with --repos, also those repos' domain doc paths
-  domains  [--repos a,b] [--impact impact.json]   the domains (and their doc paths) whose Domain
+  domains  [--repos a,b]   the domains (and their doc paths) whose Domain
            map row names one of the repos; every domain when none is named or none matches
   snapshot --out PATH        hash every doc, and keep the team-owned content, before a writer runs
   stamp    [--snapshot PATH] set verified_at (and status: draft) on docs new or changed since
@@ -2203,7 +2203,6 @@ def main(argv=None):
     p = sub.add_parser("domains")
     p.add_argument("--root", default=".")
     p.add_argument("--repos", default="")
-    p.add_argument("--impact", help="impact.json: use the repositories it names (all domains when absent)")
     p = sub.add_parser("snapshot")
     p.add_argument("--root", default=".")
     p.add_argument("--out", required=True)
@@ -2279,15 +2278,6 @@ def main(argv=None):
         return 0
     if args.cmd == "domains":
         wanted = [r.strip() for r in args.repos.split(",") if r.strip()]
-        if args.impact:
-            impact_path = args.impact if os.path.isabs(args.impact) else os.path.join(args.root, args.impact)
-            try:
-                with open(impact_path, encoding="utf-8") as fh:
-                    named = json.load(fh).get("repos") or []
-                wanted += [r["name"] if isinstance(r, dict) else str(r) for r in named
-                           if (r.get("name") if isinstance(r, dict) else r)]
-            except (OSError, ValueError, AttributeError):
-                pass
         rows = domains_for(args.root, wanted)
         if wanted and not rows:
             rows = domains_for(args.root)

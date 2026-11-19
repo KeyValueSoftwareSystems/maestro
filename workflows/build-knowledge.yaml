@@ -125,7 +125,7 @@ nodes:
          linking both files of every domain, cross-repo flows and contracts, conventions and
          boundaries, shared glossary; platform-wide invariants you find go under its
          §Proposed rules and scenarios.
-      4. For EACH repo write docs/codebase-maps/<repo>.md — the standing per-repo grounding the HLD
+      4. For EACH repo write docs/codebase-maps/<repo>.md — the standing per-repo grounding the plan
          reads: entry points, key modules, the primary flows and EVERY distinct execution mode
          each runs in (single-turn/multi-turn, sync/async, batch/streaming, …) and what selects
          it, the data model, APIs exposed/consumed, auth pattern and conventions, as

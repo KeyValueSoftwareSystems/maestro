@@ -63,7 +63,7 @@ my-project/                 ← umbrella repo (git init once; run Maestro here)
 
 - **Per-repo codebase map.** `build-knowledge` also writes one map per repo at
   **`docs/codebase-maps/<name>.md` in the umbrella** — the standing description of that repo's
-  modules, flows and execution modes that the HLD step reads before choosing an architecture.
+  modules, flows and execution modes that the plan brainstorm reads before choosing a design.
   The maps are committed with the other living docs. Each map's marker records the commit of the repo
   it describes (`codebase_scan.py`), so re-running `/build-knowledge` and the post-feature
   refresh (in the archive phase) only re-examine that repo's diff since then.
@@ -80,10 +80,11 @@ my-project/                 ← umbrella repo (git init once; run Maestro here)
   commit (`git init && git add -A && git commit`). The umbrella itself should also be a git repo so
   the run ledger (`.maestro/runs/<slug>/`) is tracked and a run resumes on any machine.
 
-- **One LLD per repository.** After the HLD is approved, Maestro writes one LLD per repository in
-  scope (`.maestro/runs/<slug>/design/lld/<repo>.md`) in a single run with one approval. Approval binds
-  them to the exact HLD and contract, so a later change to either sends the design back before
-  anything is built.
+- **One plan for every repository.** The feature's plan (`docs/plans/active/<slug>.md` in the
+  umbrella, committed there) names each repository it changes, what changes in each, and the exact
+  interfaces between them. One approval binds it to the PRD and the test cases, so a later edit to
+  the plan sends the design back before anything is built. At archive it moves to
+  `docs/plans/completed/`.
 
 - **Docs + tests centralised in the umbrella.** Keep the per-feature docs tree
   (`docs/technical`, `docs/functional`, `docs/business`) and the cross-repo integration +

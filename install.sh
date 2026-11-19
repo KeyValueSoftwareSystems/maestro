@@ -163,7 +163,9 @@ remove_retired_skills() { # $1 = installed skills dir, $2 = host
   # user-authored or third-party skills. `brainstorm` was replaced by the bounded
   # `prd-interview` + `prd-writing` pair; the per-stack design/tasks/implement/review skills,
   # `plan`, `repo-design` and `verify` were folded into the repo-* and *-writing skills and
-  # the engine's verify step. Several of those names are generic (`plan`, `verify`), so a
+  # the engine's verify step. The HLD/LLD/contract design stages (`hld-*`, `lld-*`,
+  # `api-contract`, `architecture-review`, `feature-impact`) were replaced by the single
+  # plan document (`plan-brainstorm` + `plan-writing`). Several of those names are generic (`plan`, `verify`), so a
   # directory is removed only when it is our stock copy (engine/install_skills.py --retire:
   # matches the manifest hash, or, before the manifest, carries the pack's `sdlc` tag);
   # anything else is left in place and reported.
@@ -172,7 +174,9 @@ remove_retired_skills() { # $1 = installed skills dir, $2 = host
     --manifest "$DEST/.maestro/skill-manifest.json" \
     --retire brainstorm plan repo-design verify run-upgrade-repair design-correction-fold \
       backend-design frontend-design backend-tasks frontend-tasks \
-      backend-implement frontend-implement backend-review frontend-review
+      backend-implement frontend-implement backend-review frontend-review \
+      hld-brainstorm hld-interview hld-writing lld-interview lld-writing lld-readiness \
+      api-contract architecture-review feature-impact
 }
 
 # ---------------------------------------------------------------- source dir

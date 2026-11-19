@@ -48,18 +48,25 @@ runtime. It ships:
   artifact path, no Output-contract requirement).
 - **The engine** (`engine/`) — stdlib-only Python. `maestroctl.py` is the CLI the lead
   agent shells out to: `validate · preflight · init · next · complete · complete-batch · gate-record · fail · reset
-  · reclaim · rebase · migrate · status · todo · brief · profile · graph · note`. The resolver serves exactly ONE next action as JSON; the
+  · reclaim · rebase · migrate · status · todo · brief · profile · graph · runs · note · slug-check`
+  (`slug-check`: is a new slug free — kebab-case, no run folder, no active or completed plan;
+  `init` refuses a new run on a taken slug). The resolver serves exactly ONE next action as JSON; the
   LLM never interprets the graph and never edits state. No dependencies, ever.
-- **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `design`, `impl`,
+- **Workflows** (`workflows/*.yaml`) — the example pack (`sdlc-main`, `bugfix`, `design`, `impl`,
   `qa`) in the custom spec. Large flows are split into small stage children so no graph is
   overwhelming in the builder (target: ≤ ~12 nodes each): `sdlc-main` composes `design` →
   `delivery` → `archive` (delivery runs `impl` per repository, which hands a plan of two or more
 slice groups to `impl-slices`); `design` composes `design-intake` / `design-prd`, then a `parallel`
-  node running `design-solution` (impact, sizing, then `design-hld` with its architecture review /
-  `scaffold` (greenfield only: create the repositories the HLD lists) / `design-contract` (only
-  when the HLD lists cross-repo interfaces) / `design-lld` (every repo's LLD in one run)) beside
+  node running `design-plan` (brainstorm with the person, write and commit the plan document,
+  `scaffold` on greenfield (create the repositories the plan lists), plan approval) beside
   `design-tests` (the functional test cases, from the approved PRD alone; QA takes exact values
-  from the design when it runs them). `todo.py` lists a parallel of single-stage branches as
+  from the plan when it runs them). `path` (`major` | `minor`, an input `enum`) is the invoker's
+  choice: a full PRD and plan, or a mini PRD and a 5-10 line plan; nothing is inferred.
+  `bugfix` (`/maestro <slug> bugfix branch=<b>`) composes workspace sync → `bugfix-triage` (bug
+  report as a mini PRD, test cases, a sandbox worktree per affected repo on the person's branch,
+  reproduction, fix proposal, fix approval) → `delivery` (`entry: bugfix`: no plan, no
+  implementation pass, straight to its fix loop) → `archive` (each PR against the base its repo
+  was built from). `todo.py` lists a parallel of single-stage branches as
   those stages side by side. A gate decision
   that leaves its stage ends the child and is reported in its `outputs:`; the parent routes on it
   (gate-driven, so not visit-capped). Spec (`docs/workflow-spec.md`, machine contract
@@ -130,12 +137,14 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   under the run's `.engine/` (`state.lock`, `ledgers/`), so the ledger is the only file at the
   top of a run folder.
 - **`run_layout.py`** — where a run keeps its files, one folder per kind: `requirement/` (the
-  request, `prd.md`), `design/` (`hld.md`, `openapi.yaml`, `lld/<repo>.md`, `test-cases.md`,
-  impact), `decisions/` (the decision log and each stage's interview record), `reviews/`
+  request, `prd.md`), `design/` (`test-cases.md`, a bugfix's `fix-proposal.md`), `decisions/`
+  (the decision log, each stage's interview record, `brainstorm.md`), `reviews/`
   (`<name>.md` + `<name>.findings.json` + the author's `<name>.resolutions.json`), `build/`
   (`manifest.json`, `<repo>/tasks.json` + `verify.json`), `qa/`, `release/` (`review-pack.md`,
-  `ac-trace.md`, `delivery.json`) and `.engine/` (queues, review baselines, sync plans,
-  snapshots, logs: nothing written for reading). Workflows name these paths on their nodes; the
+  `ac-trace.md`, `delivery.json`, `plan-changes.md`) and `.engine/` (queues, review baselines,
+  sync plans, plan scope/approval, sandbox, snapshots, logs: nothing written for reading). The
+  plan itself is not in the run folder: it is `docs/plans/active/<slug>.md` in the workspace root
+  (`plan_active`/`plan_completed`). Workflows name these paths on their nodes; the
   helpers with a default take it from here, and `test_run_layout.py` holds the shipped workflows
   to it. `migrate` (run by `init` and `rebase` on a `run_format` 3 ledger, or `maestroctl
   migrate`) moves a flat-layout run in: files move and are never rewritten (approved hashes
@@ -152,22 +161,21 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   parses BEFORE substitution so values can't inject operators. `norm()` canonicalises
   bools/numbers; guards use `== true`/`== false`, never `!= true` (prose would slip through).
 - **`wf.py`** — the zero-dep YAML-subset loader/emitter (see its own section below).
-- **`oq_settle.py`** — recognises a clarification stage whose question queue is already clear
-  (HLD and LLD entry, before the lead's `prepare_*_questions`): clear queue that passes
-  `validate_prd_questions.py --require-direction`, written after the person's last confirmed
-  round, no input document newer, no feedback → `state: clear` and the lead is skipped; anything
-  doubtful → `ask`. It never writes a queue.
-- **`oq_serve.py` / `oq_record.py`** — the open-questions `script`-node helpers (the
-  stdout-JSON-becomes-routable-outputs pattern); `validate_tasks.py` /
+- **`oq_serve.py` / `oq_record.py`** — open-questions `script`-node helpers (the
+  stdout-JSON-becomes-routable-outputs pattern; no shipped workflow uses them today); `validate_tasks.py` /
   `validate_open_questions.py` — standalone artifact-format validators.
-- **`validate_prd.py` / `validate_prd_questions.py` / `validate_hld.py` / `validate_lld.py`** —
-  deterministic PRD, HLD, and repository LLD structure, acceptance-ID, readability, question-queue,
-  and deferred-ledger checks. They never make product or architecture decisions.
-- **`lld_set.py`** — the feature's repository LLDs, one file per selected repo
-  (`design/lld/<repo>.md`), written and approved in one run: scope (`.engine/lld-scope.json`), validate the whole
-  set, record a hash-bound approval (HLD, contract and each LLD), and `verify` at the start of
-  delivery so a design that changed after approval goes back through design instead of being
-  built stale.
+- **`validate_prd.py` / `validate_prd_questions.py`** — deterministic PRD structure (major or
+  minor profile), acceptance-ID, readability, question-queue and deferred-ledger checks. They
+  never make product decisions.
+- **`plan_doc.py`** — the feature's plan, one document at `docs/plans/active/<slug>.md` in the
+  workspace root (moved to `docs/plans/completed/` at archive), written by the swappable
+  `plan-writing` skill. The engine owns the rest: `validate --type major|minor` (major: the fixed
+  sections, every PRD `AC-xx` in Acceptance coverage, every repository a configured or `(new)`
+  one; minor: 5-10 lines), `repos`, `approve` (hash-bound to the PRD, plan and test cases; writes
+  `.engine/plan-scope.json` + `plan-approval.json`), `verify` at the start of delivery (a design
+  changed after approval goes back through design instead of being built stale), `status`,
+  `archive` (never overwrites a completed plan) and `commit` (commits only the plan file in the
+  workspace root's current branch, never pushes; on creation, each edit and archive).
 - **`implementation_pool.py`** — the implementation queue: the golden workflow implements every
   designed repo afresh on each delivery pass (`init --choice all --fresh`); `--choice pick` still
   supports batches with deferred repos for team workflows. Builds the QA/release manifest only
@@ -223,9 +231,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   be zero (`delivery/open_findings`); `resolve` reads the author's
   `fixed`/`contested`/`escalated` answers → `proceed` (re-review), `incomplete` (back to the author)
   or `escalate` (a person decides — also when a finding the reviewer upheld is contested again).
-  A resolutions file older than the findings file answers an earlier round and is ignored. The HLD
-  architecture review, the LLD readiness check and the code reviews in `impl` / `qa-bugfix` route
-  on it (the code fixer, `fix-loop`, is the author there). The engine also bounds each loop:
+  A resolutions file older than the findings file answers an earlier round and is ignored. The
+  code reviews in `impl` / `qa-bugfix` route on it (the code fixer, `fix-loop`, is the author). The engine also bounds each loop:
   `verdict --round ${steps.<review>.visits}` sets `limit_reached` after `reviews.max_rounds`
   (maestro.config.yaml, default 3), and `--previous` marks a blocking finding first raised on a
   re-review and not `introduced_by_revision` as `late`; workflows route on `revise` (blocking,
@@ -236,7 +243,7 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   ids of the findings it raised, read by `verdict --previous`); a re-review checks the changes,
   not the whole document again. No copies of the documents are kept as files.
 - **Design drift** — delivery's `drift_check` (skill `design-drift`) compares every verified
-  commit with the approved HLD, contract and LLDs before release; `findings.py verdict` decides
+  commit with the approved plan (its Interfaces section is the cross-repo contract) before release; `findings.py verdict` decides
   blocking, which the release autopilot requires to be false.
 - **`run_profile.py`** — run timing (on by default; `init --no-profile` opts out, `--debug` is the old name): every step visit is
   kept under the ledger's `profile.visits` (resolver `_finish_visit`; serving calls stamp
@@ -275,48 +282,11 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `check_release` refuses a feature without it or with a manifest changed since, and returns
   `release_by` for `deliver.py` and `delivery_action` (what `delivery.mode` will do, a sentence the
   archive question shows) — so the archive is safe to run later on its own.
-- **`infra_scan.py`** — the workspace's infrastructure level (`none` / `containers` / `iac`, from
-  Terraform, Helm, Kubernetes, Pulumi, CDK, CloudFormation, Serverless, Ansible, Docker, Compose
-  files; overridable in maestro.config.yaml). The HLD stage starts with it: the level decides
-  which infrastructure questions are asked at all, and `validate_hld.py --infra-level` requires
-  the Infrastructure and operations section for `containers`/`iac`; with `--repos` each change
-  must name its owning repository, and those owners (`infra_repos_csv`) are passed to
-  `lld_set.py init --require`, which refuses a scope without them.
 - **`greenfield.py`** — the new-product path: `check` (no repository discovered), `create` (git
-  init + first commit for each repository the HLD's Repositories section lists), `configure` (adds
+  init + first commit for each repository the plan's Repositories table marks new), `configure` (adds
   the scaffold report's commands to maestro.config.yaml without touching existing entries, runs
   each build and test once, stamps each codebase map in `docs/codebase-maps/`). `workflows/scaffold.yaml` runs
   them around the `repo-scaffold` skill, then records knowledge and pins the commits.
-- **`impact.py`** — the feature's impact assessment (`impact.json`, written by the
-  `feature-impact` agent right after PRD approval): facts, never a verdict. Schema 3: the
-  repositories it changes, `interface_change` (`none`/`lockstep`/`shape`), `data_change`
-  (`none`/`additive`/`reshape`), `infrastructure_change`, `compatibility_risk`, and
-  `open_decisions` (`{question, kind, evidence}`; the engine owns the kinds — `placement`,
-  `integration`, `data-model`, `interface`, `quality` block the light path, `rollout`/`detail` do
-  not); it also lists every domain, table, job, queue, endpoint (with its consumers), `INV` rule
-  and `CS` scenario it touches, each with a reason and evidence. Schemas 1/2 (booleans + `size`)
-  still load, read conservatively. `validate` checks every name is a discovered repository, the
-  facts, and that rules/scenarios/domains exist in the living docs (`living_docs.py`); with
-  `--prd` it adds every change scenario whose `when_changing` the PRD names
-  (`match_scenarios`/`merge`). `load(core_only=True)` — what sizing and the LLD scope
-  (`lld_set.py init --choice impact`) use — keeps the repositories and facts when only the item
-  lists are wrong. Skipped on greenfield.
-- **`impact_trace.py`** — the impact trace: `check --stage hld|lld` requires every impacted item
-  to be named in the HLD (a `write_hld`/`revise_from_review` check) or the LLDs (`lld_impact_trace`
-  node, `--match` first adds scenarios the LLDs' planned files trigger), or marked "no change needed,
-  because …"; gaps go back to the writer. Writes `design/impact-trace.md`, which the HLD and LLD approval
-  gates show first. No assessment = valid, and no report is written.
-- **`sizing.py`** — after PRD approval, full or light design (light: PRD → LLD → readiness →
-  approval; no HLD or contract), decided from a core-valid impact assessment's facts:
-  light unless a blocking open decision, an interface or data shape change, infrastructure, "(to
-  confirm)" in the PRD, or an HLD from an earlier pass (`--hld`). Repository count never decides.
-  Without an assessment the fallback rules: ≤ `design.light_max_criteria` (default 5) acceptance
-  criteria, Non-functional requirements None, a one-repository workspace, no "(to confirm)". It
-  also prints a plain-words `explanation`, which `design-solution.yaml`'s `how_to_design` gate shows (Go
-  with that / Plan the architecture first / Skip the architecture document; autopilot accepts;
-  skipped on greenfield or a run-start `path: full|light`); `sizing.py choose` applies the answer
-  as the `design_path` step that routes and feeds the LLD stage. Light approvals bind the PRD hash
-  instead of an HLD.
 - **`prd_source.py`** — when no valid PRD exists, routes the PRD stage: normalize the client's
   own PRD (a 250+ word document, any office/PDF file or a Jira XML export; a client `prd.md` is kept as
   `prd.original.md`) or clarify a short request through the interview.
@@ -336,8 +306,8 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
   `docs.extract` from maestro.config.yaml — into `docs/_generated/`, the technical doc's
   connections block, the diagram, `docs/_index/code-to-facts.md` and opt-in facts blocks in folder
   `AGENTS.md`/`CLAUDE.md`), `snapshot`/`stamp` (`verified_at` = HEAD and `status: draft` on docs a
-  writer changed), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD, implement
-  and review load), `domains` (doc paths for the repos `impact.json` names). **Team-owned
+  writer changed), `cited` (the rows behind every ID a PRD or plan cites — what implement and
+  review load), `domains` (doc paths for the repos named). **Team-owned
   content** — invariants (`INV`) and change scenarios (`CS`): technical `## Invariants and
   consistency` / `## Change scenarios`, architecture `## Platform-wide invariants`,
   `side-effects.yaml` — is written by people only. The build-knowledge, retrospect and
@@ -410,7 +380,7 @@ python3 engine/validate_open_questions.py testdata/open-questions.valid.json
 The evaluation set (`evals/cases/<case>/`: requirement, fixture repositories, expectations,
 judge rubric) measures output quality before a release: `engine/eval_setup.py` builds a case's
 workspace, a real auto-mode run follows, `engine/eval_score.py score` checks the run's metrics
-(design path, questions, validators, verification, AC trace, drift, fix rounds, person gates)
+(change type, questions, validators, verification, AC trace, drift, fix rounds, person gates)
 plus a judge's rubric scores, and `summary --baseline evals/baseline.json` flags regressions.
 See `docs/evals.md`.
 
@@ -439,6 +409,11 @@ Full spec: `docs/workflow-spec.md`. The load-bearing rules:
   `script` (stdout JSON becomes routable outputs — the `oq_serve` pattern), `parallel`
   (branches may contain agent/gate/script/subworkflow, never nested parallel),
   `subworkflow` (child steps namespaced `parent/child` in state; depth ≤ 4).
+- **Gates**: an option with `pause: true` ("Later") takes no `to`; choosing it pauses the run
+  at that gate (`next` serves `paused`, `maestroctl runs` lists it) and resuming asks the same
+  question again. An `auto:` policy never names a pause option. Any node may carry `say:`, one
+  plain progress line the lead shows the person when the step starts (linted for length and
+  engine internals). An input may list `enum:` values; `init` refuses anything else.
 - **Loops are back-edges**, not a construct: any route may target an earlier node.
   Entering a `done` node cascade-resets it plus reachable done steps. Every node has a
   visit cap (`max_visits` → `defaults.max_visits` → 10); exceeding it routes to
@@ -506,7 +481,7 @@ whole suite — the parser underpins everything.
   interview discussion, inline mode) live in reference files beside it, read on demand. Its hard rules (never
   edit state, never read artifacts into context, never skip gates, dispatch verbatim)
   are what keep long runs reliable — change them only deliberately.
-- **Workflows name skills directly** (`skill: hld-writing`); placeholders are allowed in the
+- **Workflows name skills directly** (`skill: plan-writing`); placeholders are allowed in the
   skill name (`skill: "${inputs.stack}-implement"` replaces the old dispatch glue).
   Model choice: per-node `model:` → workflow `defaults.model` → `haiku`; values pass to
   the harness as-is (haiku/sonnet/opus).
@@ -541,7 +516,7 @@ domain `docs/functional/<domain>.md` (business rules `BR`) + `docs/technical/<do
 judgement from the codebase; `retrospect` refreshes touched domains after a feature;
 `engine/living_docs.py` generates everything the code lists (`docs/_generated/`), checks the
 format and IDs, and stamps `verified_at`. Steps load only what they need: the touched domains'
-docs, and from LLD on only the rows the design cites. It coexists with the injected lessons store.
+docs, and from the plan on only the rows it cites. It coexists with the injected lessons store.
 
 **The load-bearing separation (swappable skills):** the consolidation *functionality* —
 counting distinct runs, the threshold, promotion, pruning, rendering — is deterministic

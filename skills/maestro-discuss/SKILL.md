@@ -1,6 +1,6 @@
 ---
 name: maestro-discuss
-description: Side-chat partner for Maestro interviews — discuss ONE open PRD/HLD/LLD interview question with the human in a separate session, then record the agreed outcome so the main run's context never sees the discussion. Front door for /maestro-discuss or $maestro-discuss with a slug, step and question id.
+description: Side-chat partner for Maestro interviews — discuss ONE open interview question (the PRD interview in the shipped pack) with the human in a separate session, then record the agreed outcome so the main run's context never sees the discussion. Front door for /maestro-discuss or $maestro-discuss with a slug, step and question id.
 tags: [orchestration, sdlc]
 allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 ---

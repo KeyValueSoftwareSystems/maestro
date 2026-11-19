@@ -160,7 +160,7 @@ class FaultInjectionTest(LivingDocsBase):
     def test_dangling_id_in_design(self):
         def mutate(root):
             os.makedirs(os.path.join(root, ".maestro/runs/fee-groups/design"))
-            open(os.path.join(root, ".maestro/runs/fee-groups/design/hld.md"), "w").write("Respects PL-CS-007.\n")
+            open(os.path.join(root, ".maestro/runs/fee-groups/design/test-cases.md"), "w").write("Respects PL-CS-007.\n")
         self.assert_caught(mutate, "ERROR:R2")
 
     def test_dangling_id_in_an_active_plan(self):
@@ -333,13 +333,13 @@ class CommandsTest(LivingDocsBase):
 
     def test_cited_writes_only_the_cited_rows(self):
         root = self.copy()
-        lld = os.path.join(root, "lld.md")
-        open(lld, "w").write("Keep PL-INV-001 and PL-CS-002. Unrelated: AC-01.\n")
+        plan = os.path.join(root, "plan.md")
+        open(plan, "w").write("Keep PL-INV-001 and PL-CS-002. Unrelated: AC-01.\n")
         out = os.path.join(root, "facts.md")
-        found, _ = living_docs.cited(root, [lld])
+        found, _ = living_docs.cited(root, [plan])
         self.assertEqual(found, ["PL-INV-001", "PL-CS-002"])
         with contextlib.redirect_stdout(io.StringIO()):
-            rc = living_docs.main(["cited", "--root", root, "--from", lld, "--out", out])
+            rc = living_docs.main(["cited", "--root", root, "--from", plan, "--out", out])
         self.assertEqual(rc, 0)
         text = open(out).read()
         self.assertIn("- PL-CS-002 (technical/payment-links.md · Change scenarios)", text)

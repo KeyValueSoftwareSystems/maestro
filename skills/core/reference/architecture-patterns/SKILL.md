@@ -1,6 +1,6 @@
 ---
 name: architecture-patterns
-description: Reference for choosing and reviewing system architecture — when each pattern fits, when it does not, and what it costs. Covers architecture style (modular monolith, services, event-driven, serverless), sync vs async integration, data ownership, outbox and idempotent consumers, sagas, CQRS, caching, BFF/gateway, resilience, horizontal scaling and partitioning, multi-tenancy, and observability. Use when writing or reviewing an HLD.
+description: Reference for choosing and reviewing system architecture — when each pattern fits, when it does not, and what it costs. Covers architecture style (modular monolith, services, event-driven, serverless), sync vs async integration, data ownership, outbox and idempotent consumers, sagas, CQRS, caching, BFF/gateway, resilience, horizontal scaling and partitioning, multi-tenancy, and observability. Use when brainstorming or writing a feature's plan.
 allowed-tools: Read, Grep, Glob
 tags: [reference, architecture]
 ---
