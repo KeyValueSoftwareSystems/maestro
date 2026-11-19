@@ -5,9 +5,9 @@
 # Black-box and from the approved PRD alone: its acceptance criteria decide which cases exist
 # (each case names the criteria it verifies; the engine checks every criterion is covered and none
 # is invented) and what each case should observe, in the PRD's own terms. The cases read no
-# design document, so design.yaml runs this stage beside the solution design and a design revision
-# never rewrites them. QA takes the exact values to check (status codes, messages, fields) from the
-# approved contract, HLD or LLDs when it runs each case. No approval gate: the engine's trace is the
+# design document, so design.yaml runs this stage beside the plan and a plan revision never
+# rewrites them. QA takes the exact values to check (status codes, messages, fields) from the
+# approved plan when it runs each case. No approval gate: the engine's trace is the
 # check.
 version: 1
 name: design-tests
@@ -26,14 +26,15 @@ nodes:
   - id: test_cases
     type: agent
     label: Functional test cases
+    say: Writing the functional test cases from the PRD.
     instruction: |
       Produce the functional test-case catalog for this feature at
       .maestro/runs/${inputs.slug}/design/test-cases.md, the QA source of truth, from the approved PRD at
       .maestro/runs/${inputs.slug}/requirement/prd.md alone. Every acceptance criterion needs at
       least one case; trace no criterion the PRD does not have. State each expected result as the
-      behaviour a user or client observes, in the PRD's terms; do not read the HLD, contract or
-      LLDs (they are being written at the same time) and do not invent status codes, error codes
-      or field names the PRD does not state. QA looks those up in the approved design.
+      behaviour a user or client observes, in the PRD's terms; do not read the plan (it is being
+      written at the same time) and do not invent status codes, error codes or field names the
+      PRD does not state. QA looks those up in the approved plan.
       Revision note: ${inputs.feedback}
       If the catalog exists from an earlier pass, update in place only the cases the PRD or the
       revision note change; keep every other case and its ID unchanged.

@@ -49,12 +49,17 @@ class ShippedWorkflowsTest(unittest.TestCase):
     def test_workflows_and_engine_helpers_agree_on_the_shared_files(self):
         """A file a workflow names and a helper finds by itself must be the same file."""
         named = {rel for _name, rel in self.paths()}
-        for rel in (run_layout.PRD, run_layout.HLD, run_layout.CONTRACT, run_layout.TEST_CASES,
-                    run_layout.IMPACT, run_layout.DECISION_LOG, run_layout.WORKSPACE_LOCK,
-                    run_layout.DESIGN_FACTS, run_layout.stage_record("PRD"),
-                    run_layout.queue("hld"), run_layout.lld("${inputs.stack}"),
+        for rel in (run_layout.PRD, run_layout.TEST_CASES, run_layout.BRAINSTORM,
+                    run_layout.DECISION_LOG, run_layout.WORKSPACE_LOCK, run_layout.stage_record("PRD"),
+                    run_layout.queue("prd"),
                     run_layout.receipt("${inputs.stack}"), run_layout.reviewed("${inputs.repo}")):
             self.assertIn(rel, named)
+
+    def test_workflows_name_the_plan_where_the_engine_keeps_it(self):
+        plan = run_layout.plan_active("${inputs.slug}")
+        for name in ("design-plan.yaml", "impl.yaml", "qa.yaml", "delivery.yaml"):
+            with open(os.path.join(REPO, "workflows", name), encoding="utf-8") as fh:
+                self.assertIn(plan, fh.read(), name)
 
     def test_an_edited_old_workflow_is_told_what_to_rename(self):
         text = ('artifact: ".maestro/runs/${inputs.slug}/hld.md"\n'

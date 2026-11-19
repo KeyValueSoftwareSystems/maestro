@@ -9,7 +9,7 @@
 version: 1
 name: impl
 title: Implement one repository
-description: Build one selected repo from its approved LLD — task DAG, sliced implementation, engine verification, review, bounded fix loop.
+description: Build one selected repo from the approved plan — task DAG, sliced implementation, engine verification, review, bounded fix loop.
 inputs:
   slug: {type: string, required: true}
   stack: {type: string, required: true, description: selected repository name}
@@ -29,12 +29,13 @@ nodes:
     type: agent
     label: Task DAG
     instruction: |
-      Produce the parallel task DAG for the ${inputs.stack} repository from its LLD at
-      .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one). Group tasks into slices with intra-group
+      Produce the parallel task DAG for the ${inputs.stack} repository from the approved plan at
+      docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktree): this
+      repository's part of it and the Interfaces it builds against. The plan is short; fill the
+      detail from the code. Group tasks into slices with intra-group
       dependencies only and disjoint writes across groups (schema
       .maestro/engine/schemas/tasks.schema.json). If the engine's check failed, fix what it
-      reported. If the LLD needs work it does not plan (a change in another repository, or an
+      reported. If the plan needs work it does not describe (a change in another repository, or an
       unplanned migration, permission change or dependency), plan what it does plan and return
       escalate true with the gap in escalation. Honour the person's guidance (the `guidance`
       input) when there is any.
@@ -42,6 +43,7 @@ nodes:
     inputs:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
       schema: .maestro/engine/schemas/tasks.schema.json
       validator: .maestro/engine/validate_tasks.py
       guidance: "${steps.stop_gate.outputs.guidance}"
@@ -57,12 +59,12 @@ nodes:
       - {when: "${steps.tasks.outputs.escalate} == true", to: stop_gate}
       - {to: facts}
 
-  # Engine-owned: the living-doc rows (rules, invariants, change scenarios) this repository's LLD
-  # cites, so the implementer and reviewer load exactly those facts.
+  # Engine-owned: the living-doc rows (rules, invariants, change scenarios) the plan cites, so the
+  # implementer and reviewer load exactly those facts.
   - id: facts
     type: script
-    label: Collect the facts the LLD cites
-    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, ".maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md", --out, ".maestro/runs/${inputs.slug}/.engine/facts/${inputs.stack}.md"]
+    label: Collect the facts the plan cites
+    run: [python3, .maestro/engine/living_docs.py, cited, --root, ".", --from, "docs/plans/active/${inputs.slug}.md", --out, ".maestro/runs/${inputs.slug}/.engine/facts/${inputs.stack}.md"]
     routes:
       - {when: "${steps.tasks.outputs.fanout} == true", to: slices}
       - {to: implement}
@@ -91,17 +93,16 @@ nodes:
     instruction: |
       Implement the ${inputs.stack} repository for this feature from
       .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json — every slice, with tests. The
-      skill owns slice fan-out and worktree hygiene. Work against the LLD at
-      .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
-      .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), grounded in the
-      maintained codebase map
-      at docs/codebase-maps/${inputs.stack}.md and the living-doc facts the LLD cites at
+      skill owns slice fan-out and worktree hygiene. Work against the approved plan at
+      docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktree), grounded
+      in the maintained codebase map
+      at docs/codebase-maps/${inputs.stack}.md and the living-doc facts the plan cites at
       ${steps.facts.outputs.facts_path}: keep every invariant listed there, and when you change
       something a change scenario names, also handle and test what it says is affected. Explore
-      the live source further only where the map or LLD doesn't cover what a slice
-      touches. Report tests honestly. The approved LLD and contract are the human approval for
-      what they describe, including tasks marked needs_human_gate: build those exactly as
-      designed. When the work needs something they do not describe (an unplanned migration,
+      the live source further only where the map or plan doesn't cover what a slice
+      touches. Report tests honestly. The approved plan is the human approval for what it
+      describes, including tasks marked needs_human_gate: build those exactly as
+      designed. When the work needs something it does not describe (an unplanned migration,
       permission change, payment logic, production config, secret or dependency upgrade, or a
       design decision that looks wrong), stop and return escalate true with the reason in
       escalation. Honour the person's guidance (the `guidance` input) when there is any.
@@ -114,6 +115,7 @@ nodes:
       slug: "${inputs.slug}"
       stack: "${inputs.stack}"
       tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
       repo_path: "${inputs.repo_path}"
       worktree: "${inputs.worktree}"
       branch: "${inputs.branch}"
@@ -136,7 +138,7 @@ nodes:
       Implementation: ${steps.implement.outputs.escalation}
       Slices: ${steps.slices.outputs.escalation}
       Continue with your guidance (it reaches the task plan and the implementation), or stop. A change
-      to the design itself goes back through design: abort here and revise the LLD.
+      to the design itself goes back through design: abort here and revise the plan.
     options:
       - {id: continue, label: Continue with my guidance, to: tasks, input: guidance}
       - {id: abandon, label: Stop this stack — nothing is recorded for it and the other repositories carry on, to: end}
@@ -252,8 +254,8 @@ nodes:
     instruction: |
       Review the ${inputs.stack} implementation on branch
       ${steps.handoff.outputs.branch} at exact commit ${steps.review_head.outputs.commit}
-      against the LLD at .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md, the contract at
-      .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), the task list at
+      against the approved plan at docs/plans/active/${inputs.slug}.md (in the workspace root, not
+      in the worktree), the task list at
       .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json, the functional test cases at
       .maestro/runs/${inputs.slug}/design/test-cases.md, the standards and the maintained codebase map
       (docs/codebase-maps/${inputs.stack}.md) — use the map to check blast radius, not
@@ -303,8 +305,7 @@ nodes:
       worktree: "${steps.handoff.outputs.worktree}"
       commit: "${steps.review_head.outputs.commit}"
       branch: "${steps.handoff.outputs.branch}"
-      lld_path: ".maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md"
-      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
       tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
       test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
       living_doc_facts: "${steps.facts.outputs.facts_path}"
@@ -360,8 +361,8 @@ nodes:
         earlier pass is not yours to answer):
         answer each one in .maestro/runs/${inputs.slug}/reviews/code-${inputs.stack}.resolutions.json as
         {"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]} — fixed (the note says
-        what changed), contested (the finding is wrong; the note gives the evidence from the LLD,
-        contract or code; never a second time for a finding the reviewer upheld) or escalated (it
+        what changed), contested (the finding is wrong; the note gives the evidence from the plan
+        or code; never a second time for a finding the reviewer upheld) or escalated (it
         needs a person's decision; the note states it). The report is
         ${steps.review.outputs.review_path}.
       Smallest safe fix; never weaken, skip or delete a test. Start from the implement report
@@ -370,7 +371,7 @@ nodes:
       re-run only what proves your fix (the failing test, package or file), never a whole suite or
       a pre-existing check: the engine re-runs every check after you. Commit your fix on the
       branch; a round that commits nothing goes to a person, not another round.
-      If a hard stop applies (an unapproved migration, a contract or permission change, a
+      If a hard stop applies (an unapproved migration, an interface or permission change, a
       dependency upgrade, or a fix that would weaken a test), make no change and return escalate
       true. Honour the person's guidance (the `guidance` input) when there is any.
       Do NOT loop — the workflow re-invokes you if needed.

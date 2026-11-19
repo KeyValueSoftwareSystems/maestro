@@ -5,9 +5,9 @@
                         [--out report.json]
   eval_score.py summary --reports <report.json> ... [--baseline evals/baseline.json]
 
-`score` reads the run ledger and artifacts and computes deterministic metrics — run status, design
-path, infrastructure level, questions asked and rounds per stage, acceptance criteria, whether the
-PRD and HLD pass their validators now, engine verification per repository, the acceptance-criteria
+`score` reads the run ledger and artifacts and computes deterministic metrics — run status, change
+type (major or minor), questions asked and rounds per stage, acceptance criteria, whether the PRD
+and the plan pass their validators now, engine verification per repository, the acceptance-criteria
 trace, design drift, fix rounds, gates answered by a person or by autopilot, wall time — then
 checks the case's `expect:` block. A judge's scores (a subagent grading the artifacts with the
 case's rubric.md, saved as {"scores": {criterion: 1-5}, "notes": "..."}) are averaged and checked
@@ -26,9 +26,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ac_trace  # noqa: E402
 import decision_log  # noqa: E402
+import plan_doc  # noqa: E402
 import run_layout  # noqa: E402
 import state as statemod  # noqa: E402
-import validate_hld  # noqa: E402
 import validate_prd  # noqa: E402
 import wf  # noqa: E402
 
@@ -48,13 +48,11 @@ def _outputs(state, path):
     return ((state.get("steps") or {}).get(path) or {}).get("outputs") or {}
 
 
-# design.yaml runs sizing, the HLD, contract and LLDs inside this branch, beside the test cases;
-# runs from before that layout kept them directly under design/
-_SOLUTION = "design/solution_and_tests[solution]/solution/"
-
-
-def _design_outputs(state, rel):
-    return _outputs(state, _SOLUTION + rel) or _outputs(state, "design/" + rel)
+def _plan_valid(slug, root, plan_type):
+    """Whether the active plan passes its validator now (None when there is no active plan)."""
+    if plan_type not in plan_doc.TYPES or not os.path.isfile(plan_doc.active_path(slug, root)):
+        return None
+    return not plan_doc.validate(slug, root, plan_type)
 
 
 def _minutes(state):
@@ -77,8 +75,7 @@ def metrics(root, slug):
                                if isinstance(d, dict) and d.get("source") in ASKED)
         rounds[stage] = len(doc.get("rounds") or [])
     prd = run_layout.path(slug, root, run_layout.PRD)
-    hld = run_layout.path(slug, root, run_layout.HLD)
-    infra_level = _design_outputs(state, "hld/infra_profile").get("level") or "none"
+    plan_type = (state.get("inputs") or {}).get("path")
     manifest = _read_json(run_layout.path(slug, root, run_layout.MANIFEST)) or {}
     statuses = {r.get("repo"): (r.get("verification") or {}).get("status")
                 for r in manifest.get("repositories") or []}
@@ -87,17 +84,14 @@ def metrics(root, slug):
     return {
         "status": (state.get("run") or {}).get("status"),
         "mode": (state.get("run") or {}).get("mode") or "human",
-        "design_path": (_design_outputs(state, "design_path").get("path")
-                        or _design_outputs(state, "sizing").get("path") or "full"),
-        "infra_level": infra_level,
-        "interfaces_changed": _design_outputs(state, "hld/validate_hld").get("interfaces_changed"),
+        "type": plan_type,
         "questions_asked": sum(questions.values()),
         "questions_by_stage": questions,
         "max_rounds_per_stage": max(rounds.values(), default=0),
         "acceptance_criteria": len(ac_trace.prd_criteria(prd)),
-        "prd_valid": os.path.isfile(prd) and not validate_prd.validate(prd)[0],
-        "hld_valid": (not validate_hld.validate(hld, infra_level=infra_level)[0])
-        if os.path.isfile(hld) else None,
+        "prd_valid": os.path.isfile(prd) and not validate_prd.validate(
+            prd, prd_type="minor" if plan_type == "minor" else "major")[0],
+        "plan_valid": _plan_valid(slug, root, plan_type),
         "verification": statuses,
         "ac_all_passed": _outputs(state, "delivery/ac_trace").get("all_passed"),
         "ac_summary": _outputs(state, "delivery/ac_trace").get("summary"),
@@ -118,8 +112,7 @@ def _check(name, expected, actual, passed):
 
 def evaluate(found, expect, judge=None):
     checks = []
-    for key in ("status", "design_path", "infra_level", "interfaces_changed", "prd_valid",
-                "hld_valid", "ac_all_passed", "drift_blocking"):
+    for key in ("status", "type", "prd_valid", "plan_valid", "ac_all_passed", "drift_blocking"):
         if key in expect:
             checks.append(_check(key, expect[key], found.get(key), found.get(key) == expect[key]))
     limits = (("max_questions", "questions_asked", "<="), ("max_rounds_per_stage",

@@ -350,6 +350,10 @@ def coerce_input(declared, raw, name="input"):
             return [p.strip() for p in raw.split(",") if p.strip()]
     except (ValueError, TypeError):
         raise RunError(f"input {name!r} is not a valid {kind}: {raw!r}", code=3)
+    allowed = (declared or {}).get("enum")
+    if allowed and raw not in allowed:
+        raise RunError(f"input {name!r} must be one of {', '.join(map(str, allowed))}; "
+                       f"got {raw!r}", code=3)
     return raw
 
 
@@ -1169,7 +1173,7 @@ def _gate_input_action(run, frame, node, path, entry):
         question = (
             f"You selected: {option['label']}\n\n"
             "What should Maestro change before regenerating? Give all suggestions together; "
-            "for multiple LLDs, label each repository. Feedback is required and nothing will "
+            "when it concerns several repositories, label each one. Feedback is required and nothing will "
             "regenerate until it is recorded."
         )
     elif field == "answers_blob":

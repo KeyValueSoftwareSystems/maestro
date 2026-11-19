@@ -36,10 +36,10 @@ class SimulatorTest(unittest.TestCase):
         with open(os.path.join(requirement, "seed.md"), "w") as fh:
             fh.write("Build a simulated feature.\n")
 
-    def argv(self, *extra):
+    def argv(self, *extra, path="major"):
         return ["simulate.py", "--root", self.root, "--workflow",
                 ".maestro/workflows/sdlc-main.yaml", "--slug", "sim",
-                "--input", "feature=Simulation", "--auto", *extra]
+                "--input", "feature=Simulation", "--input", f"path={path}", "--auto", *extra]
 
     def test_requires_explicit_script_side_effect_acknowledgement(self):
         with self.assertRaises(resolver.RunError) as ctx:
@@ -69,12 +69,22 @@ class SimulatorTest(unittest.TestCase):
                 "--auto", "--allow-script-side-effects"]
         self.assertEqual(simulate.main(argv), 1)
 
-    def test_full_sdlc_happy_path_finishes_without_llm(self):
-        code = simulate.main(self.argv("--allow-script-side-effects"))
+    def walk(self, path):
+        code = simulate.main(self.argv("--allow-script-side-effects", path=path))
         self.assertEqual(code, 0)
-        manifest = os.path.join(self.root, ".maestro", "runs", "sim", "build",
-                                "manifest.json")
+        manifest = os.path.join(self.root, ".maestro", "runs", "sim", "build", "manifest.json")
         self.assertTrue(os.path.isfile(manifest))
+        with open(os.path.join(self.root, "docs", "plans", "active", "sim.md")) as fh:
+            self.assertIn(f"Type: {path}", fh.read())
+        with open(os.path.join(self.root, ".maestro", "runs", "sim", ".engine",
+                               "plan-approval.json")) as fh:
+            self.assertIn("design/test-cases.md", fh.read())
+
+    def test_full_sdlc_happy_path_finishes_without_llm(self):
+        self.walk("major")
+
+    def test_minor_sdlc_happy_path_finishes_without_llm(self):
+        self.walk("minor")
 
 
 if __name__ == "__main__":

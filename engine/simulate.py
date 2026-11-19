@@ -134,6 +134,36 @@ def _simulated_lld(parent_slug, repo):
 _RUN_PATH = re.compile(r"^(\.maestro/runs/[^/]+)/(.+)$")
 
 
+def _simulated_plan(root, slug, plan_type):
+    """A plan that passes `plan_doc.py validate` for its type: every workspace repository, and
+    (major) every PRD acceptance criterion covered."""
+    repos = [name for name, _path in codebase_scan.discover_repos(root)] or ["simulated"]
+    title = "# Simulated feature — plan"
+    if plan_type == "minor":
+        return "\n".join([
+            title, f"Type: minor · Run: {slug} · Repositories: {', '.join(repos)}",
+            "- Change: [simulated] the smallest change the PRD asks for.",
+            "- Where: [simulated] one module per repository.",
+            "- Interface: None", "- Data: None",
+            "- Tests: one test per acceptance criterion.", "- Risk: None"]) + "\n"
+    prd = run_layout.path(slug, root, run_layout.PRD)
+    criteria = ac_trace.prd_criteria(prd) if os.path.isfile(prd) else []
+    table = "\n".join(f"| {name} | simulated change | no |" for name in repos)
+    coverage = "\n".join(f"- {ac} -> {repos[0]} / simulated" for ac in criteria) or "None"
+    return (f"{title}\nType: major · Run: {slug} · PRD: {run_layout.PRD} · Status: active\n\n"
+            "## Summary\n[simulated] Deliver the simulated feature.\n\n"
+            "## Decisions\n- Keep it small — simulated — rejected: nothing.\n\n"
+            "## Repositories\n| repo | role in this change | new? |\n|---|---|---|\n"
+            f"{table}\n\n"
+            "## Design\n[simulated] one module per repository.\n\n"
+            "## Interfaces\nNone\n\n## Infrastructure\nNone\n\n"
+            "## Risks and open points\nNone\n\n"
+            f"## Acceptance coverage\n{coverage}\n\n## Out of scope\nNone\n")
+
+
+_PLAN_TYPE_RE = re.compile(r"Plan type:\s*(major|minor)")
+
+
 def _queue_stage(rel):
     """`hld` / `hld-post` for a question queue artifact (the layout's `.engine/queues/<stage>.json`,
     or a `<stage>-questions.json` an older workflow names), else None."""
@@ -200,6 +230,12 @@ def _stub_agent(root, act, slug=None):
                     "audit": {"unresolved": [], "contradictions": []},
                 }, fh, indent=2)
                 fh.write("\n")
+            continue
+        plan = re.fullmatch(r"docs/plans/active/([^/]+)\.md", rel.replace(os.sep, "/"))
+        if plan:
+            kind = _PLAN_TYPE_RE.search(act.get("prompt") or "")
+            with open(full, "w", encoding="utf-8") as fh:
+                fh.write(_simulated_plan(root, plan.group(1), kind.group(1) if kind else "major"))
             continue
         if rel.endswith("/impact.json"):
             # every repository the workspace has; unique per write for the `fresh` check

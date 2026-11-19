@@ -72,6 +72,18 @@ Before adding prose, create all twelve headings in the required order. Before co
 that every in-scope actor permission, state transition, limit, conflict, override, and recovery rule
 from the confirmed decisions has an observable acceptance criterion. Non-goals do not need one.
 
+### Mini PRD (minor type)
+
+When the workflow's PRD type is `minor`, write the mini PRD instead: the same document header,
+then only these three level-2 headings in this order:
+
+1. `Problem` — what is wrong or missing today, and the change asked for, in two to four lines.
+2. `Acceptance criteria` — the same `AC-01:` bullets and rules as above.
+3. `Out of scope` — what this change does not do.
+
+Keep it to what the change needs; do not add the other sections. Validate it with the type the
+workflow names.
+
 ## Plain technical English
 
 - Put the decision or idea first.

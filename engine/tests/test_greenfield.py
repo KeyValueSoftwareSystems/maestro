@@ -1,5 +1,5 @@
-"""Greenfield: an empty workspace gets the repositories its HLD lists — created, scaffolded,
-configured and proven to build and test before the detailed design."""
+"""Greenfield: an empty workspace gets the repositories its plan marks new — created, scaffolded,
+configured and proven to build and test before the plan is approved."""
 import io
 import json
 import os
@@ -14,18 +14,18 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import codebase_scan  # noqa: E402
 import greenfield  # noqa: E402
 import project_config  # noqa: E402
-import validate_hld  # noqa: E402
 
-HLD = """# Notes — HLD
+PLAN = """# Notes — plan
+Type: major · Run: demo · PRD: .maestro/runs/demo/requirement/prd.md · Status: active
 
-## Context and scope
-
+## Summary
 A new notes product.
 
 ## Repositories
-
-- `notes-api` (python): stores and serves notes.
-- `notes-web` (react): the notes UI.
+| repo | role in this change | new? |
+|---|---|---|
+| notes-api | stores and serves notes (python) | yes |
+| notes-web | the notes UI (react) | yes |
 """
 
 
@@ -40,9 +40,10 @@ class GreenfieldTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
         self.run_dir = os.path.join(self.root, ".maestro", "runs", "demo")
         os.makedirs(self.run_dir)
-        self.hld = os.path.join(self.run_dir, "hld.md")
-        with open(self.hld, "w") as fh:
-            fh.write(HLD)
+        plan = os.path.join(self.root, "docs", "plans", "active", "demo.md")
+        os.makedirs(os.path.dirname(plan))
+        with open(plan, "w") as fh:
+            fh.write(PLAN)
 
     def cmd(self, *argv):
         out, err = io.StringIO(), io.StringIO()
@@ -52,11 +53,11 @@ class GreenfieldTest(unittest.TestCase):
 
     def test_check_create_and_configure(self):
         self.assertTrue(self.cmd("check", "--root", self.root)[1]["greenfield"])
-        code, out, _ = self.cmd("create", "--root", self.root, "--hld", self.hld)
+        code, out, _ = self.cmd("create", "--root", self.root, "--slug", "demo")
         self.assertEqual((code, out["created_csv"]), (0, "notes-api,notes-web"))
         self.assertEqual(self.cmd("check", "--root", self.root)[1]["repo_count"], 2)
         # created again: nothing is recreated
-        self.assertEqual(self.cmd("create", "--root", self.root, "--hld", self.hld)[1]["created_csv"], "")
+        self.assertEqual(self.cmd("create", "--root", self.root, "--slug", "demo")[1]["created_csv"], "")
         api = os.path.join(self.root, "codebase", "notes-api")
         with open(os.path.join(api, "README.md"), "w") as fh:
             fh.write("# notes-api\n")
@@ -90,7 +91,7 @@ class GreenfieldTest(unittest.TestCase):
         self.assertEqual(status.stdout, "")
 
     def test_configure_refuses_missing_or_failing_commands(self):
-        self.cmd("create", "--root", self.root, "--hld", self.hld)
+        self.cmd("create", "--root", self.root, "--slug", "demo")
         scaffold = os.path.join(self.run_dir, "scaffold.json")
         with open(scaffold, "w") as fh:
             json.dump({"repos": {"notes-api": {"commands": {"build": "true"}}}}, fh)
@@ -104,17 +105,17 @@ class GreenfieldTest(unittest.TestCase):
         self.assertEqual((out["valid"], out["failed_csv"]), (False, "notes-api"))
         self.assertIn("test failed", out["summary"])
 
-    def test_hld_must_list_repositories_when_greenfield(self):
-        text = HLD.replace("## Repositories\n\n- `notes-api` (python): stores and serves notes.\n"
-                           "- `notes-web` (react): the notes UI.\n", "")
-        path = os.path.join(self.run_dir, "plain.md")
-        with open(path, "w") as fh:
-            fh.write(text)
-        errors, _ = validate_hld.validate(path, greenfield=True)
-        self.assertTrue(any(e.startswith("missing section: repositories") for e in errors))
-        sections, _ = validate_hld._sections(HLD)
-        self.assertEqual(validate_hld.new_repositories(sections),
-                         [("notes-api", "python"), ("notes-web", "react")])
+    def test_create_writes_the_planned_list_and_refuses_a_plan_without_new_repos(self):
+        code, out, _ = self.cmd("create", "--root", self.root, "--slug", "demo")
+        self.assertEqual(code, 0)
+        with open(os.path.join(self.root, out["plan_path"])) as fh:
+            self.assertEqual([r["name"] for r in json.load(fh)["repos"]], ["notes-api", "notes-web"])
+        self.assertEqual(out["plan_path"], ".maestro/runs/demo/.engine/greenfield-plan.json")
+        with open(os.path.join(self.root, "docs", "plans", "active", "demo.md"), "w") as fh:
+            fh.write(PLAN.replace("| yes |", "| no |"))
+        code, _out, err = self.cmd("create", "--root", self.root, "--slug", "demo")
+        self.assertEqual(code, 1)
+        self.assertIn("marks no repository new", err)
 
 
 if __name__ == "__main__":

@@ -6,12 +6,12 @@ thing: `maestroctl todo` prints it, and `next` / `init` hand it to the lead agen
 into the harness's own task list (Claude Code todos, a Codex plan, Cursor todos).
 
 Items are STAGES — subworkflow and parallel nodes — in declaration order. Splitting large flows
-into small stage children is what makes this list readable: `sdlc-main` shows design -> design
-review -> delivery -> archive, and the running stage expands one level (design: intake -> PRD ->
-map -> HLD -> LLDs -> contract). A stage is listed when it is on the workflow's normal path or
-has been entered, so optional stages (a scoped architecture revision) appear
+into small stage children is what makes this list readable: `sdlc-main` shows workspace sync ->
+design -> delivery -> archive, and the running stage expands one level (design: intake -> PRD ->
+plan, beside the test cases). A stage is listed when it is on the workflow's normal path or
+has been entered, so optional stages (scaffolding a new product's repositories) appear
 only once they actually run. A parallel node whose every branch is a single subworkflow (design's
-solution design beside its test cases) is listed as those stages, side by side, so both stay
+plan beside its test cases) is listed as those stages, side by side, so both stay
 visible; a parallel with longer branches (the implementation pool's claim loop) is one stage.
 The step the run is on is reported as a `now` line under the innermost stage that contains it,
 marked `waiting` when it needs the human (a gate, an interview, an exhausted-loop or failure

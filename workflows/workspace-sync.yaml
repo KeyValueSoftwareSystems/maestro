@@ -52,7 +52,7 @@ nodes:
       changes are not part of the feature lock or its implementation worktrees.
 
       Before implementation, "Apply safe updates" moves the commits the approved design was
-      grounded in and sends the run back to design (PRD, HLD and LLDs are redone and approved
+      grounded in and sends the run back to design (the PRD and plan are redone and approved
       again, often hours) when an update touches code the design cites, or a migration. Pick
       "Keep current commits" unless you need the updates now; they can be pulled at the next
       feature start. With `design.sync_restart: always` in maestro.config.yaml, any moved

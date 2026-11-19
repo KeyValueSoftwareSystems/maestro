@@ -1,13 +1,13 @@
-# Greenfield child of design: the workspace had no code, so after HLD approval the repositories the
-# HLD lists are created, scaffolded to a passing build and test, added to maestro.config.yaml and
-# pinned, before the contract and LLDs are written against them.
+# Greenfield child of design: the workspace had no code, so once the plan is written the
+# repositories it marks new are created, scaffolded to a passing build and test, added to
+# maestro.config.yaml and pinned, before the plan is approved and built against them.
 #
 #   create (engine) -> scaffold (agent; engine check: configure + prove build/test)
 #   -> record knowledge -> pin (engine)
 version: 1
 name: scaffold
 title: Scaffold new repositories
-description: Create and scaffold the repositories a greenfield HLD lists, then verify and pin them.
+description: Create and scaffold the repositories a greenfield plan marks new, then verify and pin them.
 inputs:
   slug: {type: string, required: true}
   feature: {type: string, default: "${inputs.slug}"}
@@ -19,19 +19,22 @@ start: create
 nodes:
   - id: create
     type: script
-    label: Create the repositories the HLD lists
-    run: [python3, .maestro/engine/greenfield.py, create, --root, ".", --hld, ".maestro/runs/${inputs.slug}/design/hld.md", --plan, ".maestro/runs/${inputs.slug}/.engine/greenfield-plan.json"]
+    label: Create the repositories the plan marks new
+    say: Creating the new repositories.
+    run: [python3, .maestro/engine/greenfield.py, create, --root, ".", --slug, "${inputs.slug}", --plan, ".maestro/runs/${inputs.slug}/.engine/greenfield-plan.json"]
     on_fail: abort
     next: scaffold
 
   - id: scaffold
     type: agent
     label: Scaffold the new repositories
+    say: Setting up each new repository with a passing build and test.
     instruction: |
       Scaffold each new repository (${steps.create.outputs.repos_csv}) under codebase/ from the
-      approved HLD at .maestro/runs/${inputs.slug}/design/hld.md: the stack's layout, a passing build and
-      trivial test, lint, a README, CI, a container image when the HLD deploys it, starting
-      infrastructure definitions when it names a platform, and each repository's codebase map at
+      plan at docs/plans/active/${inputs.slug}.md (in the workspace root): the stack's layout, a
+      passing build and trivial test, lint, a README, CI, a container image when the plan deploys
+      it, starting infrastructure definitions when it names a platform, and each repository's
+      codebase map at
       docs/codebase-maps/<repo>.md. Write no
       feature behaviour. Commit each skeleton on its default branch. Write the report with each
       repository's stack and commands to .maestro/runs/${inputs.slug}/build/scaffold.json.
@@ -39,7 +42,7 @@ nodes:
     skill: repo-scaffold
     inputs:
       slug: "${inputs.slug}"
-      hld_path: ".maestro/runs/${inputs.slug}/design/hld.md"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
       repos: "${steps.create.outputs.repos_csv}"
       report_path: ".maestro/runs/${inputs.slug}/build/scaffold.json"
     outputs: [summary]
@@ -54,6 +57,7 @@ nodes:
   - id: record_knowledge
     type: script
     label: Record the new repositories' knowledge
+    say: Recording what the new repositories contain.
     run: [python3, .maestro/engine/workspace_sync.py, record-knowledge, --root, ".", --evidence, ".maestro/runs/${inputs.slug}/build/scaffold.json"]
     on_fail: abort
     next: pin
@@ -63,6 +67,7 @@ nodes:
   - id: pin
     type: script
     label: Pin the new repositories
+    say: Pinning the new repositories.
     run: [python3, .maestro/engine/workspace_sync.py, lock, --root, ".", --out, ".maestro/runs/${inputs.slug}/.engine/workspace-lock.json"]
     on_fail: abort
     next: end

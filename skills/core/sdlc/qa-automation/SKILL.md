@@ -16,7 +16,7 @@ assertions** to make a test pass.
 
 ## Inputs
 Your instructions name what to read — the acceptance criteria, the functional test-case
-catalog, and the approved design (contract, HLD and per-repository designs, whichever exist) —
+catalog, and the approved plan (its Interfaces give the exact shapes and error codes) —
 and the artifact path to write.
 Standalone? read them and write to a path you choose (and tell the user where).
 
@@ -40,7 +40,7 @@ Standalone? read them and write to a path you choose (and tell the user where).
    ones and the highest-value negative paths; state what is out of scope.
 3. **Design test data** — each test seeds and tears down its own data; no shared mutable state.
 4. **Author tests** with stable selectors (roles/test-ids), explicit waits on conditions,
-   and assertions that verify observable behavior + the contract's outcomes.
+   and assertions that verify observable behavior + the outcomes the plan's interfaces state.
 5. **Emit the scenario DAG** — write a `tasks.json` (see section below) so the
    suite can be authored in parallel.
 6. **Run in a clean env** — when your instructions say the environment is already running
@@ -88,7 +88,7 @@ errors, never to build the file up incrementally.
 
 Fields:
 - `context_manifest.read_once` = shared fixtures / page objects / test helpers the specs use;
-  `reference` = the acceptance-criteria path and the contract summary.
+  `reference` = the acceptance-criteria path and the plan's interfaces summary.
 - One `tasks[]` entry per scenario: `id`, its own `group_id`, `title` (the journey), empty
   `depends_on`, `reads` (extra fixtures), `writes` (the spec file it creates), `test` (the
   scenario id), `standards` (e.g. `["risk-tiered","determinism","isolation"]`),

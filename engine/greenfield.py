@@ -3,9 +3,10 @@
 
   greenfield.py check     [--root .]
       {greenfield, repo_count} — greenfield when no repository is discovered.
-  greenfield.py create    [--root .] --hld <hld.md> [--plan <plan.json>]
-      creates `codebase/<name>` for every repository the approved HLD's Repositories section lists
-      (`name` (stack): purpose): git init and an empty first commit; existing ones are left alone.
+  greenfield.py create    [--root .] --slug <slug> [--plan <plan.json>]
+      creates `codebase/<name>` for every repository the feature's plan
+      (docs/plans/active/<slug>.md) marks new: git init and an empty first commit; existing ones
+      are left alone. --plan is where the list of planned repositories is written.
       {repos_csv, created_csv, plan_path}
   greenfield.py configure [--root .] --scaffold <scaffold.json>
       the scaffolding agent's report {"repos": {name: {"stack", "commands": {build, test, ...}}}}:
@@ -29,8 +30,9 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import project_config  # noqa: E402
+import plan_doc  # noqa: E402
 import repo_checks  # noqa: E402
-import validate_hld  # noqa: E402
+import run_layout  # noqa: E402
 import wf  # noqa: E402
 
 
@@ -45,18 +47,13 @@ def cmd_check(args):
 
 
 def cmd_create(args):
-    try:
-        with open(args.hld, encoding="utf-8") as fh:
-            sections, _order = validate_hld._sections(fh.read())
-    except OSError as exc:
-        print(f"cannot read the HLD: {exc}", file=sys.stderr)
-        return 1
-    planned = validate_hld.new_repositories(sections)
+    planned = plan_doc.new_repositories(args.slug, args.root)
     if not planned:
-        print("the HLD lists no repositories to create", file=sys.stderr)
+        print(f"the plan ({run_layout.plan_active(args.slug)}) marks no repository new",
+              file=sys.stderr)
         return 1
     created = []
-    for name, _stack in planned:
+    for name in planned:
         path = os.path.join(args.root, "codebase", name)
         if os.path.isdir(os.path.join(path, ".git")):
             continue
@@ -70,12 +67,12 @@ def cmd_create(args):
                             "GIT_COMMITTER_EMAIL": os.environ.get("GIT_COMMITTER_EMAIL",
                                                                   "maestro@localhost")})
         created.append(name)
-    # the repositories planned: --plan, else greenfield-plan.json beside the HLD
-    plan = args.plan or os.path.join(os.path.dirname(args.hld), "greenfield-plan.json")
+    # the repositories planned: --plan, else the run's .engine/greenfield-plan.json
+    plan = args.plan or run_layout.path(args.slug, args.root, run_layout.ENGINE + "/greenfield-plan.json")
     os.makedirs(os.path.dirname(os.path.abspath(plan)), exist_ok=True)
     with open(plan, "w", encoding="utf-8") as fh:
-        json.dump({"repos": [{"name": n, "stack": s} for n, s in planned]}, fh, indent=2)
-    return _out({"repos_csv": ",".join(n for n, _s in planned), "created_csv": ",".join(created),
+        json.dump({"repos": [{"name": n} for n in planned]}, fh, indent=2)
+    return _out({"repos_csv": ",".join(planned), "created_csv": ",".join(created),
                  "plan_path": os.path.relpath(plan, args.root)})
 
 
@@ -161,7 +158,7 @@ def main(argv=None):
     p.set_defaults(fn=cmd_check)
     p = sub.add_parser("create")
     p.add_argument("--root", default=".")
-    p.add_argument("--hld", required=True)
+    p.add_argument("--slug", required=True)
     p.add_argument("--plan", help="where to write the planned repositories")
     p.set_defaults(fn=cmd_create)
     p = sub.add_parser("configure")

@@ -596,6 +596,13 @@ def check_citations(root, repos, docs, defs, report):
                 if name.endswith(".md"):
                     path = os.path.join(base, name)
                     sources.append((path, os.path.relpath(path, root)))
+    # the active plans cite rules too (the delivered ones are history and may cite retired IDs)
+    plans = os.path.join(root, "docs", "plans", "active")
+    if os.path.isdir(plans):
+        for name in sorted(os.listdir(plans)):
+            if name.endswith(".md"):
+                path = os.path.join(plans, name)
+                sources.append((path, os.path.relpath(path, root)))
     for path, label in sources:
         text = read_text(path) or ""
         for number, line in enumerate(text.split("\n"), 1):

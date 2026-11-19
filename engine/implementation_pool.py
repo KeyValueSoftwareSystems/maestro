@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deterministic repo implementation queue and QA handoff manifest.
 
-Design chooses the repos in scope (lld_set.py). `init` selects the repos to implement: the golden workflow
+Design chooses the repos in scope (the approved plan, plan_doc.py). `init` selects the repos to implement: the golden workflow
 takes every designed repo afresh (`--choice all --fresh`); `--choice pick` keeps the batching a
 team workflow may want, leaving unselected repos as deferred work. Fixed workflow slots claim the
 selected repos (each with the worktree and branch `worktrees.py prepare` created for it), run the

@@ -17,7 +17,8 @@ sys.path.insert(0, HERE)
 import eval_score  # noqa: E402
 import eval_setup  # noqa: E402
 import project_config  # noqa: E402
-import test_sdlc_e2e as e2e  # noqa: E402
+import simulate  # noqa: E402
+import state as statemod  # noqa: E402
 
 CASES = os.path.join(ROOT, "evals", "cases")
 
@@ -53,20 +54,40 @@ class CaseSetupTest(unittest.TestCase):
 
 
 class ScoreTest(unittest.TestCase):
-    """Score a finished golden-workflow run (the no-LLM harness) against a case."""
+    """Score a finished golden-workflow run against a case: an auto-mode major run walked by the
+    no-LLM simulator over two repositories."""
 
     @classmethod
     def setUpClass(cls):
-        cls.driver = e2e.SdlcE2E("test_happy_path")
-        cls.driver.setUp()
-        cls.driver.prep_tasks_json()
-        action, _ = cls.driver.drive(dict(e2e.SdlcE2E.DESIGN_GATES))
-        assert action["action"] == "done", action
-        cls.root = cls.driver.tmp
+        cls.root = tempfile.mkdtemp(prefix="eval-score-")
+        shutil.copytree(os.path.join(ROOT, "workflows"),
+                        os.path.join(cls.root, ".maestro", "workflows"))
+        shutil.copytree(os.path.join(ROOT, "engine"), os.path.join(cls.root, ".maestro", "engine"),
+                        ignore=shutil.ignore_patterns("tests", "__pycache__"))
+        for repo in ("backend", "frontend"):
+            path = os.path.join(cls.root, "codebase", repo)
+            os.makedirs(path)
+            for args in (["init", "-q"], ["config", "user.email", "t@example.com"],
+                         ["config", "user.name", "T"]):
+                subprocess.run(["git", *args], cwd=path, check=True)
+            with open(os.path.join(path, "README.md"), "w") as fh:
+                fh.write(repo + "\n")
+            subprocess.run(["git", "add", "-A"], cwd=path, check=True)
+            subprocess.run(["git", "commit", "-qm", "init"], cwd=path, check=True)
+        requirement = os.path.join(cls.root, ".maestro", "runs", "demo", "requirement")
+        os.makedirs(requirement)
+        with open(os.path.join(requirement, "brief.md"), "w") as fh:
+            fh.write("Show the order status.\n")
+        with redirect_stdout(io.StringIO()):
+            code = simulate.main(["simulate.py", "--root", cls.root, "--workflow",
+                                  ".maestro/workflows/sdlc-main.yaml", "--slug", "demo",
+                                  "--input", "path=major", "--auto", "--mode", "auto",
+                                  "--allow-script-side-effects"])
+        assert code == 0, code
 
     @classmethod
     def tearDownClass(cls):
-        cls.driver.doCleanups()
+        shutil.rmtree(cls.root, ignore_errors=True)
 
     def case(self, expect):
         folder = tempfile.mkdtemp(prefix="eval-case-")
@@ -78,19 +99,25 @@ class ScoreTest(unittest.TestCase):
         return folder
 
     def test_metrics_and_expectations(self):
-        folder = self.case({"status": "done", "design_path": "full", "infra_level": "none",
-                            "interfaces_changed": True, "verification": "verified",
+        folder = self.case({"status": "done", "type": "major", "prd_valid": True,
+                            "plan_valid": True, "verification": "simulated",
                             "ac_all_passed": True, "drift_blocking": False,
                             "min_acceptance_criteria": 1, "max_rounds_per_stage": 1,
-                            "max_person_gates": 8})
+                            "max_person_gates": 3})
         code, report = run_quietly(eval_score.main, ["score", "--root", self.root,
                                                      "--case", folder])
         self.assertEqual(code, 0, report)
         metrics = report["metrics"]
-        self.assertEqual(metrics["verification"], {"backend": "verified", "frontend": "verified"})
-        self.assertEqual(metrics["questions_by_stage"], {"hld": 1, "lld": 1, "prd": 1})
-        self.assertEqual(metrics["person_gates"], 8)  # PRD, design path, HLD mode, HLD, LLD scope, LLD, release, archive
+        self.assertEqual(metrics["verification"], {"backend": "simulated", "frontend": "simulated"})
+        self.assertEqual(metrics["questions_by_stage"], {"prd": 1})
+        # autopilot answers the rest; a person still confirms the brainstorm, approves the plan
+        # and confirms the archive
+        self.assertEqual(metrics["person_gates"], 3)
+        gates = statemod.load("demo", self.root)["gates"]
+        self.assertEqual(sorted(g["step"].rsplit("/", 1)[-1] for g in gates if not g.get("auto")),
+                         ["brainstorm_confirm", "confirm_archive", "plan_approval"])
         self.assertTrue(metrics["prd_valid"])
+        self.assertTrue(metrics["plan_valid"])
 
     def test_failed_expectations_and_the_judge(self):
         folder = self.case({"max_questions": 0, "judge_min": 4})

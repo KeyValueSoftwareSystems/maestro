@@ -1,9 +1,9 @@
 name: small-change-light
-description: A one-function change in a single repository; should take the light path and ask almost nothing.
+description: A one-function change in a single repository; a minor change that should ask almost nothing.
 slug: tidy-note-titles
 feature: Tidy note titles
 mode: auto
-path: auto
+path: minor
 requirement: |
   # Tidy note titles
 
@@ -18,9 +18,9 @@ repos:
       test: "python3 -m unittest discover -s tests -q"
 expect:
   status: done
-  design_path: light
-  infra_level: none
+  type: minor
   prd_valid: true
+  plan_valid: true
   min_acceptance_criteria: 2
   max_acceptance_criteria: 5
   max_questions: 4
@@ -29,5 +29,5 @@ expect:
   ac_all_passed: true
   drift_blocking: false
   max_fix_rounds: 2
-  max_person_gates: 1  # the archive confirmation: always a person
+  max_person_gates: 3  # brainstorm confirmation, plan approval, archive: always a person
   judge_min: 3.5

@@ -10,6 +10,10 @@
 # Entered by design.yaml after intake, which supplies the project context. The context and goal
 # summaries are shown at PRD approval, where the person corrects them; every back-edge (revise,
 # rescope, clarify) stays inside this child; a complete existing prd.md goes straight to approval.
+#
+# A minor change (`path: minor`) carries a mini PRD (problem, acceptance criteria, out of scope).
+# When the first preparation finds nothing to ask, the mini PRD is written and the stage ends
+# without the approval gate; any interview round or an earlier approval keeps the gate.
 version: 1
 name: design-prd
 title: PRD
@@ -19,6 +23,7 @@ inputs:
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
   project_context: {type: string, default: "", description: project context summarized at intake}
   references: {type: string, default: "", description: where the starting references live}
+  path: {type: string, default: major, enum: [major, minor], description: "major: the full PRD; minor: a mini PRD (problem, acceptance criteria, out of scope)"}
 defaults:
   model: opus
   agent: product
@@ -28,7 +33,8 @@ nodes:
   - id: check_existing_prd
     type: script
     label: Check existing PRD fast path
-    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report, --compatible]
+    say: Checking whether a PRD already exists.
+    run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --report, --compatible, --type, "${inputs.path}"]
     routes:
       - {when: "${steps.check_existing_prd.outputs.valid} == true", to: prd_approval}
       - {to: prd_source}
@@ -39,6 +45,7 @@ nodes:
   - id: prd_source
     type: script
     label: Client PRD or short request?
+    say: Looking at the requirement you gave.
     run: [python3, .maestro/engine/prd_source.py, --requirement, ".maestro/runs/${inputs.slug}/requirement"]
     routes:
       - {when: "${steps.prd_source.outputs.state} == normalize", to: normalize_prd}
@@ -50,6 +57,7 @@ nodes:
   - id: normalize_prd
     type: agent
     label: Product — restructure the client PRD
+    say: Restructuring your PRD into the standard shape.
     model: sonnet
     instruction: |
       Rewrite the client's own PRD into the required PRD structure at
@@ -76,6 +84,7 @@ nodes:
     type: agent
     execution: lead
     label: Product — goal and open questions
+    say: Working out the feature goal and what still needs your answer.
     instruction: |
       First restate the requested feature outcome as feature_goal, in at most two short
       sentences. Preserve the user's scope and wording; use the project context, feature seed,
@@ -172,6 +181,7 @@ nodes:
   - id: prd_interview
     type: interview
     label: Clarify material product decisions
+    say: A few product questions for you.
     skill: prd-interview
     context: |
       Project: ${inputs.project_context}
@@ -197,6 +207,7 @@ nodes:
   - id: clarity_limit
     type: gate
     label: PRD clarity checkpoint
+    say: Product questions are still open after eight rounds.
     prompt: |
       Eight Grill rounds are complete and unresolved product facts remain. Confirmed decisions are saved at
       .maestro/runs/${inputs.slug}/decisions/prd.json.
@@ -213,6 +224,7 @@ nodes:
     type: agent
     execution: lead
     label: Product — write the PRD
+    say: Writing the PRD.
     instruction: |
       PRD approval choice (empty before the first approval): ${steps.prd_approval.outputs.choice}.
       Feedback: ${steps.prd_approval.outputs.feedback}
@@ -231,11 +243,13 @@ nodes:
       requirements, references, and any cumulative decisions at .maestro/runs/${inputs.slug}/decisions/prd.json to
       .maestro/runs/${inputs.slug}/requirement/prd.md. Do not reopen decisions or scan the
       repository. Use only stored answers, never unaccepted proposal text, for user-answer
-      decisions. Create the exact twelve-section skeleton before filling it, use the shortest clear
+      decisions. PRD type: ${inputs.path}. For major, create the exact twelve-section skeleton
+      before filling it. For minor, write the mini PRD: the title, the Feature slug and Status
+      lines, then only Problem, Acceptance criteria and Out of scope. Use the shortest clear
       wording that preserves every confirmed fact, and give every in-scope confirmed behavior an
       observable AC. Never omit necessary context merely to shorten the PRD. Before completing, run
       `python3 .maestro/engine/validate_prd.py
-      .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical`; repair any remaining named
+      .maestro/runs/${inputs.slug}/requirement/prd.md --fix-mechanical --type ${inputs.path}`; repair any remaining named
       defect inside this same call and run it again. This is the only normal PRD write. If the
       PRD already exists from an earlier pass, update it in place: change only the sections whose
       decisions changed and keep unchanged sections and AC IDs as they are; replace every
@@ -258,11 +272,12 @@ nodes:
       decisions_path: ".maestro/runs/${inputs.slug}/decisions/prd.json"
       prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
       validator: ".maestro/engine/validate_prd.py"
+      prd_type: "${inputs.path}"
       approval_choice: "${steps.prd_approval.outputs.choice}"
       revision_feedback: "${steps.prd_approval.outputs.feedback}"
     outputs: [summary, needs_clarification]
     artifact: ".maestro/runs/${inputs.slug}/requirement/prd.md"
-    check: {run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --fix-mechanical, --report]}
+    check: {run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --fix-mechanical, --report, --type, "${inputs.path}"]}
     max_visits: 10
     routes:
       - {when: "${steps.write_prd.outputs.needs_clarification} == true", to: prepare_prd}
@@ -270,10 +285,12 @@ nodes:
 
   # Engine-owned: render the feature's decision log from every stage's interview record (and
   # record the points the latest queue settled from evidence), so the approval shows every
-  # decision, the unconfirmed ones first.
+  # decision, the unconfirmed ones first. A minor change whose first preparation asked nothing,
+  # and whose PRD no person was asked to approve yet, ends here: the mini PRD goes straight on.
   - id: sync_decisions
     type: script
     label: Update the decision log
+    say: Updating the decision log.
     run:
       - python3
       - .maestro/engine/decision_log.py
@@ -286,15 +303,15 @@ nodes:
       - ".maestro/runs/${inputs.slug}/decisions/decision-log.md"
       - --stage
       - "PRD=.maestro/runs/${inputs.slug}/decisions/prd.json,.maestro/runs/${inputs.slug}/.engine/queues/prd.json"
-      - --stage
-      - "HLD=.maestro/runs/${inputs.slug}/decisions/hld.json,.maestro/runs/${inputs.slug}/.engine/queues/hld.json"
-      - --stage
-      - "LLD=.maestro/runs/${inputs.slug}/decisions/lld.json,.maestro/runs/${inputs.slug}/.engine/queues/lld.json"
-    next: prd_approval
+    routes:
+      # path : first-preparation visit : its state : approval choice (empty = never asked)
+      - {when: "${inputs.path}:${steps.prepare_prd.visits}:${steps.prepare_prd.outputs.state}:${steps.prd_approval.outputs.choice} == minor:1:clear:", to: end}
+      - {to: prd_approval}
 
   - id: prd_approval
     type: gate
     label: PRD approval
+    say: The PRD is ready for your review.
     prompt: |
       PRD ready for review at .maestro/runs/${inputs.slug}/requirement/prd.md
 
@@ -305,7 +322,7 @@ nodes:
 
       Material product decisions and relevant edge cases were clarified before writing. Confirm the concise PRD is
       accurate, and correct the context or goal here if either is wrong; design/technical concerns
-      are handled later at the HLD/LLD.
+      are handled later, in the plan.
     options:
       - {id: approve, label: Approve — continue the design, to: end}
       - {id: revise, label: Request changes — targeted edit of this PRD, to: write_prd, input: feedback}

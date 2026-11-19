@@ -1,6 +1,6 @@
 # The full KeyValue AI-SDLC pipeline — the default workflow behind the Maestro skill.
 #
-#   workspace sync -> design (PRD, reviewed HLD, contract, repository LLDs) -> delivery
+#   workspace sync -> design (PRD, brainstorm, the plan, test cases) -> delivery
 #   (staleness check -> implementation pool -> verified test-context manifest -> QA -> review
 #   pack -> release gate) -> archive (branches or pull requests, then lessons)
 #
@@ -16,7 +16,7 @@ description: From a requirement to verified branches or pull requests — design
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
-  path: {type: string, default: auto, description: "design path: auto (light for a small single-repo change), full or light"}
+  path: {type: string, required: true, enum: [major, minor], description: "major: full PRD and plan; minor: mini PRD and a 5-10 line plan"}
 defaults:
   model: haiku
   agent: general
@@ -26,6 +26,7 @@ nodes:
   - id: workspace_sync_initial
     type: subworkflow
     label: Workspace sync (feature start)
+    say: Checking the workspace is up to date.
     workflow: .maestro/workflows/workspace-sync.yaml
     inputs: {slug: "${inputs.slug}", checkpoint: feature-start}
     next: design
@@ -33,6 +34,7 @@ nodes:
   - id: design
     type: subworkflow
     label: Design phase
+    say: Designing the change.
     workflow: .maestro/workflows/design.yaml
     # `feedback` carries a revise gate's note back into the design phase so a regenerated
     # design knows WHY it was sent back. Empty on the first pass (resolves to "").
@@ -48,6 +50,7 @@ nodes:
   - id: delivery
     type: subworkflow
     label: Implementation, QA and release
+    say: Building, testing and preparing the release.
     workflow: .maestro/workflows/delivery.yaml
     inputs: {slug: "${inputs.slug}", feature: "${inputs.feature}"}
     on_fail: abort
@@ -62,6 +65,7 @@ nodes:
   - id: archive
     type: subworkflow
     label: Pull requests and archival
+    say: Delivering the branches and filing the lessons.
     # Runs AFTER release approval and only once a person confirms the archive (never autopilot):
     # delivers the verified branches (or opens pull requests, per maestro.config.yaml
     # delivery.mode), then folds this run's lessons into memory and the living docs. A person
@@ -75,8 +79,7 @@ nodes:
     next: end
 
 outputs:
-  hld: "${steps.design.outputs.hld_path}"
-  contract: "${steps.design.outputs.contract_path}"
+  plan: "${steps.design.outputs.plan_path}"
   review_pack: "${steps.delivery.outputs.pack_path}"
   implementation_manifest: "${steps.delivery.outputs.manifest_path}"
   archive: "${steps.archive.outputs.archive}"

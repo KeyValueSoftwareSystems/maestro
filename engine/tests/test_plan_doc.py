@@ -332,6 +332,17 @@ class CommitTest(Base):
         self.assertIn("docs/plans/active/demo.md", names)
         self.assertEqual(git(self.root, "status", "--porcelain", "--", "docs"), "")
 
+    def test_auto_event_is_created_then_updated(self):
+        self.init_git()
+        self.major()
+        out = self.commit("auto")
+        self.assertEqual((out["committed"], out["event"]), (True, "created"))
+        with open(os.path.join(self.root, "docs/plans/active/demo.md"), "a") as fh:
+            fh.write("\nOne more line.\n")
+        out = self.commit("auto")
+        self.assertEqual((out["committed"], out["event"]), (True, "updated"))
+        self.assertEqual(git(self.root, "log", "-1", "--format=%s"), "plan(demo): updated")
+
     def test_skips_outside_git_and_during_a_merge(self):
         self.major()
         out = self.commit("created")

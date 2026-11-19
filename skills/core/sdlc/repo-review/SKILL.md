@@ -1,6 +1,6 @@
 ---
 name: repo-review
-description: Review one repository's exact implementation worktree and commit against its LLD and contract, with evidence-backed findings and a blocking verdict.
+description: Review one repository's exact implementation worktree and commit against the feature's approved plan, with evidence-backed findings and a blocking verdict.
 allowed-tools: Read, Grep, Glob, Bash, Write, Task
 tags: [sdlc, review, repository]
 ---
@@ -15,8 +15,8 @@ differs, report a blocking integrity finding instead of reviewing another checko
 
 1. **Scope the diff** — changed files, new endpoints, migrations, pages and components, and
    their blast radius in the codebase map.
-2. **Line it up** against the approved LLD, the shared contract and the repository's
-   instructions. Where the harness supports it you may spawn one fresh read-only subagent
+2. **Line it up** against the approved plan (this repository's part, its Decisions and the
+   Interfaces it builds against) and the repository's instructions. Where the harness supports it you may spawn one fresh read-only subagent
    following this skill for an independent pass.
 3. **Review every dimension below** that applies to this repository's technology. Read-only:
    never edit code.
@@ -25,11 +25,12 @@ differs, report a blocking integrity finding instead of reviewing another checko
 ## Checklist
 
 - **Completeness** — every task in the task list your instructions name is built, and nothing
-  outside the LLD's scope is; a task marked as needing a human gate (migrations, permissions,
-  payments, production config, dependencies) matches the LLD exactly.
-- **Correctness** — logic matches the LLD and acceptance criteria; concurrency, transactions
+  outside the plan's scope is; a task marked as needing a human gate (migrations, permissions,
+  payments, production config, dependencies) matches the plan exactly.
+- **Correctness** — logic matches the plan and acceptance criteria; concurrency, transactions
   and idempotency for retried writes.
-- **Contract** — endpoints, payloads, error shape and status codes match exactly; a consumer
+- **Contract** — endpoints, payloads, error shape and status codes match the plan's Interfaces
+  exactly; a consumer
   calls the API as published; breaking changes are flagged, never silent.
 - **Security** — authorization on every operation; input validation and bounds; injection;
   output encoding and XSS; secrets and PII in code, logs or analytics; SSRF; tokens in client
@@ -56,7 +57,7 @@ differs, report a blocking integrity finding instead of reviewing another checko
 
 ## Findings
 
-Every finding needs `file:line` evidence (quoted code, test or contract clause, or the
+Every finding needs `file:line` evidence (quoted code, test or plan line, or the
 absence of one) and the smallest safe recommendation:
 
 ```

@@ -59,16 +59,16 @@ When your instructions give a reviewer's findings file and a resolutions path, a
 blocking finding whose status is `open` or `upheld`, and write
 `{"schema_version": 1, "resolutions": [{"id", "resolution", "note"}]}`:
 - `fixed` — make the smallest fix; the note names what changed;
-- `contested` — the finding is wrong; the note gives the evidence (the LLD or contract clause, the
+- `contested` — the finding is wrong; the note gives the evidence (the approved plan's line, the
   code, a test). Never change correct code only to satisfy a wrong finding. A finding the
   reviewer already `upheld` cannot be contested again;
-- `escalated` — it needs a person's decision (a design or contract change, a trade-off); the note
+- `escalated` — it needs a person's decision (a change to the plan or an interface, a trade-off); the note
   states the decision exactly.
 Write the file on every attempt that has blocking findings, even when all you did was fix
 failing checks — answers from an earlier round do not count.
 
 ## Stop and ask a human if
-- a DB migration is required but not approved · the API contract would change ·
+- a DB migration is required but not approved · an interface in the plan would change ·
   auth/permission behavior changes · a dependency upgrade is needed · production config
   changes · the same root cause persists from a previous attempt with no new hypothesis ·
   multiple valid designs exist · the fix would weaken a test or a security control.

@@ -93,6 +93,22 @@ class TitleTest(unittest.TestCase):
         self.assertTrue(any(i.code == "bad-type" for i in issues), [str(i) for i in issues])
 
 
+class InputEnumTest(unittest.TestCase):
+    def _doc(self, spec):
+        return {"version": 1, "name": "t", "inputs": {"path": spec},
+                "nodes": [{"id": "work", "instruction": "go", "next": "end"}]}
+
+    def test_enum_accepted_and_default_checked(self):
+        self.assertEqual(validate.validate_doc(self._doc(
+            {"type": "string", "required": True, "enum": ["major", "minor"]})), [])
+        issues = validate.validate_doc(self._doc({"type": "string", "default": "auto",
+                                                  "enum": ["major", "minor"]}))
+        self.assertTrue(any("not one of its enum values" in i.msg for i in issues),
+                        [str(i) for i in issues])
+        issues = validate.validate_doc(self._doc({"type": "string", "enum": []}))
+        self.assertTrue(any(i.code == "bad-type" for i in issues), [str(i) for i in issues])
+
+
 class MemoryPlaceholderTest(unittest.TestCase):
     def _doc(self, ref):
         return {

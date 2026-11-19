@@ -1,9 +1,9 @@
 name: infra-queue
-description: Large exports move to a background worker on a queue; the workspace holds Terraform, so the infrastructure questions and the infra LLD must appear.
+description: Large exports move to a background worker on a queue; the workspace holds Terraform, so the plan must cover the infrastructure change.
 slug: async-exports
 feature: Background order exports
 mode: auto
-path: auto
+path: major
 requirement: |
   # Background order exports
 
@@ -30,10 +30,9 @@ repos:
       test: "grep -q aws_sqs_queue main.tf"
 expect:
   status: done
-  design_path: full
-  infra_level: iac
+  type: major
   prd_valid: true
-  hld_valid: true
+  plan_valid: true
   min_acceptance_criteria: 4
   max_questions: 14
   max_rounds_per_stage: 1

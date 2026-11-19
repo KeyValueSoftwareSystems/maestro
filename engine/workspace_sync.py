@@ -785,8 +785,9 @@ def sync_restart_policy(root):
 def _design_cited_paths(root, slug):
     """Code paths the approved design cites, or None when there is no design to compare with."""
     import run_layout
-    files = [run_layout.path(slug, root, rel)
-             for rel in (run_layout.HLD, run_layout.IMPACT, run_layout.DESIGN_FACTS)]
+    files = [os.path.join(root, *run_layout.plan_active(slug).split("/"))]
+    files += [run_layout.path(slug, root, rel)
+              for rel in (run_layout.HLD, run_layout.IMPACT, run_layout.DESIGN_FACTS)]
     lld_dir = run_layout.path(slug, root, run_layout.LLD_DIR)
     if os.path.isdir(lld_dir):
         files += [os.path.join(lld_dir, n) for n in sorted(os.listdir(lld_dir)) if n.endswith(".md")]

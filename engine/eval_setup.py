@@ -39,6 +39,8 @@ def _yaml_scalar(value):
 
 def setup(case_dir, dest):
     case = load_case(case_dir)
+    if case.get("path") not in ("major", "minor"):
+        raise ValueError(f"{case_dir}: `path` must be major or minor, got {case.get('path')!r}")
     if os.path.exists(dest) and os.listdir(dest):
         raise ValueError(f"{dest} is not empty")
     os.makedirs(dest, exist_ok=True)
@@ -71,7 +73,7 @@ def setup(case_dir, dest):
               encoding="utf-8") as fh:
         fh.write(case["requirement"])
     record = {"case": case["name"], "case_dir": os.path.abspath(case_dir), "slug": case["slug"],
-              "mode": case.get("mode", "auto"), "path": case.get("path", "auto")}
+              "mode": case.get("mode", "auto"), "path": case["path"]}
     with open(os.path.join(dest, ".maestro", "eval-case.json"), "w", encoding="utf-8") as fh:
         json.dump(record, fh, indent=2)
     return case, record

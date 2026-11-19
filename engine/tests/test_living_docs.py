@@ -163,6 +163,12 @@ class FaultInjectionTest(LivingDocsBase):
             open(os.path.join(root, ".maestro/runs/fee-groups/design/hld.md"), "w").write("Respects PL-CS-007.\n")
         self.assert_caught(mutate, "ERROR:R2")
 
+    def test_dangling_id_in_an_active_plan(self):
+        def mutate(root):
+            os.makedirs(os.path.join(root, "docs/plans/active"), exist_ok=True)
+            open(os.path.join(root, "docs/plans/active/fee-groups.md"), "w").write("Respects PL-CS-007.\n")
+        self.assert_caught(mutate, "ERROR:R2")
+
     def test_engine_working_copies_in_a_run_are_not_checked_as_documents(self):
         """A run's .engine/ holds generated copies (cited facts, briefs): a stale ID there is
         not a citation anyone wrote, and reporting it would repeat the document's own finding."""

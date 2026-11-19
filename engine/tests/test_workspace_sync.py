@@ -233,16 +233,16 @@ class WorkspaceSyncTest(unittest.TestCase):
         git(clone, "push", "-q", "origin", "main")
 
     def sync_after_design(self, files, policy=None, design=True):
-        """Pin at feature start, write a design citing src/handler.go, then sync `files` and re-lock."""
+        """Pin at feature start, write a plan citing src/handler.go, then sync `files` and re-lock."""
         lock_path = os.path.join(self.tmp, "workspace-lock.json")
         quiet(ws.cmd_lock, self.tmp, lock_path, None, "f")
         if policy:
             with open(os.path.join(self.tmp, "maestro.config.yaml"), "w") as fh:
                 fh.write(f"version: 1\ndesign:\n  sync_restart: {policy}\n")
         if design:
-            lld = os.path.join(self.tmp, ".maestro", "runs", "f", "design", "lld")
-            os.makedirs(lld)
-            with open(os.path.join(lld, "backend.md"), "w") as fh:
+            plans = os.path.join(self.tmp, "docs", "plans", "active")
+            os.makedirs(plans)
+            with open(os.path.join(plans, "f.md"), "w") as fh:
                 fh.write("The shift calls `src/handler.go:10-40` and README.md.\n")
         self.push_files(files)
         plan_path, out, _ = self.plan()

@@ -30,10 +30,10 @@ nodes:
       One fix attempt on branch ${inputs.branch} in exact worktree ${inputs.worktree}, starting
       from commit ${inputs.commit}. QA found a product bug in the ${inputs.repo} repository:
       read the diagnosis at ${inputs.bug_report} and the QA report beside it, and fix only what it
-      names for ${inputs.repo}, against the LLD at .maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md
-      and the contract at .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists). Add a
+      names for ${inputs.repo}, against the approved plan at docs/plans/active/${inputs.slug}.md
+      (in the workspace root, not in the worktree). Add a
       regression test that fails before the fix and passes after it. Never weaken, skip or delete
-      a test. If the fix needs a design or contract change, do not make it: escalate.
+      a test. If the fix needs a change to the plan or an interface, do not make it: escalate.
       When the engine checks or the review sent you back, address what they found:
       failing checks (the `failed_checks` input; receipt
       ${steps.verify.outputs.receipt_path}; checks marked pre-existing fail on the base commit too
@@ -57,6 +57,7 @@ nodes:
       repo_path: "${inputs.repo_path}"
       worktree: "${inputs.worktree}"
       bug_report: "${inputs.bug_report}"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       review_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"
@@ -142,9 +143,9 @@ nodes:
     label: Re-review the fix
     instruction: |
       Re-review the ${inputs.repo} bug fix on branch ${inputs.branch}: review only the diff from
-      ${inputs.commit} (what QA tested) to ${steps.review_head.outputs.commit}, against the LLD at
-      .maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md, the contract at
-      .maestro/runs/${inputs.slug}/design/openapi.yaml (when it exists) and the standards. The engine ran build, lint and tests
+      ${inputs.commit} (what QA tested) to ${steps.review_head.outputs.commit}, against the
+      approved plan at docs/plans/active/${inputs.slug}.md (in the workspace root, not in the
+      worktree) and the standards. The engine ran build, lint and tests
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
       still listed there was accepted by a person. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed} — a weakened, skipped or deleted
@@ -171,8 +172,7 @@ nodes:
       branch: "${inputs.branch}"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       tests_changed: "${steps.verify.outputs.tests_changed}"
-      lld_path: ".maestro/runs/${inputs.slug}/design/lld/${inputs.repo}.md"
-      contract_path: ".maestro/runs/${inputs.slug}/design/openapi.yaml"
+      plan_path: "docs/plans/active/${inputs.slug}.md"
       previous_review: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
       findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json"

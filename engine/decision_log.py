@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The feature's decision log: every PRD, HLD and LLD decision in one readable file, with the
+"""The feature's decision log: every PRD and plan decision in one readable file, with the
 decisions nobody confirmed first.
 
   decision_log.py sync [--root .] [--slug S] --md <decision-log.md>
@@ -44,7 +44,7 @@ LABELS = {
     "evidence": "settled by evidence",
     "legacy-confirmed": "confirmed",
 }
-STAGE_ORDER = ("PRD", "HLD", "LLD")
+STAGE_ORDER = ("PRD", "PLAN")
 
 
 def _full(root, rel):

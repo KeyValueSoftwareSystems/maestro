@@ -5,6 +5,7 @@ import io
 import json
 import os
 import shutil
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -15,9 +16,11 @@ sys.path.insert(0, os.path.join(HERE, ".."))
 sys.path.insert(0, HERE)
 import maestroctl  # noqa: E402
 import resolver  # noqa: E402
+import simulate  # noqa: E402
 import state as statemod  # noqa: E402
-import test_sdlc_e2e as e2e  # noqa: E402
 import todo  # noqa: E402
+
+REPO = os.path.abspath(os.path.join(HERE, "..", ".."))
 
 STAGE = """\
 version: 1
@@ -59,40 +62,72 @@ nodes:
 """
 
 
+class _StopAtPlanApproval(Exception):
+    pass
+
+
 class SdlcTodoTest(unittest.TestCase):
-    """The shipped pipeline, driven without an LLM to the HLD approval gate."""
+    """The shipped pipeline, walked without an LLM to the plan approval gate."""
+
+    def walk_to_plan_approval(self):
+        root = tempfile.mkdtemp(prefix="maestro-todo-sdlc-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        shutil.copytree(os.path.join(REPO, "workflows"), os.path.join(root, ".maestro", "workflows"))
+        shutil.copytree(os.path.join(REPO, "engine"), os.path.join(root, ".maestro", "engine"),
+                        ignore=shutil.ignore_patterns("tests", "__pycache__"))
+        repo = os.path.join(root, "codebase", "backend")
+        os.makedirs(repo)
+        for args in (["init", "-q"], ["config", "user.email", "t@example.com"],
+                     ["config", "user.name", "T"]):
+            subprocess.run(["git", *args], cwd=repo, check=True)
+        with open(os.path.join(repo, "README.md"), "w") as fh:
+            fh.write("backend\n")
+        subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+        subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+        os.makedirs(os.path.join(root, ".maestro", "runs", "demo", "requirement"))
+        with open(os.path.join(root, ".maestro", "runs", "demo", "requirement", "brief.md"),
+                  "w") as fh:
+            fh.write("Export the table.\n")
+        choose = simulate._choose_gate_option
+
+        def stop_at_plan_approval(act, auto):
+            if act["step"].endswith("/plan_approval"):
+                raise _StopAtPlanApproval()
+            return choose(act, auto)
+
+        simulate._choose_gate_option = stop_at_plan_approval
+        self.addCleanup(setattr, simulate, "_choose_gate_option", choose)
+        with self.assertRaises(_StopAtPlanApproval), redirect_stdout(io.StringIO()):
+            simulate.main(["simulate.py", "--root", root, "--workflow",
+                           ".maestro/workflows/sdlc-main.yaml", "--slug", "demo",
+                           "--input", "path=major", "--auto", "--allow-script-side-effects"])
+        return root
 
     def test_running_stage_expands_and_names_the_open_gate(self):
-        driver = e2e.SdlcE2E("test_happy_path")
-        driver.setUp()
-        self.addCleanup(driver.doCleanups)
-        with self.assertRaises(AssertionError):  # stops at the first unscripted gate
-            driver.drive({"design/prd/prd_approval": [("approve", None)]})
-        built = todo.build(resolver.Run("demo", driver.tmp))
+        root = self.walk_to_plan_approval()
+        built = todo.build(resolver.Run("demo", root))
         self.assertEqual(todo.render(built).splitlines(), [
             "demo · sdlc-main · running",
             "[x] Workspace sync (feature start)",
             "[>] Design phase",
             "    [x] Requirement and context",
             "    [x] PRD",
-            "    [>] Solution design",
-            "        [?] HLD and architecture review",
-            "              ↳ waiting on you: [solution] HLD approval",
-            "        [ ] Repository LLDs",
-            "    [x] Functional test cases",
+            "    [?] Plan",
+            "          ↳ waiting on you: [plan] Plan approval",
+            "    [>] Functional test cases",
+            "          ↳ now: [tests] Functional test cases",
             "[ ] Implementation, QA and release",
             "[ ] Pull requests and archival",
         ])
         tasks = todo.flat(built)
-        # the solution design and the test cases run side by side, each listed as its own stage
-        self.assertIn({"content": "Design phase › Solution design › HLD and architecture review — "
-                                  "waiting on you: [solution] HLD approval",
+        # the plan and the test cases run side by side, each listed as its own stage
+        self.assertIn({"content": "Design phase › Plan — waiting on you: [plan] Plan approval",
                        "status": "in_progress"}, tasks)
         self.assertEqual(tasks[0], {"content": "Workspace sync (feature start)",
                                     "status": "completed"})
-        # The contract stage is optional (only when the HLD lists interfaces): not listed until entered.
+        # The scaffold stage is optional (only for a new product): not listed until entered.
         labels = " ".join(task["content"] for task in tasks)
-        self.assertNotIn("API contract", labels)
+        self.assertNotIn("Scaffold", labels)
 
 
 class CliTodoTest(unittest.TestCase):

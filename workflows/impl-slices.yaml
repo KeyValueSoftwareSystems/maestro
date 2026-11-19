@@ -14,7 +14,7 @@ inputs:
   slug: {type: string, required: true}
   stack: {type: string, required: true, description: selected repository name}
   repo_path: {type: string, required: true, description: path to the selected git repository}
-  facts_path: {type: string, default: "", description: the living-doc facts the LLD cites}
+  facts_path: {type: string, default: "", description: the living-doc facts the plan cites}
   guidance: {type: string, default: "", description: the person's guidance from impl's stop gate}
   stack_skills: {type: string, default: "", description: installed stack skills for the steps that write code (stack_skills.py)}
 defaults:
@@ -48,14 +48,13 @@ nodes:
               repository: tasks ${steps.claim.outputs.task_ids_csv} of
               .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json, test-first, in the skill's
               slice mode. Other agents build the other groups at the same time in their own
-              worktrees: edit only the files your tasks write. Work from the LLD at
-              .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
-              .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), reading only
+              worktrees: edit only the files your tasks write. Work from the approved plan at
+              docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktree), reading only
               what your tasks need, the codebase map docs/codebase-maps/${inputs.stack}.md and the
               living-doc facts at ${inputs.facts_path}: keep every invariant listed there. Run your
               tasks' tests, commit all of your work on the slice branch and do not merge it. The
-              approved LLD and contract are the human approval for what they describe, including
-              tasks marked needs_human_gate. When the work needs something they do not describe
+              approved plan is the human approval for what it describes, including
+              tasks marked needs_human_gate. When the work needs something it does not describe
               (an unplanned migration, permission change, payment logic, production config, secret
               or dependency upgrade, a file outside your tasks' writes, or a design decision that
               looks wrong), stop and return escalate true with the reason in escalation. Honour the
@@ -69,6 +68,7 @@ nodes:
               group_id: "${steps.claim.outputs.group_id}"
               task_ids: "${steps.claim.outputs.task_ids_csv}"
               tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
+              plan_path: "docs/plans/active/${inputs.slug}.md"
               repo_path: "${inputs.repo_path}"
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"
@@ -105,14 +105,13 @@ nodes:
               repository: tasks ${steps.claim.outputs.task_ids_csv} of
               .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json, test-first, in the skill's
               slice mode. Other agents build the other groups at the same time in their own
-              worktrees: edit only the files your tasks write. Work from the LLD at
-              .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
-              .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), reading only
+              worktrees: edit only the files your tasks write. Work from the approved plan at
+              docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktree), reading only
               what your tasks need, the codebase map docs/codebase-maps/${inputs.stack}.md and the
               living-doc facts at ${inputs.facts_path}: keep every invariant listed there. Run your
               tasks' tests, commit all of your work on the slice branch and do not merge it. The
-              approved LLD and contract are the human approval for what they describe, including
-              tasks marked needs_human_gate. When the work needs something they do not describe
+              approved plan is the human approval for what it describes, including
+              tasks marked needs_human_gate. When the work needs something it does not describe
               (an unplanned migration, permission change, payment logic, production config, secret
               or dependency upgrade, a file outside your tasks' writes, or a design decision that
               looks wrong), stop and return escalate true with the reason in escalation. Honour the
@@ -126,6 +125,7 @@ nodes:
               group_id: "${steps.claim.outputs.group_id}"
               task_ids: "${steps.claim.outputs.task_ids_csv}"
               tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
+              plan_path: "docs/plans/active/${inputs.slug}.md"
               repo_path: "${inputs.repo_path}"
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"
@@ -162,14 +162,13 @@ nodes:
               repository: tasks ${steps.claim.outputs.task_ids_csv} of
               .maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json, test-first, in the skill's
               slice mode. Other agents build the other groups at the same time in their own
-              worktrees: edit only the files your tasks write. Work from the LLD at
-              .maestro/runs/${inputs.slug}/design/lld/${inputs.stack}.md and the contract at
-              .maestro/runs/${inputs.slug}/design/openapi.yaml (when the feature has one), reading only
+              worktrees: edit only the files your tasks write. Work from the approved plan at
+              docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktree), reading only
               what your tasks need, the codebase map docs/codebase-maps/${inputs.stack}.md and the
               living-doc facts at ${inputs.facts_path}: keep every invariant listed there. Run your
               tasks' tests, commit all of your work on the slice branch and do not merge it. The
-              approved LLD and contract are the human approval for what they describe, including
-              tasks marked needs_human_gate. When the work needs something they do not describe
+              approved plan is the human approval for what it describes, including
+              tasks marked needs_human_gate. When the work needs something it does not describe
               (an unplanned migration, permission change, payment logic, production config, secret
               or dependency upgrade, a file outside your tasks' writes, or a design decision that
               looks wrong), stop and return escalate true with the reason in escalation. Honour the
@@ -183,6 +182,7 @@ nodes:
               group_id: "${steps.claim.outputs.group_id}"
               task_ids: "${steps.claim.outputs.task_ids_csv}"
               tasks_path: ".maestro/runs/${inputs.slug}/build/${inputs.stack}/tasks.json"
+              plan_path: "docs/plans/active/${inputs.slug}.md"
               repo_path: "${inputs.repo_path}"
               worktree: "${steps.claim.outputs.worktree}"
               branch: "${steps.claim.outputs.branch}"

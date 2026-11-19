@@ -203,5 +203,52 @@ class PrdValidationTest(unittest.TestCase):
         self.assertEqual(validate_prd.validate(path)[0], [])
 
 
+class MinorPrdTest(unittest.TestCase):
+    """The mini PRD of a minor change: Problem, Acceptance criteria and Out of scope only."""
+    MINI = ("# Export button — PRD\n\n**Feature slug:** `export`\n**Status:** Ready for review\n\n"
+            "## Problem\n\nPeople copy the table by hand to share it.\n\n"
+            "## Acceptance criteria\n\n- AC-01: The table page shows an Export button.\n"
+            "- AC-02: Export downloads the visible rows as CSV.\n\n"
+            "## Out of scope\n\nOther formats.\n")
+
+    def write(self, text):
+        handle = tempfile.NamedTemporaryFile("w", suffix=".md", delete=False)
+        handle.write(text)
+        handle.close()
+        self.addCleanup(lambda: os.path.exists(handle.name) and os.unlink(handle.name))
+        return handle.name
+
+    def test_mini_prd_passes_minor_and_fails_major(self):
+        path = self.write(self.MINI)
+        self.assertEqual(validate_prd.validate(path, prd_type="minor"), ([], []))
+        errors, _ = validate_prd.validate(path)
+        self.assertIn("missing section: users and jobs", errors)
+
+    def test_minor_needs_its_three_sections_and_ac_format(self):
+        text = self.MINI.replace("## Out of scope\n\nOther formats.\n", "")
+        errors, _ = validate_prd.validate(self.write(text), prd_type="minor")
+        self.assertIn("missing section: out of scope", errors)
+        text = self.MINI.replace("- AC-02: Export", "- Export")
+        errors, _ = validate_prd.validate(self.write(text), prd_type="minor")
+        self.assertTrue(any("beginning AC-01" in e for e in errors), errors)
+        self.assertTrue(any("header" in e for e in validate_prd.validate(
+            self.write(self.MINI.replace("**Status:** Ready for review\n", "")), prd_type="minor")[0]))
+
+    def test_minor_accepts_equivalent_headings_and_a_full_prd(self):
+        text = self.MINI.replace("## Problem", "## Summary").replace("## Out of scope", "## Non-goals")
+        self.assertEqual(validate_prd.validate(self.write(text), prd_type="minor")[0], [])
+        full = PrdValidationTest("test_complete_concise_prd_passes").valid_text()
+        self.assertEqual(validate_prd.validate(self.write(full), prd_type="minor")[0], [])
+
+    def test_cli_type_flag(self):
+        import io
+        from contextlib import redirect_stdout
+        out = io.StringIO()
+        with redirect_stdout(out):
+            code = validate_prd.main([self.write(self.MINI), "--type", "minor", "--report"])
+        self.assertEqual(code, 0)
+        self.assertIn('"valid": true', out.getvalue())
+
+
 if __name__ == "__main__":
     unittest.main()

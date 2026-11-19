@@ -78,7 +78,7 @@ _FIELD_TYPES = {
     "subworkflow": {"inputs": "scalarmap"},
 }
 _DEFAULTS_KEYS = {"model", "agent", "max_visits", "brief"}
-_INPUT_KEYS = {"type", "required", "default", "description"}
+_INPUT_KEYS = {"type", "required", "default", "description", "enum"}
 _INPUT_TYPES = ("string", "number", "boolean", "list")
 
 
@@ -229,6 +229,14 @@ def validate_doc(doc, where=""):
             err("bad-type", f"inputs.{iname}.required must be true or false")
         if "description" in spec and not isinstance(spec["description"], str):
             err("bad-type", f"inputs.{iname}.description must be a string")
+        if "enum" in spec:
+            allowed = spec["enum"]
+            if not isinstance(allowed, list) or not allowed:
+                err("bad-type", f"inputs.{iname}.enum must be a non-empty list of values")
+            elif "default" in spec and isinstance(spec["default"], str) \
+                    and "${" not in spec["default"] and spec["default"] not in allowed:
+                err("bad-type", f"inputs.{iname}.default {spec['default']!r} is not one of "
+                    f"its enum values")
     outputs = doc.get("outputs") if isinstance(doc.get("outputs"), dict) else {}
     for oname, oval in outputs.items():
         if not isinstance(oval, str):

@@ -43,6 +43,7 @@ description: Design phase.  # optional prose
 inputs:                     # declared inputs (all optional keys except the map itself)
   slug:    {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, required: false, default: "${inputs.slug}"}
+  path:    {type: string, required: true, enum: [major, minor]}
 defaults:                   # optional per-workflow fallbacks
   model: haiku              # model for agent nodes that don't set one (see "Which model a step uses")
   agent: general            # subagent type fallback (agents/general.md)
@@ -56,7 +57,9 @@ ui: { ... }                 # optional, free-form editor metadata — engine ign
 
 `inputs.<name>.type` is one of `string | number | boolean | list`. Inputs with `required: true`
 must be provided at `init`; others fall back to `default` (which may itself contain
-placeholders over other inputs).
+placeholders over other inputs). `enum` lists the only values the input accepts: `init` (and a
+subworkflow entry) refuses any other value, so an outdated invocation fails loudly instead of
+running the wrong flow.
 
 ## Placeholders
 

@@ -1,9 +1,9 @@
 name: cross-repo-contract
-description: A field added by the API and shown by its client; should define the contract first and keep both repositories consistent.
+description: A field added by the API and shown by its client; a major change whose plan spells out the interface so both repositories stay consistent.
 slug: order-status
 feature: Show order status to support staff
 mode: auto
-path: auto
+path: major
 requirement: |
   # Show order status to support staff
 
@@ -26,11 +26,9 @@ repos:
       test: "python3 -m unittest discover -s tests -q"
 expect:
   status: done
-  design_path: full
-  infra_level: none
-  interfaces_changed: true
+  type: major
   prd_valid: true
-  hld_valid: true
+  plan_valid: true
   min_acceptance_criteria: 3
   max_questions: 10
   max_rounds_per_stage: 1
@@ -38,5 +36,5 @@ expect:
   ac_all_passed: true
   drift_blocking: false
   max_fix_rounds: 3
-  max_person_gates: 1  # the archive confirmation: always a person
+  max_person_gates: 3  # brainstorm confirmation, plan approval, archive: always a person
   judge_min: 3.5

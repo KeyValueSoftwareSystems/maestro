@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Deterministically validate Maestro's concise, skimmable PRD contract."""
+"""Deterministically validate Maestro's concise, skimmable PRD contract.
+
+Two profiles: `--type major` (the default) checks the full twelve-section PRD; `--type minor`
+checks the mini PRD a small change carries: Problem, Acceptance criteria and Out of scope only
+(common equivalent headings accepted), with the same header, AC and clarity rules."""
 
 from __future__ import annotations
 
@@ -25,6 +29,17 @@ REQUIRED_SECTIONS = (
     "priorities and phasing",
     "references",
 )
+# The mini PRD of a minor change: just enough to carry the acceptance criteria.
+MINOR_SECTIONS = ("problem", "acceptance criteria", "out of scope")
+MINOR_ALIASES = {
+    "summary": "problem",
+    "problem and context": "problem",
+    "problem statement": "problem",
+    "overview": "problem",
+    "non goals": "out of scope",
+    "definition of done": "acceptance criteria",
+}
+TYPES = ("major", "minor")
 AC_LINE_RE = re.compile(r"^\s*[-*]\s+(?:\*\*)?AC-(\d{2,})(?:\*\*)?:\s+\S")
 NON_AC_CODE_RE = re.compile(r"\b(?:AC-\d+|FR-?\d+|REQ-?\d+|B-?\d+)\b", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^\*\*Feature slug:\*\*\s+`?[^`\s]+`?\s*$", re.IGNORECASE)
@@ -101,7 +116,7 @@ def _words(text):
     return re.findall(r"\b[\w'-]+\b", text, flags=re.UNICODE)
 
 
-def _sections(text, compatible=False):
+def _sections(text, compatible=False, aliases=None):
     found = {}
     current = None
     lines = text.splitlines()
@@ -112,6 +127,8 @@ def _sections(text, compatible=False):
             current = _normalise_heading(match.group(1))
             if compatible:
                 current = HEADING_ALIASES.get(current, current)
+            if aliases:
+                current = aliases.get(current, current)
             found.setdefault(current, [])
         elif current is not None:
             found[current].append(line)
@@ -203,13 +220,15 @@ def apply_mechanical_fixes(path):
     return fixes
 
 
-def validate(path, compatible=False):
+def validate(path, compatible=False, prd_type="major"):
     errors, warnings = [], []
     try:
         text = Path(path).read_text(encoding="utf-8")
     except OSError as exc:
         return [f"cannot read PRD: {exc}"], []
-    sections = _sections(text, compatible=compatible)
+    minor = prd_type == "minor"
+    sections = _sections(text, compatible=compatible and not minor,
+                         aliases=MINOR_ALIASES if minor else None)
     if not compatible:
         lines = text.splitlines()
         fenced, unclosed = fenced_lines(lines)
@@ -228,7 +247,7 @@ def validate(path, compatible=False):
             errors.append("document header: missing Feature slug metadata")
         if not any(STATUS_RE.match(line) for line in preamble):
             errors.append("document header: missing Status: Ready for review metadata")
-    for name in REQUIRED_SECTIONS:
+    for name in (MINOR_SECTIONS if minor else REQUIRED_SECTIONS):
         body = sections.get(name)
         if body is None:
             errors.append(f"missing section: {name}")
@@ -305,9 +324,13 @@ def main(argv=None):
         "--fix-mechanical", action="store_true",
         help="atomically normalize safe Markdown syntax before validation",
     )
+    parser.add_argument(
+        "--type", choices=TYPES, default="major",
+        help="major: the full PRD; minor: the mini PRD (problem, acceptance criteria, out of scope)",
+    )
     args = parser.parse_args(argv)
     fixes = apply_mechanical_fixes(args.path) if args.fix_mechanical else []
-    errors, warnings = validate(args.path, compatible=args.compatible)
+    errors, warnings = validate(args.path, compatible=args.compatible, prd_type=args.type)
     issues = errors + warnings
     print(json.dumps({
         "valid": not errors,

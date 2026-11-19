@@ -17,7 +17,7 @@ readiness.
    instructions supply (commands run, exit codes, the verified commit, changed tests) and the
    QA suite result. If proof is missing, failed, or verifies a different commit than the one
    being released, say so — do not claim green.
-3. **Pull the reviewer findings** — from the architecture review and each stack's review;
+3. **Pull the reviewer findings** — from each repository's code review;
    separate what was **fixed** from what is **deferred/accepted**.
 4. **Assess risk & release readiness** — migrations, flags, rollout/backout, data impact.
 5. **Write** the pack and state the exact decision required.
@@ -31,12 +31,12 @@ readiness.
    criterion, the cases that cover it, and its result. A criterion that is failing or not run
    makes the recommendation "not-ready" unless the human already accepted it.
 2. **Design drift** — when your instructions supply a drift report, list every place the code
-   departs from the approved design as written; blocking drift makes the recommendation
-   "not-ready" until the code or the design is changed and re-approved.
+   departs from the approved plan as written; blocking drift makes the recommendation
+   "not-ready" until the code or the plan is changed and re-approved.
 3. **What changed** — feature summary + per-stack change list.
-4. **Why** — link the requirement/HLD; the problem solved.
+4. **Why** — link the requirement and the approved plan; the problem solved.
 5. **Files changed** — grouped by area; call out anything security/auth/data-sensitive.
-6. **API / DB / UI impact** — contract changes (breaking?), migrations (+ rollback), new UI states.
+6. **API / DB / UI impact** — interface changes (breaking?), migrations (+ rollback), new UI states.
 7. **Tests & proof** — per repository, the commands run and their pass/fail from the
    verification receipt, checks that were skipped, and each existing test the branch changed
    with the reviewer's justification; coverage only where a receipt records it; QA journeys
@@ -57,7 +57,7 @@ readiness.
   commit than the one released → the pack recommends "not-ready".
 - **Changed tests** — an existing test modified or deleted without a stated justification →
   list it under risks; never present it as passing coverage.
-- **Breaking contract change** — surface prominently with the consumer migration plan.
+- **Breaking interface change** — surface prominently with the consumer migration plan.
 - **Risky migration / irreversible step** — flag as requiring extra human attention.
 
 ## Output

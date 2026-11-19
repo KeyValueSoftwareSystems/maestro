@@ -24,6 +24,11 @@ is work the workflow deliberately assigns to this session:
   a supplied description; never invent a feature or slug from no input.
 - `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
+- `path=major|minor` — the default workflow requires it: **major** (a full PRD and a full plan)
+  or **minor** (a mini PRD and a 5–10 line plan). When a new run on the default workflow was not
+  given it, ask the person which one with the native selector, one line each: "Major — a new
+  feature or a change across repositories" and "Minor — a small, contained change". Never guess
+  it from the request and never pick a default. A resumed run keeps its own; do not ask again.
 - `--mode human|design|auto` (or the same asked in words): the run mode, passed to init.
 - `--no-profile`: pass it to init to skip the timing profile, which is recorded by default.
   `--debug` is the old name for the default and is still accepted. Strip these flags before
@@ -42,7 +47,7 @@ skip it.
    **YOU run every `maestroctl` command** (`validate/init/next/complete/gate-record/fail/
    rebase/reset/status/…`) — never hand the user an engine command to type. The human's
    only inputs are gate decisions and the requirement folder; everything else you execute.
-2. **Never read worker-produced artifacts** (HLD, LLDs, diffs, reports) into your own
+2. **Never read worker-produced artifacts** (the plan, diffs, reports) into your own
    context. Exceptions: an explicit `run_lead` (read and write only the exact paths served in
    that action's prompt) and a design-approval question (see `ask_gate`). Interview
    discussions never happen in your context: they go to an isolated `discussant` subagent or a
@@ -66,11 +71,12 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
     [--input feature="..." ...] [--mode human|design|auto] [--no-profile]
 ```
 
-- **Run mode** — who answers the gates. `human` (default): every gate. `design`: the human
-  approves the PRD and the HLD; the engine answers the rest when their checks passed (LLD
-  approval after a clean readiness check, release after engine verification). `auto`: PRD in,
-  release out; the engine answers every gate whose condition holds, adopts each interview
-  recommendation as a logged assumption in one round, and the run stops at any other gate. Pass `--mode` only when the user asked for it ("run this on autopilot", "only stop for
+- **Run mode** — who answers the gates. `human` (default): every gate. `design`: the person
+  approves the PRD and the plan; the engine answers the rest when their checks passed (release
+  after engine verification). `auto`: PRD in, plan approved by a person, release out; the engine
+  answers every gate whose condition holds, adopts each interview recommendation as a logged
+  assumption in one round, and the run stops at any other gate. The brainstorm and the plan
+  approval always need the person, in every mode. Pass `--mode` only when the user asked for it ("run this on autopilot", "only stop for
   design approval"); never pick a faster mode yourself. `auto` refuses to start until
   `maestroctl preflight` passes — relay that. To take over or hand back a running feature,
   re-run `init` with the new `--mode`; it applies from the next gate.
@@ -93,13 +99,13 @@ python3 .maestro/engine/maestroctl.py init --slug <slug> --workflow <workflow> \
   --slug <slug>` or `... reset --all`) and continue the loop. Do not hand the user a command
   to type: the human supplies decisions, the lead agent runs every `maestroctl` invocation.
 - **One stage on an existing feature** — when the workflow argument is a single stage
-  (`design-hld.yaml`, `design-contract.yaml`, `design-lld.yaml`, `design-tests.yaml`, `archive.yaml`), or `init` exits 3
+  (`design-plan.yaml`, `design-tests.yaml`, `archive.yaml`), or `init` exits 3
   with "already runs <other workflow>", read `single-stage.md` (in this skill's own folder, beside
   this file) before `init`.
 - Ensure the requirement folder exists (`mkdir -p .maestro/runs/<slug>/requirement/`) so the
   user has somewhere to drop files, but do NOT block on it — the **workflow** owns what
   happens next. In the shipped pack, every run builds a **PRD** (`requirement/prd.md`)
-  before the HLD: if the folder is empty it asks for a short feature request, then collects
+  before the plan: if the folder is empty it asks for a short feature request, then collects
   optional **references** (Figma links, doc/file paths, tickets). The lead confirms a compact
   project context and feature goal, then conducts a feature-specific Grill interview over only
   the material unresolved decisions and edge cases. A valid
@@ -127,12 +133,16 @@ action. Never run or complete those steps yourself, and never mention them in ch
 Likewise, in `design`/`auto` mode the engine records the gates and interviews their policy
 answers and lists them under `autopilot` — a gate with its option and label, an interview with
 how many recommendations it assumed and questions it left open. Tell the user in one line what was
-decided for them ("LLDs approved on autopilot — readiness check clean"; "PRD questions: 5
-assumed, 1 left open — listed in the assumption log"), then act on the action itself.
+decided for them ("PRD approved on autopilot"; "PRD questions: 5 assumed, 1 left open — listed
+in the assumption log"), then act on the action itself.
+
+**Progress lines.** Every served action carries `say`: one plain line about what is happening.
+Print exactly that line as the progress message for the action (nothing else for routine steps),
+and only when it differs from the last one you printed.
 
 **Keep the loop moving.** After every mutation command, immediately act on the FOLLOWING action
 it printed — do NOT end your turn between a report and the next
-dispatch. The loop terminates ONLY on `done` or `failed`. A turn that ends mid-run (long
+dispatch. The loop terminates ONLY on `done`, `failed` or `paused`. A turn that ends mid-run (long
 subagent, harness limit, human stepping away) is not a failure and loses nothing — the
 engine ledger is the source of truth. When you regain the turn, just resume (below).
 
@@ -227,8 +237,8 @@ whole-repository scan. The action's `model` is ignored because work runs in the 
 session. Return only its requested compact JSON fields and record them with `complete`, just
 like a worker action. If it requires an artifact, write only the served artifact path. On a
 real error or invalid output, use the same single retry then `fail` protocol as `run_agent`.
-When the served prompt asks for a conversation with the person (the HLD brainstorm they chose),
-hold it here: wait for each reply, and `complete` only after the person ends it.
+When the served prompt asks for a conversation with the person (the plan brainstorm), hold it
+here: let the person open, wait for each reply, and `complete` only after the person ends it.
 
 ### `ask_interview`
 
@@ -371,8 +381,8 @@ An `ask_gate` carrying `"mode"` (`design` or `auto`) is a gate the run's mode do
 its check failed (blocking review findings, unverified release) or it always needs a person.
 Say so plainly — "autopilot stopped: <why, from the prompt>" — then ask exactly as above.
 
-**Questions at a design-approval gate.** If, instead of choosing, the human asks about the PRD,
-HLD, or LLD the gate names ("why one service?", "what happens on retry?"), answer it: read only the
+**Questions at a design-approval gate.** If, instead of choosing, the human asks about the PRD
+or the plan the gate names ("why one service?", "what happens on retry?"), answer it: read only the
 artifact the gate prompt names, and only the part the question needs. Explain, do not edit, and do
 not record anything. Then present the same gate again. If the conversation produces a change they
 want, that is their *revise* option's feedback — never apply it yourself.
@@ -390,6 +400,14 @@ python3 .maestro/engine/maestroctl.py gate-input-record --slug <slug> --step <st
 
 For a design `feedback` action, request the change for that artifact only. The run remains durably
 parked on `ask_input` across turns until non-blank text is recorded.
+
+### `paused`
+
+The person chose to decide later (for example "Later" at the plan approval). The run keeps
+everything and asks the same question when resumed. Print one plain line with the resume command
+for this host — `/maestro <slug>` on Claude Code and Cursor, `$maestro <slug>` on Codex (the
+action's `resume` field names it) — e.g. "Paused at the plan approval. Run `/maestro <slug>` when
+you are ready to decide." Then stop: do not call `next` again in this session.
 
 ### `done` / `failed`
 
@@ -419,7 +437,7 @@ them, then resume.
 **Long runs.** Your context only grows during a run, and every turn re-reads it, so late stages
 are slower and cost more than early ones. The ledger holds all progress, so a fresh session loses
 nothing. At a natural pause (a gate or interview you are waiting on) after a stage finished — the
-PRD, the HLD and contract, LLD approval, implementation — you may tell the user ONCE that they can
+PRD, the plan approval, implementation — you may tell the user ONCE that they can
 close this session and re-invoke `/maestro <slug>` to continue with a small context. Do not stop
 the run or end the session yourself, and do not repeat the note at every gate.
 
@@ -445,20 +463,19 @@ run. It does NOT replace gates — a genuinely irreversible or out-of-scope ask 
 surfaced as a decision, not silently actioned.
 
 **A change to an already-approved design needs an explicit handling decision.** If the user asks
-in chat—or clearly answers an LLD question—in a way that changes an approved PRD, HLD, contract,
-or LLD, do not silently edit or ignore the conflict. Record the request as a `note`, then present
+in chat in a way that changes an approved PRD or plan, do not silently edit or ignore the
+conflict. Record the request as a `note`, then present
 exactly these choices with the native selector:
 
 1. **Revise the design** — while the run is still in design, use the current stage's revise route
-   with the change as feedback (`prd_approval` for the PRD, `hld_approval` for the HLD,
-   `lld_approval` for the contract or LLDs). Past design, continue to the release gate and choose
+   with the change as feedback (`prd_approval` for the PRD, `plan_approval` for the plan). Past design, continue to the release gate and choose
    **Send back to design** with the change as the feedback; the design reruns and every
    repository is implemented again against it.
 2. **Reject or defer this change** — do not implement it; it stays recorded as a note.
 
-Never edit a design document yourself to apply such a change. The approved LLDs are bound to the
-exact HLD and contract they were written against: delivery refuses to start on a design that
-changed after approval and sends it back through design instead.
+Never edit a design document yourself to apply such a change. The plan approval is bound to the
+exact PRD, plan and test cases it was given for: delivery refuses to start on a plan that changed
+after approval and sends it back through design instead.
 
 ## Task list
 
@@ -489,11 +506,9 @@ with a short plain description where the host shows one ("Check what comes next"
 **Speak only when something changed for the user**, in one to three plain sentences:
 
 - *A stage finished* — what is done, what comes next, whether you need them. Stage names come
-  from the `todo` checklist, in plain words: "The high-level design is approved. Next is the
-  detailed design for each repository — I'll come back with a few questions before it is
-  written."
-- *Long work starts* — what is being done: "Writing the detailed designs for the 3 repositories
-  now."
+  from the `todo` checklist, in plain words: "The plan is approved. Next I build it in the 2
+  repositories and test it."
+- *Long work starts* — the action's `say` line: "Writing the plan."
 - *You need them* — one sentence on what the decision is for, then ask.
 - *Something failed or is being redone* — what went wrong and what happens next. Hiding the
   machinery never means hiding a problem (hard rule 4).

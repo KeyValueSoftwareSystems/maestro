@@ -1,5 +1,5 @@
-"""design.yaml composes small stage children (design-intake/-prd/-hld/-contract/-lld); each
-stage starts at its normal first step."""
+"""design.yaml composes small stage children (design-intake/-prd/-plan/-tests); each stage
+starts at its normal first step."""
 
 import os
 import shutil
@@ -43,16 +43,23 @@ class DesignPhaseEntryTest(unittest.TestCase):
             statemod.save(slug, run.state, self.tmp)
         self.fail("entry routing did not settle")
 
+    def test_design_needs_a_path_and_refuses_the_old_values(self):
+        for inputs in ({"feature": "Demo"}, {"feature": "Demo", "path": "auto"},
+                       {"feature": "Demo", "path": "light"}):
+            with self.subTest(inputs=inputs), statemod.locked("demo", self.tmp):
+                with self.assertRaises(resolver.RunError):
+                    resolver.init_run("demo", ".maestro/workflows/sdlc-main.yaml", inputs,
+                                      self.tmp, force=True)
+
     def test_design_starts_at_intake(self):
-        self.assertEqual(self.first_work_step(".maestro/workflows/design.yaml", {"feature": "Demo"}),
+        self.assertEqual(self.first_work_step(".maestro/workflows/design.yaml", {"feature": "Demo", "path": "major"}),
                          "intake/assert_requirement")
 
     def test_phase_children_default_to_their_normal_start(self):
         cases = [
             (".maestro/workflows/design-intake.yaml", {}, "assert_requirement"),
-            (".maestro/workflows/design-hld.yaml", {}, "infra_profile"),
-            (".maestro/workflows/design-lld.yaml", {}, "lld_scope_serve"),
-            (".maestro/workflows/design-contract.yaml", {}, "contract"),
+            (".maestro/workflows/design-prd.yaml", {"path": "minor"}, "check_existing_prd"),
+            (".maestro/workflows/design-plan.yaml", {"path": "major"}, "greenfield_check"),
             (".maestro/workflows/design-tests.yaml", {}, "test_cases"),
         ]
         for workflow, inputs, expected in cases:

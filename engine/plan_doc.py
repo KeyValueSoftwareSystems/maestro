@@ -18,8 +18,9 @@ Commands
   status   --root . --slug S              {active, completed, path}
   archive  --root . --slug S [--final PATH]
            move active -> completed (git mv when tracked), stamp `Status: completed`
-  commit   --root . --slug S --event created|updated|completed
+  commit   --root . --slug S --event created|updated|completed|auto
            commit only the plan path(s); never pushes; {committed, commit, branch, reason, say}
+           (auto: `created` while the plan was never committed, else `updated`)
 
 Every command prints one JSON line. `validate`, `verify`, `status` and `commit` exit 0 so
 workflows route on fields; `approve` and `archive` exit 1 (message on stderr) when they refuse.
@@ -522,8 +523,15 @@ def commit(slug, root=".", event="updated"):
     return out
 
 
+def auto_event(slug, root="."):
+    """`updated` once the active plan is tracked in git, else `created`."""
+    rel = run_layout.plan_active(slug)
+    return "updated" if _in_git(root) and _tracked(root, rel) else "created"
+
+
 def cmd_commit(args):
-    print(json.dumps(commit(args.slug, args.root, args.event)))
+    event = auto_event(args.slug, args.root) if args.event == "auto" else args.event
+    print(json.dumps(commit(args.slug, args.root, event)))
     return 0
 
 
@@ -553,7 +561,7 @@ def main(argv=None):
     p = add("archive", cmd_archive)
     p.add_argument("--final", default="", help="the reconciled plan to archive instead")
     p = add("commit", cmd_commit)
-    p.add_argument("--event", choices=EVENTS, required=True)
+    p.add_argument("--event", choices=EVENTS + ("auto",), required=True)
     args = parser.parse_args(argv)
     if not statemod.valid_slug(args.slug):
         return _fail(f"invalid slug {args.slug!r}")

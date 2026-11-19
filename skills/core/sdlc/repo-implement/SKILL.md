@@ -7,12 +7,12 @@ tags: [sdlc, implement, repository]
 
 # repo-implement
 
-Build the approved scope of one repository exactly as its LLD and contract describe. Stay in
+Build the approved scope of one repository exactly as the feature's approved plan describes. Stay in
 scope; the design is decided — implement it, do not redesign it.
 
 ## Isolate first
 
-The workflow supplies `repo_path`, `branch`, the LLD, contract, and a validated task DAG.
+The workflow supplies `repo_path`, `branch`, the approved plan, and a validated task DAG.
 When it also supplies a `worktree`, that is the feature worktree: check it is on `branch`, work
 only there and never create another. Otherwise, before editing, create the feature worktree from
 that repository specifically:
@@ -26,14 +26,14 @@ is not on `branch`, stop and report.
 
 ## Before editing
 
-1. Read the repository's `AGENTS.md`/`CLAUDE.md`, the LLD, the contract, and the task DAG.
+1. Read the repository's `AGENTS.md`/`CLAUDE.md`, the approved plan, and the task DAG.
    Load each slice's context manifest in one batched read, not one read per file.
-2. Follow the LLD's technology decisions (libraries, state management, API client, test
+2. Follow the plan's decisions and the repository's existing technology choices (libraries, state management, API client, test
    frameworks). Do not introduce a new library or pattern; if a decision looks wrong, report
    it instead of substituting your own.
-3. The approved LLD and contract are the human approval for what they describe. Build a task
+3. The approved plan is the human approval for what it describes. Build a task
    marked as needing a human gate (migrations, permissions, payments, production config,
-   dependencies) exactly as the LLD says, and name it in your summary so the review checks it.
+   dependencies) exactly as the plan says, and name it in your summary so the review checks it.
    **Stop** when the work needs something the approved design does not describe — an unplanned
    migration, auth or permission change, payment logic, production config, secret or dependency
    upgrade, or a design decision that looks wrong: do not build around it; return `escalate`
@@ -53,7 +53,7 @@ When your instructions name one slice group (`group_id`, with its `task_ids`), b
 group; other agents build the other groups at the same time. The `worktree` and `branch` you are
 given are that slice's own, cut from the feature branch: work and commit only there.
 
-- Read the task plan for your tasks only, and only the parts of the LLD, contract and codebase
+- Read the task plan for your tasks only, and only the parts of the plan and codebase
   map they need; do not load the whole repository's context.
 - Edit only the files your tasks list in `writes`. A change anywhere else could collide with
   another slice: stop and escalate instead.
@@ -66,7 +66,7 @@ Return the same fields as below; `branch` and `commit` are the slice's.
 
 ## Each task, test-first
 
-1. **Red** — write the failing test from the contract or acceptance criterion first.
+1. **Red** — write the failing test from the plan's interfaces or the acceptance criterion first.
 2. **Green** — implement the minimum to pass it, in dependency order: types and schema →
    domain logic → persistence → API, UI or entry point.
 3. **Refactor** with tests green, then add the cross-cutting work the task names: validation,
@@ -89,19 +89,19 @@ writes and timeouts; first, last and empty pages; time zones and numeric precisi
   locks, with a safe backfill.
 - **Reliability** — idempotent retries, transactions and optimistic versioning where writes
   race, timeouts, rate limits and page-size caps on new endpoints.
-- **Errors and observability** — the contract's error shape and status codes, no leaked
+- **Errors and observability** — the error shape and status codes the plan's interfaces give, no leaked
   internals; structured logs, metrics and traces on new paths.
-- **Performance** — no N+1 or unbounded queries; cache or pool only where the LLD says.
+- **Performance** — no N+1 or unbounded queries; cache or pool only where the plan says.
 
 **Infrastructure and delivery changes** (an infrastructure repository, or the deploy files in
 an application repository)
-- **Ship what the LLD lists** — a new service gets its container image, CI pipeline and
+- **Ship what the plan lists** — a new service gets its container image, CI pipeline and
   deployment definitions in the same change; never leave them for later.
 - **Follow the platform pack** — use the installed `terraform-patterns`, `kubernetes-patterns` or
   `container-patterns` skill for the repository's platform.
 - **Safe by default** — per-environment values from variables, secrets by reference to the
   existing store, least-privilege access, private networking; no destroy or replacement of a
-  stateful resource the LLD did not plan.
+  stateful resource the plan does not name.
 - **Prove it** — the repository's own checks (format, validate, plan or template render, policy)
   pass in the worktree; the verify step runs them from the project configuration.
 
@@ -113,15 +113,15 @@ an application repository)
 - **Security** — no tokens or secrets in client code or storage logs; escape user content;
   CSRF-safe requests; validated redirects; no PII in analytics.
 - **Resilience and forms** — retry with clear messages, rollback of failed optimistic updates,
-  no double submit; validation mirrors the contract with field-level errors.
+  no double submit; validation mirrors the interface with field-level errors.
 - **Performance and reach** — code-split heavy routes, virtualize long lists, responsive
   layouts, localizable strings and locale-aware formatting.
 
 ## Verify before returning
 
 Run the repository's real formatter, linter, type checks, targeted and relevant full tests,
-and any provider/consumer contract checks the LLD or contract requires. If no contract
-runner exists, add the smallest framework-native contract assertion for the changed
+and any provider/consumer contract checks the plan's interfaces require. If no contract
+runner exists, add the smallest framework-native assertion for the changed interface
 boundary; never report green based on a no-op command. Your instructions may say the checks
 are re-run independently after you return; run them yourself first anyway.
 
