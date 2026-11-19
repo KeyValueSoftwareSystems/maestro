@@ -1,0 +1,335 @@
+# Bugfix child: from a bug report to an approved fix proposal, before any fix is written.
+#
+#   requirement? -> triage (conversation: bug report + mini PRD) -> test cases -> reproduce?
+#   -> branch check -> [missing branch: default / another branch / drop the repo] -> base map
+#   -> sandbox (a worktree per affected repository on fix/<slug>-<repo>, off its base)
+#   -> [environment up -> reproduce (failing regression test) -> environment down
+#       -> not reproduced?] -> fix proposal -> fix approval -> record the approval
+#
+# The bug report's expected behaviours are the mini PRD's acceptance criteria, so the test cases,
+# QA and the acceptance-criteria trace work as for a feature. The person decides whether to
+# reproduce, what to do about a repository without the branch, and approves the fix in every run
+# mode: no gate here has an `auto:` policy. "Later" at the fix approval pauses the run and keeps
+# the sandbox; resuming asks the same question again. The approval binds the PRD and the test
+# cases (there is no plan); delivery then fixes each repository in its sandbox worktree.
+#
+# Entered by bugfix.yaml first, and again when delivery or the release sends the bug back
+# (feedback carries why).
+version: 1
+name: bugfix-triage
+title: Bug triage
+description: Pin the bug down, set up a sandbox on the person's branch, reproduce it and get the fix approved.
+inputs:
+  slug: {type: string, required: true, description: kebab-case bug id}
+  feature: {type: string, default: "${inputs.slug}", description: one-line bug summary}
+  branch: {type: string, required: true, description: the branch the bug is on (the fix bases on it)}
+  feedback: {type: string, default: "", description: why the bug came back from delivery or the release (empty on first pass)}
+defaults:
+  model: opus
+  agent: product
+  max_visits: 10
+start: assert_requirement
+nodes:
+  # Engine-owned: is there a written bug report (ticket, notes, logs) in the requirement folder?
+  # Either way the triage talks it through with the person; this only tells it where to start.
+  - id: assert_requirement
+    type: script
+    label: Bug report present?
+    say: Looking for the bug report.
+    run: [python3, .maestro/engine/requirement_serve.py, ".maestro/runs/${inputs.slug}/requirement"]
+    next: triage
+
+  # Product role, in the lead's session: a conversation until the bug is clear.
+  - id: triage
+    type: agent
+    execution: lead
+    label: Pin the bug down
+    say: Let's pin the bug down together.
+    instruction: |
+      Pin down the bug "${inputs.feature}" with the person, as a conversation, until it is clear:
+      what happens, what should happen instead, where (screens, endpoints, jobs), since when, and
+      which repositories are affected. It was seen on branch ${inputs.branch}. Bug report files
+      present in .maestro/runs/${inputs.slug}/requirement/: ${steps.assert_requirement.outputs.state}
+      (have = read every file there first; need = start from the person's description).
+      Read docs/architecture.md and the codebase maps under docs/codebase-maps/ to name the
+      affected repositories with the names in maestro.config.yaml; read source only to confirm
+      where the behaviour lives. Ask one question per turn and wait for every reply; do not
+      complete this step until the person agrees the description is right.
+
+      Why the bug came back (empty on the first pass): ${inputs.feedback}
+      ${steps.not_reproduced.outputs.feedback} ${steps.fix_approval.outputs.feedback}
+      The person's answer about repositories without the branch: ${steps.missing_branch.outputs.choice}
+      (drop = remove ${steps.branch_check.outputs.missing_csv} from the affected repositories,
+      unless the person says otherwise).
+
+      Write the bug report to .maestro/runs/${inputs.slug}/requirement/bug.md (symptoms, expected
+      vs actual behaviour, steps to reproduce, affected repositories, the branch) and a mini PRD
+      to .maestro/runs/${inputs.slug}/requirement/prd.md whose acceptance criteria (AC-01, AC-02,
+      …) are the expected behaviours the fix must restore. Check the mini PRD with
+      `python3 .maestro/engine/validate_prd.py .maestro/runs/${inputs.slug}/requirement/prd.md
+      --type minor` and fix what it reports. When both files exist from an earlier pass, update
+      them in place with what changed. Return the affected repositories as repos_csv.
+    skill: bug-triage
+    inputs:
+      feature: "${inputs.feature}"
+      slug: "${inputs.slug}"
+      branch: "${inputs.branch}"
+      requirement_dir: ".maestro/runs/${inputs.slug}/requirement"
+      bug_path: ".maestro/runs/${inputs.slug}/requirement/bug.md"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      prd_type: minor
+      prd_validator: ".maestro/engine/validate_prd.py"
+      feedback: "${inputs.feedback} ${steps.not_reproduced.outputs.feedback} ${steps.fix_approval.outputs.feedback}"
+      codebase_lessons: "${memory.knowledge.codebase}"
+    outputs: [summary, repos_csv]
+    artifact:
+      - ".maestro/runs/${inputs.slug}/requirement/bug.md"
+      - ".maestro/runs/${inputs.slug}/requirement/prd.md"
+    check: {run: [python3, .maestro/engine/validate_prd.py, ".maestro/runs/${inputs.slug}/requirement/prd.md", --type, minor, --report]}
+    max_visits: 8
+    next: test_cases
+
+  # The functional test cases, from the mini PRD's expected behaviours.
+  - id: test_cases
+    type: subworkflow
+    label: Functional test cases
+    say: Writing the test cases that prove the fix.
+    workflow: .maestro/workflows/design-tests.yaml
+    inputs:
+      slug: "${inputs.slug}"
+      feature: "${inputs.feature}"
+      feedback: "${inputs.feedback}"
+    on_fail: abort
+    next: reproduce_choice
+
+  - id: reproduce_choice
+    type: gate
+    label: Reproduce the bug first?
+    say: One choice before the fix is planned.
+    prompt: |
+      ${steps.triage.outputs.summary}
+      Affected: ${steps.triage.outputs.repos_csv} · branch ${inputs.branch}
+
+      Should I reproduce the bug before proposing a fix?
+      - Reproduce: I start the app on your branch (when the project configures how), confirm the
+        bug and write a test that fails because of it. Slower, but the fix is proven against it.
+      - Skip: I go straight to finding the cause and proposing a fix.
+    options:
+      - {id: reproduce, label: Reproduce it first, to: branch_check}
+      - {id: skip, label: Skip — propose a fix, to: branch_check}
+
+  # Engine-owned: does every affected repository have the branch (locally or on origin)? Fetches
+  # first; creates nothing. Repositories the bug does not touch are never checked.
+  - id: branch_check
+    type: script
+    label: Branch in every affected repository?
+    say: Checking the branch exists in each affected repository.
+    run: [python3, .maestro/engine/worktrees.py, check-base, --root, ".", --slug, "${inputs.slug}", --branch, "${inputs.branch}", --repos, "${steps.triage.outputs.repos_csv}"]
+    on_fail: ask
+    routes:
+      - {when: "${steps.branch_check.outputs.all_present} == true", to: bug_bases}
+      - {to: missing_branch}
+
+  - id: missing_branch
+    type: gate
+    label: Branch missing in a repository
+    say: The branch is missing in some repositories; your call.
+    prompt: |
+      ${steps.branch_check.outputs.summary}. ${steps.bug_bases.outputs.problem}
+      The fix is built on ${inputs.branch}, so these repositories need another starting point:
+      ${steps.branch_check.outputs.missing_csv}
+      - Default branch: use each one's default branch. The app may then mix versions; the
+        reproduction notes which branch and commit each repository used.
+      - Another branch: name it, e.g. web=release-2 (or one name for all of them).
+      - Drop: leave these repositories out of the fix; we go back to describing the bug.
+    options:
+      - {id: default, label: Use their default branch, to: bug_bases}
+      - {id: named, label: Name another branch, to: bug_bases, input: feedback}
+      - {id: drop, label: Drop these repositories, to: triage}
+
+  # Engine-owned: each repository's base (the branch, or the person's answer for the others),
+  # written as the sandbox's base map. A named branch that does not exist asks again.
+  - id: bug_bases
+    type: script
+    label: Base branch per repository
+    say: Settling which branch each repository starts from.
+    run: [python3, .maestro/engine/worktrees.py, bases, --root, ".", --slug, "${inputs.slug}", --branch, "${inputs.branch}", --repos, "${steps.triage.outputs.repos_csv}", --choice, "${steps.missing_branch.outputs.choice}", --named, "${steps.missing_branch.outputs.feedback}"]
+    routes:
+      - {when: "${steps.bug_bases.outputs.valid} == false", to: missing_branch}
+      - {to: sandbox}
+
+  # Engine-owned: one worktree per affected repository on fix/<slug>-<repo>, off its base; all
+  # or nothing. A later pass reuses it.
+  - id: sandbox
+    type: script
+    label: Set up the sandbox
+    say: Setting up a sandbox on your branch.
+    run: [python3, .maestro/engine/worktrees.py, prepare, --root, ".", --slug, "${inputs.slug}", --base-map, ".maestro/runs/${inputs.slug}/.engine/bug-bases.json"]
+    timeout: 900
+    on_fail: ask
+    next: register_sandbox
+
+  # Engine-owned: the sandbox worktrees become the run's implementations, so delivery's bug-fix
+  # loop hands each one out like an implemented repository.
+  - id: register_sandbox
+    type: script
+    label: Register the sandbox for the fix
+    say: Getting the sandbox ready for the fix.
+    run: [python3, .maestro/engine/implementation_pool.py, bugfix-start, --root, ".", --slug, "${inputs.slug}", --sandbox, ".maestro/runs/${inputs.slug}/.engine/sandbox.json"]
+    on_fail: abort
+    routes:
+      - {when: "${steps.reproduce_choice.outputs.choice} == reproduce", to: env_up}
+      - {to: propose_fix}
+
+  # Engine-owned: environment.start + ready from maestro.config.yaml against the sandbox. Nothing
+  # configured is not a failure: the reproduction is then a failing test only.
+  - id: env_up
+    type: script
+    label: Start the app on the sandbox
+    say: Starting the app on the sandbox.
+    run: [python3, .maestro/engine/qa_env.py, up, --root, ".", --manifest, ".maestro/runs/${inputs.slug}/.engine/sandbox.json", --logs, ".maestro/runs/${inputs.slug}/.engine/logs"]
+    timeout: 900
+    on_fail: ask
+    next: reproduce
+
+  # QA role: confirm the bug and pin it with a failing regression test.
+  - id: reproduce
+    type: agent
+    label: Reproduce the bug
+    say: Reproducing the bug.
+    agent: qa
+    model: sonnet
+    instruction: |
+      Reproduce the bug described in .maestro/runs/${inputs.slug}/requirement/bug.md (expected
+      behaviours: the acceptance criteria in .maestro/runs/${inputs.slug}/requirement/prd.md) in
+      the sandbox listed in .maestro/runs/${inputs.slug}/.engine/sandbox.json: each repository's
+      worktree, fix branch, commit and the base it came from.
+      App running: ${steps.env_up.outputs.configured} (${steps.env_up.outputs.summary}).
+      - true: reproduce it against the running app first, then pin it with a test.
+      - false: no environment is configured; reproduce it with a failing test only.
+      Write a regression test in the affected repository's sandbox worktree that fails because of
+      the bug (and will pass once it is fixed); commit it on that worktree's fix branch. Change no
+      product code. Write the reproduction to .maestro/runs/${inputs.slug}/qa/reproduction.md:
+      the steps, what you observed against what was expected, the failing test (file and the
+      command that runs it), and the branch and commit every repository was on.
+      Return reproduced=true only when you saw the bug happen.
+    skill: bug-reproduce
+    inputs:
+      slug: "${inputs.slug}"
+      bug_path: ".maestro/runs/${inputs.slug}/requirement/bug.md"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      sandbox_path: ".maestro/runs/${inputs.slug}/.engine/sandbox.json"
+      app_running: "${steps.env_up.outputs.configured}"
+      environment: "${steps.env_up.outputs.summary}"
+      reproduction_path: ".maestro/runs/${inputs.slug}/qa/reproduction.md"
+    outputs: [reproduced, summary]
+    artifact: ".maestro/runs/${inputs.slug}/qa/reproduction.md"
+    fresh: true
+    max_visits: 4
+    next: env_down
+
+  # Engine-owned and never fails the run.
+  - id: env_down
+    type: script
+    label: Stop the app
+    say: Stopping the app.
+    run: [python3, .maestro/engine/qa_env.py, down, --root, ".", --manifest, ".maestro/runs/${inputs.slug}/.engine/sandbox.json", --logs, ".maestro/runs/${inputs.slug}/.engine/logs"]
+    timeout: 900
+    routes:
+      - {when: "${steps.reproduce.outputs.reproduced} == true", to: propose_fix}
+      - {to: not_reproduced}
+
+  - id: not_reproduced
+    type: gate
+    label: Bug not reproduced
+    say: I could not reproduce the bug; your call.
+    prompt: |
+      I could not make the bug happen: ${steps.reproduce.outputs.summary}
+      Details: .maestro/runs/${inputs.slug}/qa/reproduction.md
+      - Proceed: look for the cause anyway and propose a fix.
+      - More info: tell me what is missing (steps, data, environment); we go back to describing it.
+      - Reject: stop this run.
+    options:
+      - {id: proceed, label: Proceed — propose a fix anyway, to: propose_fix}
+      - {id: more-info, label: More info — tell me what is missing, to: triage, input: feedback}
+      - {id: reject, label: Reject — stop this run, to: abort}
+
+  # Analyst role: root cause and the proposed change, before any fix is written.
+  - id: propose_fix
+    type: agent
+    label: Propose a fix
+    say: Finding the cause and proposing a fix.
+    agent: analyst
+    instruction: |
+      Find the root cause of the bug in .maestro/runs/${inputs.slug}/requirement/bug.md and
+      propose a fix; write no product code. Read the code in the sandbox worktrees listed in
+      .maestro/runs/${inputs.slug}/.engine/sandbox.json, the reproduction at
+      .maestro/runs/${inputs.slug}/qa/reproduction.md when it exists, the mini PRD at
+      .maestro/runs/${inputs.slug}/requirement/prd.md and the test cases at
+      .maestro/runs/${inputs.slug}/design/test-cases.md.
+      Write the proposal to .maestro/runs/${inputs.slug}/design/fix-proposal.md: what is wrong and
+      why, the change per repository, the impact (behaviour that changes for users, other features
+      or callers touched, data or config changes), the risks, and the tests that will prove it.
+      The person's feedback on your last proposal (empty on the first pass):
+      ${steps.fix_approval.outputs.feedback}
+      When the proposal exists from an earlier pass, apply only that feedback.
+    skill: fix-proposal
+    inputs:
+      slug: "${inputs.slug}"
+      bug_path: ".maestro/runs/${inputs.slug}/requirement/bug.md"
+      prd_path: ".maestro/runs/${inputs.slug}/requirement/prd.md"
+      test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
+      reproduction_path: ".maestro/runs/${inputs.slug}/qa/reproduction.md"
+      sandbox_path: ".maestro/runs/${inputs.slug}/.engine/sandbox.json"
+      proposal_path: ".maestro/runs/${inputs.slug}/design/fix-proposal.md"
+      feedback: "${steps.fix_approval.outputs.feedback}"
+      codebase_lessons: "${memory.knowledge.codebase}"
+    outputs: [summary, cause, change, impact, risks]
+    artifact: ".maestro/runs/${inputs.slug}/design/fix-proposal.md"
+    fresh: true
+    max_visits: 6
+    next: fix_approval
+
+  # A person approves the fix in every run mode (no `auto:` policy).
+  - id: fix_approval
+    type: gate
+    label: Fix approval
+    say: The proposed fix is ready for your approval.
+    prompt: |
+      Proposed fix for ${inputs.feature}, before any code is written:
+      Cause: ${steps.propose_fix.outputs.cause}
+      Change: ${steps.propose_fix.outputs.change}
+      Who is affected: ${steps.propose_fix.outputs.impact}
+      Risks: ${steps.propose_fix.outputs.risks}
+      Reproduction: ${steps.reproduce.outputs.summary}
+      Full proposal: .maestro/runs/${inputs.slug}/design/fix-proposal.md
+
+      - Approve: fix it this way; it is then tested and comes back to you for release.
+      - Revise: tell me what to change; I rework the proposal and ask again.
+      - Re-triage: the bug itself is described wrong; we go back to describing it.
+      - Later: stop here and keep the sandbox; resume with /maestro ${inputs.slug}.
+      - Reject: stop this run.
+    options:
+      - {id: approve, label: Approve — fix it this way, to: record_approval}
+      - {id: revise, label: Revise — tell me what to change, to: propose_fix, input: feedback}
+      - {id: re-triage, label: Re-triage — describe the bug again, to: triage, input: feedback}
+      - {id: later, label: Later — stop here and resume when ready, pause: true}
+      - {id: reject, label: Reject — stop this run, to: abort}
+
+  # Engine-owned: bind the approval to the exact mini PRD and test cases (no plan) and record the
+  # repositories in scope; delivery's design check verifies it.
+  - id: record_approval
+    type: script
+    label: Record the fix approval
+    say: Recording your approval.
+    run: [python3, .maestro/engine/plan_doc.py, approve, --root, ".", --slug, "${inputs.slug}", --no-plan, --repos, "${steps.triage.outputs.repos_csv}", --test-cases, ".maestro/runs/${inputs.slug}/design/test-cases.md"]
+    on_fail: abort
+    next: end
+
+outputs:
+  repos_csv: "${steps.triage.outputs.repos_csv}"
+  summary: "${steps.triage.outputs.summary}"
+  bug_path: ".maestro/runs/${inputs.slug}/requirement/bug.md"
+  proposal_path: ".maestro/runs/${inputs.slug}/design/fix-proposal.md"
+  test_cases_path: "${steps.test_cases.outputs.test_cases_path}"
+  fix_summary: "${steps.propose_fix.outputs.summary}"

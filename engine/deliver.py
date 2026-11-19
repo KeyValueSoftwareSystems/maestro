@@ -14,6 +14,8 @@ request body); `--trace` the acceptance-criteria trace.
                 a pull request against `delivery.base` (default: the remote's default branch)
                 with the GitHub CLI — or reuse the open one for that branch. A release that
                 autopilot approved (--release-by autopilot) opens as a draft: nobody reviewed it.
+                A bug fix targets each repository's own base instead: the branch its sandbox
+                was built from (`.engine/bug-bases.json`, else the manifest entry's `base`).
 
 Writes `.maestro/runs/<slug>/release/delivery.json` and prints one JSON line:
 {mode, delivered_csv, pr_urls_csv, draft, path, summary}. Exits 1 when a push or pull request
@@ -133,7 +135,26 @@ def _body(entry, siblings, args, root):
     return body if len(body) <= BODY_LIMIT else body[:BODY_LIMIT] + "\n\n… (truncated)\n"
 
 
-def _pull_request(entry, args, root, delivery, gh, siblings, title):
+def _bug_bases(slug, root):
+    """{repo: base branch} a bug fix's sandbox was built from; {} for a feature."""
+    try:
+        with open(run_layout.path(slug, root, run_layout.BUG_BASES), encoding="utf-8") as fh:
+            doc = json.load(fh)
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in doc.items() if isinstance(v, str) and v.strip()} \
+        if isinstance(doc, dict) else {}
+
+
+def pr_base(entry, bases, delivery):
+    """The branch a repository's pull request targets: a bug fix's recorded base for that
+    repository, else `delivery.base` ("" lets gh use the remote's default branch)."""
+    base = bases.get(entry["repo"]) or entry.get("base") or delivery.get("base") or ""
+    remote = delivery.get("remote") or "origin"
+    return base[len(remote) + 1:] if base.startswith(remote + "/") else base
+
+
+def _pull_request(entry, args, root, delivery, gh, siblings, title, base=""):
     branch = entry["branch"]
     worktree = entry["worktree"]
     remote = delivery.get("remote") or "origin"
@@ -157,8 +178,8 @@ def _pull_request(entry, args, root, delivery, gh, siblings, title):
         fh.write(_body(entry, siblings, args, root))
     argv = [gh, "pr", "create", "--head", branch, "--title", title, "--body-file", body_path,
             *repo_flag]
-    if delivery.get("base"):
-        argv += ["--base", delivery["base"]]
+    if base:
+        argv += ["--base", base]
     if args.release_by == "autopilot":
         argv.append("--draft")
     code, out = _run(argv, worktree)
@@ -182,6 +203,7 @@ def deliver(args):
     title = heading.replace(" — PRD", "").replace(" - PRD", "") or args.slug
     gh = os.environ.get("MAESTRO_GH") or "gh"
     results = []
+    bases = _bug_bases(args.slug, root)
     if mode == "pull-request" and not simulated:
         discovered = dict(implementation_pool.codebase_scan.discover_repos(root))
         for entry in entries:
@@ -196,13 +218,16 @@ def deliver(args):
                 raise RuntimeError(f"{entry['repo']}: refusing to deliver: {exc}") from None
         for entry in entries:
             siblings = [f"`{e['repo']}` ({e['branch']})" for e in entries if e is not entry]
+            base = pr_base(entry, bases, delivery)
             outcome = _pull_request(entry, args, root, delivery, gh, siblings,
-                                    f"{title} ({entry['repo']})")
+                                    f"{title} ({entry['repo']})", base)
             results.append({"repo": entry["repo"], "branch": entry["branch"],
-                            "commit": entry["commit"], "pushed": True, **outcome})
+                            "commit": entry["commit"], "pushed": True, "base": base,
+                            **outcome})
     else:
         results = [{"repo": e["repo"], "branch": e["branch"], "commit": e["commit"],
-                    "pushed": False, "pr_url": "", "pr": "none"} for e in entries]
+                    "pushed": False, "base": pr_base(e, bases, delivery), "pr_url": "",
+                    "pr": "none"} for e in entries]
     draft = mode == "pull-request" and args.release_by == "autopilot"
     record = {"schema_version": 1, "mode": mode, "delivered_at": statemod.now_iso(),
               "simulated": simulated, "draft": draft, "repositories": results}

@@ -45,7 +45,9 @@ nodes:
       The catalog states each expected result in the PRD's terms. Take the exact values to assert
       (status codes, error codes, field names, messages, limits) from the approved plan at
       docs/plans/active/${inputs.slug}.md (in the workspace root, not in the worktrees): its
-      Interfaces first, then the code where the plan leaves a value open.
+      Interfaces first, then the code where the plan leaves a value open. A bug fix has no plan:
+      take them from the approved fix proposal at
+      .maestro/runs/${inputs.slug}/design/fix-proposal.md and the code.
       Where the design cannot meet a case's expected behaviour, the case fails: never bend the case
       to the design.
       Project E2E suite present: ${steps.e2e_plan.outputs.has_e2e}.
@@ -85,6 +87,7 @@ nodes:
       implementation_manifest_sha256: "${inputs.implementation_manifest_sha256}"
       test_cases_path: ".maestro/runs/${inputs.slug}/design/test-cases.md"
       plan_path: "docs/plans/active/${inputs.slug}.md"
+      fix_proposal_path: ".maestro/runs/${inputs.slug}/design/fix-proposal.md"
     outputs: [passed, failed_count, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/qa/report.md"

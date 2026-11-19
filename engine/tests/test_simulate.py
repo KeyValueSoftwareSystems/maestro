@@ -1,4 +1,5 @@
 """Simulator safety guards, exit status, and a no-LLM full workflow walk."""
+import json
 import os
 import shutil
 import subprocess
@@ -90,6 +91,30 @@ class SimulatorTest(unittest.TestCase):
 
     def test_minor_sdlc_happy_path_finishes_without_llm(self):
         self.walk("minor")
+
+    def test_bugfix_happy_path_finishes_without_llm(self):
+        argv = ["simulate.py", "--root", self.root, "--workflow",
+                ".maestro/workflows/bugfix.yaml", "--slug", "sim", "--input",
+                "feature=Simulated bug", "--input", "branch=main", "--auto",
+                "--allow-script-side-effects"]
+        self.assertEqual(simulate.main(argv), 0)
+        run = os.path.join(self.root, ".maestro", "runs", "sim")
+        for rel in ("requirement/bug.md", "requirement/prd.md", "design/test-cases.md",
+                    "qa/reproduction.md", "design/fix-proposal.md", "build/manifest.json",
+                    ".engine/sandbox.json"):
+            self.assertTrue(os.path.isfile(os.path.join(run, rel)), rel)
+        with open(os.path.join(run, ".engine", "bug-bases.json")) as fh:
+            self.assertEqual(json.load(fh), {"mobile": "main"})
+        with open(os.path.join(run, ".engine", "plan-approval.json")) as fh:
+            approval = json.load(fh)
+        self.assertEqual(approval["repos"], ["mobile"])
+        self.assertIn("design/test-cases.md", approval["test_cases_path"])
+        with open(os.path.join(run, "build", "manifest.json")) as fh:
+            manifest = json.load(fh)
+        self.assertEqual([(e["repo"], e["branch"], e["base"]) for e in manifest["repositories"]],
+                         [("mobile", "fix/sim-mobile", "main")])
+        # no plan: none was written, none was filed
+        self.assertFalse(os.path.exists(os.path.join(self.root, "docs", "plans")))
 
 
 if __name__ == "__main__":

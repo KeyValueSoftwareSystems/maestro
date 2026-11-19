@@ -7,7 +7,9 @@ path=major` (or `path=minor`; or `design-tests.yaml`) runs just that stage's own
 feature's existing documents. Before `init`, check with `ls` that the stage's inputs exist and,
 if one is missing, tell the user which stage produces it and stop: `design-plan` needs
 `.maestro/runs/<slug>/requirement/prd.md`, and so does `design-tests` (the functional test cases,
-written from the PRD alone). `archive.yaml` (a feature whose archive was answered
+written from the PRD alone). `bugfix.yaml` is not a stage: it is the whole bug-fix workflow
+(`/maestro <slug> bugfix branch=<b>`), and its triage stage `bugfix-triage.yaml branch=<b>` runs
+on its own with only a bug report (or none: the triage asks). `archive.yaml` (a feature whose archive was answered
 "Not now") needs `build/manifest.json` and `release.json`, which the full pipeline
 writes when the release is approved. If `init` exits 3 with "already runs <other workflow>", the slug's
 ledger belongs to another run: ask the user (native selector) to confirm "run this stage here;

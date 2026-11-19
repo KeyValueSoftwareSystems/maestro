@@ -37,6 +37,16 @@ predict the fix, and confirm. If it is not installed, follow the same discipline
    skip it. If a new failure appears, report it — the next invocation (a fresh attempt) handles
    it; do not chain fixes here.
 
+## What the fix is measured against
+Read what your instructions name and what exists of it: QA's diagnosis, a bug report, a
+reproduction and an approved fix proposal (a bug fixed on its own, without a plan), or the
+approved plan (a feature). When there is an **approved fix proposal**, it is the scope: make the
+change it describes, in the repositories it names. A fix that needs anything it does not name — a
+different root cause, another module or repository, an interface, data or config change, or
+behaviour the proposal did not mention — is not made: escalate with the exact difference, so a
+person decides. When the reproduction already committed a failing regression test, that test is
+the one to turn green; do not write a second one for the same bug.
+
 ## Classify before you "fix"
 - **Flaky test** — fix the test's determinism (waits/selectors/seeding), not the product,
   and never by weakening assertions.
@@ -69,6 +79,7 @@ failing checks — answers from an earlier round do not count.
 
 ## Stop and ask a human if
 - a DB migration is required but not approved · an interface in the plan would change ·
+  the fix would go beyond the approved fix proposal ·
   auth/permission behavior changes · a dependency upgrade is needed · production config
   changes · the same root cause persists from a previous attempt with no new hypothesis ·
   multiple valid designs exist · the fix would weaken a test or a security control.

@@ -345,7 +345,7 @@ def _stub_agent(root, act, slug=None):
             root, "simulated", [name for name, _path in codebase_scan.discover_repos(root)])
     bool_values = {"blocking": False, "tests_passed": True, "passed": True,
                    "checks_passed": True, "risky": False, "contract_change_needed": False,
-                   "needs_clarification": False, "changed": False}
+                   "needs_clarification": False, "changed": False, "reproduced": True}
     numeric_fields = {"task_count", "slice_count", "case_count", "failed_count",
                       "lessons_count"}
     outputs = {}
@@ -354,6 +354,10 @@ def _stub_agent(root, act, slug=None):
             outputs[field] = bool_values[field]
         elif field in numeric_fields:
             outputs[field] = 0 if field == "failed_count" else 1
+        elif field == "repos_csv":
+            # a bug triage names the affected repositories: every one the workspace has
+            outputs[field] = ",".join(name for name, _path in codebase_scan.discover_repos(root)) \
+                or "simulated"
         else:
             outputs[field] = f"[sim] {step}.{field}"
     return outputs

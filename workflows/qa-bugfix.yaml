@@ -1,13 +1,15 @@
-# Fix a product bug QA found in ONE implemented repository, on its existing feature branch and
-# worktree: fix with a regression test -> engine build/lint/test -> re-review of the new diff,
-# decided from the review's findings file (the fixer fixes, contests or escalates each one).
-# Entered by delivery.yaml for each repository QA's diagnosis names; delivery then records the
-# worktree's new HEAD, rebuilds the manifest (finalize re-checks every receipt against its commit)
-# and re-runs QA.
+# Fix a product bug in ONE repository, on its existing branch and worktree: fix with a
+# regression test -> engine build/lint/test -> re-review of the new diff, decided from the
+# review's findings file (the fixer fixes, contests or escalates each one).
+# Entered by delivery.yaml for each repository QA's diagnosis names, and in a bugfix run for each
+# repository triage named (its sandbox worktree; the bug report, the reproduction and the
+# approved fix proposal take the place of the plan, and a fix beyond the proposal escalates).
+# Delivery then records the worktree's new HEAD, rebuilds the manifest (finalize re-checks every
+# receipt against its commit) and re-runs QA.
 version: 1
 name: qa-bugfix
-title: Fix a QA bug
-description: Fix a QA-found product bug in one repository's verified worktree, re-verify and re-review it.
+title: Fix a bug
+description: Fix a product bug (found by QA, or triaged and approved in a bugfix run) in one repository's worktree, re-verify and re-review it.
 inputs:
   slug: {type: string, required: true}
   repo: {type: string, required: true, description: implemented repository name}
@@ -15,7 +17,10 @@ inputs:
   branch: {type: string, required: true, description: the feature branch QA tested}
   worktree: {type: string, required: true, description: the verified worktree QA tested}
   commit: {type: string, required: true, description: the commit QA tested}
-  bug_report: {type: string, required: true, description: QA's product-bug diagnosis}
+  bug_report: {type: string, required: true, description: "QA's product-bug diagnosis (empty on a bugfix run's first pass)"}
+  bug_path: {type: string, default: "", description: the triaged bug report (bugfix runs)}
+  reproduction_path: {type: string, default: "", description: the reproduction (bugfix runs that reproduced)}
+  proposal_path: {type: string, default: "", description: the approved fix proposal (bugfix runs)}
   stack_skills: {type: string, default: "", description: installed stack skills for this repository}
 defaults:
   model: sonnet
@@ -26,14 +31,20 @@ nodes:
   - id: fix
     type: agent
     label: Fix the product bug
+    say: Fixing the bug.
     instruction: |
       One fix attempt on branch ${inputs.branch} in exact worktree ${inputs.worktree}, starting
-      from commit ${inputs.commit}. QA found a product bug in the ${inputs.repo} repository:
-      read the diagnosis at ${inputs.bug_report} and the QA report beside it, and fix only what it
-      names for ${inputs.repo}, against the approved plan at docs/plans/active/${inputs.slug}.md
-      (in the workspace root, not in the worktree). Add a
-      regression test that fails before the fix and passes after it. Never weaken, skip or delete
-      a test. If the fix needs a change to the plan or an interface, do not make it: escalate.
+      from commit ${inputs.commit}, for the ${inputs.repo} repository. Read what exists of:
+      QA's diagnosis at ${inputs.bug_report} (with the QA report beside it), the bug report at
+      ${inputs.bug_path}, the reproduction at ${inputs.reproduction_path} and the approved fix
+      proposal at ${inputs.proposal_path} (a bugfix run has these three and no plan), and the
+      approved plan at docs/plans/active/${inputs.slug}.md (in the workspace root, not in the
+      worktree) otherwise. Fix only what they name for ${inputs.repo}. When the reproduction
+      committed a failing regression test, make it pass; otherwise add a regression test that
+      fails before the fix and passes after it. Never weaken, skip or delete a test. If the fix
+      needs a change to the plan or an interface, do not make it: escalate. When there is an
+      approved fix proposal, the fix stays inside it: a change it does not name (another file
+      area, an interface, data or config, behaviour beyond it) is escalated, not made.
       When the engine checks or the review sent you back, address what they found:
       failing checks (the `failed_checks` input; receipt
       ${steps.verify.outputs.receipt_path}; checks marked pre-existing fail on the base commit too
@@ -57,6 +68,9 @@ nodes:
       repo_path: "${inputs.repo_path}"
       worktree: "${inputs.worktree}"
       bug_report: "${inputs.bug_report}"
+      bug_path: "${inputs.bug_path}"
+      reproduction_path: "${inputs.reproduction_path}"
+      proposal_path: "${inputs.proposal_path}"
       plan_path: "docs/plans/active/${inputs.slug}.md"
       verify_receipt: "${steps.verify.outputs.receipt_path}"
       review_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
@@ -149,7 +163,9 @@ nodes:
       (${steps.verify.outputs.summary}; receipt: ${steps.verify.outputs.receipt_path}); a failure
       still listed there was accepted by a person. Existing test files this branch changed
       (engine-detected): ${steps.verify.outputs.tests_changed} — a weakened, skipped or deleted
-      assertion is blocking. Confirm the regression test covers the bug in ${inputs.bug_report}.
+      assertion is blocking. Confirm the regression test covers the bug (${inputs.bug_report}
+      ${inputs.bug_path}). When an approved fix proposal exists (${inputs.proposal_path}), a change
+      beyond it is a blocking finding.
       Read the earlier report at .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md
       first, then overwrite it with the reviewed commit at the top. Write every finding to
       .maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json (the engine decides from
@@ -177,6 +193,7 @@ nodes:
       findings_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.findings.json"
       resolutions_path: ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.resolutions.json"
       fix_summary: "${steps.fix.outputs.fix_summary}"
+      proposal_path: "${inputs.proposal_path}"
     outputs: [review_path, blocking, summary]
     artifact:
       - ".maestro/runs/${inputs.slug}/reviews/code-${inputs.repo}.md"
@@ -205,15 +222,15 @@ nodes:
     type: gate
     label: Bug-fix escalation
     prompt: |
-      The QA bug fix for ${inputs.repo} needs a decision: the fixer escalated, the engine checks
-      or the review still fail after the automated rounds, or a re-review raised a blocking
-      finding late.
+      The bug fix for ${inputs.repo} needs a decision: the fixer escalated (for example, the fix
+      would go beyond the approved proposal), the engine checks or the review still fail after the
+      automated rounds, or a re-review raised a blocking finding late.
       Fix attempt: ${steps.fix.outputs.fix_summary}
       Engine checks: ${steps.verify.outputs.summary}
       Review: ${steps.review.outputs.summary}
       Blocking findings (engine): ${steps.review_verdict.outputs.summary}
       Escalated: ${steps.review_resolution.outputs.escalated_csv} ${steps.review_resolution.outputs.summary}
-      Diagnosis: ${inputs.bug_report}
+      Diagnosis: ${inputs.bug_report} ${inputs.bug_path} · Approved proposal: ${inputs.proposal_path}
     options:
       - {id: retry, label: One more fix round (with your guidance), to: fix, input: guidance}
       - {id: review, label: Accept the failing checks and continue to code review, to: review_scope}

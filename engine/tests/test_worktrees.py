@@ -414,6 +414,65 @@ class BugfixSandboxTest(unittest.TestCase):
         self.assertEqual([row["branch"] for row in rows], [f"sandbox/{SLUG}"] * 2)
 
 
+class BugBasesTest(BugfixSandboxTest):
+    """bases: the sandbox's base map from the branch check and the person's answer."""
+
+    def bases(self, branch, choice="", named=""):
+        self.check_base(branch)  # fetches, as the workflow's branch check does first
+        code, out = call(worktrees, "bases", "--root", self.root, "--slug", SLUG, "--branch",
+                         branch, "--repos", "api,web", "--choice", choice, "--named", named)
+        self.assertEqual(code, 0, out)
+        return out
+
+    def written(self):
+        with open(os.path.join(statemod.engine_dir(SLUG, self.root), "bug-bases.json")) as fh:
+            return json.load(fh)
+
+    def test_branch_everywhere_is_every_base(self):
+        out = self.bases("release-1")
+        self.assertTrue(out["valid"], out)
+        self.assertEqual(self.written(), {"api": "release-1", "web": "release-1"})
+        self.assertEqual(out["repos_csv"], "api,web")
+        # the map is what prepare --base-map reads
+        code, made = call(worktrees, "prepare", "--root", self.root, "--slug", SLUG,
+                          "--base-map", out["path"])
+        self.assertEqual(code, 0, made)
+
+    def test_missing_branch_needs_a_choice(self):
+        git(self.repos["web"], "push", "-q", "origin", "--delete", "release-1")
+        out = self.bases("release-1")
+        self.assertFalse(out["valid"])
+        self.assertIn("web has no branch release-1", out["problem"])
+        self.assertFalse(os.path.exists(os.path.join(statemod.engine_dir(SLUG, self.root),
+                                                     "bug-bases.json")))
+
+    def test_default_choice_uses_the_repositorys_default_branch(self):
+        git(self.repos["web"], "push", "-q", "origin", "--delete", "release-1")
+        out = self.bases("release-1", "default")
+        self.assertTrue(out["valid"], out)
+        self.assertEqual(self.written(), {"api": "release-1", "web": "main"})
+
+    def test_named_branch_per_repository_or_one_for_all(self):
+        git(self.repos["web"], "push", "-q", "origin", "--delete", "release-1")
+        git(self.repos["web"], "branch", "release-2")
+        out = self.bases("release-1", "named", "web=release-2")
+        self.assertTrue(out["valid"], out)
+        self.assertEqual(self.written(), {"api": "release-1", "web": "release-2"})
+        self.assertTrue(self.bases("release-1", "named", "release-2")["valid"])
+        out = self.bases("release-1", "named", "web=nope")
+        self.assertFalse(out["valid"])
+        self.assertIn("web has no branch nope", out["problem"])
+        out = self.bases("release-1", "named", "billing=release-2")
+        self.assertFalse(out["valid"])
+        self.assertIn("billing is not one of the repositories", out["problem"])
+        self.assertIn("no branch named for web", out["problem"])
+
+    def test_parse_named(self):
+        self.assertEqual(worktrees._parse_named("web=r2, api=r3"), ({"web": "r2", "api": "r3"}, ""))
+        self.assertEqual(worktrees._parse_named(" r2 "), ({}, "r2"))
+        self.assertEqual(worktrees._parse_named(""), ({}, ""))
+
+
 class WorktreeConfigTest(unittest.TestCase):
     def issues(self, section):
         return [i.code for i in project_config._check_worktree(section)]

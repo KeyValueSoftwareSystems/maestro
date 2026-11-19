@@ -107,6 +107,8 @@ the GitHub CLI (`gh`, installed and logged in), or reuses the open one. The body
 repository's verification result, the acceptance-criteria trace, the unconfirmed-decisions summary, links
 to the sibling pull requests and the review pack. A release approved on autopilot opens drafts.
 Results land in `.maestro/runs/<slug>/release/delivery.json`. `branch` (the default) pushes nothing.
+A bug fix (the `bugfix` workflow) opens each repository's pull request against the branch its
+sandbox was built from (`.maestro/runs/<slug>/.engine/bug-bases.json`), not `delivery.base`.
 
 The engine creates each feature's worktrees before any agent writes code, once per feature
 (`engine/worktrees.py`). Without a `worktree` section it runs `git worktree add` itself: one
@@ -118,6 +120,18 @@ usage) and finds each repository at `path`. `{slug}` and `{root}` in the command
 and `{repo}`. `create` also takes `{branch}`, exported as `MAESTRO_BASE_BRANCH`: the branch a bug
 fix starts from (`HEAD` for a feature), so the sandbox can be built off the person's branch. Point `environment.start` at the same sandbox (for example
 `./scripts/infra up "$MAESTRO_SLUG"`) and QA builds the code Maestro wrote.
+
+**Bug fixes run in a sandbox.** The `bugfix` workflow (`/maestro <slug> bugfix branch=<b>`) checks
+that every repository the bug affects has the branch (locally or on `origin`); for one that does
+not, a person picks its default branch, names another, or drops the repository. The engine then
+creates one worktree per affected repository on `fix/<slug>-<repo>`, off that repository's base,
+all or nothing, and records it as a manifest in `.maestro/runs/<slug>/.engine/sandbox.json`.
+To reproduce the bug, `environment.start` runs against that sandbox (each repository's worktree
+and commit as `MAESTRO_WORKTREE_<REPO>` / `MAESTRO_COMMIT_<REPO>`); without an environment the
+reproduction is a failing test only. A configured `worktree.create` must take `{branch}` (or read
+`MAESTRO_BASE_BRANCH`) to build the sandbox off the bug's branch, and builds every repository
+from one base: repositories that need different bases are refused with it (the engine's own
+worktrees handle a base per repository). The bug's repositories must be in `repos:`.
 
 Maestro uses only worktrees it created. A path that already exists and is not in the run's
 record (`.maestro/runs/<slug>/.engine/worktrees.json`) is refused, as is a new worktree that is not clean

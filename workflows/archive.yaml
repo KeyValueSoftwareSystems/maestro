@@ -206,6 +206,8 @@ outputs:
   archive: "${steps.confirm_archive.outputs.choice}"
   delivery: "${steps.deliver.outputs.summary}"
   plan: "${steps.plan_commit.outputs.say}"
+  # the completed plan's path once it was filed (empty when there was none, or not now)
+  plan_path: "${steps.plan_archive.outputs.path}${steps.plan_archive_final.outputs.path}"
   plan_choice: "${steps.plan_changes.outputs.choice}"
   pull_requests: "${steps.deliver.outputs.pr_urls_csv}"
   worktrees: "${steps.cleanup.outputs.summary}"

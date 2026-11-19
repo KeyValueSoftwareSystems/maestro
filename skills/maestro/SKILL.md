@@ -22,13 +22,19 @@ is work the workflow deliberately assigns to this session:
   contains a feature request instead of an explicit slug, preserve that request verbatim as
   the feature description and follow **Selecting a slug** below. Derive a slug visibly from
   a supplied description; never invent a feature or slug from no input.
-- `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`.
+- `workflow` (optional): workflow file path. Default `.maestro/workflows/sdlc-main.yaml`. A short
+  name without `/` or `.yaml` is a shipped workflow: `bugfix` means
+  `.maestro/workflows/bugfix.yaml` (fix a bug), `sdlc-main` the default.
 - Any extra `key=value` pairs: forwarded to init as workflow inputs.
 - `path=major|minor` — the default workflow requires it: **major** (a full PRD and a full plan)
   or **minor** (a mini PRD and a 5–10 line plan). When a new run on the default workflow was not
   given it, ask the person which one with the native selector, one line each: "Major — a new
   feature or a change across repositories" and "Minor — a small, contained change". Never guess
   it from the request and never pick a default. A resumed run keeps its own; do not ask again.
+- `branch=<name>` — the `bugfix` workflow requires it instead of `path`: the branch the bug is on
+  (the fix is built on it, and its pull requests go back to it). When a new bugfix run was not
+  given it, ask the person for it in one line ("Which branch is the bug on?"). Never guess it
+  (not `main`, not the current branch) and never default it. A resumed run keeps its own.
 - `--mode human|design|auto` (or the same asked in words): the run mode, passed to init.
 - `--no-profile`: pass it to init to skip the timing profile, which is recorded by default.
   `--debug` is the old name for the default and is still accepted. Strip these flags before

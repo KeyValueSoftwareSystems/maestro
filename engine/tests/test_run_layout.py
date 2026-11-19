@@ -52,6 +52,7 @@ class ShippedWorkflowsTest(unittest.TestCase):
         for rel in (run_layout.PRD, run_layout.TEST_CASES, run_layout.BRAINSTORM,
                     run_layout.DECISION_LOG, run_layout.WORKSPACE_LOCK, run_layout.stage_record("PRD"),
                     run_layout.queue("prd"), run_layout.PLAN_FINAL, run_layout.PLAN_CHANGES,
+                    run_layout.SANDBOX, run_layout.BUG_BASES, run_layout.FIX_PROPOSAL,
                     run_layout.receipt("${inputs.stack}"), run_layout.reviewed("${inputs.repo}")):
             self.assertIn(rel, named)
 

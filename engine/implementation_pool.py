@@ -333,7 +333,7 @@ def cmd_record(args):
             rc, args.commit = _git(worktree, "rev-parse", "HEAD")
             if rc or not args.commit:
                 return _fail(f"cannot resolve HEAD for worktree {worktree}")
-        elif not args.commit:
+        elif not args.commit and not (simulated and args.from_worktree):
             return _fail("record needs --commit or --from-worktree")
         if simulated:
             worktree = "[simulated: no code was checked out]"
@@ -343,7 +343,9 @@ def cmd_record(args):
                 worktree = _verify_entry(args, repo_path)
             except ValueError as exc:
                 return _fail(str(exc))
-        doc.setdefault("implementations", {})[args.repo] = {
+        implementations = doc.setdefault("implementations", {})
+        previous = implementations.get(args.repo) or {}
+        implementations[args.repo] = {
             "repo": args.repo,
             "source_path": os.path.relpath(repo_path, args.root),
             "branch": args.branch,
@@ -351,6 +353,8 @@ def cmd_record(args):
             "commit": args.commit,
             "simulated": simulated,
         }
+        if previous.get("base"):  # a bug fix's sandbox base: where its pull request goes
+            implementations[args.repo]["base"] = previous["base"]
         _write(_queue_path(args.slug, args.root), doc)
     print(json.dumps({"recorded": args.repo, "commit": args.commit}))
     return 0

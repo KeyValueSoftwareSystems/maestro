@@ -8,6 +8,11 @@
 # `design_stale` or `design_changed` true, or `release` revise -> the
 # parent re-runs design and this child then implements every repository afresh; otherwise the
 # parent archives.
+#
+# A bug fix (bugfix.yaml, `entry: bugfix`) has no plan and no implementation pass: after the
+# approval check it goes straight into the bug-fix loop with the repositories triage named, each
+# fixed in the sandbox worktree triage set up, then the same verified manifest, QA, trace and
+# release. The drift check is skipped when there is no plan.
 version: 1
 name: delivery
 title: Delivery
@@ -15,6 +20,8 @@ description: Implement every repository of the approved design, verify it with Q
 inputs:
   slug: {type: string, required: true, description: kebab-case feature id}
   feature: {type: string, default: "${inputs.slug}", description: one-line feature summary}
+  entry: {type: string, default: build, enum: [build, bugfix], description: "build: implement the approved plan; bugfix: fix the triaged bug in its sandbox"}
+  bug_repos: {type: string, default: "", description: "entry bugfix: the repositories to fix, a,b"}
 defaults:
   model: haiku
   agent: general
@@ -31,6 +38,7 @@ nodes:
     on_fail: abort
     routes:
       - {when: "${steps.design_check.outputs.stale} == true", to: stale_note}
+      - {when: "${inputs.entry} == bugfix", to: bugfix_entry}
       - {to: workspace_sync_pre_impl}
 
   # Engine-owned, route-only: the design is stale, so the reasons are what the parent hands back
@@ -235,6 +243,16 @@ nodes:
       - {when: "${steps.qa.outputs.product_bug} == true", to: bugfix_init}
       - {to: ac_trace}
 
+  # A bug fix: queue the repositories triage named (their sandbox worktrees are the run's
+  # implementations, registered by triage) and fix each one in the loop below.
+  - id: bugfix_entry
+    type: script
+    label: Queue the repositories to fix
+    say: Lining up the repositories to fix.
+    run: [python3, .maestro/engine/implementation_pool.py, bugfix-init, --root, ".", --slug, "${inputs.slug}", --repos-text, "${inputs.bug_repos}"]
+    on_fail: abort
+    next: bugfix_claim
+
   # QA diagnosed a product bug: fix each named repository on its own feature branch and worktree
   # (fix -> engine checks -> re-review), record the new commits, rebuild the manifest from them
   # and re-run QA. QA's visit limit bounds the rounds; then a person decides.
@@ -266,6 +284,9 @@ nodes:
       worktree: "${steps.bugfix_claim.outputs.worktree}"
       commit: "${steps.bugfix_claim.outputs.commit}"
       bug_report: "${steps.qa.outputs.bug_report}"
+      bug_path: ".maestro/runs/${inputs.slug}/requirement/bug.md"
+      reproduction_path: ".maestro/runs/${inputs.slug}/qa/reproduction.md"
+      proposal_path: ".maestro/runs/${inputs.slug}/design/fix-proposal.md"
       stack_skills: "${steps.bugfix_claim.outputs.write_skills_csv}"
     max_visits: 20
     next: bugfix_record
@@ -296,7 +317,17 @@ nodes:
       - --out
       - ".maestro/runs/${inputs.slug}/release/ac-trace.md"
     on_fail: abort
-    next: drift_check
+    next: plan_check
+
+  # Engine-owned: a bug fix has no plan, so there is nothing to check the code against.
+  - id: plan_check
+    type: script
+    label: Is there a plan to check the code against?
+    say: Looking for the approved plan.
+    run: [python3, .maestro/engine/plan_doc.py, status, --root, ".", --slug, "${inputs.slug}"]
+    routes:
+      - {when: "${steps.plan_check.outputs.active} == true", to: drift_check}
+      - {to: assumptions}
 
   # Before release: does the code that will ship match the approved design, across every
   # repository? A fresh reviewer compares each verified commit with the approved plan;
@@ -436,7 +467,8 @@ nodes:
       when:
         - "${steps.finalize_implementation.outputs.verified_ok} == true"
         - "${steps.ac_trace.outputs.all_passed} == true"
-        - "${steps.drift_verdict.outputs.blocking} == false"
+        # no blocking drift, or no plan to drift from (a bug fix)
+        - "${steps.drift_verdict.outputs.blocking}:${steps.plan_check.outputs.active} in ['false:true', ':false']"
         - "${steps.open_findings.outputs.open_major} == 0"
         - "${steps.open_findings.outputs.open_blocking} == 0"
 

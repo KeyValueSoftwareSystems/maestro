@@ -79,7 +79,10 @@ nodes:
     next: end
 
 outputs:
-  plan: "${steps.design.outputs.plan_path}"
+  # docs/plans/completed/<slug>.md once the archive filed it; approved_plan is where it was
+  # approved (docs/plans/active/, where it stays when the archive was answered "Not now")
+  plan: "${steps.archive.outputs.plan_path}"
+  approved_plan: "${steps.design.outputs.plan_path}"
   review_pack: "${steps.delivery.outputs.pack_path}"
   implementation_manifest: "${steps.delivery.outputs.manifest_path}"
   archive: "${steps.archive.outputs.archive}"

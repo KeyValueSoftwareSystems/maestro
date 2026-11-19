@@ -126,6 +126,28 @@ class DeliverTest(unittest.TestCase):
         with open(os.path.join(self.root, out["path"])) as fh:
             self.assertEqual(json.load(fh)["repositories"][0]["pr"], "created")
 
+    def test_a_bug_fix_targets_the_base_its_sandbox_was_built_from(self):
+        self.config("delivery: {mode: pull-request, base: main}\n")
+        engine = os.path.join(self.root, ".maestro", "runs", "demo", ".engine")
+        os.makedirs(engine)
+        write(os.path.join(engine, "bug-bases.json"), json.dumps({"backend": "release-2"}))
+        code, out, err = self.run_deliver()
+        self.assertEqual(code, 0, err)
+        create = [c for c in self.gh_calls() if c.startswith("pr create")][0]
+        self.assertIn("--base release-2", create)
+        self.assertNotIn("--base main", create)
+        with open(os.path.join(self.root, out["path"])) as fh:
+            self.assertEqual(json.load(fh)["repositories"][0]["base"], "release-2")
+
+    def test_pr_base_per_repository(self):
+        delivery = {"base": "main"}
+        bases = {"api": "release-2", "web": "origin/hotfix"}
+        self.assertEqual(deliver.pr_base({"repo": "api"}, bases, delivery), "release-2")
+        self.assertEqual(deliver.pr_base({"repo": "web"}, bases, delivery), "hotfix")
+        self.assertEqual(deliver.pr_base({"repo": "docs"}, bases, delivery), "main")
+        self.assertEqual(deliver.pr_base({"repo": "docs", "base": "rc"}, {}, delivery), "rc")
+        self.assertEqual(deliver.pr_base({"repo": "docs"}, {}, {}), "")
+
     def test_autopilot_release_opens_a_draft_and_an_open_pr_is_reused(self):
         self.config("delivery: {mode: pull-request}\n")
         code, out, _ = self.run_deliver("--release-by", "autopilot")

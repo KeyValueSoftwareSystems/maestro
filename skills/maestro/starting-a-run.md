@@ -49,3 +49,9 @@ The default workflow also needs `--input path=major|minor`. When the invocation 
 ask the person with the native selector — **Major**: a new feature or a change across
 repositories (a full PRD and plan); **Minor**: a small, contained change (a mini PRD and a short
 plan). Never infer it from the description and never default it.
+
+The `bugfix` workflow (`/maestro <slug> bugfix branch=<b>`, the short name for
+`.maestro/workflows/bugfix.yaml`) takes `--input branch=<b>` instead of `path`: the branch the bug
+is on. When the invocation did not give it, ask the person which branch the bug is on, in one
+line; never guess it (not `main`, not the current checkout's branch) and never default it. Its
+`feature` is the one-line bug description, verbatim, like a feature's.

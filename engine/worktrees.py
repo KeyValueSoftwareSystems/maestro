@@ -12,6 +12,15 @@
                                             worktree per repository on `fix/<slug>-<repo>`, all or
                                             nothing; writes .engine/sandbox.json (manifest-shaped,
                                             for `qa_env.py up --manifest`)
+  worktrees.py bases --root . --slug S --branch B --repos a,b --choice as-is|default|named
+                     [--named "web=release-2"]
+                                            the base map a sandbox is built from: B where
+                                            check-base finds it (no second fetch), and the
+                                            person's answer for the repositories without B: their
+                                            default branch, or the branch they named (`repo=b`
+                                            pairs, or one name for all). Writes
+                                            .engine/bug-bases.json when valid; always exits 0,
+                                            route on `valid`
 
 Where each repository's worktree comes from is the project's choice, in maestro.config.yaml:
 
@@ -360,7 +369,7 @@ def find_branch(repo_path, branch):
     return ""
 
 
-def check_base(root, branch, repos):
+def check_base(root, branch, repos, fetch=True):
     """Does each repository have `branch`, locally or on origin? Fetches first (a repository
     without a remote, or offline, is checked as it is). Creates nothing."""
     root = os.path.realpath(root)
@@ -372,7 +381,7 @@ def check_base(root, branch, repos):
             rows.append({"repo": repo, "present": False, "ref": "", "default_branch": "",
                          "problem": "not found in the workspace"})
             continue
-        if _has_remote(repo_path):
+        if fetch and _has_remote(repo_path):
             _git(repo_path, "fetch", "--quiet")
         ref = find_branch(repo_path, branch)
         rows.append({"repo": repo, "present": bool(ref), "ref": ref,
@@ -403,6 +412,84 @@ def load_base_map(value, root="."):
             isinstance(k, str) and isinstance(v, str) and v.strip() for k, v in doc.items()):
         raise WorktreeError("the base map must be a JSON object {repo: base branch}, not empty")
     return {repo: base.strip() for repo, base in doc.items()}
+
+
+def _parse_named(text):
+    """`web=release-2, api=hotfix` -> ({repo: branch}, one name for all or "")."""
+    pairs, bare = {}, []
+    for token in re.split(r"[\s,;]+", (text or "").strip()):
+        if not token:
+            continue
+        if "=" in token:
+            repo, _sep, branch = token.partition("=")
+            if repo.strip() and branch.strip():
+                pairs[repo.strip()] = branch.strip()
+        else:
+            bare.append(token)
+    return pairs, (bare[0] if len(bare) == 1 else "")
+
+
+def bug_bases(root, slug, branch, rows, choice="as-is", named=""):
+    """Each repository's sandbox base: `branch` where check-base found it; for the others the
+    person's answer — `default` (the repository's default branch) or `named` (`repo=b` pairs, or
+    one branch for all of them). -> {valid, problem, bases, repos_csv, path, summary}; writes the
+    base map (.engine/bug-bases.json) only when every repository has a base that exists."""
+    rows = [row for row in rows or [] if isinstance(row, dict) and row.get("repo")]
+    out = {"valid": False, "problem": "", "bases": {}, "repos_csv": "", "path": "",
+           "summary": ""}
+    if not rows:
+        out["problem"] = "the branch check lists no repositories"
+        out["summary"] = out["problem"]
+        return out
+    pairs, one = _parse_named(named) if choice == "named" else ({}, "")
+    known = {row["repo"] for row in rows}
+    problems = [f"{repo} is not one of the repositories this bug affects"
+                for repo in pairs if repo not in known]
+    bases = {}
+    discovered = None if _simulated() else dict(codebase_scan.discover_repos(os.path.realpath(root)))
+    for row in rows:
+        repo = row["repo"]
+        named_here = repo in pairs or (choice == "named" and not row.get("present") and one)
+        if repo in pairs:
+            base = pairs[repo]
+        elif row.get("present"):
+            base = branch
+        elif choice == "default":
+            base = row.get("default_branch") or ""
+            if not base:
+                problems.append(f"{repo} has no default branch to use")
+                continue
+        elif choice == "named" and one:
+            base = one
+        elif choice == "named":
+            problems.append(f"no branch named for {repo}")
+            continue
+        else:
+            problems.append(f"{repo} has no branch {branch} and no other base was chosen")
+            continue
+        if named_here and discovered is not None:
+            # a branch the person typed: it must exist before anything is built on it
+            repo_path = discovered.get(repo)
+            if not repo_path or not (find_branch(repo_path, base) or _ref_exists(repo_path, base)):
+                problems.append(f"{repo} has no branch {base}")
+                continue
+        bases[repo] = base
+    if problems:
+        out["problem"] = "; ".join(problems)
+        out["summary"] = "Could not settle the base branches: " + out["problem"]
+        return out
+    path = run_layout.path(slug, root, run_layout.BUG_BASES)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        json.dump(bases, fh, indent=2)
+        fh.write("\n")
+    os.replace(tmp, path)
+    out.update({"valid": True, "bases": bases, "repos_csv": ",".join(bases),
+                "path": os.path.relpath(path, root),
+                "summary": "Bases: " + ", ".join(f"{repo} on {base}"
+                                                 for repo, base in bases.items())})
+    return out
 
 
 def sandbox_path(root, slug):
@@ -624,15 +711,32 @@ def remove(root, slug):
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("command", choices=["prepare", "remove", "check-base"])
+    parser.add_argument("command", choices=["prepare", "remove", "check-base", "bases"])
     parser.add_argument("--root", default=".")
     parser.add_argument("--slug", required=True)
     parser.add_argument("--branch", default="", help="check-base: the branch to look for")
-    parser.add_argument("--repos", default="", help="check-base: the repositories, a,b")
+    parser.add_argument("--repos", default="", help="check-base, bases: the repositories, a,b")
     parser.add_argument("--base-map", default="",
                         help="prepare: {repo: base ref} (a JSON file or inline JSON) for a "
                              "bugfix sandbox")
+    parser.add_argument("--choice", default="as-is",
+                        help="bases: as-is | default | named (empty or anything else: as-is)")
+    parser.add_argument("--named", default="", help="bases: `repo=branch` pairs, or one branch")
     args = parser.parse_args(argv)
+    if args.command == "bases":
+        repos = [r.strip() for r in args.repos.split(",") if r.strip()]
+        if not args.branch or not repos:
+            print("FAIL: bases needs --branch and --repos", file=sys.stderr)
+            return 1
+        if _simulated():  # as check-base simulates it: the branch is everywhere
+            rows = [{"repo": r, "present": True, "ref": args.branch, "default_branch": "main"}
+                    for r in repos]
+        else:
+            rows = check_base(args.root, args.branch, repos, fetch=False)["repos"]
+        choice = args.choice if args.choice in ("default", "named") else "as-is"
+        print(json.dumps(bug_bases(args.root, args.slug, args.branch, rows, choice,
+                                   args.named)))
+        return 0
     if args.command == "check-base":
         repos = [r.strip() for r in args.repos.split(",") if r.strip()]
         if not args.branch or not repos:
@@ -645,6 +749,28 @@ def main(argv=None):
                               "summary": "[simulated] the branch exists everywhere"}))
             return 0
         print(json.dumps(check_base(args.root, args.branch, repos)))
+        return 0
+    if _simulated() and args.command == "prepare" and args.base_map:
+        # a simulated sandbox: no worktree, but the record the bug-fix steps read
+        try:
+            bases = load_base_map(args.base_map, args.root)
+        except WorktreeError as exc:
+            print(f"FAIL: {exc}", file=sys.stderr)
+            return 1
+        path = sandbox_path(args.root, args.slug)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump({"schema_version": 1, "feature_slug": args.slug, "kind": "sandbox",
+                       "repositories": [
+                           {"repo": repo, "worktree": "[simulated: no code was checked out]",
+                            "commit": "[simulated commit]",
+                            "branch": _fill(FIX_BRANCH, slug=args.slug, repo=repo),
+                            "base": base, "base_commit": "[simulated commit]"}
+                           for repo, base in bases.items()]}, fh, indent=2)
+            fh.write("\n")
+        print(json.dumps({"mode": "simulated", "repos_csv": ",".join(bases), "created_csv": "",
+                          "reused_csv": "", "sandbox_path": os.path.relpath(path, args.root),
+                          "summary": "[simulated] sandbox record only, no worktrees"}))
         return 0
     if _simulated():
         print(json.dumps({"mode": "simulated", "repos_csv": "", "created_csv": "",
