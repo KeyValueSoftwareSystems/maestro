@@ -29,8 +29,9 @@ RULE_IDS = [
     "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle",
     "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction",
     "interview-no-sections", "interview-dup-sections", "interview-no-source",
-    "interview-multiple-sources", "bad-batch-size",
+    "interview-multiple-sources", "bad-batch-size", "say-style", "gate-pause-option",
 ]
+SAY_MAX = 100  # a `say:` line is one short sentence the person reads
 
 MAX_DEPTH = 4
 RESERVED = ("end", "abort")
@@ -42,17 +43,17 @@ _PLACEHOLDER_RE = re.compile(r"\$\{([^{}]+)\}")
 _TOP_KEYS = {"version", "name", "title", "description", "inputs", "defaults", "start", "nodes", "outputs", "ui"}
 _ROUTING_KEYS = {"next", "routes", "on_fail", "max_visits", "on_exhausted"}
 _NODE_KEYS = {
-    "agent": {"id", "type", "label", "instruction", "skill", "agent", "model", "execution",
+    "agent": {"id", "type", "label", "say", "instruction", "skill", "agent", "model", "execution",
               "inputs", "outputs", "artifact", "fresh", "brief", "timeout", "retries", "check",
               "isolate", "ui"} | _ROUTING_KEYS,
-    "interview": {"id", "type", "label", "skill", "context", "sections",
+    "interview": {"id", "type", "label", "say", "skill", "context", "sections",
                   "questions_artifact", "batch_size", "presentation", "discuss", "artifact", "auto",
                   "ui", "next",
                   "routes", "max_visits", "on_exhausted"},
-    "gate": {"id", "type", "label", "prompt", "options", "auto", "max_visits", "on_exhausted", "ui"},
-    "script": {"id", "type", "label", "run", "timeout", "ui"} | _ROUTING_KEYS,
-    "parallel": {"id", "type", "label", "join", "on_branch_fail", "branches", "isolate", "ui"} | _ROUTING_KEYS,
-    "subworkflow": {"id", "type", "label", "workflow", "inputs", "ui"} | _ROUTING_KEYS,
+    "gate": {"id", "type", "label", "say", "prompt", "options", "auto", "max_visits", "on_exhausted", "ui"},
+    "script": {"id", "type", "label", "say", "run", "timeout", "ui"} | _ROUTING_KEYS,
+    "parallel": {"id", "type", "label", "say", "join", "on_branch_fail", "branches", "isolate", "ui"} | _ROUTING_KEYS,
+    "subworkflow": {"id", "type", "label", "say", "workflow", "inputs", "ui"} | _ROUTING_KEYS,
 }
 _BRANCH_NODE_TYPES = {"agent", "gate", "script", "subworkflow"}
 
@@ -60,7 +61,7 @@ _BRANCH_NODE_TYPES = {"agent", "gate", "script", "subworkflow"}
 # (non-empty string), bool, int1 / int0 (whole number >= 1 / >= 0), map, strlist, scalarmap
 # (string -> string/number/boolean), or ("enum", values). Routing keys, `artifact`,
 # `instruction`, `check`, `batch_size` and the structured fields have their own checks.
-_COMMON_FIELDS = {"label": "str", "ui": "map"}
+_COMMON_FIELDS = {"label": "str", "say": "str", "ui": "map"}
 _FIELD_TYPES = {
     "agent": {"skill": "str", "agent": "str", "model": "str",
               "execution": ("enum", ("worker", "lead")), "inputs": "scalarmap",
@@ -341,6 +342,14 @@ def _validate_node(node, ids, declared_inputs, where):
         if key not in _NODE_KEYS[ntype]:
             err("unknown-key", f"{ntype} node has unknown key {key!r}")
     _check_fields(node, ntype, err)
+    say = node.get("say")
+    if isinstance(say, str):
+        if len(say.strip()) > SAY_MAX:
+            warn("say-style", f"say is {len(say.strip())} characters; keep it to one line of "
+                              f"about {SAY_MAX}")
+        if "${steps." in say or "\n" in say.strip():
+            warn("say-style", "say is one plain line for the person: no ${steps.…} internals "
+                              "and no line breaks")
 
     # type-specific requireds
     if ntype == "agent":
@@ -430,9 +439,17 @@ def _validate_node(node, ids, declared_inputs, where):
             options = []
         seen = set()
         for opt in options:
-            if not isinstance(opt, dict) or not all(k in opt for k in ("id", "label", "to")):
+            pause = isinstance(opt, dict) and opt.get("pause") is True
+            if isinstance(opt, dict) and "pause" in opt and not isinstance(opt["pause"], bool):
+                err("bad-type", f"gate option {opt.get('id')!r} pause must be true or false")
+            needed = ("id", "label") if pause else ("id", "label", "to")
+            if not isinstance(opt, dict) or not all(k in opt for k in needed):
                 err("missing-key", f"gate option must have id/label/to: {opt!r}")
                 continue
+            if pause and ("to" in opt or "input" in opt):
+                # the person answers later: the run stops here and takes no route
+                err("gate-pause-option", f"gate option {opt['id']!r} pauses the run, so it "
+                                         "takes no `to` or `input`")
             if not isinstance(opt["id"], str):
                 err("bad-type", f"gate option id must be a string, got {opt['id']!r}")
             elif opt["id"] in seen:
@@ -443,9 +460,10 @@ def _validate_node(node, ids, declared_inputs, where):
                 err("bad-type", f"gate option {opt['id']!r} label must be a string")
             if "input" in opt and not isinstance(opt["input"], str):
                 err("bad-type", f"gate option {opt['id']!r} input must be a string")
-            _check_target(opt["to"], f"option {opt['id']!r}", ids, err)
+            if not pause:
+                _check_target(opt["to"], f"option {opt['id']!r}", ids, err)
             for k in opt:
-                if k not in ("id", "label", "to", "input"):
+                if k not in ("id", "label", "to", "input", "pause"):
                     err("unknown-key", f"gate option has unknown key {k!r}")
         auto = _validate_auto(node, err, keys=("option", "modes", "when"))
         if auto is not None and not isinstance(auto.get("option"), str):
@@ -456,6 +474,9 @@ def _validate_node(node, ids, declared_inputs, where):
                            and o.get("id") == auto.get("option")), None)
             if picked is None:
                 err("missing-key", f"gate auto.option {auto.get('option')!r} is not an option")
+            elif picked.get("pause"):
+                err("gate-pause-option", f"gate auto.option {picked['id']!r} pauses the run; "
+                                         "autopilot never pauses")
             elif picked.get("input") or picked.get("to") == "abort":
                 # autopilot has no text to give and never ends a run on its own
                 err("bad-type", f"gate auto.option {picked['id']!r} must not need input "

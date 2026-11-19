@@ -67,6 +67,18 @@ class ShippedWorkflowsTest(unittest.TestCase):
             ("hld.md", "design/hld.md")])
 
 
+class PlanLayoutTest(unittest.TestCase):
+    def test_plan_paths_and_new_run_files(self):
+        self.assertEqual(run_layout.plan_active("csv-export"), "docs/plans/active/csv-export.md")
+        self.assertEqual(run_layout.plan_completed("csv-export"),
+                         "docs/plans/completed/csv-export.md")
+        for rel in (run_layout.PLAN_SCOPE, run_layout.PLAN_APPROVAL, run_layout.SANDBOX,
+                    run_layout.BUG_BASES, run_layout.PLAN_COMMITS):
+            self.assertTrue(rel.startswith(f"{run_layout.ENGINE}/"), rel)
+        for rel in (run_layout.BRAINSTORM, run_layout.FIX_PROPOSAL):
+            self.assertIn(rel.split("/")[0], run_layout.FOLDERS)
+
+
 class MigrationTest(unittest.TestCase):
     """A run from before the folders-by-kind layout (run_format 3)."""
 

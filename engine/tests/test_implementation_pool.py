@@ -55,6 +55,51 @@ class ImplementationPoolTest(unittest.TestCase):
         git(worktree, "commit", "-q", "-m", "feature")
         return worktree, branch, git(worktree, "rev-parse", "HEAD")
 
+    def test_the_plan_scope_wins_over_the_old_lld_scope(self):
+        engine = os.path.join(self.root, ".maestro", "runs", "feature-x", ".engine")
+        with open(os.path.join(engine, "plan-scope.json"), "w") as fh:
+            json.dump({"selected": ["mobile-app"]}, fh)
+        with open(os.path.join(engine, "lld-scope.json"), "w") as fh:
+            json.dump({"selected": ["gone-repo"]}, fh)
+        code, out = run("list", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual((code, out["designed_csv"]), (0, "mobile-app"))
+        os.remove(os.path.join(engine, "plan-scope.json"))
+        code, out = run("list", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(out["designed_csv"], "gone-repo")  # a run designed before the plan
+
+    def test_bugfix_start_registers_the_sandbox_and_the_fix_loop_hands_it_out(self):
+        branch = "fix/feature-x-mobile-app"
+        worktree = os.path.join(self.root, "sandbox", "mobile-app")
+        git(self.repo, "worktree", "add", "-q", "-b", branch, worktree, "HEAD")
+        commit = git(worktree, "rev-parse", "HEAD")
+        sandbox = os.path.join(self.root, ".maestro", "runs", "feature-x", ".engine",
+                               "sandbox.json")
+        with open(sandbox, "w") as fh:
+            json.dump({"feature_slug": "feature-x", "repositories": [
+                {"repo": "mobile-app", "worktree": worktree, "commit": commit,
+                 "branch": branch, "base": "main"}]}, fh)
+        code, out = run("bugfix-start", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out["repos_csv"], "mobile-app")
+        self.assertEqual(run("bugfix-init", "--root", self.root, "--slug", "feature-x",
+                             "--repos-text", "mobile-app")[0], 0)
+        _, claim = run("bugfix-claim", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual((claim["branch"], claim["commit"]), (branch, commit))
+        self.assertEqual(os.path.realpath(claim["worktree"]), os.path.realpath(worktree))
+        # the fix commits on the sandbox branch; record and finalize build the QA manifest
+        with open(os.path.join(worktree, "README.md"), "a") as fh:
+            fh.write("fix\n")
+        git(worktree, "commit", "-qam", "fix")
+        self.assertEqual(run("record", "--root", self.root, "--slug", "feature-x",
+                             "--repo", "mobile-app", "--branch", branch, "--worktree", worktree,
+                             "--from-worktree")[0], 0)
+        code, final = run("finalize", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 0, final)
+
+    def test_bugfix_start_needs_a_sandbox(self):
+        code, _ = run("bugfix-start", "--root", self.root, "--slug", "feature-x")
+        self.assertEqual(code, 1)
+
     def test_verified_worktree_becomes_qa_manifest(self):
         code, out = run("init", "--root", self.root, "--slug", "feature-x")
         self.assertEqual(code, 0)

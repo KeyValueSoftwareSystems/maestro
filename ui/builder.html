@@ -816,6 +816,10 @@ body.has-server #menu-folder { display: none; }
         "label": {
           "type": "string"
         },
+        "say": {
+          "type": "string",
+          "description": "One plain line the lead prints when the engine serves this step (what is happening, for the person). Keep it under about 100 characters and free of ${steps.…} internals; the node's label stands in when it is absent."
+        },
         "instruction": {
           "type": "string",
           "minLength": 1
@@ -969,6 +973,10 @@ body.has-server #menu-folder { display: none; }
         "label": {
           "type": "string"
         },
+        "say": {
+          "type": "string",
+          "description": "One plain line the lead prints when the engine serves this step (what is happening, for the person). Keep it under about 100 characters and free of ${steps.…} internals; the node's label stands in when it is absent."
+        },
         "skill": {
           "type": "string"
         },
@@ -1109,6 +1117,10 @@ body.has-server #menu-folder { display: none; }
         "label": {
           "type": "string"
         },
+        "say": {
+          "type": "string",
+          "description": "One plain line the lead prints when the engine serves this step (what is happening, for the person). Keep it under about 100 characters and free of ${steps.…} internals; the node's label stands in when it is absent."
+        },
         "prompt": {
           "type": "string",
           "minLength": 1
@@ -1120,8 +1132,7 @@ body.has-server #menu-folder { display: none; }
             "type": "object",
             "required": [
               "id",
-              "label",
-              "to"
+              "label"
             ],
             "additionalProperties": false,
             "properties": {
@@ -1136,8 +1147,29 @@ body.has-server #menu-folder { display: none; }
               },
               "input": {
                 "type": "string"
+              },
+              "pause": {
+                "type": "boolean",
+                "description": "\"Approve later\": recording this option leaves the gate unanswered and pauses the run; resuming it (init on the slug) asks the same question again. A pause option takes no `to` or `input`."
               }
-            }
+            },
+            "anyOf": [
+              {
+                "required": [
+                  "to"
+                ]
+              },
+              {
+                "required": [
+                  "pause"
+                ],
+                "properties": {
+                  "pause": {
+                    "const": true
+                  }
+                }
+              }
+            ]
           }
         },
         "auto": {
@@ -1208,6 +1240,10 @@ body.has-server #menu-folder { display: none; }
         "label": {
           "type": "string"
         },
+        "say": {
+          "type": "string",
+          "description": "One plain line the lead prints when the engine serves this step (what is happening, for the person). Keep it under about 100 characters and free of ${steps.…} internals; the node's label stands in when it is absent."
+        },
         "run": {
           "type": "array",
           "minItems": 1,
@@ -1261,6 +1297,10 @@ body.has-server #menu-folder { display: none; }
         },
         "label": {
           "type": "string"
+        },
+        "say": {
+          "type": "string",
+          "description": "One plain line the lead prints when the engine serves this step (what is happening, for the person). Keep it under about 100 characters and free of ${steps.…} internals; the node's label stands in when it is absent."
         },
         "join": {
           "enum": [
@@ -1354,6 +1394,10 @@ body.has-server #menu-folder { display: none; }
         "label": {
           "type": "string"
         },
+        "say": {
+          "type": "string",
+          "description": "One plain line the lead prints when the engine serves this step (what is happening, for the person). Keep it under about 100 characters and free of ${steps.…} internals; the node's label stands in when it is absent."
+        },
         "workflow": {
           "type": "string"
         },
@@ -1395,7 +1439,7 @@ body.has-server #menu-folder { display: none; }
   },
   "description": "Minimal authoring: version defaults to 1, start to the first node, node type to agent, omitted routing to next: end."
 }</script>
-<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections", "interview-no-source", "interview-multiple-sources", "bad-batch-size"]</script>
+<script type="application/json" id="lint-rules">["bad-yaml", "bad-version", "bad-name", "missing-key", "unknown-key", "bad-type", "dup-id", "bad-id", "no-start", "missing-route-target", "no-default-route", "bad-condition", "gate-no-options", "gate-dup-options", "route-and-next", "unreachable-node", "bad-placeholder", "undeclared-input", "parallel-too-few-branches", "branch-bad-start", "branch-bad-type", "subworkflow-missing-file", "subworkflow-too-deep", "subworkflow-cycle", "cycle-no-brake", "bad-max-visits", "artifact-not-string", "empty-instruction", "interview-no-sections", "interview-dup-sections", "interview-no-source", "interview-multiple-sources", "bad-batch-size", "say-style", "gate-pause-option"]</script>
 <script>
 /* ================= Maestro Workflow Builder ================= */
 "use strict";
@@ -1477,8 +1521,9 @@ function edgesOf(nodes) {
     if (typeof n.next === "string") edges.push({ from: n.id, to: n.next, kind: "next", label: "" });
     (n.routes || []).forEach((r, i) => edges.push({ from: n.id, to: r.to, kind: "route", idx: i,
       label: r.when ? shortCond(r.when) : "default" }));
-    (n.options || []).forEach((o, i) => edges.push({ from: n.id, to: o.to, kind: "option", idx: i,
-      label: o.label || o.id }));
+    // a `pause: true` option ("approve later") takes no route, so it draws no edge
+    (n.options || []).forEach((o, i) => { if (!o.pause) edges.push({ from: n.id, to: o.to, kind: "option", idx: i,
+      label: o.label || o.id }); });
     for (const k of ["on_fail", "on_exhausted"]) {
       const v = n[k];
       if (typeof v === "string" && v !== "ask" && v !== "abort") edges.push({ from: n.id, to: v, kind: k, label: k.replace("_", " ") });

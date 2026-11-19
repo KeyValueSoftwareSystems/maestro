@@ -72,7 +72,7 @@ DOCS_KEYS = {"facts_blocks", "extract", "ignore_calls"}
 DOCS_EXTRACT_KINDS = {"route": "path", "call": "path", "event_out": "name", "event_in": "name",
                       "job": "schedule", "config": "key", "table": "name"}
 # Placeholders each worktree setting may use (worktrees.py fills them). `${VAR}` is shell, not ours.
-WORKTREE_PLACEHOLDERS = {"create": {"slug", "root"}, "remove": {"slug", "root"},
+WORKTREE_PLACEHOLDERS = {"create": {"slug", "root", "branch"}, "remove": {"slug", "root"},
                          "path": {"slug", "repo"}, "branch": {"slug", "repo"}}
 DEFAULT_TIMEOUT_S = 900
 # detect-stack vocabulary, used only to keep a stack string in a stable order.

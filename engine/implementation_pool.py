@@ -12,6 +12,10 @@ verification receipt to the QA/release manifest.
 When QA finds a product bug, `bugfix-init` queues the implemented repos it names and
 `bugfix-claim` hands each one out with its recorded branch, worktree and commit; the fix commits
 on that same branch, `record` stores the new commit, and `finalize` rebuilds the manifest.
+
+A bugfix run has no implementation pass: `bugfix-start --sandbox .engine/sandbox.json` registers
+each sandbox worktree (`worktrees.py prepare --base-map`) as that repository's implementation, at
+its base commit, so `bugfix-init` / `bugfix-claim` hand them out like any implemented repository.
 """
 import argparse
 import hashlib
@@ -154,7 +158,10 @@ def _fail(message):
 
 
 def _design_selection(slug, root):
-    selection_path = run_layout.path(slug, root, run_layout.LLD_SCOPE)
+    # the approved plan's scope; a run designed before the plan document kept it in lld-scope
+    selection_path = run_layout.path(slug, root, run_layout.PLAN_SCOPE)
+    if not os.path.isfile(selection_path):
+        selection_path = run_layout.path(slug, root, run_layout.LLD_SCOPE)
     try:
         selection = _read(selection_path)
     except (OSError, ValueError) as exc:
@@ -476,6 +483,54 @@ def cmd_bugfix_claim(args):
     return 0
 
 
+def cmd_bugfix_start(args):
+    """Register a bugfix sandbox's worktrees as the run's implementations (at the base commit)."""
+    if not args.sandbox:
+        path = run_layout.path(args.slug, args.root, run_layout.SANDBOX)
+    else:
+        path = args.sandbox if os.path.isabs(args.sandbox) else os.path.join(args.root,
+                                                                             args.sandbox)
+    try:
+        sandbox = _read(path)
+    except (OSError, ValueError) as exc:
+        return _fail(f"the sandbox record is unavailable: {exc}")
+    rows = [row for row in sandbox.get("repositories") or [] if isinstance(row, dict)]
+    if not rows:
+        return _fail("the sandbox has no repositories")
+    simulated = os.environ.get("MAESTRO_SIMULATION") == "1"
+    discovered = dict(codebase_scan.discover_repos(args.root))
+    implementations, failures = {}, []
+    for row in rows:
+        repo = row.get("repo") or ""
+        repo_path = discovered.get(repo)
+        if not repo_path and not simulated:
+            failures.append(f"{repo or '<unnamed>'}: repo is not discoverable")
+            continue
+        entry = {"repo": repo, "branch": row.get("branch") or "",
+                 "worktree": row.get("worktree") or "", "commit": row.get("commit") or "",
+                 "base": row.get("base") or "", "simulated": simulated,
+                 "source_path": os.path.relpath(repo_path, args.root) if repo_path else repo}
+        if not simulated:
+            try:
+                entry["worktree"] = _verify_entry(argparse.Namespace(
+                    root=args.root, repo=repo, branch=entry["branch"],
+                    worktree=entry["worktree"], commit=entry["commit"]), repo_path)
+            except ValueError as exc:
+                failures.append(f"{repo}: {exc}")
+                continue
+        implementations[repo] = entry
+    if failures:
+        return _fail("cannot start the bug fix: " + "; ".join(failures))
+    repos = list(implementations)
+    with statemod.locked(args.slug, args.root):
+        _write(_queue_path(args.slug, args.root), {
+            "schema_version": 2, "kind": "bugfix", "designed": repos, "selected": repos,
+            "remaining": [], "deferred": [], "implementations": implementations,
+        })
+    print(json.dumps({"repos_csv": ",".join(repos), "count": len(repos)}))
+    return 0
+
+
 def cmd_check(args):
     try:
         doc = _read(_queue_path(args.slug, args.root))
@@ -499,6 +554,13 @@ def main(argv=None):
         p.add_argument("--root", default=".")
         p.add_argument("--slug", required=True)
         p.set_defaults(fn=globals()[f"cmd_{command.replace('-', '_')}"])
+    p = sub.add_parser("bugfix-start")
+    p.add_argument("--root", default=".")
+    p.add_argument("--slug", required=True)
+    p.add_argument("--sandbox", default="",
+                   help="the sandbox record worktrees.py prepare --base-map wrote "
+                        "(default: the run's .engine/sandbox.json)")
+    p.set_defaults(fn=cmd_bugfix_start)
     p = sub.add_parser("bugfix-init")
     p.add_argument("--root", default=".")
     p.add_argument("--slug", required=True)

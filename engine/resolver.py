@@ -416,6 +416,12 @@ def init_run(slug, workflow_file, inputs, root=".", force=False, mode=None):
                 "at": statemod.now_iso(), "text": f"run mode set to {mode}",
                 "at_steps": list(existing["run"].get("cursors") or []),
             })
+        resumed = clear_paused(existing)
+        if resumed:
+            existing.setdefault("notes", []).append({
+                "at": statemod.now_iso(), "text": "resumed a paused run",
+                "at_steps": resumed,
+            })
         return existing, False
 
     workflow = wf.load_file(full)
@@ -605,7 +611,8 @@ def _frame_edges(node):
     for route in node.get("routes") or []:
         targets.append(route["to"])
     for option in node.get("options") or []:
-        targets.append(option["to"])
+        if option.get("to"):  # a pause option takes no route
+            targets.append(option["to"])
     for key in ("on_fail", "on_exhausted"):
         value = node.get(key)
         if value and value not in ("abort", "ask"):
@@ -919,7 +926,58 @@ def stale_claims(run, in_flight):
     return stale
 
 
+def paused_steps(run):
+    """Cursor steps a person paused with a gate's `pause: true` option ("approve later")."""
+    return [path for path in _cursors(run)
+            if (run.state["steps"].get(path) or {}).get("paused")]
+
+
+def clear_paused(run_state):
+    """Resume a paused run: the paused gate is asked again on the next `next`. -> [steps]"""
+    cleared = []
+    for path, entry in (run_state.get("steps") or {}).items():
+        if isinstance(entry, dict) and entry.pop("paused", None) is not None:
+            cleared.append(path)
+    return cleared
+
+
+def _say(run, path):
+    """The one plain line the lead prints for a served step: its `say:`, else its label."""
+    try:
+        frame, node = run.node_at(path)
+    except RunError:
+        return None
+    text = node.get("say")
+    if isinstance(text, str) and text.strip():
+        return run.resolve_text(text, frame, missing_ok=True).strip()
+    label = node.get("label")
+    return label if isinstance(label, str) and label.strip() else None
+
+
+def _with_say(run, action):
+    if action.get("step") and "say" not in action:
+        say = _say(run, action["step"])
+        if say:
+            action["say"] = say
+    for agent in action.get("agents") or []:
+        _with_say(run, agent)
+    return action
+
+
 def next_action(run, serial=False, claim=False, exclude_claimed=False):
+    """Serve ONE action (see _next_action); every served step carries its `say` line."""
+    status = run.state["run"].get("status")
+    if status not in ("done", "failed"):
+        paused = paused_steps(run)
+        if paused:
+            # "approve later": nothing else is served until the person resumes the run
+            return _with_say(run, {"action": "paused", "step": paused[0],
+                                   "resume": f"/maestro {run.slug}"})
+    return _with_say(run, _next_action(run, serial=serial, claim=claim,
+                                       exclude_claimed=exclude_claimed))
+
+
+def _next_action(run, serial=False, claim=False, exclude_claimed=False):
     """Serve ONE action.
 
     Default (claim=False): pure and read-only — every runnable cursor is eligible, in the
@@ -1085,7 +1143,8 @@ def _check_action(run, frame, node, path):
 
 def _gate_action(run, frame, node, path):
     options = [
-        {"id": o["id"], "label": o["label"], **({"input": o["input"]} if o.get("input") else {})}
+        {"id": o["id"], "label": o["label"], **({"input": o["input"]} if o.get("input") else {}),
+         **({"pause": True} if o.get("pause") else {})}
         for o in node["options"]
     ]
     action = {
@@ -2301,6 +2360,8 @@ def apply_autopilot(run, limit=100):
     Recording one can reach another (a stage ending into the next stage's gate), so this
     repeats until nothing waiting is answerable. The caller saves the state."""
     answered = []
+    if paused_steps(run):
+        return answered  # a paused run waits for the person to resume it
     for _ in range(limit):
         for path in list(_cursors(run)):
             frame, node = run.node_at(path)
@@ -2338,6 +2399,11 @@ def record_gate(run, path, option_id, input_text=None):
     if option is None:
         valid = ", ".join(o["id"] for o in node["options"])
         raise RunError(f"gate {path!r}: unknown option {option_id!r} (valid: {valid})", code=4)
+    if option.get("pause"):
+        # "approve later": the gate stays pending and unanswered; `next` reports the run paused
+        # until a resume (`init` on the slug) clears this, then the same question is asked again
+        entry["paused"] = {"at": statemod.now_iso(), "option": option_id}
+        return entry
     if option.get("input") and not input_text:
         entry["pending_gate_input"] = {"option": option_id, "field": option["input"]}
         return entry

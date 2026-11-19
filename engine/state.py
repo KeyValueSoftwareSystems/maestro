@@ -298,6 +298,8 @@ def list_runs(root="."):
                     "problem": problem[1],
                     "workflow": None,
                     "active": [],
+                    "paused": False,
+                    "paused_at": [],
                     "updated_at": updated,
                     "kind": "feature",
                     "parent_slug": None,
@@ -308,9 +310,15 @@ def list_runs(root="."):
         inputs = data.get("inputs") or {}
         parent_slug = inputs.get("parent_slug")
         repo = inputs.get("repo")
+        steps = data.get("steps") or {}
+        paused = [path for path in run.get("cursors") or []
+                  if isinstance(steps.get(path), dict) and steps[path].get("paused")]
         runs.append({
             "slug": name,
             "status": run.get("status"),
+            # a person chose "later" at a gate: the run holds its slug and worktrees until resumed
+            "paused": bool(paused),
+            "paused_at": paused,
             "workflow": (data.get("workflow") or {}).get("file"),
             "active": run.get("cursors") or [],
             "updated_at": data.get("updated_at"),

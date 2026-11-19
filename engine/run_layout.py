@@ -53,6 +53,8 @@ IMPACT = "design/impact.json"
 IMPACT_TRACE = "design/impact-trace.md"
 DECISIONS_DIR = "decisions"
 DECISION_LOG = "decisions/decision-log.md"
+BRAINSTORM = "decisions/brainstorm.md"
+FIX_PROPOSAL = "design/fix-proposal.md"
 MANIFEST = "build/manifest.json"
 DELIVERY = "release/delivery.json"
 
@@ -63,6 +65,11 @@ PROFILE_JSON = f"{ENGINE}/profile.json"
 PROFILE_MD = f"{ENGINE}/profile.md"
 LLD_SCOPE = f"{ENGINE}/lld-scope.json"
 LLD_APPROVAL = f"{ENGINE}/lld-approval.json"
+PLAN_SCOPE = f"{ENGINE}/plan-scope.json"
+PLAN_APPROVAL = f"{ENGINE}/plan-approval.json"
+PLAN_COMMITS = f"{ENGINE}/plan-commits.json"
+SANDBOX = f"{ENGINE}/sandbox.json"
+BUG_BASES = f"{ENGINE}/bug-bases.json"
 POOL = f"{ENGINE}/implementation-pool.json"
 WORKTREES = f"{ENGINE}/worktrees.json"
 SLICES_DIR = f"{ENGINE}/slices"
@@ -76,6 +83,21 @@ PROMPTS_DIR = f"{ENGINE}/prompts"
 
 def lld(repo):
     return f"{LLD_DIR}/{repo}.md"
+
+
+# -- the feature's plan: in the workspace root, not the run folder (it outlives the run) ------
+PLANS_ACTIVE_DIR = "docs/plans/active"
+PLANS_COMPLETED_DIR = "docs/plans/completed"
+
+
+def plan_active(slug):
+    """The plan being worked on, relative to the workspace root."""
+    return f"{PLANS_ACTIVE_DIR}/{slug}.md"
+
+
+def plan_completed(slug):
+    """The plan of a delivered feature, relative to the workspace root."""
+    return f"{PLANS_COMPLETED_DIR}/{slug}.md"
 
 
 def stage_record(stage):

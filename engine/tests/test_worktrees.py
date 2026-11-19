@@ -277,6 +277,143 @@ class WorktreesTest(unittest.TestCase):
         self.assertFalse(out["removed"])
 
 
+class BugfixSandboxTest(unittest.TestCase):
+    """A bug is fixed on the person's branch: check-base looks for it (locally or on origin),
+    prepare --base-map builds one worktree per repository off its own base, all or nothing, and
+    bugfix-start registers them so the QA bug-fix loop hands them out."""
+
+    def setUp(self):
+        self.root = os.path.realpath(tempfile.mkdtemp(prefix="sandbox-"))
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.repos = {}
+        for name in ("api", "web"):
+            repo = os.path.join(self.root, "codebase", name)
+            os.makedirs(repo)
+            git(repo, "init", "-q", "-b", "main")
+            git(repo, "config", "user.email", "t@example.com")
+            git(repo, "config", "user.name", "T")
+            with open(os.path.join(repo, "README.md"), "w") as fh:
+                fh.write("one\n")
+            git(repo, "add", "README.md")
+            git(repo, "commit", "-q", "-m", "one")
+            self.repos[name] = repo
+        api, web = self.repos["api"], self.repos["web"]
+        # api has release-1 locally, one commit ahead of main
+        git(api, "checkout", "-q", "-b", "release-1")
+        with open(os.path.join(api, "README.md"), "a") as fh:
+            fh.write("release\n")
+        git(api, "commit", "-qam", "release")
+        git(api, "checkout", "-q", "main")
+        # web has release-1 only on its remote
+        origin = os.path.join(self.root, "origin-web.git")
+        subprocess.run(["git", "init", "-q", "--bare", origin], check=True)
+        git(web, "remote", "add", "origin", origin)
+        git(web, "branch", "release-1")
+        git(web, "push", "-q", "origin", "main", "release-1")
+        git(web, "branch", "-q", "-D", "release-1")
+        os.makedirs(statemod.feature_dir(SLUG, self.root))
+
+    def check_base(self, branch, repos="api,web"):
+        code, out = call(worktrees, "check-base", "--root", self.root, "--slug", SLUG,
+                         "--branch", branch, "--repos", repos)
+        self.assertEqual(code, 0, out)
+        return out
+
+    def prepare(self, bases):
+        return call(worktrees, "prepare", "--root", self.root, "--slug", SLUG,
+                    "--base-map", json.dumps(bases))
+
+    def test_check_base_finds_local_and_remote_branches(self):
+        out = self.check_base("release-1")
+        self.assertTrue(out["all_present"], out)
+        refs = {row["repo"]: row["ref"] for row in out["repos"]}
+        self.assertEqual(refs, {"api": "release-1", "web": "origin/release-1"})
+        self.assertEqual({row["default_branch"] for row in out["repos"]}, {"main"})
+        out = self.check_base("hotfix-9")
+        self.assertFalse(out["all_present"])
+        self.assertEqual(out["missing_csv"], "api,web")
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".maestro", "worktrees")))
+
+    def test_prepare_builds_each_repo_off_its_base_and_bugfix_start_registers_it(self):
+        path = os.path.join(statemod.engine_dir(SLUG, self.root), "bug-bases.json")
+        os.makedirs(os.path.dirname(path))
+        with open(path, "w") as fh:
+            json.dump({"api": "release-1", "web": "release-1"}, fh)
+        code, out = call(worktrees, "prepare", "--root", self.root, "--slug", SLUG,
+                         "--base-map", os.path.relpath(path, self.root))
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out["created_csv"], "api,web")
+        with open(worktrees.sandbox_path(self.root, SLUG)) as fh:
+            sandbox = json.load(fh)
+        self.assertEqual(sandbox["feature_slug"], SLUG)
+        rows = {row["repo"]: row for row in sandbox["repositories"]}
+        self.assertEqual(rows["api"]["commit"], git(self.repos["api"], "rev-parse", "release-1"))
+        self.assertEqual(rows["web"]["commit"],
+                         git(self.repos["web"], "rev-parse", "origin/release-1"))
+        self.assertEqual(rows["api"]["branch"], f"fix/{SLUG}-api")
+        self.assertEqual(rows["api"]["base"], "release-1")
+        self.assertEqual(git(rows["web"]["worktree"], "branch", "--show-current"),
+                         f"fix/{SLUG}-web")
+        # the QA bug-fix loop hands the sandbox out like implemented repositories
+        code, out = call(pool, "bugfix-start", "--root", self.root, "--slug", SLUG)
+        self.assertEqual(code, 0, out)
+        self.assertEqual(out["repos_csv"], "api,web")
+        self.assertEqual(call(pool, "bugfix-init", "--root", self.root, "--slug", SLUG,
+                              "--repos-text", "web")[0], 0)
+        _, claim = call(pool, "bugfix-claim", "--root", self.root, "--slug", SLUG)
+        self.assertEqual((claim["repo"], claim["branch"], claim["worktree"], claim["commit"]),
+                         ("web", f"fix/{SLUG}-web", rows["web"]["worktree"],
+                          rows["web"]["commit"]))
+        # prepare again reuses the sandbox
+        code, out = self.prepare({"api": "release-1", "web": "release-1"})
+        self.assertEqual((code, out["reused_csv"]), (0, "api,web"))
+
+    def test_prepare_is_all_or_nothing(self):
+        code, err = self.prepare({"api": "release-1", "web": "no-such-branch"})
+        self.assertEqual(code, 1)
+        self.assertIn("web: base no-such-branch not found", err)
+        self.assertFalse(os.path.exists(os.path.join(self.root, ".maestro", "worktrees", SLUG,
+                                                     "api")))
+        self.assertEqual(git(self.repos["api"], "branch", "--list", f"fix/{SLUG}-api"), "")
+        self.assertFalse(os.path.exists(worktrees.sandbox_path(self.root, SLUG)))
+
+    def test_bugfix_start_refuses_a_worktree_that_moved(self):
+        self.assertEqual(self.prepare({"api": "main"})[0], 0)
+        with open(worktrees.sandbox_path(self.root, SLUG)) as fh:
+            sandbox = json.load(fh)
+        sandbox["repositories"][0]["commit"] = "0" * 40
+        with open(worktrees.sandbox_path(self.root, SLUG), "w") as fh:
+            json.dump(sandbox, fh)
+        code, err = call(pool, "bugfix-start", "--root", self.root, "--slug", SLUG)
+        self.assertEqual(code, 1)
+        self.assertIn("api", err)
+
+    def test_configured_create_gets_the_base_branch(self):
+        scripts = os.path.join(self.root, "scripts")
+        os.makedirs(scripts)
+        script = os.path.join(scripts, "sandbox")
+        with open(script, "w") as fh:
+            fh.write('#!/bin/sh\nset -e\nslug="$1"; base="$2"\n'
+                     'echo "$MAESTRO_BASE_BRANCH" > "$PWD/base-env.txt"\n'
+                     'for repo in codebase/*/; do name=$(basename "$repo")\n'
+                     '  git -C "$repo" worktree add -q -b "sandbox/$slug" '
+                     '"$PWD/sandbox/$slug/codebase/$name" "$base"\ndone\n')
+        os.chmod(script, os.stat(script).st_mode | stat.S_IEXEC)
+        with open(os.path.join(self.root, "maestro.config.yaml"), "w") as fh:
+            fh.write("version: 1\nrepos: {}\nworktree:\n  create: ./scripts/sandbox {slug} {branch}\n"
+                     "  path: sandbox/{slug}/codebase/{repo}\n  branch: sandbox/{slug}\n")
+        code, err = self.prepare({"api": "release-1", "web": "main"})
+        self.assertEqual(code, 1)
+        self.assertIn("one base branch", err)
+        code, out = self.prepare({"api": "main", "web": "main"})
+        self.assertEqual(code, 0, out)
+        with open(os.path.join(self.root, "base-env.txt")) as fh:
+            self.assertEqual(fh.read().strip(), "main")
+        with open(worktrees.sandbox_path(self.root, SLUG)) as fh:
+            rows = json.load(fh)["repositories"]
+        self.assertEqual([row["branch"] for row in rows], [f"sandbox/{SLUG}"] * 2)
+
+
 class WorktreeConfigTest(unittest.TestCase):
     def issues(self, section):
         return [i.code for i in project_config._check_worktree(section)]
@@ -285,6 +422,9 @@ class WorktreeConfigTest(unittest.TestCase):
         self.assertEqual(self.issues({"create": "./scripts/sandbox create {slug} -y",
                                       "path": "sandbox/{slug}/codebase/{repo}",
                                       "remove": "rm -rf \"${HOME}/x\" {slug}"}), [])
+        # a bugfix sandbox's base branch
+        self.assertEqual(self.issues({"create": "./scripts/sandbox create {slug} --base {branch}",
+                                      "path": "sandbox/{slug}/codebase/{repo}"}), [])
 
     def test_create_and_path_go_together_and_path_is_per_feature_and_repo(self):
         self.assertIn("config-missing-command", self.issues({"path": "w/{slug}/{repo}"}))

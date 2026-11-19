@@ -80,7 +80,7 @@ class StateTest(unittest.TestCase):
         # every entry is a lightweight summary, never the full ledger
         self.assertEqual(set(runs[0]),
                          {"slug", "status", "workflow", "active", "updated_at", "kind",
-                          "parent_slug", "repo"})
+                          "parent_slug", "repo", "paused", "paused_at"})
 
     def test_list_runs_labels_repo_lld_children(self):
         child = statemod.new_state(

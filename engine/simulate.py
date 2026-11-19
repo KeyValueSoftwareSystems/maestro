@@ -313,8 +313,8 @@ def _stub_agent(root, act, slug=None):
 
 def _choose_gate_option(act, auto):
     options = act["options"]
-    if auto:
-        return options[0]
+    if auto:  # autopilot never pauses a run
+        return next((o for o in options if not o.get("pause")), options[0])
     _log(f"\n--- gate: {act['step']} ---")
     _log(act["prompt"].rstrip())
     for i, opt in enumerate(options):
@@ -384,6 +384,9 @@ def run(root, slug, workflow, inputs, auto, max_steps, force=False, mode=None):
             return action
         if kind == "failed":
             _log(f"\n[failed] {action.get('reason')}")
+            return action
+        if kind == "paused":
+            _log(f"\n[paused] at {action.get('step')}; resume with {action.get('resume')}")
             return action
 
         batch = action["agents"] if kind == "run_agents" else [action]

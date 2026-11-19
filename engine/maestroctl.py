@@ -23,7 +23,8 @@ The lead agent's whole protocol:
         maestroctl fail --slug S --step P --reason '<why>'
 
 Also: status, todo, brief, profile (the run's timing: work, human, idle), reclaim (re-serve a stuck worker), reset (--step/--all, --cascade),
-rebase, migrate, graph, runs, and note.
+rebase, migrate, graph, runs, note, and slug-check (is a new slug free: kebab-case, no run folder,
+no plan under docs/plans/active or docs/plans/completed).
 `next --peek` re-reads without claiming or running.
 
 A run's files are grouped by kind under .maestro/runs/<slug>/ (run_layout.py). `init` and `rebase`
@@ -89,7 +90,53 @@ def cmd_preflight(args):
     return 0 if result["ok"] else 1
 
 
+_KEBAB_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+
+
+def _run_folder_taken(slug, root):
+    """True when the run folder holds more than the requirement folder the lead pre-creates."""
+    folder = statemod.feature_dir(slug, root)
+    try:
+        entries = [name for name in os.listdir(folder) if name != run_layout.REQUIREMENT_DIR]
+    except OSError:
+        return False
+    return bool(entries)
+
+
+def slug_check(slug, root=".", for_init=False):
+    """-> (available, reason). A slug names one feature for good: its run folder and its plan
+    (`docs/plans/active|completed/<slug>.md`). `for_init` leaves out the format rule (init keeps
+    the engine's own slug rule) and the run-folder rule (init resumes an existing ledger)."""
+    if not for_init and not _KEBAB_RE.match(slug or ""):
+        return False, "use lowercase words joined by single hyphens (kebab-case), e.g. csv-export"
+    if not for_init and (os.path.exists(statemod.state_path(slug, root))
+                         or _run_folder_taken(slug, root)):
+        return False, f"a run named {slug!r} already exists"
+    if os.path.exists(os.path.join(root, *run_layout.plan_completed(slug).split("/"))):
+        return False, f"{slug!r} names a delivered feature ({run_layout.plan_completed(slug)})"
+    if os.path.exists(os.path.join(root, *run_layout.plan_active(slug).split("/"))):
+        return False, f"{slug!r} has a plan in progress ({run_layout.plan_active(slug)})"
+    return True, "available"
+
+
+def cmd_slug_check(args):
+    available, reason = slug_check(args.slug, args.root)
+    _print({"slug": args.slug, "available": available, "reason": reason})
+    return 0
+
+
 def cmd_init(args):
+    creating = args.force or not os.path.exists(statemod.state_path(args.slug, args.root))
+    if args.force and os.path.exists(
+            os.path.join(args.root, *run_layout.plan_completed(args.slug).split("/"))):
+        raise resolver.RunError(
+            f"{args.slug!r} is a delivered feature ({run_layout.plan_completed(args.slug)}); "
+            "start new work under a new slug", code=3)
+    if creating and not args.force:
+        available, reason = slug_check(args.slug, args.root, for_init=True)
+        if not available:
+            raise resolver.RunError(f"cannot start a run under this slug: {reason}; "
+                                    "pick another (`maestroctl slug-check <slug>`)", code=3)
     inputs = {}
     for pair in args.input or []:
         if "=" not in pair:
@@ -735,6 +782,13 @@ def build_parser():
     p = sub.add_parser("runs", help="list every run under .maestro/runs/ as JSON (read-only)")
     p.set_defaults(fn=cmd_runs)
 
+    p = sub.add_parser("slug-check", help="is a new slug free: kebab-case, no run, no plan "
+                                          "(read-only JSON {available, reason})")
+    p.add_argument("slug")
+    p.add_argument("--root", default=argparse.SUPPRESS,
+                   help="workspace root (same as the global --root)")
+    p.set_defaults(fn=cmd_slug_check)
+
     p = sub.add_parser("migrate", help="move a run from the earlier flat folder layout into the "
                                        "folders-by-kind one (init and rebase do this themselves)")
     p.add_argument("--slug", required=True)
@@ -761,7 +815,7 @@ def main(argv=None):
     # Validate the slug at the CLI boundary, before any command touches the filesystem
     # (the lock context creates .maestro/runs/<slug>/ — a bad slug must be rejected first).
     slug = getattr(args, "slug", None)
-    if slug is not None and not statemod.valid_slug(slug):
+    if slug is not None and args.cmd != "slug-check" and not statemod.valid_slug(slug):
         print(f"error: invalid slug {slug!r}: use lowercase letters, digits, '.', '-', "
               f"'_' (a single path segment, no '/' or '..')", file=sys.stderr)
         return 3

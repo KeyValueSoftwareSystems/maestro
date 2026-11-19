@@ -48,7 +48,7 @@ def _preferred_target(node, seen):
     """
     if node.get("next"):
         return node["next"]
-    options = [o["to"] for o in node.get("options") or [] if o.get("to") != "abort"]
+    options = [o["to"] for o in node.get("options") or [] if o.get("to") not in (None, "abort")]
     routes = node.get("routes") or []
     default = [r["to"] for r in routes if r.get("when") in (None, "")]
     conditional = [r["to"] for r in routes if r.get("when") not in (None, "")]
@@ -88,6 +88,9 @@ def _now(run, path):
     branches = [m.group(2) for m in map(_BRANCH_SEG.match, path.split("/")[:-1]) if m]
     if branches:
         label = f"[{branches[-1]}] {label}"
+    if (run.state["steps"].get(path) or {}).get("paused"):
+        # "approve later": still the person's to answer, once they resume the run
+        return {"label": f"{label} (paused)", "step": path, "waiting": True, "paused": True}
     return {"label": label, "step": path, "waiting": _cursor_waiting(run, path)}
 
 

@@ -115,7 +115,8 @@ branch `feature/<slug>-<repo>`. With one, it runs `create` instead (for example 
 template's sandbox command; `/maestro-init` fills this section from that script's documented
 usage) and finds each repository at `path`. `{slug}` and `{root}` in the commands are replaced
 (shell-quoted) and `MAESTRO_SLUG` / `MAESTRO_ROOT` are exported; `path` and `branch` take `{slug}`
-and `{repo}`. Point `environment.start` at the same sandbox (for example
+and `{repo}`. `create` also takes `{branch}`, exported as `MAESTRO_BASE_BRANCH`: the branch a bug
+fix starts from (`HEAD` for a feature), so the sandbox can be built off the person's branch. Point `environment.start` at the same sandbox (for example
 `./scripts/infra up "$MAESTRO_SLUG"`) and QA builds the code Maestro wrote.
 
 Maestro uses only worktrees it created. A path that already exists and is not in the run's
