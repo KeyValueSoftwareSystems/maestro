@@ -647,7 +647,9 @@ def _docs_hash(root):
     if not os.path.isdir(docs):
         return ""
     for base, dirs, files in os.walk(docs):
-        dirs.sort()
+        # A run's own plan (docs/plans/) is not a living doc: writing or filing it must not make
+        # the living docs look changed and stop the run at the workspace sync gate.
+        dirs[:] = sorted(d for d in dirs if not (base == docs and d == "plans"))
         for name in sorted(files):
             if not name.endswith(".md"):
                 continue

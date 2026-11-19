@@ -105,24 +105,6 @@ class SdlcE2E(unittest.TestCase):
             self._prompts = {}
         return self._prompts
 
-    # SUSPECTED ENGINE BUG (see test_a_committed_plan_does_not_make_the_living_docs_look_stale):
-    # workspace_sync._docs_hash walks every docs/**/*.md, plans included, so the plan the run itself
-    # writes under docs/plans/ makes the pre-implementation workspace sync report "living docs
-    # changed" and ask its gate on every run. The scenarios below are not about that, so their copy
-    # of the engine skips docs/plans in the hash (the fix the bug needs); that one test runs the
-    # engine as shipped.
-    ignore_plans_in_docs_hash = True
-
-    def exclude_plans_from_docs_hash(self):
-        path = os.path.join(self.tmp, ".maestro", "engine", "workspace_sync.py")
-        text = Path(path).read_text()
-        walk = "    for base, dirs, files in os.walk(docs):\n        dirs.sort()\n"
-        if walk in text:  # absent once the shipped engine skips the plans itself
-            Path(path).write_text(text.replace(
-                walk, "    for base, dirs, files in os.walk(docs):\n"
-                      "        dirs[:] = sorted(d for d in dirs\n"
-                      "                         if not (base == docs and d == 'plans'))\n"))
-
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="maestro-e2e-")
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
@@ -130,8 +112,6 @@ class SdlcE2E(unittest.TestCase):
         shutil.copytree(os.path.join(REPO, "workflows"), os.path.join(self.tmp, ".maestro", "workflows"))
         shutil.copytree(os.path.join(REPO, "engine"), os.path.join(self.tmp, ".maestro", "engine"),
                         ignore=shutil.ignore_patterns("tests", "__pycache__"))
-        if self.ignore_plans_in_docs_hash:
-            self.exclude_plans_from_docs_hash()
         req =os.path.join(self.tmp, ".maestro", "runs", "demo", "requirement")
         os.makedirs(req)
         with open(os.path.join(req, "requirement.md"), "w") as fh:
@@ -517,7 +497,8 @@ class SdlcE2E(unittest.TestCase):
         self.prep_tasks_json()
         action, trace = self.drive(dict(self.DESIGN_GATES))
         self.assertEqual(action["action"], "done", action)
-        self.assertEqual(action["outputs"]["plan"], ACTIVE)
+        self.assertEqual(action["outputs"]["plan"], COMPLETED)  # filed at archive
+        self.assertEqual(action["outputs"]["approved_plan"], ACTIVE)
         self.assertEqual(action["outputs"]["implementation_manifest"],
                          ".maestro/runs/demo/build/manifest.json")
         steps = [s for _, s in trace]
@@ -1763,15 +1744,10 @@ class SdlcE2E(unittest.TestCase):
                     "demo", workflow, {"feature": "Demo", "path": path}, self.tmp, force=True)
                 self.assertTrue(created)
 
-    @unittest.expectedFailure
     def test_a_committed_plan_does_not_make_the_living_docs_look_stale(self):
-        """SUSPECTED ENGINE BUG, kept as a tripwire (expected to fail until fixed): the plan lives
-        under docs/, and workspace_sync._docs_hash covers every docs/**/*.md, so the plan this run
-        writes makes the pre-implementation workspace sync report "living docs changed" and ask
-        its gate on every run. Remove `ignore_plans_in_docs_hash` and this decorator with the fix."""
+        """The plan lives under docs/plans/, which the living-docs hash skips, so writing and
+        committing it never makes the pre-implementation workspace sync ask its gate."""
         self.prep_tasks_json()
-        shutil.copy(os.path.join(REPO, "engine", "workspace_sync.py"),
-                    os.path.join(self.tmp, ".maestro", "engine", "workspace_sync.py"))
         gates = {**self.DESIGN_GATES,
                  "delivery/workspace_sync_pre_impl/sync_gate": [("as_is", None)]}
         action, trace = self.drive(gates)

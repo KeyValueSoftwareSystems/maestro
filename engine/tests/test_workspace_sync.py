@@ -26,6 +26,24 @@ def quiet(fn, *args, **kwargs):
     return code, json.loads(buf.getvalue().splitlines()[-1])
 
 
+class DocsHashTest(unittest.TestCase):
+    def test_plans_do_not_change_the_living_docs_hash(self):
+        root = tempfile.mkdtemp(prefix="maestro-docs-hash-")
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        os.makedirs(os.path.join(root, "docs", "functional"))
+        with open(os.path.join(root, "docs", "functional", "pay.md"), "w") as fh:
+            fh.write("# Pay\n")
+        before = ws._docs_hash(root)
+        for kind in ("active", "completed"):
+            os.makedirs(os.path.join(root, "docs", "plans", kind))
+            with open(os.path.join(root, "docs", "plans", kind, "demo.md"), "w") as fh:
+                fh.write("# Demo plan\n")
+        self.assertEqual(ws._docs_hash(root), before)
+        with open(os.path.join(root, "docs", "functional", "pay.md"), "a") as fh:
+            fh.write("More.\n")
+        self.assertNotEqual(ws._docs_hash(root), before)
+
+
 class WorkspaceSyncTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="workspace-sync-")
