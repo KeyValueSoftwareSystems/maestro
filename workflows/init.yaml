@@ -1,0 +1,46 @@
+# Set up a workspace: find its repos, stacks and commands, wire the matching stack skills,
+# then offer to build the knowledge base. Re-run it after adding a repo; it only adds new ones.
+name: init
+description: Detect the workspace's repos, stacks and commands, wire stack skills, and build the knowledge base.
+max_steps: 15
+steps:
+  - id: detect
+    agent: worker
+    instructions: |
+      Find the repositories in this workspace: the current folder if it is a git repository with
+      code, and each git repository under codebase/ (an umbrella workspace).
+      For each one, find its stack and its build, lint and test commands. Look in its manifests
+      (package.json, pyproject.toml, pom.xml, build.gradle, Makefile), CI config, README and AGENTS.md.
+      Choose stack skills from the folder names in .maestro/stacks/ that match the stack.
+      Write .maestro/workspace.yaml in this format. Keep existing entries unchanged unless the
+      person's feedback says otherwise, and only add repos that are new:
+
+        repos:
+          <name>:
+            path: <path from the workspace root; "." for the current folder>
+            stack_skills: [<folder names from .maestro/stacks/>]
+            commands: {build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
+
+      Record the repo names you added as `repos`.
+
+  - id: confirm
+    mode: gate
+    prompt: |
+      Check .maestro/workspace.yaml: the repos, their stack skills and their commands.
+      Approve, or tell me what to fix.
+    on_reject: detect
+
+  - id: wire
+    agent: worker
+    model: haiku
+    instructions: |
+      For each stack skill named in .maestro/workspace.yaml, copy the folder .maestro/stacks/<name>/
+      to .claude/skills/<name>/, replacing any older copy. Don't touch any other skill.
+
+  - id: offer-knowledge
+    mode: gate
+    prompt: Build the knowledge base in docs/ now? It reads every repo, so it can take a while.
+
+  - id: knowledge
+    mode: workflow
+    workflow: knowledge.yaml

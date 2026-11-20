@@ -1,0 +1,19 @@
+# Build (or rebuild) the knowledge base in docs/ from the code, then check it against the code.
+name: knowledge
+description: Build the knowledge base in docs/ from the code, and review it against the code.
+max_steps: 10
+steps:
+  - id: build
+    agent: socrates
+    instructions: |
+      Build mode. The repos and their paths are listed in .maestro/workspace.yaml.
+      Write the knowledge base to docs/: architecture.md and domains/<domain>.md.
+      If those files already exist, refresh them in place instead of starting over.
+
+  - id: review
+    agent: birbal
+    instructions: |
+      Review the docs in docs/ (architecture.md and domains/) against the code of the repos listed
+      in .maestro/workspace.yaml. Every claim must match the code it cites, and every major part of
+      the code must be covered. Write the review to ${run}/review.md.
+    on_fail: build

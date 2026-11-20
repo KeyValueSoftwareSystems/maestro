@@ -1,0 +1,53 @@
+# Find a bug's root cause, fix it with a regression test, review the fix and ship it.
+name: bug-fix
+description: Root-cause a bug, fix it with a regression test, review it, and open a PR.
+max_steps: 30
+steps:
+  - id: investigate
+    agent: sherlock
+    model: opus
+    instructions: |
+      Investigate the bug described in ${run}/request.md. Read docs/ for context.
+      Write the root-cause report to ${run}/rca.md. Do not fix the bug.
+      Record the repos the fix touches as `repos` (names from .maestro/workspace.yaml).
+
+  - id: confirm
+    mode: gate
+    prompt: |
+      The root cause for ${slug} is in ${run}/rca.md.
+      Approve the fix direction, or tell me what to look at instead.
+    on_reject: investigate
+
+  - id: worktree
+    agent: worker
+    model: haiku
+    foreach: repo
+    instructions: |
+      In repo ${repo} (its path is in .maestro/workspace.yaml), update the default branch from
+      origin if there is a remote. Then create a git worktree at the absolute path of
+      .maestro/worktrees/${slug}/${repo} on a new branch fix/${slug}, starting from the default branch.
+      Record the worktree path as `worktree` and the branch name as `branch`.
+
+  - id: fix
+    agent: brew
+    foreach: repo
+    instructions: |
+      Fix the bug in ${worktree} on branch ${branch}, following ${run}/rca.md.
+      First add the report's failing test as a regression test, then fix the code.
+
+  - id: checks
+    mode: exec
+    foreach: repo
+    command: [build, lint, test]
+    on_fail: fix
+
+  - id: review
+    agent: birbal
+    instructions: |
+      Review the changes on branch ${branch} in ${worktree} against ${run}/rca.md.
+      Write the review to ${run}/review.md.
+    on_fail: fix
+
+  - id: archive
+    mode: workflow
+    workflow: subworkflows/archive.yaml

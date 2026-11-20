@@ -1,21 +1,10 @@
-# keyvalue-skills — ignored, regenerable/local
-# NOTE: git has no inline comments — keep each pattern on its own line.
-
-# NOTE: .maestro/runs/<slug>/ (feature requirement + all generated artifacts) is
-# intentionally NOT ignored — it is git-tracked for now.
-
-# installed copies (Claude Code / Cursor / Codex). Sources of truth are ./skills/,
-# ./commands/, ./agents/; these dirs are populated by install.sh. Never the source.
+# Installed copies (from install.sh) when you try Maestro inside this repo's own test projects.
 .claude/skills/
 .claude/commands/
-.claude/agents/
-.cursor/skills/
-.cursor/commands/
-.agents/skills/
+.claude/settings.local.json
 
-# Python bytecode (from workflows/*.py helpers + their tests)
+# Local Maestro state in projects
+.maestro/worktrees/
+
 __pycache__/
-*.pyc
-
-# lock file written locally by `npx skills add` (consumer-side artifact)
-skills-lock.json
+.DS_Store

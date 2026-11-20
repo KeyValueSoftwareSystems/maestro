@@ -1,0 +1,22 @@
+# Bring every repo up to date with its remote, then refresh the docs those updates made stale.
+# To add a new repo to the workspace, run /maestro-init again instead.
+name: sync
+description: Fast-forward every repo from its remote and refresh the docs its new commits made stale.
+max_steps: 10
+steps:
+  - id: pull
+    agent: worker
+    model: haiku
+    instructions: |
+      For each repo in .maestro/workspace.yaml, run `git fetch`. If its working tree is clean and on
+      the default branch, fast-forward it with `git merge --ff-only`. Otherwise leave it as it is.
+      Write a table to ${run}/sync.md with columns: repo, branch, old HEAD, new HEAD, and result
+      (updated, already current, or skipped and why).
+      Record the repos whose HEAD changed as `changed` ([] if none).
+
+  - id: refresh
+    agent: socrates
+    instructions: |
+      Update mode. These repos got new commits: ${changed}. If the list is empty, change nothing and pass.
+      For each doc in docs/ whose source_commit for one of these repos is behind its HEAD, read the
+      diff between the two commits and update what it makes wrong.

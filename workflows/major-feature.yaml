@@ -1,0 +1,87 @@
+# A large feature: brainstorm and design, a reviewed and approved plan, parallel build and
+# test writing, checks, code review, verification, then ship.
+name: major-feature
+description: Design, plan, build in parallel, test, review and ship a large feature.
+max_steps: 60
+steps:
+  - id: plan
+    agent: keystone
+    run: inline
+    skills: {brainstorm: grill-me, design: system-design}
+    instructions: |
+      Plan the feature in ${run}/request.md. Read docs/ and .maestro/workspace.yaml first.
+      Write the plan to ${run}/plan.md. Give every task a repo and an area (fe, be, db, ...), and
+      keep tasks that can run in parallel on separate files.
+      Record the repos the plan touches as `repos`.
+
+  - id: plan-review
+    agent: birbal
+    model: opus
+    instructions: |
+      Review the plan ${run}/plan.md against the request ${run}/request.md and the code it will
+      change. Write the review to ${run}/plan-review.md.
+    on_fail: plan
+
+  - id: approve-plan
+    mode: gate
+    prompt: |
+      The plan for ${slug} is in ${run}/plan.md, and the reviewer's notes are in ${run}/plan-review.md.
+      Approve, or tell me what to change.
+    on_reject: plan
+
+  - id: worktree
+    agent: worker
+    model: haiku
+    foreach: repo
+    instructions: |
+      In repo ${repo} (its path is in .maestro/workspace.yaml), update the default branch from
+      origin if there is a remote. Then create a git worktree at the absolute path of
+      .maestro/worktrees/${slug}/${repo} on a new branch feat/${slug}, starting from the default branch.
+      Record the worktree path as `worktree` and the branch name as `branch`.
+
+  - parallel:
+      - id: build
+        agent: brew
+        foreach: repo
+        instructions: |
+          Build the ${repo} tasks in ${run}/plan.md in ${worktree}, with their unit tests.
+          Leave the integration and e2e tests in the Test plan to the tester.
+          Do not commit: a later step commits.
+      - id: write-tests
+        agent: litmus
+        instructions: |
+          Write mode. Write the integration and e2e tests in the Test plan of ${run}/plan.md,
+          in the worktrees ${worktree}. Touch only test files. Do not commit: a later step commits.
+
+  - id: commit
+    agent: worker
+    model: haiku
+    foreach: repo
+    instructions: |
+      In ${worktree}, commit all changes on branch ${branch} with the message
+      "feat(${slug}): <one-line summary of the changes>". If nothing changed, pass without committing.
+
+  - id: checks
+    mode: exec
+    foreach: repo
+    command: [build, lint, test]
+    on_fail: build
+
+  - id: code-review
+    agent: birbal
+    model: opus
+    instructions: |
+      Review the changes on branch ${branch} in ${worktree} against ${run}/plan.md.
+      Write the review to ${run}/review.md.
+    on_fail: build
+
+  - id: verify
+    agent: litmus
+    instructions: |
+      Run mode. Run the whole Test plan of ${run}/plan.md in ${worktree}.
+      Write the report to ${run}/test-report.md.
+    on_fail: build
+
+  - id: archive
+    mode: workflow
+    workflow: subworkflows/archive.yaml

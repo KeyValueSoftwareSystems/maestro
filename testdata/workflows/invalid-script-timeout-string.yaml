@@ -1,9 +1,0 @@
-version: 1
-name: bad-timeout
-start: run
-nodes:
-  - id: run
-    type: script
-    run: [python3, check.py]
-    timeout: "30s"
-    next: end

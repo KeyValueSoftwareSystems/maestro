@@ -1,9 +1,0 @@
-version: 1
-name: bad
-start: a
-nodes:
-  - id: a
-    type: script
-    run: ["true"]
-    routes:
-      - {when: "${steps.a.outputs.exit_code} == 0", to: end}

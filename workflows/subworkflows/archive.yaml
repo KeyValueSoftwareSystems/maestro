@@ -1,0 +1,37 @@
+# Shared ending for the feature and fix workflows: update the docs, ship, clean up.
+name: archive
+description: Update the knowledge base, push branches and open PRs, and remove the run's worktrees.
+steps:
+  - id: learn
+    agent: socrates
+    instructions: |
+      Update mode. The change is described in ${run}/ (request.md, plan.md or rca.md, review.md).
+      Its code is on branch ${branch} in ${worktree}.
+      Update the docs in docs/ that this change makes wrong or incomplete.
+      If a repo in this change has path "." in .maestro/workspace.yaml, the docs belong to that
+      repo: edit them in its worktree and commit them on its branch. Otherwise edit docs/ at the
+      workspace root and leave those edits uncommitted for the person.
+
+  - id: approve-ship
+    mode: gate
+    prompt: |
+      ${slug} is ready to ship. Review: ${run}/review.md. Tests: ${run}/test-report.md (if present).
+      Approve to push the branches and open pull requests.
+
+  - id: pr
+    agent: worker
+    model: haiku
+    foreach: repo
+    instructions: |
+      In ${worktree}, push branch ${branch} to origin and open a pull request against the default
+      branch with `gh pr create`. Take the title from ${run}/plan.md or ${run}/rca.md. In the body,
+      say what changed, why, and how it was tested (from ${run}/test-report.md or ${run}/review.md).
+      Never paste secrets or raw logs. Record the PR URL as `pr`.
+
+  - id: cleanup
+    agent: worker
+    model: haiku
+    foreach: repo
+    instructions: |
+      Remove the worktree ${worktree} with `git worktree remove`, keeping the branch.
+      If it has uncommitted changes, don't remove it: fail and list them.
