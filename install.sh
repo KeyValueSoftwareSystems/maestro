@@ -24,7 +24,8 @@ fi
 copy_dir() { rm -rf "$2"; mkdir -p "$(dirname "$2")"; cp -R "$1" "$2"; }
 
 # The lead, agent and sub-skill skills, plus the slash commands. Always replaced.
-for skill in "$SRC"/skills/*/; do
+for skill in "$SRC"/skills/*/ "$SRC"/skills/agents/*/; do
+  [ -f "$skill/SKILL.md" ] || continue
   copy_dir "${skill%/}" "$DEST/.claude/skills/$(basename "$skill")"
 done
 mkdir -p "$DEST/.claude/commands"

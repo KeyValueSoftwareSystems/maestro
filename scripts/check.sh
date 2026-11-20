@@ -22,13 +22,16 @@ while read -r f; do
 done < <(find skills stacks -name '*.md' ! -path 'skills/maestro/*')
 
 # Every skill has a name in its frontmatter that matches its folder.
-for d in skills/*/ stacks/*/; do
+for d in skills/*/ skills/agents/*/ stacks/*/; do
+  [ "$d" = skills/agents/ ] && continue
   name="$(basename "$d")"
   head -5 "$d/SKILL.md" 2>/dev/null | grep -qx "name: $name" || err "$d/SKILL.md: missing or wrong 'name: $name'"
 done
+# Agents install next to the other skills, so their names must not clash.
+for d in skills/agents/*/; do [ ! -d "skills/$(basename "$d")" ] || err "$d: also in skills/"; done
 
 # Every agent and workflow file that a workflow names exists, and every workflow has a command.
-agents=" worker $(ls skills | tr '\n' ' ') "
+agents=" worker $(ls skills/agents | tr '\n' ' ') "
 while read -r wf; do
   for a in $(sed -n 's/^[ -]*agent: *\([a-z-]*\).*/\1/p' "$wf"); do
     case "$agents" in *" $a "*) ;; *) err "$wf: unknown agent '$a'" ;; esac

@@ -9,7 +9,7 @@ run folder and `state.yaml` are the whole system.
 | Path | What it holds |
 |---|---|
 | `skills/maestro/` | The lead coordinator. It is the only skill that knows about Maestro, and it defines the step format. |
-| `skills/<agent>/` | One skill per agent, with its default `templates/`. |
+| `skills/agents/<agent>/` | One skill per agent, with its default `templates/`. Installed flat, as `.claude/skills/<agent>/`. |
 | `skills/grill-me/`, `skills/system-design/` | Sub-skills that agents load when a workflow names them. |
 | `stacks/<stack>/` | Stack skills (react, node, python, java). `/maestro-init` wires them to repos. |
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
