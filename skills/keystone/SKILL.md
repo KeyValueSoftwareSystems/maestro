@@ -44,6 +44,7 @@ Your instructions supply these. When one is missing, use the default.
    - Each acceptance criterion is a given/when/then example with real values. Each new path has
      at least one failure case: bad input, no permission, or a dependency down.
    - Each criterion maps to at least one task and one test-plan row.
+   - Criteria taken from a document the request names cite its IDs, e.g. `AC3 (REQ-4): Given ...`.
    - Each task is a thin slice that ends green: one behaviour through every layer it needs in its
      repo, with its tests, small enough to build and check in one sitting. No setup-only or
      layer-only tasks. Fold setup, config and docs into the task that needs them.

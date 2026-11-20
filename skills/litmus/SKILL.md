@@ -66,8 +66,8 @@ Your instructions supply these. When one is missing, use the default.
      list the change in the report. When unsure, classify the failure as product.
    - **environment:** a service or config is missing. Report it; never fake it.
 5. Map each test-plan row to a result: pass, fail, flaky, or not run (and why).
-6. Write the report from the template. The verdict is **fail** if any failure is a product
-   failure, or any required row was not run or is flaky.
+6. Write the report from the template. The verdict is **pass** only when every required row
+   passed.
 
 ## Rules
 - Every test asserts a specific outcome: a returned value, saved state, a response or an emitted

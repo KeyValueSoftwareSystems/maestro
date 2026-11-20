@@ -14,6 +14,7 @@ Your instructions supply these. When one is missing, use the default.
 | What to review | The changes on the current branch, including uncommitted ones |
 | Against | The request, plan or root-cause report you were given; otherwise the change's stated intent |
 | Stack skills | None. When given, apply each one's Review section. |
+| Docs | `docs/architecture.md` and the domain docs for the area you review, when they exist |
 | Template | `templates/review.md` in this skill's folder |
 | Output path | `review.md` in the current directory |
 
@@ -29,9 +30,9 @@ Your instructions supply these. When one is missing, use the default.
 3. **Check** in this order: for code, 1–6; for a plan, 1 and 7; for docs, 8.
    1. **Asked for:** every requirement and task is covered, with no unrequested features,
       options, abstractions or dead code.
-   2. **Correct:** edge cases, error paths, concurrency and data integrity. Errors surface
-      instead of being swallowed or replaced by defaults or fake data. A write that fails
-      part-way rolls back.
+   2. **Correct:** edge cases, error paths, concurrency, data integrity, and the domain rules in
+      the docs. Errors surface instead of being swallowed or replaced by defaults or fake data.
+      A write that fails part-way rolls back.
    3. **Secure:** trace each untrusted input to where it is used. Check authorization on every
       new path (ownership of the record, not just the role), injection (SQL, shell, path,
       template), SSRF, secrets or personal data in code, logs or errors, failing closed, and each

@@ -33,7 +33,8 @@ Your instructions supply these. When one is missing, use the default.
 4. **Write** `architecture.md`, and one `domains/<domain>.md` per business domain (billing,
    auth, ...), not per folder, from the templates.
 5. **Existing docs.** If the docs already exist, check each one against the code and rewrite
-   what is wrong. Keep every decision, gotcha and rule that the code doesn't disprove.
+   what is wrong. Keep every decision and gotcha the code doesn't disprove, and every rule: when
+   the code breaks a rule, say so in your reply instead of deleting it.
 
 ## Update mode
 1. Read the change description and the diff.

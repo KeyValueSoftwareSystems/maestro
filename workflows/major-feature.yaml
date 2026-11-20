@@ -34,10 +34,10 @@ steps:
     model: haiku
     foreach: repo
     instructions: |
-      In repo ${repo} (its path is in .maestro/workspace.yaml), update the default branch from
-      origin if there is a remote. Then create a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/${repo} on a new branch feat/${slug}, starting from the default branch.
-      If that worktree already exists, reuse it. If only the branch exists, fail and say so.
+      In repo ${repo} (path in .maestro/workspace.yaml), create a git worktree at the absolute path of
+      .maestro/worktrees/${slug}/${repo} on a new branch feat/${slug}, starting from origin's latest
+      default branch. If that worktree already exists, reuse it.
+      Then run the repo's `setup` command in the worktree, if it has one.
       Record the worktree path as `worktree` and the branch name as `branch`.
 
   - parallel:

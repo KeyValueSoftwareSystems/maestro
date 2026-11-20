@@ -87,7 +87,7 @@ Task:
 <instructions, with variables filled in>
 Skills: brainstorm=grill-me, design=system-design              <- when the step sets `skills`
 Template: <path>                                               <- when the step sets `template`
-Stack skills: <the repo's stack_skills from workspace.yaml>    <- brew, birbal, litmus and sherlock only
+Stack skills: <stack_skills of the step's repos>               <- brew, birbal, litmus and sherlock only
 Previous attempt failed at <step>: <reason>. Details: <path>   <- on a retry
 Person's feedback: <their words>                               <- after a rejected gate
 Rules: <the four Safety rules below>
@@ -110,7 +110,7 @@ workspace.yaml; skip names the repo doesn't define. Save the output to
 (for a plan: goal, decisions, open questions). Then wait for the person.
 - If they approve, go to the next step.
 - If they reject, go to `on_reject` and pass their feedback. With no `on_reject`, set
-  `status: stopped` and end the run.
+  `status: waiting` and ask whether to go back to a step or stop.
 
 **Workflow.** Run that file's steps in place. They share this run's slug, vars and step budget.
 
@@ -140,5 +140,6 @@ the PR links, and where the reports are.
 - Work only in the folders the task names, and never commit straight to the default branch.
 
 ## Don't
+- Don't stop between steps to ask whether to go on. Stop only at a gate, at `waiting` or at `done`.
 - Don't skip a step because it looks unnecessary, and don't change the workflow during a run.
 - Don't read large files the steps produce into your own context. Pass their paths instead.

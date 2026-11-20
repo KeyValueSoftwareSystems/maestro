@@ -9,7 +9,8 @@ steps:
     instructions: |
       Find the repositories in this workspace: the current folder if it is a git repository with
       code, and each git repository under codebase/ (an umbrella workspace).
-      For each one, find its stack and its build, lint and test commands. Look in its manifests
+      For each one, find its stack and its commands: setup (the locked dependency install, such as
+      `npm ci` or `uv sync --locked`), build, lint and test. Look in its manifests
       (package.json, pyproject.toml, pom.xml, build.gradle, Makefile), CI config, README and AGENTS.md.
       Choose stack skills from the folder names in .maestro/stacks/ that match the stack.
       Write .maestro/workspace.yaml in this format. Keep existing entries unchanged unless the
@@ -19,7 +20,7 @@ steps:
           <name>:
             path: <path from the workspace root; "." for the current folder>
             stack_skills: [<folder names from .maestro/stacks/>]
-            commands: {build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
+            commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
       Record the repo names you added as `repos`.
 
