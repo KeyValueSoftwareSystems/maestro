@@ -26,6 +26,7 @@ steps:
       In repo ${repo} (its path is in .maestro/workspace.yaml), update the default branch from
       origin if there is a remote. Then create a git worktree at the absolute path of
       .maestro/worktrees/${slug}/${repo} on a new branch feat/${slug}, starting from the default branch.
+      If that worktree already exists, reuse it. If only the branch exists, fail and say so.
       Record the worktree path as `worktree` and the branch name as `branch`.
 
   - id: build

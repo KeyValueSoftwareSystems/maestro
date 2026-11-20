@@ -24,7 +24,8 @@ step says `run: inline`.
 2. Otherwise the argument is a new request. Every workflow except `init` needs
    `.maestro/workspace.yaml`. If it is missing, ask the person to run `/maestro-init` first and stop.
 3. Make a slug of 2–5 lowercase words joined by `-`, taken from the request and unique under
-   `.maestro/runs/`. Create the run folder and write the request word for word to `request.md`.
+   `.maestro/runs/` and `.maestro/worktrees/`. Create the run folder with an empty `logs/` folder,
+   and write the request word for word to `request.md`.
    Write state.yaml with `status: running` and `current` set to the first step.
 4. Read the workflow file in full once before the first step.
 
@@ -67,7 +68,7 @@ on resume, read state.yaml and the workflow file again before you act.
 
 ## Variables
 Replace these before you pass instructions on:
-- `${slug}`, and `${run}`, which is `.maestro/runs/<slug>`.
+- `${slug}`, and `${run}`, which is the absolute path of `.maestro/runs/<slug>`.
 - Inside a `foreach` step, `${repo}` and any per-repo value such as `${worktree}` or `${branch}`
   mean that repo's value. Outside `foreach`, a per-repo value becomes a `repo: value` list.
 - Any other `${name}` comes from `vars`.
