@@ -52,7 +52,7 @@ class WorkspaceSyncTest(unittest.TestCase):
         with open(os.path.join(self.tmp, "docs", "architecture.md"), "w") as fh:
             fh.write("---\ndoc: architecture\n---\n# Architecture\n")
         with open(os.path.join(self.tmp, "docs", "auth.md"), "w") as fh:
-            fh.write("---\ndoc: domain\ndomain: auth\n---\n# auth\n")
+            fh.write("---\ndoc: domain\ndomain: auth\n---\n# auth\n\n# Part A: Functional\n")
         self.evidence = os.path.join(self.tmp, "evidence.md")
         with open(self.evidence, "w") as fh:
             fh.write("indexed\n")

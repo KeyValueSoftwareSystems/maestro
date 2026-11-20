@@ -5,7 +5,8 @@
 
 Reads the living docs under docs/ (architecture and one doc per domain) and, optionally, the
 freshness plan that says why a refresh is due. A rewrite resets every doc it changes to
-`status: draft`, so when any doc is `verified` the person approves first.
+`status: draft`, so when any doc is `reviewed` (`verified` before format 4) the person approves
+first.
 
 stdout: {"needs_approval": bool, "doc_count": n, "verified_count": n, "summary": "<3 lines>"}
 """
@@ -36,7 +37,7 @@ def _why(plan):
 
 def check(root, plan_path=None):
     docs = living_docs.load_docs(os.path.abspath(root))
-    verified = sum(1 for d in docs if d.fm.get("status") == "verified")
+    verified = sum(1 for d in docs if d.fm.get("status") in living_docs.REVIEWED)
     plan = None
     if plan_path and os.path.isfile(plan_path):
         with open(plan_path, encoding="utf-8") as fh:
@@ -44,7 +45,7 @@ def check(root, plan_path=None):
     kinds = {k: sum(1 for d in docs if d.kind == k) for k in ("architecture", "domain")}
     summary = "\n".join([
         f"- docs/ holds {len(docs)} living docs ({kinds['architecture']} architecture, "
-        f"{kinds['domain']} domain); {verified} verified by a person.",
+        f"{kinds['domain']} domain); {verified} reviewed by a person.",
         f"- A refresh will update them in place because {_why(plan)}.",
         "- Rewritten docs go back to `draft` for re-verification; the team's invariants and change "
         "scenarios are restored untouched, and the generated blocks are regenerated.",

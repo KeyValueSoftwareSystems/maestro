@@ -67,18 +67,22 @@ nodes:
       files). Then do BOTH:
       1. Add to / refresh the living docs — each touched domain's docs/<domain>.md AND the
          architecture — in the shared format (docs-format.md in the build-knowledge skill).
-         Product sections: the business rules the feature added or changed (BR rows with edge
-         and source, from the approved PRD and gate feedback), new states, flows, terms and open
-         questions. Engineering sections: failure behaviour and gotchas the reviews raised, and
-         the invariants and change scenarios the run relied on or discovered as proposals
+         Functional part: the business rules the feature added or changed (BR rows with edge,
+         status and source, from the approved PRD and gate feedback), new user flows, states and
+         terms. Technical part: client behaviour, error codes, failure behaviour and security
+         notes the reviews raised. Side effects: an Outbound row for each new effect on another
+         domain (linked), which keeps depends_on current. Maintenance: gotchas, open questions,
+         and the invariants and change scenarios the run relied on or discovered as proposals
          (§Proposed rules and scenarios, with the anchor that enforces each), for the team to
-         accept. Say each fact once, in its own section; cite it by ID elsewhere. Invariants and change scenarios are team-owned: never edit §Invariants and consistency, §Change scenarios, §Platform-wide
+         accept. Update the Summary when the domain's scope changed, and add the feature's PRD
+         and design documents to References. Say each fact once, in its one place; cite it by
+         ID elsewhere. Invariants and change scenarios are team-owned: never edit §Invariants, §Change scenarios, §Platform-wide
          invariants or docs/impact/side-effects.yaml (the engine restores them); write what you
          find under §Proposed rules and scenarios instead.
          Architecture: new repos or providers, cross-repo flows, and a Domain map row for any
          NEW domain (which gets its own docs/<domain>.md). A new business rule takes the next
-         free ID; never renumber or reuse one; a fact the feature made untrue becomes
-         `Retired YYYY-MM-DD: <why>`. Never restate what the extracted inventory (the
+         free ID; never renumber or reuse one; a rule the feature made untrue keeps its row with
+         Status removed. Never restate what the extracted inventory (the
          `inventory` input) lists, and never edit docs/architecture.mmd, docs/code-to-facts.md,
          a generated: block or verified_at — the engine regenerates and stamps them. ALSO refresh each
          affected repo's codebase map (docs/codebase-maps/<repo>.md): run
@@ -101,7 +105,7 @@ nodes:
          Do NOT write knowledge/ or candidates/ — the engine renders those.
       The team's own documents (the `sources` input) come first: the living docs follow them and
       cite them, never contradict them. Where the code disagrees with one, follow the document,
-      add the difference to the domain doc's Open questions and known gaps, and list it in
+      add the difference to the domain doc's Open questions, and list it in
       .maestro/runs/${inputs.slug}/.engine/retrospect/source-conflicts.json as
       {"conflicts":[{"source":"<its path>","source_says":"…","code_says":"…","evidence":"repo · path · symbol","doc":"docs/<domain>.md"}]}
       for a person to decide. You may add to a source document; never change or remove what it

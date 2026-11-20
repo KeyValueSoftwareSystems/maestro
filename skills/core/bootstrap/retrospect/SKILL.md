@@ -45,7 +45,7 @@ wrong while running** — because both are where a future run can do better from
      under `## Proposed rules and scenarios`, without an ID, for the team to accept.
    - **Architectural** (`docs/architecture.md`) — a new repo or provider, a new or changed
      cross-repo flow, a new domain (a Domain map row linking its doc).
-   - **Never the team's rules.** `## Invariants and consistency`, `## Change scenarios`,
+   - **Never the team's rules.** `## Invariants`, `## Change scenarios`,
      `## Platform-wide invariants` and `docs/impact/side-effects.yaml` belong to the project's
      people: leave them exactly as they are. The engine restores any change to them.
    - **The team's own documents come first.** Any other file under `docs/` (and any the project
@@ -60,7 +60,7 @@ wrong while running** — because both are where a future run can do better from
      APIs, conventions). A repo reported `current` is unchanged — skip it. Do NOT touch the
      `<!-- maestro-codebase-map commit=… -->` marker — the engine restamps it after you write.
    IDs: a new business rule takes the next free number in its doc; never renumber or reuse one; a
-   rule the feature made untrue keeps its row as `Retired YYYY-MM-DD: <why>`. Cite existing IDs instead of
+   rule the feature made untrue keeps its row with Status `removed`. Cite existing IDs instead of
    restating them. Never write what the code lists (endpoints, events, jobs, tables, config, calls
    between repos), never say one fact in two sections, and never edit generated output
    (`docs/architecture.mmd`, `docs/code-to-facts.md`, any `generated:` block, `verified_at`): a

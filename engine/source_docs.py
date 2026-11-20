@@ -279,7 +279,7 @@ def _render(path, record):
             lines += [f"- **{c['source']}** says: {c['source_says']}",
                       f"  - The code: {c['code_says']} ({c['evidence']})"]
             if c.get("doc"):
-                lines.append(f"  - Noted in {c['doc']} under Open questions and known gaps.")
+                lines.append(f"  - Noted in {c['doc']} under Open questions.")
         lines.append("")
     if record["proposals"]:
         lines += ["## Edits Maestro proposes to your documents (not applied)", ""]

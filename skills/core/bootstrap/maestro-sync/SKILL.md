@@ -74,7 +74,7 @@ Run these **in order**, in this session. Each step consumes the previous step's 
         `docs/<domain>.md`; an existing domain
         page the target takes part in is extended in place to cover it. Never rewrite what a
         page says about other repos; never edit the team's invariants and change scenarios
-        (`## Invariants and consistency`, `## Change scenarios`, `## Platform-wide invariants`,
+        (`## Invariants`, `## Change scenarios`, `## Platform-wide invariants`,
         `docs/impact/side-effects.yaml`) — write what you find under
         `## Proposed rules and scenarios`;
       - update `docs/architecture.md`: the target's row in System context and repos, each of its

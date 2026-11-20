@@ -3,62 +3,67 @@ doc: domain
 domain: payment-links
 id_prefix: PL
 owner: "payments pod (lead: Meera S.)"
+depends_on: []
 repos: [cofee-backend, cofee-payer-app, cofee-admin-app]
 code_roots: [cofee-backend/internal/links, cofee-backend/internal/webhooks, cofee-backend/internal/config/links.go, cofee-payer-app/lib/pay]
 verified_at: {}
 reviewed: {by: "Meera S.", date: 2026-11-02}
-status: verified
+status: reviewed
 ---
-> payment-links. Shared terms are in architecture.md.
-
 # payment-links
+
+## Summary
+Owns payment links: one Cashfree link per invoice, shared by every payer of that invoice, and crediting the payment once.
+Used by institution admins and CoFee support (Admin app · Invoice detail) and by payers (web pay page, payer app · Pay screen).
+Methods: send, resend, disable and expire a link; take Cashfree's payment callback.
+Does not own invoice amounts (fee-collection), reminder timing (reminders) or refunds (not supported).
+
+## References
+| Document | Covers |
+| --- | --- |
+| [Feature catalog](product/feature-catalog.md) | Shipped payment-link features and their PRDs |
+| [Analytics events](product/analytics-events.md) | The tracked pay-page and link events |
+
+# Part A: Functional
 
 ## Purpose and actors
 Payment links let a payer pay one invoice through Cashfree, from a WhatsApp message or the payer app. Institution admins and CoFee support send, resend and disable links from Admin app · Invoice detail; payers pay from the web pay page or payer app · Pay screen. Out of scope: invoice amounts (fee-collection), when reminders go out (reminders), refunds (not supported).
 
-## Glossary and aliases
-| Term | Meaning | Code names and aliases | Not to be confused with |
+## Glossary
+| Term | Meaning | Code names | Not to be confused with |
 | --- | --- | --- | --- |
 | Payment link | A Cashfree URL that pays one invoice | PaymentLink, payment_links table, "pay link" (support), link_id (logs) | Invoice: the amount owed |
 | Payer | A phone number that receives payment links for a student | payer, member_payers table, "parent" (admin app) | Student: the person the fee is for |
 | Disable | An admin stops a payment link from taking new payments | Service.Disable, "deactivate" (admin app) | Expire: automatic, after LINKS_EXPIRY_DAYS |
 
 ## Business rules
-| ID | Rule | Edge | Why / source |
-| --- | --- | --- | --- |
-| PL-BR-001 | One invoice has one active payment link, and every payer of that invoice gets the same link. | If two payers both pay the same link, Cashfree accepts both; support refunds the second by hand. | Stops two parents paying the same fee; fee-groups PRD AC-06 |
-| PL-BR-002 | Disabling a payment link stops reminders for that invoice. | A payment that arrives after the disable is accepted and the invoice is flagged for the admin, never refused. | Admin complaints in 2025 support tickets |
-| PL-BR-003 | A payment is credited once, however many times Cashfree reports it. | None. | Cashfree retries callbacks; incident INC-2025-07 |
-| PL-BR-004 | An unpaid payment link expires after 30 days; resending creates a new link for the same invoice. | None. | Unknown. (ask: product lead, since 2026-11-02) |
-
-## States and flows
-| From | To | Trigger | Actor | Guard |
+| ID | Rule | Edge | Status | Source |
 | --- | --- | --- | --- | --- |
-| Payment link: none | active | Admin sends a link, or a scheduled fee run creates one | Institution admin, fee schedule | PL-BR-001 |
-| Payment link: active | paid | Cashfree confirms the payment | Cashfree | PL-BR-003 |
-| Payment link: active | disabled | Admin disables the link | Institution admin | PL-BR-002 |
-| Payment link: active | expired | 30 days pass unpaid | Nightly expiry | PL-BR-004 |
+| PL-BR-001 | One invoice has one active payment link, and every payer of that invoice gets the same link. | If two payers both pay the same link, Cashfree accepts both; support refunds the second by hand. | active | Stops two parents paying the same fee; fee-groups PRD AC-06 |
+| PL-BR-002 | Disabling a payment link stops reminders for that invoice. | A payment that arrives after the disable is accepted and the invoice is flagged for the admin, never refused. | active | Admin complaints in 2025 support tickets |
+| PL-BR-003 | A payment is credited once, however many times Cashfree reports it. | None. | active | Cashfree retries callbacks; incident INC-2025-07 |
+| PL-BR-004 | An unpaid payment link expires after 30 days; resending creates a new link for the same invoice. | None. | active | Unknown. (ask: product lead, since 2026-11-02) |
+
+## User flows
 - Pay from WhatsApp: payer taps the link, the pay page shows student, month and amount, payer pays on Cashfree, and the pay page and admin app both show paid; a disabled link shows "link expired" (PL-BR-002).
 
-## Invariants and consistency
-| ID | Invariant | Enforces | Where (repo · path · symbol) | Consistency | Tested by |
+## States and transitions
+| Entity | From | To | Trigger | Actor | Rule |
 | --- | --- | --- | --- | --- | --- |
-| PL-INV-001 | An invoice has at most one active payment link, shared by every payer of that invoice. | PL-BR-001 | cofee-backend · internal/links/link.go · Service.ForInvoice | transactional: partial unique index one_active_link on payment_links | cofee-backend · internal/links/link_test.go · TestForInvoiceReusesActiveLink |
-| PL-INV-002 | A payment link's amount equals its invoice's amount in paise, never a float. | ARCH-INV-001 | cofee-backend · internal/links/link.go · Service.ForInvoice | transactional | cofee-backend · internal/links/link_test.go · TestLinkAmountInPaise |
-| PL-INV-003 | A Cashfree callback is applied at most once per Cashfree event id. | PL-BR-003 | cofee-backend · internal/webhooks/cashfree.go · CashfreeHandler.Handle | transactional: primary key on webhook_events.provider_event_id | cofee-backend · internal/webhooks/cashfree_test.go · TestDuplicateCallbackIgnored |
-| PL-INV-004 | Disabling a payment link stops new reminders for that invoice within one reminder run. | PL-BR-002 | cofee-backend · internal/links/disable.go · Service.Disable | eventual: next reminder run, at most 15 min | Unknown. (ask: payments pod lead, since 2026-11-02) |
+| Payment link | none | active | Admin sends a link, or a scheduled fee run creates one | Institution admin, fee schedule | PL-BR-001 |
+| Payment link | active | paid | Cashfree confirms the payment | Cashfree | PL-BR-003 |
+| Payment link | active | disabled | Admin disables the link | Institution admin | PL-BR-002 |
+| Payment link | active | expired | 30 days pass unpaid | Nightly expiry | PL-BR-004 |
 
-## Change scenarios
-| ID | When changing | Also affects | Verify with | Source |
-| --- | --- | --- | --- | --- |
-| PL-CS-001 | Disabling a payment link: cofee-backend · internal/links/disable.go · Service.Disable | Reminders stop for that invoice (PL-INV-004); a late Cashfree payment is still accepted (PL-BR-002 edge); payer sees cofee-payer-app · lib/pay/link_expired_screen.dart · LinkExpiredScreen | cofee-backend · internal/links/disable_test.go · TestDisablePublishesEvent; cofee-payer-app · test/pay/link_expired_screen_test.dart · LinkExpiredScreen | Incident INC-2025-07 |
-| PL-CS-002 | Cashfree retry settings: cofee-backend · internal/config/links.go · Config.CashfreeRetryMax | A changed idempotency key creates two Cashfree links for one invoice (PL-INV-001); payments stuck as pending | cofee-backend · internal/links/link_test.go · TestRetryKeepsIdempotencyKey | Review comment on PR #418 |
-| PL-CS-003 | Payment-link amount handling: cofee-backend · internal/links/link.go · Service.ForInvoice | Revenue report totals; the amount in the WhatsApp reminder template (reminders domain); ARCH-INV-001 | cofee-backend · internal/links/link_test.go · TestLinkAmountInPaise | Domain owner, 2026-11-02 |
+# Part B: Technical
 
-## Proposed rules and scenarios
-| Kind | Proposal | Where (repo · path · symbol) | Evidence |
+## Invariants
+| ID | Invariant | Enforced by | Test evidence |
 | --- | --- | --- | --- |
-| invariant | A payment link's expiry date never moves earlier once sent. | cofee-backend · internal/links/sweep.go · ExpirySweep.Run | The sweep only expires links past their date; no code shortens it. |
+| PL-INV-001 | An invoice has at most one active payment link, shared by every payer of that invoice. Enforces PL-BR-001. Consistency: transactional: partial unique index one_active_link on payment_links. | cofee-backend · internal/links/link.go · Service.ForInvoice | cofee-backend · internal/links/link_test.go · TestForInvoiceReusesActiveLink |
+| PL-INV-002 | A payment link's amount equals its invoice's amount in paise, never a float. Enforces ARCH-INV-001. Consistency: transactional. | cofee-backend · internal/links/link.go · Service.ForInvoice | cofee-backend · internal/links/link_test.go · TestLinkAmountInPaise |
+| PL-INV-003 | A Cashfree callback is applied at most once per Cashfree event id. Enforces PL-BR-003. Consistency: transactional: primary key on webhook_events.provider_event_id. | cofee-backend · internal/webhooks/cashfree.go · CashfreeHandler.Handle | cofee-backend · internal/webhooks/cashfree_test.go · TestDuplicateCallbackIgnored |
+| PL-INV-004 | Disabling a payment link stops new reminders for that invoice within one reminder run. Enforces PL-BR-002. Consistency: eventual: next reminder run, at most 15 min. | cofee-backend · internal/links/disable.go · Service.Disable | Unknown. (ask: payments pod lead, since 2026-11-02) |
 
 ## Failure, concurrency and idempotency
 - Two admins send a link for one invoice at once: Service.ForInvoice hits the one_active_link index on the second insert and returns the first link; see PL-INV-001.
@@ -66,17 +71,45 @@ Payment links let a payer pay one invoice through Cashfree, from a WhatsApp mess
 - A payment arrives after its link was disabled: CashfreeHandler.Handle still records it and flags the invoice for the admin, never drops money; see PL-BR-002.
 - Cashfree link API times out: Service.ForInvoice retries up to LINKS_CASHFREE_RETRY_MAX times with the same idempotency key, so a retry never creates a second Cashfree link; see PL-CS-002.
 
+# Part C: Side effects
+
+## Outbound
+None.
+
+## Inbound
+<!-- generated:inbound begin; from the other domains' Outbound tables by living_docs.py; do not edit -->
+None.
+<!-- generated:inbound end -->
+
+## Change scenarios
+| ID | If you change | Also change | Where |
+| --- | --- | --- | --- |
+| PL-CS-001 | Disabling a payment link: cofee-backend · internal/links/disable.go · Service.Disable | Reminders stop for that invoice (PL-INV-004); a late Cashfree payment is still accepted (PL-BR-002 edge); payer sees cofee-payer-app · lib/pay/link_expired_screen.dart · LinkExpiredScreen | verify with cofee-backend · internal/links/disable_test.go · TestDisablePublishesEvent; cofee-payer-app · test/pay/link_expired_screen_test.dart · LinkExpiredScreen; source: Incident INC-2025-07 |
+| PL-CS-002 | Cashfree retry settings: cofee-backend · internal/config/links.go · Config.CashfreeRetryMax | A changed idempotency key creates two Cashfree links for one invoice (PL-INV-001); payments stuck as pending | verify with cofee-backend · internal/links/link_test.go · TestRetryKeepsIdempotencyKey; source: Review comment on PR #418 |
+| PL-CS-003 | Payment-link amount handling: cofee-backend · internal/links/link.go · Service.ForInvoice | Revenue report totals; the amount in the WhatsApp reminder template (reminders domain); ARCH-INV-001 | verify with cofee-backend · internal/links/link_test.go · TestLinkAmountInPaise; source: Domain owner, 2026-11-02 |
+
+# Part D: Maintenance
+
 ## Gotchas
 - Do not copy CreateLinkV0 (cofee-backend · internal/links/legacy.go · CreateLinkV0): it creates a Cashfree link without checking for an active one, which breaks PL-INV-001. Use Service.ForInvoice.
 - To add a payment provider, implement LinkProvider (cofee-backend · internal/links/provider.go · LinkProvider) and register it in Providers.
 - Alert cashfree-webhook-errors (5xx above 2% for 10 min) means callbacks are failing and parents who paid may still see pending; start at dashboard Payments/Webhooks; related PL-INV-003.
 - Alert link-expiry-sweep-failed means expired links stay active and parents can still pay old invoices; start at logs job=link-expiry-sweep; related PL-BR-004.
-
-## Open questions and known gaps
-- Whether a disabled payment link can be re-enabled or must be replaced: Unknown. (ask: product lead, since 2026-11-02)
-- PL-INV-004 has no automated test. Unknown. (ask: payments pod lead, since 2026-11-02)
-- Whether revenue reports read payment_links nightly or in real time: Unknown. (ask: data lead, since 2026-11-02)
 - CreateLinkV0 is still called by cofee-admin-app below 3.2.0; removal waits until those versions fall under 1% of sessions.
+
+## Open questions
+| Question | Ask | Since |
+| --- | --- | --- |
+| Whether a disabled payment link can be re-enabled or must be replaced | product lead | 2026-11-02 |
+| PL-INV-004 has no automated test. | payments pod lead | 2026-11-02 |
+| Whether revenue reports read payment_links nightly or in real time | data lead | 2026-11-02 |
+
+## Proposed rules and scenarios
+| Kind | Proposal | Where | Evidence |
+| --- | --- | --- | --- |
+| invariant | A payment link's expiry date never moves earlier once sent. | cofee-backend · internal/links/sweep.go · ExpirySweep.Run | The sweep only expires links past their date; no code shortens it. |
+
+# Part E: Generated from code
 
 ## Cross-repo connections
 <!-- generated:connections begin; from code by living_docs.py; do not edit -->

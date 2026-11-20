@@ -54,7 +54,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
    Still run step 6b (`ensure-index-state`) so template-written state gets `docs_sha256`.
 5. **Build the knowledge base (only if stale / missing)** — first run
    `python3 .maestro/engine/docs_rewrite.py check --root . --plan .maestro/index/workspace-sync-init-knowledge.json`;
-   when `needs_approval` is true (verified docs would be rewritten), show its `summary` in ONE
+   when `needs_approval` is true (reviewed docs would be rewritten), show its `summary` in ONE
    AskUserQuestion — **Refresh the docs** or **Keep the docs as they are** (set
    `domains_written=0`, skip to step 6b) — and wait for the answer. Then load and follow the
    **`build-knowledge`** skill (or start the `build-knowledge` workflow): read the code and
@@ -74,7 +74,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
 7. **Domain rules (optional)** — run `python3 .maestro/engine/living_docs.py status --root .`.
    Invariants that must never break (`<PREFIX>-INV-NNN`) and change scenarios
    (`<PREFIX>-CS-NNN`) are written by the project's people in `docs/<domain>.md`
-   (`## Invariants and consistency`, `## Change scenarios`) and `docs/impact/side-effects.yaml`;
+   (`## Invariants`, `## Change scenarios`) and `docs/impact/side-effects.yaml`;
    Maestro uses them when they exist and runs fine without them.
    - **`present=true`** — run `python3 .maestro/engine/living_docs.py rules --root .` and report
      its `summary`. When `valid=false`, show its `issues_summary` and say the docs or the code need
@@ -83,7 +83,7 @@ inline. Never parallelize these steps because each consumes the previous step's 
      Cursor, answered in the next message): Maestro can use domain rules and change scenarios if
      the team adds them under `docs/`. Options: **Create the starter file** (run
      `python3 .maestro/engine/living_docs.py scaffold --root .`, then point them at
-     `docs/impact/side-effects.yaml`, the `## Invariants and consistency` / `## Change scenarios`
+     `docs/impact/side-effects.yaml`, the `## Invariants` / `## Change scenarios`
      sections of each `docs/<domain>.md`, and the proposals build-knowledge left under
      `## Proposed rules and scenarios`, as described in `.maestro/docs/domain-rules.md`) or
      **Skip, no domain rules**. Either answer finishes init.

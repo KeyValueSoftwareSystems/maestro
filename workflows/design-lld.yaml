@@ -108,7 +108,7 @@ nodes:
       source/tests around the affected seam. Do not scan broadly. The living-doc facts the PRD and
       HLD cite are at ${steps.lld_facts.outputs.facts_path}; the domains' docs are
       ${steps.lld_facts.outputs.doc_paths} (read the engineering part:
-      `python3 .maestro/engine/living_docs.py show <domain> --part engineering`). Settle what an invariant or change scenario
+      `python3 .maestro/engine/living_docs.py show <domain> --part engineering`; its depends_on line names the other domains a change there reaches: read each one's `--part summary`, and its side effects in the Outbound and Inbound tables). Settle what an invariant or change scenario
       already answers instead of asking it.
 
       Decide normal implementation details from clear existing conventions. Ask only unresolved
@@ -240,7 +240,7 @@ nodes:
       Use the approved HLD, the contract at .maestro/runs/${inputs.slug}/design/openapi.yaml when it exists,
       the confirmed decisions at .maestro/runs/${inputs.slug}/decisions/lld.json, each repository's
       guidance and maintained map, the cited living-doc facts and the engineering part of the
-      domains' docs (the `living_docs` input; `python3 .maestro/engine/living_docs.py show <domain> --part engineering`), and the bounded source/test evidence already inspected. Keep every
+      domains' docs (the `living_docs` input; `python3 .maestro/engine/living_docs.py show <domain> --part engineering`; its depends_on line names the other domains a change there reaches: read each one's `--part summary`, and its side effects in the Outbound and Inbound tables), and the bounded source/test evidence already inspected. Keep every
       invariant the facts list, check each change scenario they name, and cite those IDs where
       the LLD relies on them.
 

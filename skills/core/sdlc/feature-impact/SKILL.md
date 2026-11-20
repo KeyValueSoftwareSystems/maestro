@@ -17,7 +17,7 @@ nobody listed. Minutes, not a design pass.
 Your instructions name the approved PRD and the impact assessment path. Read each repository's
 codebase map (`docs/codebase-maps/<name>.md`), the workspace architecture summary when there is one, and
 only the source needed to confirm where a behaviour lives. When the workspace has invariants
-and change scenarios (the `## Invariants and consistency` and `## Change scenarios` sections of
+and change scenarios (the `## Invariants` and `## Change scenarios` sections of
 `docs/<domain>.md`, or `docs/impact/side-effects.yaml`), read those of the domains the
 feature touches; without them, carry on as usual. Standalone? read the PRD the user names
 and write the assessment to a path you choose (and tell the user where).

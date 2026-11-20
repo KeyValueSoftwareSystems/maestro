@@ -45,7 +45,7 @@ def build_workspace(target):
     living_docs.stamp(target)
     for rel in ("docs/architecture.md", D):
         path = os.path.join(target, rel)
-        text = open(path).read().replace("status: draft", "status: verified")
+        text = open(path).read().replace("status: draft", "status: reviewed")
         open(path, "w").write(text)
     report, _ = living_docs.run_check(target, write=True)
     assert not report.errors, report.errors
@@ -234,8 +234,8 @@ class FaultInjectionTest(LivingDocsBase):
         self.assert_caught(lambda r: edit(os.path.join(r, T), "## Gotchas", "## Ownership"), "ERROR:R7")
 
     def test_unowned_unknown(self):
-        self.assert_caught(lambda r: edit(os.path.join(r, T), "Unknown. (ask: data lead, since 2026-11-02)",
-                                          "Unknown."), "ERROR:R7")
+        self.assert_caught(lambda r: edit(os.path.join(r, T), "| Unknown. (ask: product lead, since 2026-11-02) |",
+                                          "| Unknown. |"), "ERROR:R7")
 
     def test_pronoun_row(self):
         self.assert_caught(lambda r: edit(os.path.join(r, F), "| Payer | A phone number",
@@ -310,9 +310,9 @@ class StructureTest(LivingDocsBase):
 
     def test_wrong_table_columns(self):
         root = self.copy()
-        edit(os.path.join(root, F), "| ID | Rule | Edge | Why / source |", "| ID | Rule | Why / source |")
+        edit(os.path.join(root, F), "| ID | Rule | Edge | Status | Source |", "| ID | Rule | Status | Source |")
         report = self.check(root)
-        self.assertTrue(any("use the columns ID | Rule | Edge | Why / source" in e for e in report.errors))
+        self.assertTrue(any("use the columns ID | Rule | Edge | Status | Source" in e for e in report.errors))
 
     def test_id_defined_in_the_wrong_doc_kind(self):
         root = self.copy()
@@ -342,8 +342,8 @@ class CommandsTest(LivingDocsBase):
     def test_snippet_reads_a_row_on_its_own(self):
         defs = living_docs.collect_ids(living_docs.load_docs(self.clean), living_docs.Report())
         text = living_docs.snippet(defs, "PL-INV-001")
-        self.assertTrue(text.startswith("PL-INV-001 (payment-links.md · Invariants and consistency)"))
-        self.assertIn("Enforces: PL-BR-001", text)
+        self.assertTrue(text.startswith("PL-INV-001 (payment-links.md · Invariants)"))
+        self.assertIn("Enforced by: cofee-backend · internal/links/link.go · Service.ForInvoice", text)
 
     def test_cited_writes_only_the_cited_rows(self):
         root = self.copy()
@@ -381,7 +381,7 @@ class CommandsTest(LivingDocsBase):
         self.assertEqual(doc.fm["status"], "draft")
         self.assertEqual(doc.fm["verified_at"]["cofee-backend"], living_docs._head(repo))
         arch = living_docs.Doc(os.path.join(root, "docs/architecture.md"), root, "architecture")
-        self.assertEqual(arch.fm["status"], "verified")
+        self.assertEqual(arch.fm["status"], "reviewed")
 
     def test_regenerated_blocks_alone_do_not_restamp(self):
         root = self.copy()
@@ -393,9 +393,11 @@ class CommandsTest(LivingDocsBase):
 
     def test_show_prints_only_the_asked_part(self):
         product = living_docs.show(self.clean, "payment-links", "product")
+        self.assertIn("## Summary", product)
         self.assertIn("## Business rules", product)
-        self.assertIn("## Open questions and known gaps", product)
-        self.assertNotIn("## Invariants and consistency", product)
+        self.assertIn("## Open questions", product)
+        self.assertIn("> depends_on: None.", product)
+        self.assertNotIn("## Invariants", product)
         self.assertNotIn("### APIs", product)
         engineering = living_docs.show(self.clean, "payment-links", "engineering")
         self.assertIn("| PL-INV-001 |", engineering)
@@ -428,12 +430,23 @@ class CommandsTest(LivingDocsBase):
         self.assertIn("R7", payload["issues_summary"])
 
 
+FORMAT3 = os.path.join(HERE, "..", "..", "testdata", "living-docs", "format-3", "payment-links.md")
+
+
 class MigrateTest(LivingDocsBase):
     """Format 2.x kept two written docs per domain (functional/, technical/) and generated files in
-    _generated/ and _index/; migrate moves them into one docs/<domain>.md, content verbatim."""
+    _generated/ and _index/; format 3 put each domain in one docs/<domain>.md; format 4 groups its
+    sections in parts. migrate moves either into format 4, every word kept."""
+
+    def format3(self):
+        """The fixture as it was in format 3, in place of the format-4 doc."""
+        root = self.copy()
+        shutil.copy(FORMAT3, os.path.join(root, D))
+        edit(os.path.join(root, "docs/architecture.md"), "status: reviewed", "status: verified")
+        return root
 
     def legacy(self):
-        root = self.copy()
+        root = self.format3()
         doc = living_docs.Doc(os.path.join(root, D), root, "domain")
         fm = re.match(r"---\n(.*?)\n---\n", doc.text, re.S).group(1)
         product = ["Purpose and actors", "Glossary and aliases", "Business rules", "States and flows"]
@@ -443,6 +456,9 @@ class MigrateTest(LivingDocsBase):
         def body(names):
             return "".join(f"## {n}\n{doc.section_text(n)}\n\n" for n in names)
 
+        lines = doc.section_text("Open questions and known gaps").split("\n")
+        owned = "\n".join(line for line in lines if "Unknown. (ask:" in line)
+        gaps = "\n".join(line for line in lines if "Unknown. (ask:" not in line)
         func_fm = re.sub(r"^code_roots:.*\n", "", fm.replace("doc: domain", "doc: functional") + "\n", flags=re.M)
         os.makedirs(os.path.join(root, "docs/functional"))
         os.makedirs(os.path.join(root, "docs/technical"))
@@ -451,13 +467,12 @@ class MigrateTest(LivingDocsBase):
         open(os.path.join(root, "docs/functional/payment-links.md"), "w").write(
             f"---\n{func_fm}---\n> payment-links functional. See technical/payment-links.md.\n\n"
             "# payment-links: Functional\n\n" + body(product)
-            + "## Open questions and owned unknowns\n- Whether a disabled link can be re-enabled: "
-            "Unknown. (ask: product lead, since 2026-11-02)\n")
+            + f"## Open questions and owned unknowns\n{owned}\n")
         open(os.path.join(root, "docs/technical/payment-links.md"), "w").write(
             f"---\n{fm.replace('doc: domain', 'doc: technical')}\n---\n> payment-links technical.\n\n"
             "# payment-links: Technical\n\n" + body(engineering[:3])
             + f"## Cross-repo connections\n{doc.section_text('Cross-repo connections')}\n\n"
-            + body(engineering[3:]) + "## Known gaps and tech debt\n- CreateLinkV0 is still called.\n")
+            + body(engineering[3:]) + f"## Known gaps and tech debt\n{gaps}\n")
         open(os.path.join(root, "docs/_generated/payment-links.inventory.md"), "w").write("# old\n")
         open(os.path.join(root, "docs/_generated/diagrams/architecture.mmd"), "w").write("graph LR\n")
         open(os.path.join(root, "docs/_index/code-to-facts.md"), "w").write("# old\n")
@@ -467,36 +482,187 @@ class MigrateTest(LivingDocsBase):
              "| --- | --- | --- | --- | --- | --- |\n| payment-links")
         edit(os.path.join(root, "docs/architecture.md"), "[payment-links](payment-links.md)",
              "[technical](technical/payment-links.md) | [functional](functional/payment-links.md)")
-        return root, doc
+        return root
+
+    def assert_matches_the_fixture(self, root):
+        """Every written section equals the format-4 fixture's; only the summary and references,
+        which no earlier format had, are left for the writer (and fail the check until written)."""
+        report, _ = living_docs.run_check(root, write=True)
+        self.assertEqual([e for e in report.errors if "§Summary" not in e], [])
+        self.assertTrue(any("§Summary: the summary is empty" in e for e in report.errors))
+        after = living_docs.Doc(os.path.join(root, D), root, "domain")
+        fixture = living_docs.Doc(os.path.join(self.clean, D), self.clean, "domain")
+        for section in living_docs.FORMAT["domain"]["order"]:
+            if section in ("Summary", "References"):
+                self.assertEqual(after.section_text(section), "None.", section)
+            elif section not in ("Cross-repo connections", "Inventory"):
+                self.assertEqual(after.section_text(section), fixture.section_text(section), section)
+        self.assertEqual(after.parts, living_docs.FORMAT["domain"]["parts"])
+        self.assertEqual(after.fm["status"], "reviewed")
+        self.assertEqual(after.fm["depends_on"], [])
+
+    def test_upgrade_moves_a_format_3_doc_into_parts(self):
+        root = self.format3()
+        self.assertFalse(living_docs.current_format(root))
+        result = living_docs.migrate(root)
+        self.assertEqual(result["migrated"], ["payment-links"])
+        self.assert_matches_the_fixture(root)
+        arch = living_docs.Doc(os.path.join(root, "docs/architecture.md"), root, "architecture")
+        self.assertEqual(arch.fm["status"], "reviewed")
+        self.assertEqual(living_docs.migrate(root)["migrated"], [], "a second run is a no-op")
 
     def test_migrate_moves_the_old_layout_into_one_doc(self):
-        root, before = self.legacy()
+        root = self.legacy()
         self.assertTrue(any("old layout" in e for e in self.check(root).errors))
         result = living_docs.migrate(root)
         self.assertEqual(result["migrated"], ["payment-links"])
         for gone in ("functional", "technical", "_generated", "_index"):
             self.assertFalse(os.path.exists(os.path.join(root, "docs", gone)), gone)
-        report, _ = living_docs.run_check(root, write=True)
-        self.assertEqual(report.errors, [])
-        after = living_docs.Doc(os.path.join(root, D), root, "domain")
-        for section in ("Business rules", "Invariants and consistency", "Change scenarios", "Gotchas"):
-            self.assertEqual(after.section_text(section), before.section_text(section), section)
-        gaps = after.section_text("Open questions and known gaps")
-        self.assertIn("re-enabled", gaps)
-        self.assertIn("CreateLinkV0 is still called", gaps)
-        self.assertEqual(after.fm["status"], "verified")
+        self.assert_matches_the_fixture(root)
         self.assertIn("[payment-links](payment-links.md)", open(os.path.join(root, "docs/architecture.md")).read())
         self.assertEqual(living_docs.migrate(root)["migrated"], [], "a second run is a no-op")
 
     def test_snapshot_migrate_runs_before_the_snapshot(self):
-        root, _ = self.legacy()
+        root = self.legacy()
         snap = os.path.join(root, "snap.json")
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
             living_docs.main(["snapshot", "--root", root, "--out", snap, "--migrate"])
         self.assertEqual(json.loads(out.getvalue())["migrated_csv"], "payment-links")
         team = json.load(open(snap))["team"]["locked"]
-        self.assertIn("PL-INV-001", team["payment-links.md"]["Invariants and consistency"])
+        self.assertIn("PL-INV-001", team["payment-links.md"]["Invariants"])
+
+
+class Format4Test(LivingDocsBase):
+    """The format-4 domain doc: a summary, references that open, parts, side effects that link
+    domains (Outbound written once, Inbound and depends_on derived), and each fact in one place."""
+
+    def add_reminders(self, root):
+        """A second domain, so payment-links has someone to have an effect on."""
+        scratch = os.path.join(root, "scratch")
+        living_docs.write_minimal_docs(scratch, "reminders", ["cofee-backend"])
+        text = open(os.path.join(scratch, "docs/reminders.md")).read()
+        text = text.replace("id_prefix: DM", "id_prefix: RM").replace("DM-", "RM-")
+        text = text.replace("cofee-backend/src", "cofee-backend/internal/jobs")
+        open(os.path.join(root, "docs/reminders.md"), "w").write(text)
+        shutil.rmtree(scratch)
+        edit(os.path.join(root, "docs/architecture.md"), "| payment-links | One Cashfree",
+             "| reminders | Fee reminders | cofee-backend | payments pod | [reminders](reminders.md) |\n"
+             "| payment-links | One Cashfree")
+
+    def outbound(self, root, target="[reminders](reminders.md)", rule="RM-BR-001"):
+        edit(os.path.join(root, D), "## Outbound\nNone.",
+             "## Outbound\n| ID | Trigger rule | Target domain | Effect | Target rule | Same transaction "
+             "| On failure |\n| --- | --- | --- | --- | --- | --- | --- |\n| PL-SE-001 | PL-BR-002 | "
+             f"{target} | Reminders for the invoice stop (event link.disabled) | {rule} | no | "
+             "the next reminder run skips the invoice |")
+
+    def test_outbound_derives_inbound_and_depends_on(self):
+        root = self.copy()
+        self.add_reminders(root)
+        self.outbound(root)
+        report, _ = living_docs.run_check(root, write=True)
+        self.assertEqual(report.errors, [])
+        reminders = living_docs.Doc(os.path.join(root, "docs/reminders.md"), root, "domain")
+        self.assertIn("| PL-SE-001 | [payment-links](payment-links.md) | Reminders for the invoice stop "
+                      "(event link.disabled) | RM-BR-001 |", reminders.section_text("Inbound"))
+        self.assertEqual(reminders.fm["depends_on"], ["payment-links"])
+        links = living_docs.Doc(os.path.join(root, D), root, "domain")
+        self.assertEqual(links.fm["depends_on"], ["reminders"])
+        self.assertIn("> depends_on: reminders (docs/reminders.md)",
+                      living_docs.show(root, "payment-links", "summary"))
+        self.assertEqual(self.check(root).errors, [], "a second check finds everything current")
+
+    def test_depends_on_out_of_date_fails_without_write(self):
+        root = self.copy()
+        self.add_reminders(root)
+        living_docs.run_check(root, write=True)
+        self.outbound(root)
+        report = self.check(root)
+        self.assertTrue(any("depends_on" in e and "misses reminders" in e for e in report.errors),
+                        report.errors)
+        self.assertTrue(any("generated:inbound" in e for e in report.errors), report.errors)
+
+    def test_side_effect_names_a_real_domain_and_its_rule(self):
+        root = self.copy()
+        self.add_reminders(root)
+        self.outbound(root, target="[billing](billing.md)")
+        self.assertTrue(any("target domain 'billing' has no doc" in e for e in self.check(root).errors))
+        root = self.copy()
+        self.add_reminders(root)
+        self.outbound(root, rule="PL-BR-001")
+        self.assertTrue(any("PL-BR-001 is not a rule of reminders" in e for e in self.check(root).errors))
+        root = self.copy()
+        edit(os.path.join(root, D), "depends_on: []", "depends_on: [billing]")
+        self.assertTrue(any("'billing' has no doc" in e for e in self.check(root).errors))
+
+    def test_references_must_open(self):
+        root = self.copy()
+        edit(os.path.join(root, D), "| [Feature catalog](product/feature-catalog.md) |",
+             "| [Feature catalog](product/missing.md) |")
+        edit(os.path.join(root, D), "| [Analytics events](product/analytics-events.md) |",
+             "| docs/product/analytics-events.md |")
+        errors = self.check(root).errors
+        self.assertTrue(any("product/missing.md does not exist" in e for e in errors), errors)
+        self.assertTrue(any("is not a link" in e for e in errors), errors)
+
+    def test_summary_is_required_and_short(self):
+        root = self.copy()
+        text = open(os.path.join(root, D)).read()
+        summary = re.search(r"## Summary\n(.*?)\n\n", text, re.S).group(1)
+        open(os.path.join(root, D), "w").write(text.replace(summary, summary + "\nOne more.\nAnd more."))
+        self.assertIn("WARN:R7", rules(self.check(root)))
+        open(os.path.join(root, D), "w").write(text.replace(summary, "None."))
+        self.assertTrue(any("summary is empty" in e for e in self.check(root).errors))
+
+    def test_a_section_under_the_wrong_part(self):
+        root = self.copy()
+        text = open(os.path.join(root, D)).read()
+        gotchas = re.search(r"## Gotchas\n.*?\n\n", text, re.S).group(0)
+        text = text.replace(gotchas, "").replace("# Part B: Technical\n\n", "# Part B: Technical\n\n" + gotchas)
+        open(os.path.join(root, D), "w").write(text)
+        errors = self.check(root).errors
+        self.assertTrue(any("§Gotchas: section is under the wrong part" in e for e in errors), errors)
+        root = self.copy()
+        edit(os.path.join(root, D), "# Part C: Side effects\n", "")
+        self.assertTrue(any("part headings are" in e for e in self.check(root).errors))
+
+    def test_rule_status_invariant_tests_and_open_questions(self):
+        root = self.copy()
+        edit(os.path.join(root, D), "| None. | active | Cashfree retries", "| None. | maybe | Cashfree retries")
+        edit(os.path.join(root, D), "| Unknown. (ask: payments pod lead, since 2026-11-02) |\n", "| None. |\n")
+        edit(os.path.join(root, D), "| data lead | 2026-11-02 |", "| data lead | soon |")
+        errors = self.check(root).errors
+        self.assertTrue(any("PL-BR-003 has status 'maybe'" in e for e in errors), errors)
+        self.assertTrue(any("PL-INV-004 has no test evidence" in e for e in errors), errors)
+        self.assertTrue(any("has no date" in e for e in errors), errors)
+
+    def test_removed_rule_is_retired(self):
+        root = self.copy()
+        edit(os.path.join(root, D), "| None. | active | Cashfree retries", "| None. | removed | Cashfree retries")
+        defs = living_docs.collect_ids(living_docs.load_docs(root), living_docs.Report())
+        self.assertTrue(living_docs.is_retired(defs, "PL-BR-003"))
+        self.assertFalse(living_docs.is_retired(defs, "PL-BR-001"))
+
+    def test_each_fact_in_one_place(self):
+        root = self.copy()
+        edit(os.path.join(root, D), "Admin disables the link | Institution admin",
+             "Admin disables the link (HTTP 204) | Institution admin")
+        edit(os.path.join(root, D), "retries up to LINKS_CASHFREE_RETRY_MAX times",
+             "retries up to LINKS_CASHFREE_RETRY_MAX times (default 3)")
+        warnings = self.check(root).warnings
+        self.assertTrue(any("§States and transitions: names an HTTP status" in w for w in warnings), warnings)
+        self.assertTrue(any("repeats the default of LINKS_CASHFREE_RETRY_MAX" in w for w in warnings), warnings)
+
+    def test_error_codes_take_one_handling_column_per_client(self):
+        root = self.copy()
+        table = ("## Error codes\n| Code | HTTP | Raised by | Web handling | Mobile handling |\n"
+                 "| --- | --- | --- | --- | --- |\n| LINK_DISABLED | 410 | cofee-backend · internal/links/"
+                 "handler.go · Handler.Get | — | Shows the link-expired screen |\n\n# Part C: Side effects\n")
+        edit(os.path.join(root, D), "# Part C: Side effects\n", table)
+        self.assertEqual(self.check(root).errors, [])
+        edit(os.path.join(root, D), "| Web handling | Mobile handling |", "| Web | Mobile |")
+        self.assertTrue(any("§Error codes" in e for e in self.check(root).errors))
 
 
 class IntegrationTest(LivingDocsBase):
@@ -540,7 +706,7 @@ class TeamOwnedTest(LivingDocsBase):
         edit(path, "| PL-INV-001 | An invoice has at most one active payment link",
              "| PL-INV-001 | An invoice has any number of payment links")
         report, _ = living_docs.run_check(root, write=True, locked_from=snap)
-        self.assertTrue(any(e.startswith("R9 payment-links.md §Invariants and consistency")
+        self.assertTrue(any(e.startswith("R9 payment-links.md §Invariants")
                             for e in report.errors), report.errors)
         self.assertEqual(open(path).read(), before)
 
@@ -551,8 +717,8 @@ class TeamOwnedTest(LivingDocsBase):
         text = open(os.path.join(root, "scratch/docs/reminders.md")).read()
         text = text.replace("id_prefix: DM", "id_prefix: RM").replace("DM-", "RM-")
         text = text.replace("cofee-backend/src", "cofee-backend/internal/links")
-        text = text.replace("## Invariants and consistency\nNone.",
-                            "## Invariants and consistency\n| ID | Invariant | Enforces | Where (repo · path · symbol) | Consistency | Tested by |\n| --- | --- | --- | --- | --- | --- |\n| RM-INV-001 | Reminders stop when a link is disabled. | RM-BR-001 | cofee-backend · internal/links/disable.go · Service.Disable | eventual | Unknown. (ask: team, since 2026-11-10) |")
+        text = text.replace("## Invariants\nNone.",
+                            "## Invariants\n| ID | Invariant | Enforced by | Test evidence |\n| --- | --- | --- | --- |\n| RM-INV-001 | Reminders stop when a link is disabled. | cofee-backend · internal/links/disable.go · Service.Disable | Unknown. (ask: team, since 2026-11-10) |")
         open(os.path.join(root, "docs/reminders.md"), "w").write(text)
         report, _ = living_docs.run_check(root, write=True, locked_from=snap)
         self.assertTrue(any(e.startswith("R9 reminders.md") for e in report.errors), report.errors)
@@ -582,7 +748,7 @@ class TeamOwnedTest(LivingDocsBase):
                             and "restored" in e for e in report.errors), report.errors)
         self.assertEqual(open(path).read(), original)
         copy = living_docs.Doc(renamed, root, "domain")
-        self.assertEqual(copy.section_text("Invariants and consistency"), "None.")
+        self.assertEqual(copy.section_text("Invariants"), "None.")
         self.assertEqual(copy.section_text("Change scenarios"), "None.")
 
     def test_removed_doc_is_restored_with_write_and_fails_without(self):
@@ -608,7 +774,7 @@ class TeamOwnedTest(LivingDocsBase):
         root, snap, path = self._write_rules_snapshot_case()
         before = open(path).read()
         text = before.replace("## Change scenarios\n",
-                              "## Invariants and consistency\nPL-INV-777 slipped in.\n\n## Change scenarios\n", 1)
+                              "## Invariants\nPL-INV-777 slipped in.\n\n## Change scenarios\n", 1)
         text = text.replace("| PL-INV-001 | An invoice has at most one active payment link",
                             "| PL-INV-001 | An invoice has any number of payment links")
         open(path, "w").write(text)
@@ -630,8 +796,8 @@ class TeamOwnedTest(LivingDocsBase):
         root, snap, path = self._write_rules_snapshot_case()
         before = open(path).read()
         # a fenced example of a heading before the real one must not capture the restore
-        text = before.replace("## Invariants and consistency\n",
-                              "## Invariants and consistency\n```md\n## Change scenarios\nnot a section\n```\n", 1)
+        text = before.replace("## Invariants\n",
+                              "## Invariants\n```md\n## Change scenarios\nnot a section\n```\n", 1)
         open(path, "w").write(text)
         report, _ = living_docs.run_check(root, write=True, locked_from=snap)
         self.assertTrue(any(e.startswith("R9") for e in report.errors), report.errors)
@@ -646,8 +812,8 @@ class TeamOwnedTest(LivingDocsBase):
         self.assertTrue(any(e.startswith("R9") and "fence" in e for e in report.errors), report.errors)
         # an unclosed fence inside a team section is no silent pass either
         root, snap, path = self._write_rules_snapshot_case()
-        text = open(path).read().replace("## Invariants and consistency\n",
-                                         "## Invariants and consistency\n```\n", 1)
+        text = open(path).read().replace("## Invariants\n",
+                                         "## Invariants\n```\n", 1)
         open(path, "w").write(text)
         report, _ = living_docs.run_check(root, write=True, locked_from=snap)
         self.assertTrue(any(e.startswith("R9") and "fence" in e for e in report.errors), report.errors)
@@ -719,7 +885,8 @@ class TeamOwnedTest(LivingDocsBase):
         result = living_docs.rules_check(root)
         self.assertTrue(result["valid"], result["errors"])
         self.assertEqual(living_docs.next_ids(root, "PL"),
-                         {"br": "PL-BR-005", "inv": "PL-INV-005", "cs": "PL-CS-004"})
+                         {"br": "PL-BR-005", "cl": "PL-CL-001", "inv": "PL-INV-005",
+                          "se": "PL-SE-001", "cs": "PL-CS-004"})
         self.assertEqual(living_docs.scaffold_side_effects(root)["created"], False)
         empty = tempfile.mkdtemp(dir=self.base)
         self.assertTrue(living_docs.scaffold_side_effects(empty)["created"])

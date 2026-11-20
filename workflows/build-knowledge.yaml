@@ -117,7 +117,7 @@ nodes:
       team's own documents (the `sources` input): they come first. Where they describe a domain,
       feature or rule, the living docs follow them and cite them as the source; never contradict
       one. Where the code disagrees with one, still follow the document, add the difference to
-      the domain doc's Open questions and known gaps, and list it in
+      the domain doc's Open questions, and list it in
       .maestro/runs/${inputs.slug}/.engine/knowledge/source-conflicts.json as
       {"conflicts":[{"source":"<its path>","source_says":"…","code_says":"…","evidence":"repo · path · symbol","doc":"docs/<domain>.md"}]}
       for a person to decide. You may add to a source document; never change or remove what
@@ -130,16 +130,26 @@ nodes:
       numbers), owned unknowns, budgets. Then:
       1. Identify the domains (kebab-case bounded contexts); give each an id_prefix and
          code_roots.
-      2. For EACH domain write ONE doc, docs/<domain>.md: purpose and actors, glossary,
-         business rules as BR rows with edge and source, states and flows; then
-         failure/concurrency/idempotency, gotchas, the invariants and change scenarios you find
-         (as proposals with the anchor that enforces each), and one list of open questions and
-         known gaps. Say each fact once, in its own section, and cite it by ID elsewhere. The
-         Cross-repo connections and Inventory sections hold only the generated block markers.
-         Invariants and change scenarios are team-owned: never edit §Invariants and consistency,
+      2. For EACH domain write ONE doc, docs/<domain>.md, in the format's parts. On top: a
+         3–5 line Summary (what it owns, who uses it and where, its main methods, what it does
+         NOT own and who does), References (a link to every document it relies on, the team's
+         own documents first) and depends_on in the front-matter (every domain it affects or
+         relies on). Part A, functional: purpose and actors, glossary, business rules (BR) with
+         edge, status and source, user flows as numbered steps (screen → endpoint → result),
+         states and transitions. Part B, technical: architecture bullets, client behaviour (CL),
+         failure/concurrency/idempotency, error codes with each client's handling, security
+         notes. Part C, side effects: one Outbound row (SE) per effect on another domain, that
+         domain linked as [domain](domain.md). Part D, maintenance: gotchas, open questions (a
+         named person and a date each), and the invariants and change scenarios you find as
+         proposals (with the anchor that enforces each). Say each fact once, in its one place,
+         and cite it by ID elsewhere: an HTTP status only in Error codes, a config default only
+         in the generated inventory, a cross-domain effect only in Outbound. Link instead of
+         describing where to look. Inbound, Cross-repo connections and Inventory hold only the
+         generated block markers.
+         Invariants and change scenarios are team-owned: never edit §Invariants,
          §Change scenarios, §Platform-wide invariants or docs/impact/side-effects.yaml (the
          engine restores them); write what you find under §Proposed rules and scenarios instead.
-         A new doc's §Invariants and consistency and §Change scenarios say None. Read the code
+         A new doc's §Invariants and §Change scenarios say None. Read the code
          that enforces each rule before proposing it.
       3. Write docs/architecture.md: system context and repos (with Runs on), the Domain map
          linking each domain's doc, cross-repo flows and contracts, conventions and

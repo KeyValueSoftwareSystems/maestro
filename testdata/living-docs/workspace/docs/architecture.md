@@ -5,7 +5,7 @@ owner: "CoFee tech lead (Ravi K.)"
 repos: [cofee-backend, cofee-payer-app, cofee-admin-app]
 verified_at: {}
 reviewed: {by: "Ravi K.", date: 2026-11-02}
-status: verified
+status: reviewed
 ---
 > Start here, then open one domain doc. A diagram for people is in architecture.mmd.
 

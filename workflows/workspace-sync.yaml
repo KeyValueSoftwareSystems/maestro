@@ -157,8 +157,8 @@ nodes:
       For every stale repo, update its codebase map (docs/codebase-maps/<repo>.md) only where the changed files alter
       modules, flows, execution modes, APIs or conventions. Do not touch its engine-owned
       maestro-codebase-map marker. In the domains the changes touch, update the rows of
-      docs/<domain>.md (business rules, failure behaviour, gotchas, known gaps) whose anchored
-      code changed, keeping every ID stable and each fact in one section; a
+      docs/<domain>.md (business rules, flows, client behaviour, error codes, side effects,
+      gotchas) whose anchored code changed, keeping every ID stable and each fact in one place; a
       new fact takes the next free number. Invariants and change scenarios are team-owned: never
       edit them or docs/impact/side-effects.yaml (the engine restores them); when changed code
       breaks one, say so in the audit and propose the fix under §Proposed rules and scenarios.
@@ -174,7 +174,7 @@ nodes:
 
       The team's own documents (the `sources` input) come first: the living docs follow them and
       cite them, never contradict them. Where the code disagrees with one, follow the document,
-      add the difference to the domain doc's Open questions and known gaps, and list it in
+      add the difference to the domain doc's Open questions, and list it in
       .maestro/runs/${inputs.slug}/.engine/sync/${inputs.checkpoint}/source-conflicts.json as
       {"conflicts":[{"source":"<its path>","source_says":"…","code_says":"…","evidence":"repo · path · symbol","doc":"docs/<domain>.md"}]}
       for a person to decide. You may add to a source document; never change or remove what it

@@ -326,22 +326,27 @@ the user's interactive session (Claude Code, Cursor, Codex). Conductor is gone.
 - **`workspace_sync.py`** — parallel current-upstream fetch/status, tamper-evident
   fast-forward-only apply, living-doc commit provenance (`docs/provenance.yaml`), and per-feature
   exact-SHA locks. It owns sync safety; the knowledge skill owns only doc-writing judgement.
-- **`living_docs.py`** — the deterministic half of the living docs (format 3: `docs/architecture.md`
-  plus ONE `docs/<domain>.md` per domain — product sections, engineering sections, generated
-  blocks; `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R9: ID format/placement,
+- **`living_docs.py`** — the deterministic half of the living docs (format 4: `docs/architecture.md`
+  plus ONE `docs/<domain>.md` per domain — a Summary and References, then `# Part A–E`
+  (functional, technical, side effects, maintenance, generated), `depends_on` in the front-matter;
+  `skills/core/bootstrap/build-knowledge/docs-format.md`): `check` (R1–R9: ID format/placement,
   every cited ID defined in docs, run artifacts and code, every invariant cited in code (warning),
   `repo · path · symbol` anchors and `docs/impact/side-effects.yaml` names resolve, generated
   output current, staleness vs `verified_at`, app calls reach a served route, structure, token
-  budgets; `--write` regenerates first), `extract` (inventories from contracts and code —
+  budgets; side effects: every Outbound row's target domain and rule exist, `depends_on` lists
+  every domain a side effect links (`--write` adds missing ones), and each domain's Inbound block
+  is generated from the others' Outbound rows; `--write` regenerates first), `extract` (inventories from contracts and code —
   OpenAPI, AsyncAPI, SQL, `.env.example`, CronJobs, built-in Go/Python/JS/Dart/Java patterns,
   `docs.extract` from maestro.config.yaml — into each domain doc's connections and inventory
   blocks, `docs/architecture.mmd`, `docs/code-to-facts.md` and opt-in facts blocks in folder
-  `AGENTS.md`/`CLAUDE.md`), `show` (one part of a domain doc — `--part product|engineering|
-  inventory` or `--section` — so a step never loads the whole file), `snapshot`/`stamp`
+  `AGENTS.md`/`CLAUDE.md`), `show` (one part of a domain doc — `--part summary|functional|technical|side-effects|
+  maintenance|inventory` (`product`/`engineering` the older views) or `--section` — headed by the
+  doc's `depends_on` line, so a step never loads the whole file and always sees what is related), `snapshot`/`stamp`
   (`verified_at` = HEAD and `status: draft` on docs a writer changed; generated blocks do not
   count as a change), `migrate` (the pre-3 layout — `functional/` + `technical/` + `_generated/`
-  + `_index/` — into one doc per domain, content verbatim; the writer workflows run it as
-  `snapshot --migrate`), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD,
+  + `_index/` — into one doc per domain, then a format-3 doc into parts, content verbatim, the
+  new columns filled from the old ones; the Summary and References are left for the writer; the
+  writer workflows run it as `snapshot --migrate`), `cited` (the rows behind every ID a PRD/HLD/LLD cites — what LLD,
   implement and review load), `domains` (doc paths for the repos `impact.json` names). **Team-owned
   content** — invariants (`INV`) and change scenarios (`CS`): a domain doc's `## Invariants and
   consistency` / `## Change scenarios`, architecture `## Platform-wide invariants`,
@@ -552,8 +557,10 @@ immediately).
 
 There is a **second knowledge surface**: the committed living docs under `docs/` —
 `docs/architecture.md` (repos, Domain map, cross-repo flows, `ARCH-INV` invariants) and one
-`docs/<domain>.md` per domain (business rules `BR`; invariants `INV`, change scenarios `CS`,
-failure, gotchas; generated connections and inventory), each fact said once. `build-knowledge`
+`docs/<domain>.md` per domain (a summary, references and `depends_on`; business rules `BR`,
+flows, client behaviour `CL`, invariants `INV`, error codes, outbound side effects `SE` with a
+generated inbound view, change scenarios `CS`, gotchas, open questions; generated connections and
+inventory), each fact said once and everything related linked. `build-knowledge`
 authors the judgement from the codebase; `retrospect` refreshes touched domains after a feature;
 `engine/living_docs.py` generates everything the code lists (the generated blocks), checks the
 format and IDs, and stamps `verified_at`. Steps load only what they need: one part of the touched

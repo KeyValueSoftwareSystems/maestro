@@ -7,16 +7,20 @@ the ID and anchor checks, the inventories extracted from code and contracts, the
 `verified_at` stamp, and the cited-fact snippets steps load. Swapping a skill cannot change any
 of it. Format: skills/core/bootstrap/build-knowledge/docs-format.md.
 
-Layout: docs/architecture.md and one docs/<domain>.md per domain (rules, invariants, gotchas and
-the generated connections and inventory blocks), docs/architecture.mmd, docs/code-to-facts.md.
+Layout: docs/architecture.md and one docs/<domain>.md per domain (format 4: a Summary and
+References, then `# Part A–E`: functional, technical, side effects, maintenance, and the generated
+connections and inventory; `depends_on` in the front-matter names every related domain),
+docs/architecture.mmd, docs/code-to-facts.md.
 
 Commands (all take --root, default .):
   check    [--write] [--nightly] [--today YYYY-MM-DD] [--report]
            Rules R1–R8 below. --write first regenerates every generated file and block.
-  show     DOMAIN [--part product|engineering|inventory] [--section NAME]...
-           print only part of a domain doc, so a step loads only what it needs
-  migrate                    move the old layout (functional/, technical/, _generated/, _index/)
-                             into one docs/<domain>.md per domain; nothing to move = no-op
+  show     DOMAIN [--part summary|functional|technical|side-effects|maintenance|inventory|
+           product|engineering] [--section NAME]...
+           print only part of a domain doc, headed by its depends_on line
+  migrate                    move an older layout into format 4: functional/ + technical/ +
+                             _generated/ + _index/ into one docs/<domain>.md per domain, and a
+                             format-3 doc into parts, every word kept; nothing to move = no-op
   extract  --out PATH        workspace-wide inventory (Markdown) for the writer to read
   snippet  IDS               one line per ID, as steps receive it (comma-separated IDs)
   cited    --from PATH... --out PATH [--repos a,b]   the rows behind every ID the given files
@@ -30,17 +34,20 @@ Commands (all take --root, default .):
   rules    [--repo R --worktree W] [--out F]   the team's rules and scenarios against the code
            (a feature's worktree for R); never blocks: a review step reads it
   scaffold                   write a starter docs/impact/side-effects.yaml (never overwrites)
-  next     PREFIX            the next free BR, INV and CS number for a domain
+  next     PREFIX            the next free BR, CL, INV, SE and CS number for a domain
 
 Rules: R1 ID format, prefix, kind, uniqueness · R2 every cited ID is defined · R3 every
-`repo · path · symbol` anchor resolves · R4 generated output is current and not hand-edited ·
+`repo · path · symbol` anchor resolves · R4 generated output (and depends_on) is current and
+not hand-edited ·
 R5 anchored code changed since verified_at (warning; error after 30 days with --nightly) ·
-R6 every app call reaches a served route · R7 structure: front-matter, headings, table columns,
-owned unknowns, rows that stand alone, Domain map ↔ files · R8 token budgets (warning) ·
+R6 every app call reaches a served route · R7 structure: front-matter, parts, headings, table
+columns, summary, references that open, rule statuses, invariants with tests, open questions
+with a person and date, side effects that name real domains, owned unknowns, rows that stand
+alone, one place per fact (warning), Domain map ↔ files · R8 token budgets (warning) ·
 R9 (with --locked-from) a writer changed team-owned content: the engine restores it.
 
-Team-owned: invariants (INV) and change scenarios (CS) — domain docs' "Invariants and
-consistency" and "Change scenarios", architecture's "Platform-wide invariants", and
+Team-owned: invariants (INV) and change scenarios (CS) — domain docs' "Invariants" and
+"Change scenarios", architecture's "Platform-wide invariants", and
 docs/impact/side-effects.yaml. People write them; a model only proposes, under "Proposed rules
 and scenarios". In a writer's check, a problem inside team-owned content is a warning for the team.
 """
@@ -59,8 +66,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import codebase_scan  # noqa: E402
 import wf  # noqa: E402
 
-FORMAT_VERSION = "3.0"
-ID_KINDS = ("BR", "INV", "CS")
+FORMAT_VERSION = "4.0"
+ID_KINDS = ("BR", "CL", "INV", "SE", "CS")
 ARCH_PREFIX = "ARCH"
 PREFIX_RE = r"[A-Z][A-Z0-9]{1,5}"
 ANY_ID_RE = re.compile(rf"\b({PREFIX_RE})-([A-Z]{{2,4}})-(\d+)\b")
@@ -90,6 +97,18 @@ def fence_flags(lines):
 
 LINK_RE = re.compile(r"\]\(([^)#\s]+)")
 
+# A domain doc is read top-down: a summary and its references, then four written parts and the
+# generated one. `# Part …` headings group the `## ` sections; each section belongs to one part.
+DOMAIN_PARTS = [
+    (None, ["Summary", "References"]),
+    ("Part A: Functional", ["Purpose and actors", "Glossary", "Business rules", "User flows",
+                            "States and transitions"]),
+    ("Part B: Technical", ["Architecture", "Client behaviour", "Invariants",
+                           "Failure, concurrency and idempotency", "Error codes", "Security notes"]),
+    ("Part C: Side effects", ["Outbound", "Inbound", "Change scenarios"]),
+    ("Part D: Maintenance", ["Gotchas", "Open questions", "Proposed rules and scenarios"]),
+    ("Part E: Generated from code", ["Cross-repo connections", "Inventory"]),
+]
 FORMAT = {
     "architecture": {
         "required": ["System context and repos", "Domain map", "Cross-repo flows and contracts",
@@ -97,26 +116,33 @@ FORMAT = {
         "order": ["System context and repos", "Domain map", "Cross-repo flows and contracts",
                   "Platform-wide invariants", "Proposed rules and scenarios",
                   "Conventions and boundaries", "Glossary and aliases"],
+        "parts": [],
     },
     "domain": {
-        "required": ["Purpose and actors", "Business rules", "Invariants and consistency",
-                     "Change scenarios", "Open questions and known gaps", "Cross-repo connections",
-                     "Inventory"],
-        "order": ["Purpose and actors", "Glossary and aliases", "Business rules", "States and flows",
-                  "Invariants and consistency", "Change scenarios", "Proposed rules and scenarios",
-                  "Failure, concurrency and idempotency", "Gotchas", "Open questions and known gaps",
-                  "Cross-repo connections", "Inventory"],
+        "required": ["Summary", "References", "Purpose and actors", "Business rules", "Invariants",
+                     "Outbound", "Inbound", "Change scenarios", "Open questions",
+                     "Cross-repo connections", "Inventory"],
+        "order": [name for _part, names in DOMAIN_PARTS for name in names],
+        "parts": [part for part, _names in DOMAIN_PARTS if part],
     },
 }
-# What each step reads of a domain doc (`show --part`): the product sections (the PRD interview,
-# without code), the engineering ones (design, review), and the generated inventory.
+PART_OF = {name: part for part, names in DOMAIN_PARTS for name in names}
+SUMMARY_LINES = (3, 5)
+# What each step reads of a domain doc (`show --part`). Every part but inventory opens with the
+# Summary and References, so a reader knows the scope and the documents behind it first.
+_HEAD = ["Summary", "References"]
 PARTS = {
-    "product": ["Purpose and actors", "Glossary and aliases", "Business rules", "States and flows",
-                "Open questions and known gaps"],
-    "engineering": ["Invariants and consistency", "Change scenarios", "Proposed rules and scenarios",
-                    "Failure, concurrency and idempotency", "Gotchas", "Open questions and known gaps",
-                    "Cross-repo connections"],
+    "summary": _HEAD,
+    "functional": _HEAD + dict(DOMAIN_PARTS)["Part A: Functional"],
+    "technical": _HEAD + dict(DOMAIN_PARTS)["Part B: Technical"],
+    "side-effects": _HEAD + dict(DOMAIN_PARTS)["Part C: Side effects"],
+    "maintenance": dict(DOMAIN_PARTS)["Part D: Maintenance"],
     "inventory": ["Inventory"],
+    # the two views earlier workflows ask for: no code (the PRD interview), and design and review
+    "product": _HEAD + dict(DOMAIN_PARTS)["Part A: Functional"] + ["Open questions"],
+    "engineering": _HEAD + dict(DOMAIN_PARTS)["Part B: Technical"]
+    + dict(DOMAIN_PARTS)["Part C: Side effects"] + dict(DOMAIN_PARTS)["Part D: Maintenance"]
+    + ["Cross-repo connections"],
 }
 # The first table of these sections must carry exactly these columns (case-insensitive).
 TABLE_COLUMNS = {
@@ -129,27 +155,33 @@ TABLE_COLUMNS = {
         ["ID", "Invariant", "Where (repo · path · symbol)", "Consistency"],
     ("architecture", "Glossary and aliases"):
         ["Term", "Meaning", "Code names and aliases", "Not to be confused with"],
-    ("domain", "Glossary and aliases"):
-        ["Term", "Meaning", "Code names and aliases", "Not to be confused with"],
-    ("domain", "Business rules"): ["ID", "Rule", "Edge", "Why / source"],
-    ("domain", "States and flows"): ["From", "To", "Trigger", "Actor", "Guard"],
-    ("domain", "Invariants and consistency"):
-        ["ID", "Invariant", "Enforces", "Where (repo · path · symbol)", "Consistency", "Tested by"],
-    ("domain", "Change scenarios"): ["ID", "When changing", "Also affects", "Verify with", "Source"],
     ("architecture", "Proposed rules and scenarios"):
         ["Kind", "Proposal", "Where (repo · path · symbol)", "Evidence"],
-    ("domain", "Proposed rules and scenarios"):
-        ["Kind", "Proposal", "Where (repo · path · symbol)", "Evidence"],
+    ("domain", "References"): ["Document", "Covers"],
+    ("domain", "Glossary"): ["Term", "Meaning", "Code names", "Not to be confused with"],
+    ("domain", "Business rules"): ["ID", "Rule", "Edge", "Status", "Source"],
+    ("domain", "States and transitions"): ["Entity", "From", "To", "Trigger", "Actor", "Rule"],
+    ("domain", "Client behaviour"): ["ID", "Client", "Behaviour", "Source"],
+    ("domain", "Invariants"): ["ID", "Invariant", "Enforced by", "Test evidence"],
+    ("domain", "Outbound"): ["ID", "Trigger rule", "Target domain", "Effect", "Target rule",
+                             "Same transaction", "On failure"],
+    ("domain", "Inbound"): ["Source ID", "Source domain", "Effect on this domain", "Affected rule"],
+    ("domain", "Change scenarios"): ["ID", "If you change", "Also change", "Where"],
+    ("domain", "Open questions"): ["Question", "Ask", "Since"],
+    ("domain", "Proposed rules and scenarios"): ["Kind", "Proposal", "Where", "Evidence"],
 }
+# Error codes: these first, then one "<client> handling" column per client (web, mobile, …).
+ERROR_CODE_COLUMNS = ["Code", "HTTP", "Raised by"]
+RULE_STATUSES = ("active", "temporary", "removed")
 # Owned by the project's people, never by a model: invariants and change scenarios. A writer step
 # that changes them fails its check (R9) and the engine puts the snapshot text back; a model
 # writes what it finds under "Proposed rules and scenarios" for the team to accept.
 TEAM_SECTIONS = {
     "architecture": ("Platform-wide invariants",),
-    "domain": ("Invariants and consistency", "Change scenarios"),
+    "domain": ("Invariants", "Change scenarios"),
 }
 PROPOSALS = "Proposed rules and scenarios"
-PROPOSAL_KINDS = ("invariant", "change scenario")
+PROPOSAL_KINDS = ("business rule", "invariant", "change scenario")
 SIDE_EFFECTS = os.path.join("docs", "impact", "side-effects.yaml")
 SOURCE_EXT = {".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".go", ".java", ".kt", ".rs",
               ".rb", ".php", ".cs", ".swift", ".dart", ".sql", ".yaml", ".yml", ".json", ".sh",
@@ -159,16 +191,18 @@ SIDE_EFFECT_NAMES = (("tables", "table"), ("queues", "queue"), ("endpoints", "en
 # Which ID kinds each doc may define, and in which section.
 DEFINES = {
     "architecture": {"INV": "Platform-wide invariants"},
-    "domain": {"BR": "Business rules", "INV": "Invariants and consistency", "CS": "Change scenarios"},
+    "domain": {"BR": "Business rules", "CL": "Client behaviour", "INV": "Invariants",
+               "SE": "Outbound", "CS": "Change scenarios"},
 }
 FM_KEYS = {
     "architecture": ["doc", "id_prefix", "owner", "repos", "verified_at", "reviewed", "status"],
-    "domain": ["doc", "domain", "id_prefix", "owner", "repos", "code_roots", "verified_at",
-               "reviewed", "status"],
+    "domain": ["doc", "domain", "id_prefix", "owner", "depends_on", "repos", "code_roots",
+               "verified_at", "reviewed", "status"],
 }
-STATUSES = ("draft", "verified")
+STATUSES = ("draft", "reviewed", "stale")
+REVIEWED = ("reviewed", "verified")  # `verified` is the name before format 4
 # Generated blocks do not count: nobody writes them, and steps read them one part at a time.
-BUDGET = {"architecture": 3000, "domain": 4000}
+BUDGET = {"architecture": 3000, "domain": 5000}
 STALE_DAYS = 30
 
 DIAGRAM = "architecture.mmd"
@@ -179,8 +213,11 @@ RESERVED = ("architecture", "code-to-facts")
 LEGACY_DIRS = ("functional", "technical", "_generated", "_index")
 CONNECTIONS = "connections"
 INVENTORY = "inventory"
+INBOUND = "inbound"
 FACTS = "facts"
-GENERATED_SECTIONS = {"Cross-repo connections": CONNECTIONS, "Inventory": INVENTORY}
+GENERATED_SECTIONS = {"Cross-repo connections": CONNECTIONS, "Inventory": INVENTORY,
+                      "Inbound": INBOUND}
+BLOCK_SOURCE = {FACTS: "docs/", INBOUND: "the other domains' Outbound tables"}
 INSTRUCTION_FILES = ("AGENTS.md", "CLAUDE.md")
 INVENTORY_SECTIONS = ("APIs", "Events", "Jobs", "Data", "Config")
 
@@ -296,7 +333,8 @@ class Doc:
         self.domain = self.fm.get("domain") if kind != "architecture" else None
         self.prefix = str(self.fm.get("id_prefix") or "")
         self.sections, self.headings, self.line_section = {}, [], []
-        current = None
+        self.parts, self.section_part = [], {}  # `# Part …` headings; the part each section is under
+        current, part = None, None
         offset = self.text[:len(self.text) - len(self.body)].count("\n")
         self.line_section = [None] * offset
         body_lines = self.body.split("\n")
@@ -306,6 +344,12 @@ class Doc:
                 current = line[3:].strip()
                 self.headings.append(current)
                 self.sections.setdefault(current, [])
+                self.section_part.setdefault(current, part)
+            elif not fenced and line.startswith("# "):
+                current = None  # a part heading (or the title) ends the section before it
+                if line[2:].strip().startswith("Part "):
+                    part = line[2:].strip()
+                    self.parts.append(part)
             elif current is not None:
                 self.sections[current].append("" if fenced else line)
             self.line_section.append(current)
@@ -329,6 +373,9 @@ class Doc:
             if not fenced and line.startswith("## "):
                 on = line[3:].strip() == section
                 continue
+            if not fenced and line.startswith("# "):
+                on = False
+                continue
             if on:
                 lines.append(line.rstrip())
         return "\n".join(lines).strip("\n")
@@ -350,9 +397,10 @@ class Doc:
 
     def items(self):
         """(section, header|None, row cells | bullet text) for every table row and bullet. The
-        generated inventory is left out: its rows come from code, not from a writer."""
+        generated inventory and inbound effects are left out: their rows come from code and from
+        the other domains' docs, not from this doc's writer."""
         for section in self.headings:
-            if section == "Inventory":
+            if section in ("Inventory", "Inbound"):
                 continue
             for header, rows in self.tables(section):
                 for row in rows:
@@ -400,10 +448,17 @@ def legacy_dirs(root):
 
 
 def current_format(root):
-    """True when the docs use the current layout and every doc carries its `doc:` front-matter."""
+    """True when the docs use the current layout and every doc carries its `doc:` front-matter,
+    and every domain doc is written in parts (format 4)."""
     docs = load_docs(root)
     return (bool(docs) and not legacy_dirs(root)
-            and all(d.fm.get("doc") == d.kind for d in docs))
+            and all(d.fm.get("doc") == d.kind for d in docs)
+            and all(not needs_upgrade(d) for d in docs))
+
+
+def needs_upgrade(doc):
+    """A format-3 domain doc: sections without the `# Part …` headings."""
+    return doc.kind == "domain" and doc.fm.get("doc") == "domain" and not doc.parts
 
 
 def known_prefixes(docs):
@@ -429,9 +484,14 @@ def check_structure(doc, repos, report):
     if doc.fm.get("doc") not in (None, kind):
         report.err("R7", doc.rel, f"front-matter says doc: {doc.fm.get('doc')} but the file is a "
                    f"{kind} doc", f"set doc: {kind}")
-    if "status" in doc.fm and doc.fm.get("status") not in STATUSES:
+    if doc.fm.get("status") == "verified":
+        report.warn("R7", doc.rel, "status: verified is the name before format 4; write reviewed")
+    elif "status" in doc.fm and doc.fm.get("status") not in STATUSES:
         report.err("R7", doc.rel, f"status must be one of {', '.join(STATUSES)}",
-                   "write draft; a person sets verified after reviewing the doc")
+                   "write draft; a person sets reviewed after reviewing the doc")
+    if kind == "domain" and "depends_on" in doc.fm and not isinstance(doc.fm.get("depends_on"), list):
+        report.err("R7", doc.rel, "depends_on must be a list of domains",
+                   "write depends_on: [domain, …] (or [] when none)")
     stem = os.path.splitext(os.path.basename(doc.path))[0]
     if kind != "architecture" and doc.domain and doc.domain != stem:
         report.err("R7", doc.rel, f"domain: {doc.domain} does not match the file name",
@@ -472,9 +532,28 @@ def check_structure(doc, repos, report):
         report.err("R7", doc.rel, "sections are out of order", "use the order " + " · ".join(allowed))
     if len(present) != len(set(present)):
         report.err("R7", doc.rel, "a section heading appears twice", "merge the two sections")
+    if fmt["parts"]:
+        if doc.parts != fmt["parts"]:
+            report.err("R7", doc.rel, "part headings are " + (" · ".join(doc.parts) or "missing"),
+                       "write the parts in order, each as '# <part>': " + " · ".join(fmt["parts"]))
+        for heading in present:
+            if doc.section_part.get(heading) != PART_OF.get(heading):
+                where = PART_OF.get(heading) or "the top, before Part A"
+                report.err("R7", f"{doc.rel} §{heading}", "section is under the wrong part",
+                           f"move it under {where}", team=doc.is_team(heading))
+    if kind == "domain":
+        check_domain_sections(doc, report)
     for section in doc.headings:
         expected = TABLE_COLUMNS.get((kind, section))
         tables = doc.tables(section)
+        if kind == "domain" and section == "Error codes" and tables:
+            header = [h.lower() for h in tables[0][0]]
+            extra = header[len(ERROR_CODE_COLUMNS):]
+            if header[:len(ERROR_CODE_COLUMNS)] != [h.lower() for h in ERROR_CODE_COLUMNS] or not extra \
+                    or not all(h.endswith(" handling") for h in extra):
+                report.err("R7", f"{doc.rel} §{section}", f"table columns are {' | '.join(tables[0][0])}",
+                           "use the columns Code | HTTP | Raised by, then one '<client> handling' "
+                           "column per client (e.g. Web handling | Mobile handling)")
         if expected and tables:
             header = tables[0][0]
             if [h.lower() for h in header] != [h.lower() for h in expected]:
@@ -496,14 +575,82 @@ def check_structure(doc, repos, report):
                        f"{(' | '.join(item) if header else item)[:70]}",
                        "start the row with the thing it is about, so it reads on its own",
                        team=doc.is_team(section))
-        if section == PROPOSALS and header and first.lower() not in PROPOSAL_KINDS:
+        kinds = PROPOSAL_KINDS if kind == "domain" else PROPOSAL_KINDS[1:]
+        if section == PROPOSALS and header and first.lower() not in kinds:
             report.err("R7", f"{doc.rel} §{section}", f"proposal kind '{first}'",
-                       f"write one of: {', '.join(PROPOSAL_KINDS)}")
+                       f"write one of: {', '.join(kinds)}")
     tokens = len(strip_generated(doc.text)) // 4
     if tokens > BUDGET[kind]:
         report.warn("R8", doc.rel, f"about {tokens} tokens, budget {BUDGET[kind]}; cut anything an "
                     "agent can find in code, or split the domain")
     return tokens
+
+
+HTTP_RE = re.compile(r"\b(?:HTTP|status)\s*[1-5]\d\d\b", re.I)
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _table_rows(doc, section):
+    """[{column (lower): cell}] for the section's first table."""
+    tables = doc.tables(section)
+    if not tables:
+        return []
+    names = [h.lower() for h in tables[0][0]]
+    return [dict(zip(names, row + [""] * (len(names) - len(row)))) for row in tables[0][1]]
+
+
+def check_domain_sections(doc, report):
+    """The format-4 rules a table's columns alone do not say: a short summary, references that
+    open, rule statuses, invariants with tests, open questions with a person and a date, and each
+    fact in one place (an HTTP status only in Error codes)."""
+    summary = [line for line in (doc.section_text("Summary") or "").split("\n") if line.strip()]
+    if doc.section_text("Summary") is not None:
+        if _empty("\n".join(summary)):
+            report.err("R7", f"{doc.rel} §Summary", "the summary is empty",
+                       "write 3–5 lines: what the domain owns, who uses it and on which portals, "
+                       "its main methods or flows, and what it does NOT own (and who does)")
+        elif not SUMMARY_LINES[0] <= len(summary) <= SUMMARY_LINES[1]:
+            report.warn("R7", f"{doc.rel} §Summary", f"{len(summary)} lines; keep it to "
+                        f"{SUMMARY_LINES[0]}–{SUMMARY_LINES[1]} so the scope reads at a glance")
+    base = os.path.dirname(doc.path)
+    for row in _table_rows(doc, "References"):
+        cell = row.get("document", "")
+        link = re.search(r"\]\(([^)\s]+)\)", cell)
+        if not link:
+            report.err("R7", f"{doc.rel} §References", f"'{cell[:60]}' is not a link",
+                       "write [title](relative/path.md) or [title](https://…), so a reader opens it "
+                       "instead of searching for it")
+            continue
+        target = link.group(1).split("#", 1)[0]
+        if target and not re.match(r"^[a-z][a-z0-9+.-]*:", target) \
+                and not os.path.exists(os.path.normpath(os.path.join(base, target))):
+            report.err("R7", f"{doc.rel} §References", f"{target} does not exist",
+                       "link the document's path relative to docs/, or remove the row")
+    for row in _table_rows(doc, "Business rules"):
+        status = row.get("status", "").strip().lower()
+        if status and status not in RULE_STATUSES:
+            report.err("R7", f"{doc.rel} §Business rules", f"{row.get('id')} has status '{status}'",
+                       "write one of: " + ", ".join(RULE_STATUSES))
+    for row in _table_rows(doc, "Invariants"):
+        if _empty(row.get("test evidence")) and not RETIRED_RE.match(row.get("invariant", "")):
+            report.err("R7", f"{doc.rel} §Invariants", f"{row.get('id')} has no test evidence",
+                       "name the test that proves it; an invariant no test proves is a proposal",
+                       team=True)
+    for row in _table_rows(doc, "Open questions"):
+        if _empty(row.get("ask")):
+            report.err("R7", f"{doc.rel} §Open questions", f"'{row.get('question', '')[:50]}' "
+                       "names no one to ask", "write the person who can answer it")
+        if not DATE_RE.match(row.get("since", "")):
+            report.err("R7", f"{doc.rel} §Open questions", f"'{row.get('question', '')[:50]}' "
+                       "has no date", "write since as YYYY-MM-DD")
+    for section in doc.headings:
+        if section in ("Error codes", "Inventory", "Cross-repo connections", "Inbound"):
+            continue
+        for line in doc.sections.get(section, []):
+            if HTTP_RE.search(line):
+                report.warn("R7", f"{doc.rel} §{section}", "names an HTTP status; it belongs in "
+                            "Error codes only (name the error code here)")
+                break
 
 
 def domain_map(arch):
@@ -563,6 +710,85 @@ def check_domain_map(root, docs, report):
                            "give each domain its own prefix")
 
 
+# --------------------------------------------------------------------------- relations
+
+def _domain_cell(cell):
+    """The domain a cell names: `[auth](auth.md)` or a bare `auth`."""
+    link = re.search(r"\]\(([^)#\s]+)", cell or "")
+    if link:
+        return os.path.splitext(os.path.basename(link.group(1)))[0]
+    return re.sub(r"[`*\[\]]", "", cell or "").strip()
+
+
+def outbound_effects(docs):
+    """[(source doc, row)] for every Outbound row of every domain doc."""
+    out = []
+    for doc in docs:
+        if doc.kind == "domain" and doc.domain:
+            out += [(doc, row) for row in _table_rows(doc, "Outbound")]
+    return out
+
+
+def gen_inbound(target, effects):
+    """The Inbound block of one domain: every other domain's Outbound row that targets it."""
+    rows = []
+    for source, row in effects:
+        if source.domain != target.domain and _domain_cell(row.get("target domain")) == target.domain:
+            rows.append([row.get("id"), f"[{source.domain}]({os.path.basename(source.path)})",
+                         row.get("effect"), row.get("target rule")])
+    rows.sort(key=lambda r: r[0] or "")
+    return "\n".join(_table(TABLE_COLUMNS[("domain", "Inbound")], rows)) + "\n"
+
+
+def check_relations(docs, effects, write, report):
+    """depends_on, Outbound targets and target rules name real domains; depends_on lists every
+    domain this one has an effect on or receives one from. With --write the engine adds the missing
+    ones, so the front-matter line is always the full list of related domains."""
+    by_name = {d.domain: d for d in docs if d.kind == "domain" and d.domain}
+    needs = {name: set() for name in by_name}
+    for source, row in effects:
+        target = _domain_cell(row.get("target domain"))
+        where = f"{source.rel} §Outbound {row.get('id')}"
+        if _empty(target):
+            continue
+        if target not in by_name:
+            report.err("R7", where, f"target domain '{target}' has no doc",
+                       "name a domain from the Domain map, as [domain](domain.md)")
+            continue
+        if target != source.domain:
+            needs[source.domain].add(target)
+            needs[target].add(source.domain)
+        rule = (row.get("target rule") or "").strip()
+        match = re.match(rf"^({PREFIX_RE})-[A-Z]{{2,4}}-\d{{3}}$", rule)
+        if match and by_name[target].prefix and match.group(1) != by_name[target].prefix:
+            report.err("R7", where, f"target rule {rule} is not a rule of {target}",
+                       f"cite a {by_name[target].prefix}- ID, or None.")
+    for name, doc in sorted(by_name.items()):
+        listed = doc.fm.get("depends_on")
+        listed = [str(x) for x in listed] if isinstance(listed, list) else []
+        for other in listed:
+            if other not in by_name:
+                report.err("R7", f"{doc.rel} depends_on", f"'{other}' has no doc",
+                           "list only domains from the Domain map")
+        missing = sorted(needs[name] - set(listed))
+        if not missing:
+            continue
+        if write:
+            _write_depends_on(doc, listed + missing)
+        else:
+            report.err("R4", f"{doc.rel} depends_on", "misses " + ", ".join(missing)
+                       + " (a side effect links them)", "run living_docs.py check --write")
+
+
+def _write_depends_on(doc, names):
+    match = re.match(r"---\n(.*?)\n---\n", doc.text, re.S)
+    if not match:
+        return
+    lines = _set_fm(match.group(1).split("\n"), "depends_on", "[" + ", ".join(names) + "]",
+                    after="owner")
+    write_text(doc.path, "---\n" + "\n".join(lines) + "\n---\n" + doc.text[match.end():])
+
+
 # --------------------------------------------------------------------------- R1 IDs, R2 citations
 
 def collect_ids(docs, report):
@@ -578,7 +804,7 @@ def collect_ids(docs, report):
                 team = doc.team_line(number)
                 if kind not in ID_KINDS:
                     report.err("R1", f"{doc.rel}:{number}", f"{token} uses an ID kind that does not "
-                               "exist", "only BR, INV and CS take IDs; make it a plain bullet",
+                               "exist", "only BR, CL, INV, SE and CS take IDs; make it a plain bullet",
                                team=team)
                 elif len(digits) != 3:
                     report.err("R1", f"{doc.rel}:{number}", f"{token} is not three digits",
@@ -667,7 +893,11 @@ def check_rules_cited(defs, cited_in_code, report):
 
 
 def is_retired(defs, ident):
-    _doc, _section, _header, row = defs[ident]
+    """A rule no longer in force: Status `removed`, or (before format 4) `Retired …` text."""
+    _doc, _section, header, row = defs[ident]
+    cells = dict(zip([h.lower() for h in header], row))
+    if cells.get("status", "").strip().lower() == "removed":
+        return True
     return len(row) > 1 and bool(RETIRED_RE.match(row[1]))
 
 
@@ -1443,7 +1673,7 @@ def gen_facts_blocks(repos, anchors, defs, opted_in):
 
 
 def strip_generated(text):
-    for name in (FACTS, CONNECTIONS, INVENTORY):
+    for name in (FACTS, CONNECTIONS, INVENTORY, INBOUND):
         text = re.sub(rf"\n*<!-- generated:{name} begin[^>]*-->.*?<!-- generated:{name} end -->\n?",
                       "\n", text, flags=re.S)
     return text.rstrip("\n")
@@ -1473,7 +1703,7 @@ def _sync_file(path, content, write, label, report):
 
 def _sync_block(path, name, content, write, label, report, heading=None):
     text = read_text(path) or ""
-    begin, end = block_markers(name, "docs/" if name == FACTS else "code")
+    begin, end = block_markers(name, BLOCK_SOURCE.get(name, "code"))
     match = block_re(name).search(text)
     if not match:
         if not write:
@@ -1525,7 +1755,7 @@ def check_staleness(repos, docs, by_doc, nightly, today, report):
     drafts = [d.rel for d in docs if d.fm.get("status") == "draft"]
     if drafts:
         report.warn("R5", ", ".join(drafts), f"{len(drafts)} doc(s) are draft: no person has "
-                    "reviewed them; set status: verified after review")
+                    "reviewed them; set status: reviewed after review")
     for doc in docs:
         stamps = doc.fm.get("verified_at") or {}
         if not isinstance(stamps, dict):
@@ -1582,9 +1812,9 @@ def _empty(text):
 def _heading_ranges(lines, section):
     """(start, end) of every real `## section` block: headings inside a code fence do not count."""
     flags = fence_flags(lines)[0]
-    heads = [i for i, line in enumerate(lines) if not flags[i] and line.startswith("## ")]
+    heads = [i for i, line in enumerate(lines) if not flags[i] and line.startswith(("## ", "# "))]
     return [(i, next((h for h in heads if h > i), len(lines)))
-            for i in heads if lines[i][3:].strip() == section]
+            for i in heads if lines[i].startswith("## ") and lines[i][3:].strip() == section]
 
 
 def _replace_section(path, kind, section, body):
@@ -1601,9 +1831,14 @@ def _replace_section(path, kind, section, body):
     else:
         order = FORMAT[kind]["order"]
         later = order[order.index(section) + 1:]
+        parts = FORMAT[kind]["parts"]
+        own = PART_OF.get(section) if kind == "domain" else None
+        later_parts = parts[parts.index(own) + 1:] if own in parts else (parts if own is None and
+                                                                         kind == "domain" else [])
         flags = fence_flags(lines)[0]
-        at = next((i for i, line in enumerate(lines)
-                   if not flags[i] and line.startswith("## ") and line[3:].strip() in later), len(lines))
+        at = next((i for i, line in enumerate(lines) if not flags[i] and (
+            (line.startswith("## ") and line[3:].strip() in later)
+            or (line.startswith("# ") and line[2:].strip() in later_parts))), len(lines))
         lines[at:at] = new
     write_text(path, "\n".join(lines).rstrip("\n") + "\n")
 
@@ -1974,9 +2209,13 @@ def run_check(root, write=False, nightly=False, today=None, locked_from=None):
     # Generated output first (with --write), so the anchors and citations below see it.
     arch = next((d for d in docs if d.kind == "architecture"), None)
     _sync_file(os.path.join(root, "docs", DIAGRAM), gen_diagram(arch), write, DIAGRAM, report)
+    effects = outbound_effects(docs)
+    check_relations(docs, effects, write, report)
     for doc in docs:
         if doc.kind != "domain" or not doc.domain:
             continue
+        _sync_block(doc.path, INBOUND, gen_inbound(doc, effects), write, doc.rel, report,
+                    heading="Inbound")
         roots = [str(r) for r in doc.fm.get("code_roots") or []]
         # the written text only: a name the last inventory listed must not keep itself in scope
         domain_text = strip_generated(doc.text)
@@ -1984,6 +2223,19 @@ def run_check(root, write=False, nightly=False, today=None, locked_from=None):
                     heading="Cross-repo connections")
         _sync_block(doc.path, INVENTORY, gen_inventory(inv, roots, domain_text), write, doc.rel,
                     report, heading="Inventory")
+    config_keys = {key for (_repo, key) in inv.config}
+    for doc in docs:
+        if doc.kind != "domain":
+            continue
+        for section in doc.headings:
+            if section in GENERATED_SECTIONS:
+                continue
+            for line in doc.sections.get(section, []):
+                keys = [k for k in config_keys if k in line]
+                if keys and re.search(r"\bdefault", line, re.I):
+                    report.warn("R7", f"{doc.rel} §{section}", f"repeats the default of {keys[0]}; "
+                                "name the key only, its default is in Inventory § Config")
+                    break
     if write:
         docs = load_docs(root)
         report_ids = Report()
@@ -2113,11 +2365,15 @@ def show(root, domain, part=None, sections=None):
     wanted = list(PARTS[part]) if part else ([] if sections else list(order))
     extra = [name for name in sections or [] if name not in wanted]
     fm = doc.fm
+    related = fm.get("depends_on") if isinstance(fm.get("depends_on"), list) else []
     lines = [f"# {doc.domain or domain}",
              f"> docs/{doc.rel} · prefix {doc.prefix or 'None.'} · repos "
              f"{', '.join(map(str, fm.get('repos') or [])) or 'None.'} · code_roots "
              f"{', '.join(map(str, fm.get('code_roots') or [])) or 'None.'} · status "
-             f"{fm.get('status') or 'None.'}", ""]
+             f"{fm.get('status') or 'None.'}",
+             "> depends_on: " + (", ".join(f"{d} (docs/{d}.md)" for d in map(str, related))
+                                 or "None.") + " — open their Summary with "
+             "`living_docs.py show <domain> --part summary` before changing this one", ""]
     for heading in [h for h in order if h in wanted] + extra:
         if heading in INVENTORY_SECTIONS:
             body = _inventory_part(_strip_markers(doc.section_text("Inventory") or ""), heading)
@@ -2245,10 +2501,24 @@ def migrate(root):
     nothing is rewritten but the headings that merge, the links and the front-matter. A domain
     whose docs/<domain>.md already exists is left for a person. No old layout: no-op."""
     root = os.path.abspath(root)
-    base = os.path.join(root, "docs")
     result = {"migrated": [], "skipped": [], "removed": []}
-    if not legacy_dirs(root):
-        return result
+    if legacy_dirs(root):
+        _migrate_layout(root, result)
+    for doc in load_docs(root):
+        if doc.kind == "architecture" and doc.fm.get("status") == "verified":
+            match = re.match(r"---\n(.*?)\n---\n", doc.text, re.S)
+            lines = _set_fm(match.group(1).split("\n"), "status", "reviewed", after="reviewed")
+            write_text(doc.path, "---\n" + "\n".join(lines) + "\n---\n" + doc.text[match.end():])
+        if needs_upgrade(doc):
+            write_text(doc.path, upgrade_domain(doc))
+            name = doc.domain or os.path.splitext(os.path.basename(doc.path))[0]
+            if name not in result["migrated"]:
+                result["migrated"].append(name)
+    return result
+
+
+def _migrate_layout(root, result):
+    base = os.path.join(root, "docs")
     names = set()
     for kind in ("functional", "technical"):
         folder = os.path.join(base, kind)
@@ -2291,7 +2561,132 @@ def migrate(root):
             os.rmdir(os.path.join(base, name))  # only when empty: anything else stays for a person
         except OSError:
             pass
-    return result
+
+
+# --------------------------------------------------------------------------- upgrade (format 3 → 4)
+
+_ASK_RE = re.compile(r"\s*Unknown\. \(ask: ([^,()]+), since (\d{4}-\d{2}-\d{2})\)\.?")
+
+
+def _md_table(header, rows):
+    return "\n".join(["| " + " | ".join(header) + " |", "| " + " | ".join(["---"] * len(header)) + " |"]
+                     + ["| " + " | ".join(c or "None." for c in row) + " |" for row in rows])
+
+
+def _old_rows(doc, section):
+    rows = _table_rows(doc, section)
+    return rows
+
+
+def _join(*parts):
+    return " ".join(p.strip().rstrip(".") + "." for p in parts if not _empty(p)).strip() or "None."
+
+
+def _bullets(text):
+    return [line for line in (text or "").split("\n") if line.startswith("- ")]
+
+
+def upgrade_domain(doc):
+    """A format-3 domain doc rewritten in format 4. Every word moves, none is reworded: tables get
+    the new columns (a rule's Retired text becomes Status removed; an invariant's Enforces and
+    Consistency join its text; a scenario's Verify with and Source become its Where), flows leave
+    the states table for User flows, and open questions with an owner become rows while known
+    gaps join Gotchas. Summary, References and Outbound are left for the writer."""
+    fm = re.match(r"---\n(.*?)\n---\n", doc.text, re.S)
+    lines = fm.group(1).split("\n") if fm else ["doc: domain", f"domain: {doc.domain}"]
+    if "depends_on" not in doc.fm:
+        lines = _set_fm(lines, "depends_on", "[]", after="owner")
+    if doc.fm.get("status") == "verified":
+        lines = _set_fm(lines, "status", "reviewed", after="reviewed")
+    name = doc.domain or os.path.splitext(os.path.basename(doc.path))[0]
+    sec = {h: doc.section_text(h) for h in doc.headings}
+    out = {}
+    out["Summary"] = "None."
+    out["References"] = "None."
+    out["Purpose and actors"] = sec.get("Purpose and actors") or "None."
+    if sec.get("Glossary and aliases") is not None:
+        out["Glossary"] = re.sub(r"\|\s*Code names and aliases\s*\|", "| Code names |",
+                                 sec["Glossary and aliases"], count=1)
+    rules = _old_rows(doc, "Business rules")
+    if rules:
+        out["Business rules"] = _md_table(
+            TABLE_COLUMNS[("domain", "Business rules")],
+            [[r.get("id"), r.get("rule"), r.get("edge"),
+              "removed" if RETIRED_RE.match(r.get("rule", "")) else "active",
+              r.get("why / source") or r.get("source")] for r in rules])
+    else:
+        out["Business rules"] = sec.get("Business rules") or "None."
+    flows = sec.get("States and flows")
+    if flows is not None:
+        states = []
+        for r in _old_rows(doc, "States and flows"):
+            entity, _, start = r.get("from", "").partition(": ")
+            if not start:
+                entity, start = name, r.get("from", "")
+            states.append([entity, start, r.get("to"), r.get("trigger"), r.get("actor"),
+                           r.get("guard")])
+        steps = _bullets(flows)
+        if steps:
+            out["User flows"] = "\n".join(steps)
+        if states:
+            out["States and transitions"] = _md_table(
+                TABLE_COLUMNS[("domain", "States and transitions")], states)
+    invariants = _old_rows(doc, "Invariants and consistency")
+    if invariants:
+        out["Invariants"] = _md_table(TABLE_COLUMNS[("domain", "Invariants")], [
+            [r.get("id"), _join(r.get("invariant", ""),
+                                f"Enforces {r['enforces']}" if not _empty(r.get("enforces")) else "",
+                                f"Consistency: {r['consistency']}"
+                                if not _empty(r.get("consistency")) else ""),
+             r.get("where (repo · path · symbol)"), r.get("tested by")] for r in invariants])
+    else:
+        out["Invariants"] = sec.get("Invariants and consistency") or "None."
+    for heading in ("Failure, concurrency and idempotency",):
+        if sec.get(heading) is not None:
+            out[heading] = sec[heading]
+    out["Outbound"] = "None."
+    out["Inbound"] = "None."
+    scenarios = _old_rows(doc, "Change scenarios")
+    if scenarios:
+        out["Change scenarios"] = _md_table(TABLE_COLUMNS[("domain", "Change scenarios")], [
+            [r.get("id"), r.get("when changing"), r.get("also affects"),
+             "; ".join(p for p in (f"verify with {r['verify with']}" if not _empty(r.get("verify with"))
+                                   else "", f"source: {r['source']}" if not _empty(r.get("source"))
+                                   else "") if p) or "None."] for r in scenarios])
+    else:
+        out["Change scenarios"] = sec.get("Change scenarios") or "None."
+    gotchas = _bullets(sec.get("Gotchas"))
+    questions = []
+    for line in _bullets(sec.get("Open questions and known gaps")):
+        ask = _ASK_RE.search(line)
+        if ask:
+            text = _ASK_RE.sub("", line[2:]).strip().rstrip(":").strip()
+            questions.append([text or line[2:], ask.group(1).strip(), ask.group(2)])
+        else:
+            gotchas.append(line)
+    if gotchas:
+        out["Gotchas"] = "\n".join(gotchas)
+    out["Open questions"] = _md_table(TABLE_COLUMNS[("domain", "Open questions")], questions) \
+        if questions else "None."
+    if sec.get(PROPOSALS) is not None:
+        out[PROPOSALS] = sec[PROPOSALS].replace("| Where (repo · path · symbol) |", "| Where |", 1)
+    out["Cross-repo connections"] = sec.get("Cross-repo connections") or "None."
+    out["Inventory"] = sec.get("Inventory") or "None."
+    known = set(FORMAT["domain"]["order"]) | {"Glossary and aliases", "States and flows",
+                                             "Invariants and consistency",
+                                             "Open questions and known gaps"}
+    kept = [h for h in doc.headings if h not in known]  # anything else, for a person to place
+    text = ["---", *lines, "---", f"# {name}", ""]
+    for part, names in DOMAIN_PARTS:
+        if part:
+            text += [f"# {part}", ""]
+        for heading in names:
+            if heading in out:
+                text += [f"## {heading}", out[heading], ""]
+        if part == "Part D: Maintenance":
+            for heading in kept:
+                text += [f"## {heading}", sec[heading] or "None.", ""]
+    return "\n".join(text).rstrip("\n") + "\n"
 
 
 # --------------------------------------------------------------------------- minimal docs
@@ -2302,7 +2697,7 @@ owner: "Unknown. (ask: tech lead, since 2026-11-10)"
 repos: [{repos}]
 verified_at: {{}}
 reviewed: {{by: null, date: null}}
-status: verified
+status: reviewed
 ---
 > Start here, then open one domain doc.
 
@@ -2331,32 +2726,57 @@ doc: domain
 domain: {domain}
 id_prefix: DM
 owner: "demo team"
+depends_on: []
 repos: [{repos}]
 code_roots: [{roots}]
 verified_at: {{}}
 reviewed: {{by: null, date: null}}
-status: verified
+status: reviewed
 ---
-> {domain}. Shared terms are in architecture.md.
-
 # {domain}
+
+## Summary
+Owns drafts: a user saves a draft and finds it again.
+Used by every signed-in user.
+Does not own sending (none in this demo).
+
+## References
+None.
+
+# Part A: Functional
 
 ## Purpose and actors
 The demo domain lets a user save a draft.
 
 ## Business rules
-| ID | Rule | Edge | Why / source |
-| --- | --- | --- | --- |
-| DM-BR-001 | A draft belongs to one user. | None. | Demo requirement |
+| ID | Rule | Edge | Status | Source |
+| --- | --- | --- | --- | --- |
+| DM-BR-001 | A draft belongs to one user. | None. | active | Demo requirement |
 
-## Invariants and consistency
+# Part B: Technical
+
+## Invariants
 None.
+
+# Part C: Side effects
+
+## Outbound
+None.
+
+## Inbound
+<!-- generated:inbound begin; from the other domains' Outbound tables by living_docs.py; do not edit -->
+None.
+<!-- generated:inbound end -->
 
 ## Change scenarios
 None.
 
-## Open questions and known gaps
+# Part D: Maintenance
+
+## Open questions
 None.
+
+# Part E: Generated from code
 
 ## Cross-repo connections
 <!-- generated:connections begin; from code by living_docs.py; do not edit -->

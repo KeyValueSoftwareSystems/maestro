@@ -1,6 +1,6 @@
 ---
 name: build-knowledge
-description: Scan the codebase and build the living-docs knowledge base (architecture.md, plus one doc per domain with rule, invariant and change-scenario IDs), the per-repo codebase maps, and seed cross-cutting review lessons. Front door for /build-knowledge.
+description: Scan the codebase and build the living-docs knowledge base (architecture.md, plus one doc per domain in parts — summary, references, functional, technical, side effects, maintenance — with rule, invariant, side-effect and change-scenario IDs), the per-repo codebase maps, and seed cross-cutting review lessons. Front door for /build-knowledge.
 allowed-tools: Read, Grep, Glob, Bash, Write
 tags: [maestro, memory, bootstrap, docs]
 ---
@@ -8,10 +8,12 @@ tags: [maestro, memory, bootstrap, docs]
 # build-knowledge — build the codebase knowledge base from the code
 
 Read the existing code and write a durable knowledge base under `docs/`: a top-level
-**architecture.md**, and per domain one **`<domain>.md`**: its business rules, states and terms
-first, then its invariants, change scenarios, failure behaviour and gotchas. Future agents read
-one part of it before planning or changing anything, so it holds what the code cannot tell them
-cheaply, and each fact once.
+**architecture.md**, and per domain one **`<domain>.md`**: a short summary and the documents it
+relies on, then its functional part (rules, flows, states), technical part (architecture,
+clients, invariants, failures, error codes, security), side effects on other domains, and
+maintenance notes. Future agents read the summary, follow `depends_on` and the links to what is
+related, and then read one part, so the doc holds what the code cannot tell them cheaply, each
+fact once, and a link wherever a reader would otherwise search.
 Run once per workspace; re-runnable (refresh, don't duplicate).
 
 ## Inputs
@@ -49,10 +51,12 @@ plus the ones the project configures). They outrank what you infer from the code
   original back and shows your version to a person as a proposal.
 
 ## What you write, and what you never write
-- **Write only judgement**: purpose and actors, business rules with their edge cases, states and
-  flows, failure and concurrency behaviour, gotchas, known gaps, owned unknowns.
+- **Write only judgement**: the summary, references, purpose and actors, business rules with
+  their edge cases, user flows, states, architecture notes, client behaviour, failure and
+  concurrency behaviour, error codes, security notes, side effects on other domains, gotchas and
+  open questions.
 - **Never edit the team's rules.** Invariants and change scenarios belong to the project's
-  people: `## Invariants and consistency` and `## Change scenarios` in a domain doc,
+  people: `## Invariants` and `## Change scenarios` in a domain doc,
   `## Platform-wide invariants` in the architecture, and `docs/impact/side-effects.yaml`. Leave
   them exactly as they are (a new doc's say `None.`). What you find goes under
   `## Proposed rules and scenarios`, without an ID, for the team to accept. The engine restores
@@ -60,8 +64,14 @@ plus the ones the project configures). They outrank what you infer from the code
 - **Never write what the code already lists**: endpoints, events, jobs, tables, config keys,
   calls between repos, directory listings, build commands. A tool generates those into each
   domain doc's `Cross-repo connections` and `Inventory` blocks; refer to them, never copy them.
-- **Never repeat a fact.** Each fact has one section (docs-format.md rule 7); everywhere else,
-  cite its ID. A gotcha or failure bullet names the rule it protects; it does not restate it.
+- **Never repeat a fact.** Each fact has one place (docs-format.md rule 8); everywhere else, cite
+  its ID. An HTTP status lives only in Error codes, a config default only in the generated
+  inventory, an effect on another domain only in its Outbound row ("see AUTH-SE-001"). A gotcha
+  or failure bullet names the rule it protects; it does not restate it.
+- **Link what is related.** Every document the domain relies on goes in References as a link;
+  every other domain a flow hands over to or a side effect reaches is linked
+  (`[notifications](notifications.md)`) and listed in `depends_on`. A reader should never have to
+  search the repo for something the doc knows about.
 - **Never edit generated output**: `docs/architecture.mmd`, `docs/code-to-facts.md`, any
   `generated:` block, `verified_at`, and the codebase-map marker line.
 - **Never invent** an owner, reviewer, incident, ticket or number. When the code does not settle
@@ -74,23 +84,32 @@ plus the ones the project configures). They outrank what you infer from the code
    without grepping for them.
 2. **Identify the domains**: the bounded contexts the code is organised around, in kebab-case.
    Give each a short capital `id_prefix` (e.g. `PL` for `payment-links`) and its `code_roots`.
-3. **Per domain, write one file**, `docs/<domain>.md`, in the format:
-   - product part: purpose and actors; glossary; business rules (`BR`), each with its edge and
-     source; states and flows.
-   - engineering part: the proposals (each invariant you find: what must always hold, the anchor
-     that enforces it, the test that proves it; each change scenario: changing this anchor also
-     affects that); failure, concurrency and idempotency; gotchas.
-   - one list of open questions and known gaps.
-   Leave the team's sections as they are, and the `Cross-repo connections` and `Inventory`
-   sections holding only their generated block markers.
+3. **Per domain, write one file**, `docs/<domain>.md`, in the format's parts:
+   - top: a 3–5 line Summary (what it owns, who uses it and where, its main methods, what it
+     does not own and who does) and References (a link to every document it relies on);
+     `depends_on` in the front-matter.
+   - Part A, functional: purpose and actors; glossary; business rules (`BR`) with edge, status
+     and source; user flows as numbered steps (screen → endpoint → result); states and
+     transitions.
+   - Part B, technical: architecture bullets; client behaviour (`CL`); failure, concurrency and
+     idempotency; error codes with each client's handling; security notes.
+   - Part C, side effects: one Outbound row (`SE`) per effect this domain has on another: the
+     rule that triggers it, the target domain (linked), the exact event, endpoint or table, the
+     target's rule, whether it is in the same transaction, and what is left behind on failure.
+   - Part D, maintenance: gotchas (traps, known gaps, tech debt), open questions (with a named
+     person and a date), and the proposals (each invariant you find: what must always hold, the
+     anchor that enforces it, the test that proves it; each change scenario: changing this also
+     needs that).
+   Leave the team's sections (Invariants, Change scenarios) as they are, and Inbound,
+   Cross-repo connections and Inventory holding only their generated block markers.
    Read the code that enforces a rule before writing or proposing it. A rule you cannot point at
-   code for is either an owned unknown or not a rule.
+   code for is either an open question or not a rule.
 4. **Write `docs/architecture.md`**: system context and repos, the Domain map (a row per domain
    linking its doc), cross-repo flows and contracts, conventions and boundaries, shared
    glossary; platform-wide invariants you find are proposals. Within budget.
-5. **Refresh = keep IDs stable.** Update business-rule rows in place. A new rule takes the next
-   free number (`python3 .maestro/engine/living_docs.py next <PREFIX>`). Never renumber or reuse
-   an ID; a rule that no longer holds keeps its row as `Retired YYYY-MM-DD: <why>`. When changed
+5. **Refresh = keep IDs stable.** Update rows in place. A new rule takes the next free number
+   (`python3 .maestro/engine/living_docs.py next <PREFIX>`). Never renumber or reuse an ID; a
+   business rule that no longer holds keeps its row with Status `removed`. When changed
    code breaks one of the team's invariants or scenarios, propose the fix; never edit theirs.
 6. **Seed cross-cutting review lessons (optional).** For recurring standards/pitfalls that
    belong to the corroborated-lesson store (not domain docs), also write an authoritative
@@ -118,8 +137,9 @@ The maps are committed with the rest of `docs/`.
   a missing one; a short doc of true facts beats a long one.
 - Every row starts with its subject and reads on its own.
 - Re-run = refresh: update existing files in place; add files for new domains; keep human edits.
-  An old layout (`functional/`, `technical/`) is moved into one file per domain by the engine
-  before you start; if you still find one, merge each pair into `docs/<domain>.md` as is.
+  An older layout (`functional/` + `technical/`, or a domain doc without parts) is moved into
+  this format by the engine before you start, every word kept; write the Summary and References
+  it leaves empty. If you still find an old one, move its content into the parts as is.
 
 ## Safety
 - Read-only against application code; write only the written docs (`docs/architecture.md`,
