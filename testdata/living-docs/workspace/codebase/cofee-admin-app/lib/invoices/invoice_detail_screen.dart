@@ -1,1 +1,0 @@
-class InvoiceDetailScreen extends StatelessWidget {}

@@ -1,0 +1,120 @@
+name: minor
+description: Small, low-risk change — quick brainstorm, short plan, build and write tests in parallel, review, run the tests, open a PR.
+inputs:
+  request: What should change?
+vars:
+  run: .maestro/runs/${slug}
+  branch: chore/${slug}
+  tests_branch: tests/${slug}
+
+steps:
+  - id: design
+    type: agent
+    agent: designer
+    mode: inline
+    model: sonnet
+    params:
+      brainstormSkill: brainstorm
+      template: plan-lite.md
+      output: ${run}/plan.md
+    instructions: Keep it short, a few brainstorm turns at most. Build the plan from ${request}.
+    next: build
+
+  # brew implements while litmus writes the tests from the plan, at the same time.
+  - id: build
+    type: parallel
+    steps: [implement, write-tests]
+    next: merge-tests
+
+  - id: implement
+    type: agent
+    agent: brew
+    mode: subagent
+    model: sonnet
+    params:
+      plan: ${run}/plan.md
+      branch: ${branch}
+    instructions: >
+      Implement ${run}/plan.md on ${branch}. Another agent is writing the acceptance tests
+      in parallel on ${tests_branch}; write only the unit tests your own changes need.
+    next: { done: join, blocked: ask-user }
+
+  - id: write-tests
+    type: agent
+    agent: litmus
+    mode: subagent
+    model: sonnet
+    params:
+      phase: write
+      spec: ${run}/plan.md
+      level: unit
+      output: ${run}/test-cases.md
+    instructions: >
+      The feature is being built at the same time on ${branch}, so do not touch that checkout.
+      Create a separate git worktree on a new branch ${tests_branch} from the current HEAD
+      (git worktree add -b ${tests_branch} ../$(basename $PWD)-${slug}-tests HEAD), write
+      and commit the tests there, and report the worktree path in your summary.
+    next: { written: join }
+
+  - id: merge-tests
+    type: worker
+    mode: inline
+    instructions: >
+      Merge ${tests_branch} into ${branch} (resolve trivial conflicts; ask the user if a
+      conflict touches product code), then remove the tests worktree and delete
+      ${tests_branch}.
+    next: { done: review, failed: ask-user }
+
+  - id: review
+    type: agent
+    agent: reviewer
+    mode: subagent
+    model: sonnet
+    params:
+      against: ${run}/plan.md
+      target: branch ${branch} against its base
+      output: ${run}/review.md
+    instructions: >
+      Review the implementation and the acceptance tests in ${run}/test-cases.md. If
+      ${run}/review.md already exists, it is your previous review: do a re-review.
+    next: { approve: test, changes: fix }
+    max_loops: 2
+
+  - id: fix
+    type: agent
+    agent: brew
+    mode: subagent
+    model: sonnet
+    params:
+      plan: ${run}/plan.md
+      branch: ${branch}
+    instructions: >
+      Fix the findings in the latest feedback: ${run}/review.md when its verdict is
+      "changes", and ${run}/test-report.md when its result is "fail". Do not change the
+      acceptance tests unless a finding says the test itself is wrong.
+    next: { done: review, blocked: ask-user }
+    max_loops: 3
+
+  # litmus again: run every test against the finished, reviewed code.
+  - id: test
+    type: agent
+    agent: litmus
+    mode: subagent
+    model: sonnet
+    params:
+      phase: run
+      spec: ${run}/plan.md
+      target: branch ${branch}
+      output: ${run}/test-report.md
+    instructions: Run the acceptance tests in ${run}/test-cases.md plus the project's full test suite.
+    next: { pass: pr, fail: fix }
+    max_loops: 2
+
+  - id: pr
+    type: worker
+    mode: inline
+    instructions: >
+      Push ${branch} and open a pull request. Title from the plan's first heading; body: the
+      plan's summary, a link to ${run}/plan.md, and the test report's result line. Report the
+      PR link.
+    next: done

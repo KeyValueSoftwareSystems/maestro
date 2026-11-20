@@ -4,18 +4,9 @@
 # NOTE: .maestro/runs/<slug>/ (feature requirement + all generated artifacts) is
 # intentionally NOT ignored — it is git-tracked for now.
 
-# installed copies (Claude Code / Cursor / Codex). Sources of truth are ./skills/,
-# ./commands/, ./agents/; these dirs are populated by install.sh. Never the source.
+# installed copies (populated by install.sh; sources are ./agents, ./skills, ./adapters)
 .claude/skills/
-.claude/commands/
 .claude/agents/
 .cursor/skills/
-.cursor/commands/
 .agents/skills/
-
-# Python bytecode (from workflows/*.py helpers + their tests)
 __pycache__/
-*.pyc
-
-# lock file written locally by `npx skills add` (consumer-side artifact)
-skills-lock.json

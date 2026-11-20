@@ -1,92 +1,79 @@
-# Fix a bug — the bugfix workflow behind `/maestro <slug> bugfix branch=<branch>`.
-#
-#   workspace sync -> triage (pin the bug down, test cases, sandbox on the person's branch,
-#   reproduce, fix proposal, fix approval) -> delivery (fix each affected repository in its
-#   sandbox worktree, QA, review pack, release gate) -> archive (branches or pull requests, each
-#   against the base its repository was built from, then lessons)
-#
-# Each stage is a child workflow; this file owns only the ordering and the loops between stages.
-# There is no plan and no implementation pass: delivery enters its bug-fix loop directly
-# (entry: bugfix). Anything delivery or the release sends back (the approval went stale, the
-# person asked for changes) returns to triage with the reason. Stage nodes set `on_fail: abort`,
-# so a rejection inside a stage aborts the run.
-version: 1
 name: bugfix
-title: Fix a bug
-description: From a bug report to a verified fix on the person's branch — triage, reproduce, approve, fix, QA, release.
+description: Fix a bug — investigate and reproduce, fix with a regression test, test, review, open a PR.
 inputs:
-  slug: {type: string, required: true, description: kebab-case bug id}
-  feature: {type: string, default: "${inputs.slug}", description: one-line bug summary}
-  branch: {type: string, required: true, description: the branch the bug is on; the fix is built on it}
-defaults:
-  model: haiku
-  agent: general
-  max_visits: 10
-start: workspace_sync_initial
-nodes:
-  - id: workspace_sync_initial
-    type: subworkflow
-    label: Update the repositories
-    say: Checking your repositories are up to date.
-    workflow: .maestro/workflows/workspace-sync.yaml
-    inputs: {slug: "${inputs.slug}", checkpoint: feature-start}
-    next: triage
+  request: What is broken? A sentence, a ticket, logs or a stack trace.
+vars:
+  run: .maestro/runs/${slug}
 
-  - id: triage
-    type: subworkflow
-    label: Bug and fix approval
-    say: Pinning the bug down and agreeing the fix.
-    workflow: .maestro/workflows/bugfix-triage.yaml
-    # `feedback` carries why delivery or the release sent the bug back. Empty on the first pass.
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      branch: "${inputs.branch}"
-      feedback: "${steps.delivery.outputs.release_feedback} ${steps.delivery.outputs.stale_reasons}"
-    max_visits: 4
-    on_fail: abort
-    next: delivery
+steps:
+  - id: investigate
+    type: agent
+    agent: sherlock
+    mode: inline            # may need to ask the user about the symptom
+    model: opus
+    params:
+      interview: auto
+      reproduce: true
+      commitTest: true
+      output: ${run}/rca.md
+    instructions: >
+      Investigate ${request}. Work on branch fix/${slug} (create it from the current HEAD) and
+      commit the failing regression test there.
+    next: { found: fix, unclear: confirm }
 
-  - id: delivery
-    type: subworkflow
-    label: "Fix, test and release"
-    say: "Fixing the bug, testing it and preparing the release."
-    workflow: .maestro/workflows/delivery.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      entry: bugfix
-      bug_repos: "${steps.triage.outputs.repos_csv}"
-    on_fail: abort
-    routes:
-      - {when: "${steps.delivery.outputs.design_changed} == true", to: triage}
-      - {when: "${steps.delivery.outputs.design_stale} == true", to: triage}
-      - {when: "${steps.delivery.outputs.release} == revise", to: triage}
-      - {when: "${steps.delivery.outputs.release} == approve", to: archive}
-      # Unreachable: the stage only ends through one of the choices above.
-      - {to: abort}
+  - id: confirm
+    type: gate
+    ask: The cause is not certain yet (see ${run}/rca.md). Try the proposed fix anyway?
+    next: { yes: fix, no: investigate }
 
-  - id: archive
-    type: subworkflow
-    label: Deliver and wrap up
-    say: Delivering the fix and recording the lessons.
-    # Runs after release approval and only once a person confirms the archive: delivers the
-    # verified fix branches (pull requests target each repository's recorded base), then folds
-    # the lessons into memory and the living docs. There is no plan to file.
-    workflow: .maestro/workflows/archive.yaml
-    inputs:
-      slug: "${inputs.slug}"
-      feature: "${inputs.feature}"
-      manifest: "${steps.delivery.outputs.manifest_path}"
-      pack: "${steps.delivery.outputs.pack_path}"
-    next: end
+  - id: fix
+    type: agent
+    agent: brew
+    mode: subagent
+    model: sonnet
+    params:
+      plan: ${run}/rca.md
+      branch: fix/${slug}
+    instructions: >
+      Apply the proposed fix in ${run}/rca.md and make its regression test pass. Smallest change
+      only, no refactors. If ${run}/test-report.md has result "fail" or ${run}/review.md has
+      verdict "changes", fix those findings.
+    next: { done: test, blocked: ask-user }
 
-outputs:
-  bug: "${steps.triage.outputs.bug_path}"
-  fix_proposal: "${steps.triage.outputs.proposal_path}"
-  test_cases: "${steps.triage.outputs.test_cases_path}"
-  review_pack: "${steps.delivery.outputs.pack_path}"
-  implementation_manifest: "${steps.delivery.outputs.manifest_path}"
-  archive: "${steps.archive.outputs.archive}"
-  delivery: "${steps.archive.outputs.delivery}"
-  pull_requests: "${steps.archive.outputs.pull_requests}"
+  - id: test
+    type: agent
+    agent: litmus
+    mode: subagent
+    model: sonnet
+    params:
+      spec: ${run}/rca.md
+      target: branch fix/${slug}
+      output: ${run}/test-report.md
+    instructions: >
+      Confirm the regression test now passes, the expected behaviour in the report is restored,
+      and nothing nearby regressed.
+    next: { pass: review, fail: fix }
+    max_loops: 3
+
+  - id: review
+    type: agent
+    agent: reviewer
+    mode: subagent
+    model: opus
+    params:
+      against: ${run}/rca.md
+      target: branch fix/${slug} against its base
+      output: ${run}/review.md
+    instructions: >
+      Check the fix addresses the root cause, not just the symptom, and changes nothing beyond
+      it. If ${run}/review.md already exists, do a re-review.
+    next: { approve: pr, changes: fix }
+    max_loops: 3
+
+  - id: pr
+    type: worker
+    mode: inline
+    instructions: >
+      Push fix/${slug} and open a pull request: the cause and fix from ${run}/rca.md and the
+      regression test name. Report the PR link.
+    next: done
