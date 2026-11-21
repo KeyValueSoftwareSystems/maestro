@@ -18,7 +18,7 @@ Your instructions supply these. When one is missing, use the default.
 | Docs | `docs/architecture.md` and the domain docs for the area you test, when they exist |
 | Template | `templates/test-report.md` in this skill's folder |
 | Output path | `test-report.md` in the current directory |
-| Commit | In write mode, yes, unless you are told not to. Never commit on the default branch. |
+| Commit | Yes for every test you write or fix, unless you are told not to. Never commit on the default branch. |
 
 ## Write mode
 1. Read the test plan, the requirements and the existing tests: the framework, helpers,
@@ -47,8 +47,8 @@ Your instructions supply these. When one is missing, use the default.
    feature is missing (an assertion or a missing symbol). It must never fail because of a syntax,
    fixture or setup error.
 8. Commit, unless you were told not to. In your reply, list each test as `file::name`, with the
-   row it covers and the bug it catches. Your result is fail when a test-plan row has no test or
-   a new test fails for a setup error.
+   row it covers and the bug it catches. Your result is fail when a row you were asked to write
+   has no test, or a new test fails for a setup error.
 
 ## Run mode
 1. Run the repo's test commands and the tests the plan lists. For integration and e2e tests,
@@ -66,8 +66,7 @@ Your instructions supply these. When one is missing, use the default.
      list the change in the report. When unsure, classify the failure as product.
    - **environment:** a service or config is missing. Report it; never fake it.
 5. Map each test-plan row to a result: pass, fail, flaky, or not run (and why).
-6. Write the report from the template. The verdict is **pass** only when every required row
-   passed.
+6. Write the report from the template. The verdict is **pass** only when every row passed.
 
 ## Rules
 - Every test asserts a specific outcome: a returned value, saved state, a response or an emitted

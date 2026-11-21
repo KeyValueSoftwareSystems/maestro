@@ -39,7 +39,7 @@ steps_used: 4
 max_steps: 30          # from the workflow (default 30)
 vars:                  # values the steps recorded; a per-repo value is a map keyed by repo
   repos: [api]
-  worktree: {api: .maestro/worktrees/login-timeout/api}
+  worktree: {api: /home/me/shop/.maestro/worktrees/login-timeout/api}
   branch: {api: fix/login-timeout}
 history:               # one line per step run, newest last
   - {step: investigate, status: pass, note: root cause is in the session refresh}
@@ -127,7 +127,8 @@ them per repo.
 - When a step fails with no `on_fail`, or the budget is used up, set `status: waiting`. Tell the
   person what failed and where the details are, and ask whether to retry, jump to a step, or stop.
 - A subagent reply without a STATUS line counts as a failure, and so does a pass when a file the
-  task names doesn't exist. Never mark a step passed when its agent or command reported a failure.
+  task says to write doesn't exist. Never mark a step passed when its agent or command reported
+  a failure.
 - When the same step fails twice in a row for the same reason, don't loop again. Set
   `status: waiting` and ask the person, because a third attempt rarely differs.
 

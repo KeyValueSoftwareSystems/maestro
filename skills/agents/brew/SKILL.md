@@ -46,8 +46,7 @@ Your instructions supply these. When one is missing, use the default.
    temporary files and commented-out code.
 6. **Commit**, unless you were told not to. Make one commit per logical change. Follow the
    repo's message convention; otherwise use Conventional Commits: `<type>(<scope>): <imperative
-   summary>`, a body that says why, and `!` plus a `BREAKING CHANGE:` footer when it breaks
-   callers. Stage only the files you changed.
+   summary>` and a body that says why. Stage only the files you changed.
 
 ## Fixing
 - **Retries.** Read what failed last time first. If your previous fix failed for the same

@@ -61,8 +61,8 @@ steps:
     model: haiku
     foreach: repo
     instructions: |
-      In ${worktree}, commit all changes on branch ${branch} with the message
-      "feat(${slug}): <one-line summary of the changes>". If nothing changed, pass without committing.
+      In ${worktree}, commit all changes on branch ${branch} with a one-line message in the repo's
+      commit convention (otherwise Conventional Commits). If nothing changed, pass without committing.
 
   - id: checks
     mode: exec

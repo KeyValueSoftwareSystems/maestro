@@ -69,16 +69,17 @@ Your instructions supply these. When one is missing, use the default.
    **pass** otherwise.
 
 ## Re-review (the review file already exists)
-- Review the `fixed` and `disputed` rows, plus the diff since the commit the last round reviewed
-  (it is in the header).
-- Confirm a `fixed` row by reading the new code. For a behaviour finding, also run its test.
-  - If it holds, mark it `closed`.
-  - If it doesn't, put it back to `open` with a note.
+- Review the `open`, `fixed` and `disputed` rows, plus what changed since the last round (for
+  code, the diff since the commit in the header).
+- Recheck an `open` or `fixed` row against the new version. For a behaviour finding, also run its
+  test.
+  - If it is resolved, mark it `closed`.
+  - If it isn't, set it to `open` with a note.
 - For a `disputed` row, accept the evidence and mark it `withdrawn`, or reject it and mark it
   `upheld` with a reason. A row disputed again after it was upheld becomes `escalated`, for a
   person to decide. Escalated rows don't fail the review, but list them in the summary.
-- Add new rows only for code changed since the last round, or for a blocker you missed. Mark a
-  missed blocker `missed in round <n>`.
+- Add new rows only for what changed since the last round, or for a blocker you missed. Give a
+  missed blocker status `open` and the note `missed in round <n>`.
 
 ## Rules
 - Review the change, not the codebase. Problems in lines the change didn't touch go under

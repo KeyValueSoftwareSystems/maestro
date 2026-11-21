@@ -22,18 +22,18 @@ steps:
 
   - id: pr
     agent: worker
-    model: haiku
+    model: sonnet
     foreach: repo
     instructions: |
       In ${worktree}, push branch ${branch} to origin and open a pull request against the default
       branch with `gh pr create`. Title it with what the change does, from ${run}/plan.md or the fix
       in ${run}/rca.md. In the body, say what changed, why, and how it was tested (from
-      ${run}/test-report.md or ${run}/review.md).
-      Never paste secrets or raw logs. Record the PR URL as `pr`.
+      ${run}/test-report.md or ${run}/review.md). Follow the repo's PR template and title
+      convention, if it has them. Never paste secrets or raw logs. Record the PR URL as `pr`.
 
   - id: docs-pr
     agent: worker
-    model: haiku
+    model: sonnet
     instructions: |
       If .maestro/worktrees/${slug}/workspace exists, push its branch docs/${slug} and open a pull
       request against the default branch with `gh pr create`, titled "docs: <what changed>", that

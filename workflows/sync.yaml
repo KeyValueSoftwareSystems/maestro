@@ -8,8 +8,9 @@ steps:
     agent: worker
     model: haiku
     instructions: |
-      For each repo in .maestro/workspace.yaml, run `git fetch`. If its working tree is clean and on
-      the default branch, fast-forward it with `git merge --ff-only`. Otherwise leave it as it is.
+      For each repo in .maestro/workspace.yaml, and the workspace root, run `git fetch`. If its
+      working tree is clean and on the default branch, fast-forward it with `git merge --ff-only`.
+      Otherwise leave it as it is.
       Write a table to ${run}/sync.md with columns: repo, branch, old HEAD, new HEAD, and result
       (updated, already current, or skipped and why).
       Record the repos whose HEAD changed as `changed` ([] if none).
