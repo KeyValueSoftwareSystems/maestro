@@ -15,7 +15,7 @@ run folder and `state.yaml` are the whole system.
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
 | `workflows/subworkflows/` | Pieces shared by several workflows (archive). |
 | `commands/` | One slash command per workflow. |
-| `install.sh` | Copies everything above into a project. |
+| `install.sh` | Copies everything above into a project, but only the stacks `.maestro/workspace.yaml` lists. |
 | `scripts/check.sh` | Size and wiring checks. Run it before every commit. |
 
 ## Agents
@@ -38,7 +38,7 @@ run folder and `state.yaml` are the whole system.
 
 ## Rules for this repo
 1. **Size limits.** This file stays under 100 lines (150 at most). Every `SKILL.md`, reference
-   and template is 200 lines at most. Aim to keep each workflow under 80 lines.
+   and template is 200 lines at most. Aim to keep each workflow under 100 lines.
 2. **The workflow owns the what; the skill owns the how.** Paths, file names, order and which
    sub-skills to use belong in the workflow. A skill never mentions Maestro, run folders,
    workflows or other agents.
@@ -68,4 +68,6 @@ run folder and `state.yaml` are the whole system.
 
 ## Checks
 Run `bash scripts/check.sh` before committing. It checks the size limits, that agent skills don't
-mention Maestro, and that every agent and workflow a workflow names exists.
+mention Maestro, that skill names match their folders and don't clash, that init lists every
+stack, that every agent and workflow a workflow names exists and has a command, and that the
+YAML parses.

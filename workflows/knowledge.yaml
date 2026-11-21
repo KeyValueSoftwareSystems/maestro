@@ -5,6 +5,7 @@ max_steps: 10
 steps:
   - id: build
     agent: socrates
+    model: opus
     instructions: |
       Build mode. The repos and their paths are listed in .maestro/workspace.yaml.
       Write the knowledge base to docs/: architecture.md and domains/<domain>.md.
@@ -12,6 +13,7 @@ steps:
 
   - id: review
     agent: birbal
+    model: opus
     instructions: |
       Review the docs in docs/ (architecture.md and domains/) against the code of the repos listed
       in .maestro/workspace.yaml. Every claim must match the code it cites, and every major part of

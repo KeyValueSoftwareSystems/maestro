@@ -17,6 +17,7 @@ steps:
 
   - id: refresh
     agent: socrates
+    model: opus
     instructions: |
       Update mode. These repos got new commits: ${changed}. If the list is empty, change nothing and pass.
       For each doc in docs/ whose source_commit for one of these repos is behind its HEAD, read the
