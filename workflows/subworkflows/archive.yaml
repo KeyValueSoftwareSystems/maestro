@@ -4,19 +4,21 @@ description: Update the knowledge base, push branches and open PRs, and remove t
 steps:
   - id: learn
     agent: socrates
+    model: opus
     instructions: |
       Update mode. The change is described in ${run}/ (request.md, plan.md or rca.md, review.md).
       Its code is on branch ${branch} in ${worktree}.
-      Update the docs in docs/ that this change makes wrong or incomplete.
+      Update the docs in docs/ that this change makes wrong or incomplete, and commit them.
       If a repo in this change has path "." in .maestro/workspace.yaml, the docs belong to that
-      repo: edit them in its worktree and commit them on its branch. Otherwise edit docs/ at the
-      workspace root and leave those edits uncommitted for the person.
+      repo: edit them in its worktree, on its branch. Otherwise they belong to the workspace root:
+      edit them in a git worktree of it at the absolute path of .maestro/worktrees/${slug}/workspace,
+      on a new branch docs/${slug} from origin's latest default branch (reuse it if it exists).
 
   - id: approve-ship
     mode: gate
     prompt: |
       ${slug} is ready to ship. Review: ${run}/review.md. Tests: ${run}/test-report.md (if present).
-      Approve to push the branches and open pull requests.
+      Approve to push the branches and open pull requests, for the code and the docs.
 
   - id: pr
     agent: worker
@@ -24,9 +26,18 @@ steps:
     foreach: repo
     instructions: |
       In ${worktree}, push branch ${branch} to origin and open a pull request against the default
-      branch with `gh pr create`. Take the title from ${run}/plan.md or ${run}/rca.md. In the body,
-      say what changed, why, and how it was tested (from ${run}/test-report.md or ${run}/review.md).
+      branch with `gh pr create`. Title it with what the change does, from ${run}/plan.md or the fix
+      in ${run}/rca.md. In the body, say what changed, why, and how it was tested (from
+      ${run}/test-report.md or ${run}/review.md).
       Never paste secrets or raw logs. Record the PR URL as `pr`.
+
+  - id: docs-pr
+    agent: worker
+    model: haiku
+    instructions: |
+      If .maestro/worktrees/${slug}/workspace exists, push its branch docs/${slug} and open a pull
+      request against the default branch with `gh pr create`, titled "docs: <what changed>", that
+      links the PRs ${pr}. Then remove that worktree, keeping the branch. Otherwise pass.
 
   - id: cleanup
     agent: worker

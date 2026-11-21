@@ -31,6 +31,7 @@ steps:
 
   - id: build
     agent: brew
+    model: sonnet
     foreach: repo
     instructions: |
       Build the ${repo} tasks in ${run}/plan.md in ${worktree} on branch ${branch}, with their tests.
@@ -43,6 +44,7 @@ steps:
 
   - id: test
     agent: litmus
+    model: sonnet
     instructions: |
       Write mode, then run mode. Add any test in the Test plan of ${run}/plan.md that is still
       missing, and commit it on ${branch}. Then run the whole Test plan in ${worktree}.

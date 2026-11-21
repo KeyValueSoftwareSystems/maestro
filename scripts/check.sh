@@ -29,6 +29,8 @@ for d in skills/*/ skills/agents/*/ stacks/*/; do
 done
 # Agents install next to the other skills, so their names must not clash.
 for d in skills/agents/*/; do [ ! -d "skills/$(basename "$d")" ] || err "$d: also in skills/"; done
+# init names the stack skills it can choose, so that list must match stacks/.
+for d in stacks/*/; do grep "stack skills from:" workflows/init.yaml | grep -qw "$(basename "$d")" || err "workflows/init.yaml doesn't list stack $d"; done
 
 # Every agent and workflow file that a workflow names exists, and every workflow has a command.
 agents=" worker $(ls skills/agents | tr '\n' ' ') "

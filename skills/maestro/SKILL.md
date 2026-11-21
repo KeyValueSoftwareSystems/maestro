@@ -91,6 +91,7 @@ Stack skills: <stack_skills of the step's repos>               <- brew, birbal, 
 Previous attempt failed at <step>: <reason>. Details: <path>   <- on a retry
 Person's feedback: <their words>                               <- after a rejected gate
 Rules: <the four Safety rules below>
+<run folder> is in no repo: never link or cite its files in code, docs, commits or PRs.
 Finish your reply with these lines:
 STATUS: pass | fail - <one line why>
 <name>: <value>      (one line per value the task asks you to record)
@@ -118,7 +119,8 @@ After each agent step, record its `<name>: <value>` lines in `vars`. Inside `for
 them per repo.
 
 ## Failures and the step budget
-- Each step run adds 1 to `steps_used`. A `foreach` or a `parallel` list counts as one run.
+- Each step run adds 1 to `steps_used`. A `foreach` or a `parallel` list counts as one run, and a
+  gate doesn't count.
 - When a step fails and has `on_fail`, and `steps_used` is below `max_steps`, go to that step.
   Pass it the failure reason and the report or log path, then continue in order from there.
 - An `on_fail` target inside a `parallel` list re-runs only that step, then continues after the list.

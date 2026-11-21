@@ -43,6 +43,7 @@ steps:
   - parallel:
       - id: build
         agent: brew
+        model: sonnet
         foreach: repo
         instructions: |
           Build the ${repo} tasks in ${run}/plan.md in ${worktree}, with their unit tests.
@@ -50,6 +51,7 @@ steps:
           Do not commit: a later step commits.
       - id: write-tests
         agent: litmus
+        model: sonnet
         instructions: |
           Write mode. Write the integration and e2e tests in the Test plan of ${run}/plan.md,
           in the worktrees ${worktree}. Touch only test files. Do not commit: a later step commits.
@@ -78,6 +80,7 @@ steps:
 
   - id: verify
     agent: litmus
+    model: sonnet
     instructions: |
       Run mode. Run the whole Test plan of ${run}/plan.md in ${worktree}.
       Write the report to ${run}/test-report.md.

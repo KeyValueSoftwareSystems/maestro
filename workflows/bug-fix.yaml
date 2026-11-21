@@ -33,6 +33,7 @@ steps:
 
   - id: fix
     agent: brew
+    model: sonnet
     foreach: repo
     instructions: |
       Fix the bug in ${worktree} on branch ${branch}, following ${run}/rca.md.

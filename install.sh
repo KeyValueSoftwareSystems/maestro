@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Install Maestro into a project, for Claude Code.
 #   bash /path/to/maestro/install.sh [project-dir] [--force-workflows]
-# Run it again to upgrade. Skills, commands and stacks are replaced. Your workflows are kept
-# unless you pass --force-workflows. .maestro/workspace.yaml and your runs are never touched.
+# Run it again after /maestro-init to add the stack skills, and to upgrade. Skills and commands
+# are replaced. Your workflows are kept unless you pass --force-workflows.
+# .maestro/workspace.yaml and your runs are never touched.
 set -euo pipefail
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -11,7 +12,7 @@ FORCE=0
 for arg in "$@"; do
   case "$arg" in
     --force-workflows) FORCE=1 ;;
-    -h|--help) sed -n '2,5p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,6p' "$0"; exit 0 ;;
     *) DEST="$arg" ;;
   esac
 done
@@ -31,14 +32,13 @@ done
 mkdir -p "$DEST/.claude/commands"
 cp "$SRC"/commands/*.md "$DEST/.claude/commands/"
 
-# The stack skill library. /maestro-init copies the matching stacks into .claude/skills,
-# and an upgrade refreshes the copies that are already there.
-copy_dir "$SRC/stacks" "$DEST/.maestro/stacks"
-for stack in "$SRC"/stacks/*/; do
-  name="$(basename "$stack")"
-  if [ -d "$DEST/.claude/skills/$name" ]; then
-    copy_dir "${stack%/}" "$DEST/.claude/skills/$name"
-  fi
+# Only the stack skills .maestro/workspace.yaml lists (written by /maestro-init).
+WS="$DEST/.maestro/workspace.yaml"
+stacks="" installed=""
+[ -f "$WS" ] && stacks="$(sed -n 's/.*stack_skills: *\[\(.*\)\].*/\1/p' "$WS" | tr ', ' '\n\n' | sort -u)"
+for name in $stacks; do
+  if [ -d "$SRC/stacks/$name" ]; then copy_dir "$SRC/stacks/$name" "$DEST/.claude/skills/$name"; installed="$installed $name"
+  else echo "skipped unknown stack skill '$name' in workspace.yaml" >&2; fi
 done
 
 # Workflows are yours to edit, so existing files are kept unless --force-workflows.
@@ -57,4 +57,5 @@ touch "$DEST/.gitignore"
 grep -qxF '.maestro/worktrees/' "$DEST/.gitignore" || echo '.maestro/worktrees/' >> "$DEST/.gitignore"
 
 echo "Maestro installed in $DEST"
-echo "Next, in Claude Code: /maestro-init  (finds repos and stacks, and builds the knowledge base)"
+if [ -f "$WS" ]; then echo "Stack skills:${installed:- none}"
+else echo "Next, in Claude Code: /maestro-init. Then run this script again to add the stack skills."; fi
