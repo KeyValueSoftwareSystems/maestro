@@ -73,43 +73,9 @@ Check the Boot version in `pom.xml`/`build.gradle` first; version-specific rules
 - Keep the set of `@MockitoBean`/property overrides consistent across tests; each distinct combination builds a new application context and slows the suite.
 
 ## Review
-Grade each problem at the highest severity it matches.
-
-### Critical: security
-- SQL injection: string concatenation in `@Query`, `JdbcTemplate`, `NamedParameterJdbcTemplate` or `EntityManager.createNativeQuery()`.
-- Missing input validation: `@RequestBody` without `@Valid`, or an entity bound straight from the request (mass assignment).
-- Missing authorization: endpoint or service method with no check, ownership not verified, chain not deny-by-default, or `permitAll()` wider than intended.
-- CSRF disabled on a session/cookie-authenticated app, or disabled without a documented reason (stateless JWT APIs may omit it).
-- Hardcoded secrets in source or `application*.yml`/`.properties` (use environment, Vault or a cloud secrets manager); actuator endpoints beyond health/info exposed unauthenticated.
-- Plaintext or weak (MD5, SHA-1, unsalted) password storage; JWT accepted without signature and expiry checks.
-- CORS `*` with credentials; rate limiting keyed on raw `X-Forwarded-For`.
-- Tokens or PII logged through SLF4J; `e.getMessage()` or stack traces returned to clients.
-
-### Critical: error handling
-- `repository.findById(id).get()` instead of `orElseThrow`.
+Every Build and Test rule above is also a review check. Also check for:
 - Wrong HTTP status: `200` with a null body instead of `404`, or a create without `201`.
-
-### High: architecture
-- `@Autowired` field injection instead of constructor injection.
-- Business logic in controllers instead of delegating to the service layer.
-- `@Transactional` on a controller or repository instead of the service; missing `readOnly = true` on read-only service methods; `@Transactional` on a private or self-invoked method (no effect).
-- JPA entity returned from a controller instead of a DTO or record projection.
-- Remote call or message send inside a transaction; `open-in-view` left enabled.
-
-### High: JPA and relational database
-- N+1 queries: `FetchType.EAGER` on collections or default-EAGER `@ManyToOne` read in loops; fix with `JOIN FETCH`, `@EntityGraph` or a projection.
-- Unbounded list endpoint: `List<T>` returned without `Pageable` and `Page<T>`.
-- Mutating `@Query` without `@Modifying` + `@Transactional`.
-- Dangerous cascade: `CascadeType.ALL` with `orphanRemoval = true`; confirm the intent is deliberate.
-- Collection fetch join combined with pagination (in-memory paging).
-- `EnumType.ORDINAL`; `ddl-auto=update`/`create` outside local dev; an applied migration edited.
-
-### Medium
-- Concurrency: `@Async` or `CompletableFuture` without a bounded executor; long-running `@Scheduled` methods blocking the scheduler thread.
-- Testing: `@SpringBootTest` for unit tests (use `@WebMvcTest`/`@DataJpaTest`); service tests not on `MockitoExtension`; H2 standing in for the production database; `@MockBean`/`@SpyBean`.
-- HTTP clients: new `RestTemplate` or `TestRestTemplate` code instead of `RestClient`/`RestTestClient`.
-- Resilience: `@Retryable` without `includes` or jitter; Spring Retry in new code; Kafka/AMQP listeners without dead-letter handling.
-- NoSQL (Spring Data MongoDB): document shape changed without a versioned migration; large blobs embedded (16 MB BSON limit); time-bound data without a TTL index; queries on unindexed fields; `findAll()` without paging; connection settings still under `spring.data.mongodb.*` on Boot 4 (moved to `spring.mongodb.*`).
+- Spring Data MongoDB: a document shape changed without a versioned migration; large blobs embedded (16 MB BSON limit); time-bound data without a TTL index; queries on unindexed fields; `findAll()` without paging; connection settings still under `spring.data.mongodb.*` on Boot 4 (moved to `spring.mongodb.*`).
 
 ## Verify
 - `./mvnw verify` (or `./gradlew build`) runs unit, slice and Testcontainers tests. Maven runs `*IT` classes only in `verify` via Failsafe, so `./mvnw test` alone is not a full check.

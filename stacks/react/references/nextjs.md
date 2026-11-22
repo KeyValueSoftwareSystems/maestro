@@ -90,31 +90,8 @@ export async function deletePost(formData: FormData) {
 - Server Action tests call the action with a `FormData` and assert: invalid input is rejected, an unauthenticated call is refused, and a non-owner is refused.
 - Client Components test with RTL as usual. `next/navigation` (`useRouter`, `usePathname`, `useSearchParams`) needs a mock such as `next-router-mock/navigation` — the App Router context does not exist outside Next.
 
-## Review additions
-
-Critical
-- Server Action or Route Handler missing validation, authentication or per-record authorization.
-- Secret in `NEXT_PUBLIC_*` or in a module reachable from a `"use client"` file.
-- `next` on 14.x or older, or below the latest patch of its 15.x/16.x line — check `npm audit` and the Next.js security advisories (monthly releases). Treat the 16.4+ `next dev`/`next build` vulnerability warning as a failure.
-- `rewrites()`/`redirects()` destination host built from request input; `NextResponse.next({ headers: request.headers })`.
-
-High
-- `params`, `searchParams`, `cookies()` or `headers()` used synchronously on 15+.
-- Mutable module-level state in server code.
-- Full DB record passed to a Client Component or returned from an action; DB/secret module without `import "server-only"`.
-- Middleware/proxy as the only auth gate.
-- Mutation with no `revalidatePath`/`revalidateTag` for the views that show the data — stale UI.
-- Non-action helper exported from a `"use server"` file; id-taking export of a file-level `"use cache"` module with no auth check.
-- `images.remotePatterns` with wildcard hosts; `dangerouslyAllowSVG`/`dangerouslyAllowLocalIP` without a reason.
-- Cache Components on with a leftover `dynamic`/`revalidate`/`fetchCache`/`dynamicParams`/`runtime` export.
-
-Medium
-- `"use client"` on a page or layout file.
-- Caching that assumes another version's default (e.g. relying on cached `fetch` after enabling Cache Components).
-- `ssr: false` dynamic import in a Server Component; third-party script without `next/script`.
-- Custom `webpack()` config with no explicit `--webpack`/`--turbopack` in the build script.
-
-Do not flag: `proxy.ts` (instead of `middleware.ts`) on Next.js 16+.
+## Review
+Every rule above is also a review check. Also check that `next` is on the latest patch of its 15.x/16.x line: check `npm audit` and the Next.js security advisories (monthly releases), and treat the 16.4+ `next dev`/`next build` vulnerability warning as a failure.
 
 ## Verify
 

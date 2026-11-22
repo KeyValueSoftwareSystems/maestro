@@ -1,6 +1,6 @@
 ---
 name: python
-description: Rules for writing, testing and reviewing Python 3.11+ code (typing, error handling, async, security, pytest), with a severity-graded review checklist. Django (with DRF and Celery) and FastAPI are covered in reference files, and it applies whenever a Python change is being built, tested or reviewed.
+description: Rules for writing, testing and reviewing Python 3.11+ code (typing, error handling, async, security, pytest), with review checks. Django (with DRF and Celery) and FastAPI are covered in reference files, and it applies whenever a Python change is being built, tested or reviewed.
 ---
 # Python
 
@@ -90,55 +90,8 @@ Covers: Python 3.11–3.15 (newer features are flagged; 3.10 is end of life), py
 - Cover every changed branch, including error paths; meet the repo's coverage gate (default 80%+, critical paths fully); never add assertion-free tests to raise the number.
 
 ## Review
-
-Severity says how serious a problem is. Report each with its location and the fix.
-
-### Critical — Security
-- SQL built with f-strings, `%` or `.format` — parameterize.
-- Unvalidated input in shell commands (`shell=True`, `os.system`) — use list args.
-- User-controlled paths not resolved and contained under a base dir; tar extraction with `fully_trusted` or on an unpatched interpreter.
-- `eval`/`exec` on input; unsafe deserialization (`pickle`, `marshal`, `yaml.load`) of untrusted data.
-- Hardcoded secrets, tokens or passwords; secrets written to logs.
-- Weak crypto for security (MD5/SHA-1, `random` for tokens); TLS verification disabled.
-- Dependency changed without its lockfile; an extra index added for internal packages.
-
-### Critical — Error handling
-- Bare `except:` or `except Exception: pass`; exceptions swallowed or turned into silent `None` returns.
-- `return`/`break`/`continue` inside `finally`.
-- Files, locks or connections managed by hand instead of `with`.
-
-### High — Type hints
-- Public functions without annotations.
-- `Any` where a specific type, `Protocol` or `TypeVar` fits.
-- Nullable parameters not typed `X | None`; unscoped `# type: ignore`.
-
-### High — Pythonic patterns
-- Mutable or call-evaluated default arguments.
-- Magic numbers or strings instead of named constants or `Enum`.
-
-### High — Code quality
-- Functions over ~50 lines or with more than 5 parameters (group into a dataclass).
-- Nesting deeper than 4 levels.
-
-### High — Concurrency
-- Mutable state shared across threads without a lock.
-- Blocking calls inside `async def`; un-awaited coroutines; `create_task` results dropped.
-- `asyncio.get_event_loop()` or event-loop policies; process-pool code that relies on `fork`-inherited globals.
-- Network calls without a timeout.
-- N+1 queries or calls in loops — batch them.
-
-### Medium — Best practices
-- Public functions with non-obvious behavior and no docstring.
-- `print()` instead of `logging`; f-strings in log calls.
-- Naive datetimes, `datetime.utcnow()` or `utcfromtimestamp()`.
-
-### Medium — Tests
-- Changed behavior or bug fix with no test.
-- Tests that hit the network, sleep, or depend on run order.
-- Mocks without autospec, or tests that only assert a mock was called.
-
-### Other frameworks
-- Flask: missing error handlers; CSRF protection absent on form posts.
+Every Build and Test rule above is also a review check. Also check for:
+- Flask: missing error handlers, and no CSRF protection on form posts.
 - Django and FastAPI: see References.
 
 ## Verify

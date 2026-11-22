@@ -199,3 +199,18 @@ logs" in `pr`; and "Every claim must match the code it cites" in knowledge `revi
 | # | Scenario | Result | Evidence |
 |---|---|---|---|
 | 38 | Round 7 re-run without the commit line | Pass | Classified as a test bug; input put back to `0.125`; committed as `38ebed3`; worktree clean; verify passed and the run went on to the quiz ($0.87) |
+
+## Round 9: stack Review sections trimmed (2026-11-22)
+Each stack skill's Review section re-listed its Build and Test rules under Critical/High/Medium
+labels, which Birbal treated only as hints. Every Review section now says that each Build and Test
+rule is also a review check, and lists only what the rest of the skill doesn't cover. Tested by
+having Birbal (Opus) review a planted Node change twice with the full node skill and twice with
+the trimmed one. The change added a webhook endpoint with 11 Build-rule bugs: `forEach(async)`,
+`fetch` without a timeout, `JSON.parse` outside the `try`, unvalidated `process.env`,
+`readFileSync` on the request path, log-and-continue, `url.parse`, a thrown string, `err.stack`
+sent to clients, an unrequested `postinstall`, and an unchecked `res.ok`.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 39 | Full node skill, two runs | Pass | 11 of 11 caught in both runs (14 and 17 rows; $0.79 and $1.08) |
+| 40 | Trimmed node skill, two runs | Pass | 11 of 11 caught in both runs (17 and 14 rows; $0.77 and $1.01). Severity varied as much between runs as between versions: `postinstall` was major or blocker with the full skill and minor or major with the trimmed one |

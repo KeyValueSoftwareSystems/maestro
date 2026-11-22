@@ -1,6 +1,6 @@
 ---
 name: react
-description: Rules and a severity-graded checklist for writing, testing and reviewing React code (components, hooks, forms, Server Components) in TypeScript. Use when creating or changing .tsx/.jsx files, writing React Testing Library tests, or reviewing a React diff, including Next.js and React Native projects.
+description: Rules for writing, testing and reviewing React code (components, hooks, forms, Server Components) in TypeScript. Use when creating or changing .tsx/.jsx files, writing React Testing Library tests, or reviewing a React diff, including Next.js and React Native projects.
 ---
 
 # React
@@ -80,73 +80,17 @@ Covers: React 18 and 19 through 19.3 (19-only APIs are marked), TypeScript, Reac
 - RTL for hooks, presentational components and form logic; Playwright (component or E2E) for real layout, scrolling, drag-and-drop, clipboard, iframes and multi-page flows.
 
 ## Review
-
-### Critical
-Security
-- `dangerouslySetInnerHTML` with user-controlled HTML and no DOMPurify (or equivalent allowlist sanitizer) at the same call site; the HTML's source is undocumented.
-- User-controlled URL in `href`/`src` without scheme validation (`javascript:`/`data:` execute).
-- Server Action (`"use server"`) or route handler taking `FormData`/arguments without schema validation (zod, valibot, yup) — it is a public endpoint.
-- Secret (private key, token, service credential) in `NEXT_PUBLIC_*`/`VITE_*`/`REACT_APP_*` or any module imported by client code.
-- Session token in `localStorage`/`sessionStorage` — readable by any XSS; require httpOnly cookies.
+Every Build and Test rule above is also a review check. Also check for:
+- A disabled or missing `eslint-plugin-react-hooks`, or a hook called conditionally or outside a component or custom hook.
+- A stale closure: an async handler or interval reads a value that has since changed — use the functional updater or a ref.
+- A Server Action (`"use server"`) or route handler that takes `FormData` or arguments without schema validation (zod, valibot, yup), or without an authentication and authorization check for that operation — it is a public endpoint.
 - An RSC stack (Next.js App Router, React Router RSC, Waku, `@vitejs/plugin-rsc`, Parcel) resolving `react-server-dom-webpack|turbopack|parcel` below the latest patch of its 19.x line — check `npm audit` and the React security advisories. Unpatched lines allow unauthenticated RCE even with no Server Functions defined (CVE-2025-55182).
-
-Hook rules
-- Hook called conditionally: inside `if`, a loop, `&&`, a ternary, or after an early return. Flag a disabled or missing `eslint-plugin-react-hooks`.
-- Hook called outside a component or custom hook.
-- State mutated in place (`state.push(x)`; `obj.a = 1; setObj(obj)`) — no re-render, and `===` checks in memoized children break.
-
-### High
-Hook correctness
-- Reactive value missing from `useEffect`/`useMemo`/`useCallback` deps; any `exhaustive-deps` disable without a justification comment.
-- Effect that stores derived state (`setX(f(props.y))` in an effect on `[props.y]`) — compute during render.
-- Missing cleanup for subscriptions, intervals, listeners, or a fetch without `AbortController`/ignore flag.
-- Stale closure: an async handler or interval reads a value that has since changed — use the functional updater or a ref.
-
-Server/client boundary (RSC, Next.js App Router)
-- `"use client"` file importing a `server-only` module or a DB/secret-holding client (Prisma, a cloud SDK with credentials).
-- `"use client"` placed so high that a large tree with no interactivity becomes client code — the directive propagates to imports.
-- Server Component passing a full record (password hash, tokens, internal fields) to a Client Component, or a Server Function returning one.
-- Secret literal inside a `"use server"` function or a helper it calls.
-- Server Action without an authentication and authorization check for that specific operation.
+- A `"use client"` file importing a `server-only` module or a DB or secret-holding client; `"use client"` placed so high that a large non-interactive tree becomes client code (the directive propagates to imports).
+- A Server Component passing a full record (password hash, tokens, internal fields) to a Client Component.
 - Mutable module-level state in server code — shared across requests and users.
-
-Accessibility
-- `<div onClick>`/`<span onClick>` instead of `<button>`/`<a>` — mouse-only, unreachable by keyboard and assistive tech.
-- Input without `<label htmlFor>`, `aria-label` or `aria-labelledby`.
-- `<img>` without `alt` (`alt=""` when decorative).
-- ARIA misuse: `aria-label` on non-interactive elements, `role` overriding native semantics, disclosure widgets missing `aria-expanded`/`aria-controls`.
-- Color as the only indicator (an error shown only as red text, no icon or text).
-
-Rendering and state
-- `key={index}` or random keys on a list that reorders, inserts or deletes.
-- The same data held in two states, or in state plus a stored computed copy.
-- Effect chains: an effect sets state that triggers another effect that sets state.
-- State initialized from a prop with no `key` reset — stale when the prop changes.
-- Component declared inside another component.
-
-### Medium
-Performance
-- `memo`/`useMemo`/`useCallback` with no measured win: props change on most renders, or the value feeds no memoized child or hook dep. Under React Compiler: new memo that isn't stabilizing an effect dependency — never ask to remove existing memo.
-- New inline object/array/function passed to a `memo` child — defeats it.
-- Heavy synchronous work in render (parsing, sorting, regex compile) on every render.
-- Independent `await`s run one after another in a loader or Server Component.
-- Suspense only at the route root — wholesale loading state instead of progressive reveal.
-- 50+ visible non-trivial rows without virtualization.
-- High-frequency value in Context — every consumer re-renders on each change.
-- Barrel imports, or a static import of a heavy, rarely used component.
-
-Forms
-- Form UI without a `<form>` element — loses Enter-to-submit and native semantics.
-- `onSubmit` without `preventDefault()` (not needed with React 19 form actions).
-- Hand-rolled validation in a non-trivial form.
-- Input inside a form without `name` — invisible to `FormData`.
-
-Composition
-- New class component other than an error boundary.
-- `{n && …}` where `n` can be `0`.
-
-Tests
-- Test-id or `querySelector` queries where a role or label exists; `setTimeout` waits; markup snapshots; mocked `fetch` or child components instead of MSW; unhandled requests allowed.
+- `<img>` without `alt` (`alt=""` when decorative); ARIA misuse (`aria-label` on non-interactive elements, `role` overriding native semantics, disclosure widgets missing `aria-expanded`/`aria-controls`); color as the only indicator.
+- A new inline object, array or function passed to a `memo` child; heavy synchronous work in render (parsing, sorting, regex compile).
+- Form UI without a `<form>` element — it loses Enter-to-submit and native semantics.
 
 ## Verify
 
@@ -165,5 +109,5 @@ npx prettier --check .
 
 ## References
 
-- `references/nextjs.md` — read for any Next.js App Router work: Server/Client Components, Server Actions, async `params`, caching in 15 and 16 (Cache Components), `proxy.ts` (16+), security config, Turbopack, and Next-specific review items.
-- `references/react-native.md` — read for React Native / Expo work: Expo Router params, lists, `<Text>` rules, styling, native APIs, secure storage, RN testing, and RN-specific review items.
+- `references/nextjs.md` — read for any Next.js App Router work: Server/Client Components, Server Actions, async `params`, caching in 15 and 16 (Cache Components), `proxy.ts` (16+), security config and Turbopack.
+- `references/react-native.md` — read for React Native / Expo work: Expo Router params, lists, `<Text>` rules, styling, native APIs, secure storage and RN testing.

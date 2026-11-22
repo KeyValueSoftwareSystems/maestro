@@ -1,6 +1,6 @@
 ---
 name: java
-description: Rules for writing, testing and reviewing Java 17/21/25 code, covering immutability, Optional, exceptions, concurrency, injection risks, JUnit Jupiter tests and a severity-graded review checklist. Use when building, testing or reviewing any Java code; Spring Boot, Spring Security and JPA rules are in the bundled spring-boot reference.
+description: Rules for writing, testing and reviewing Java 17/21/25 code, covering immutability, Optional, exceptions, concurrency, injection risks, JUnit Jupiter tests and review checks. Use when building, testing or reviewing any Java code; Spring Boot, Spring Security and JPA rules are in the bundled spring-boot reference.
 ---
 
 # Java
@@ -86,36 +86,7 @@ if (!target.startsWith(base)) throw new IllegalArgumentException("invalid path")
 - For every bug fixed, add a regression test that fails before the fix; cover each error path (not found, invalid input, conflict) and boundaries (empty, null, max).
 
 ## Review
-Grade each problem at the highest severity it matches.
-
-### Critical: security
-- SQL injection: string concatenation in JDBC, JPQL or native queries; unvalidated identifiers in `ORDER BY`.
-- Command injection: user input reaching `ProcessBuilder` or `Runtime.exec()` without validation.
-- Code injection: user input reaching `ScriptEngine.eval(...)`, SpEL or reflection.
-- Path traversal: user input in `new File(...)`, `Paths.get(...)`, `FileInputStream(...)` without normalise + base-dir check.
-- Unsafe parsing: `ObjectInputStream` on untrusted data, Jackson default typing, XML parsers with external entities enabled.
-- Hardcoded secrets: API keys, passwords, tokens in source (test fixtures with fake values excepted).
-- Sensitive logging: passwords, tokens or PII logged, especially near auth code, or echoed in error messages.
-- Weak randomness: `java.util.Random`/`Math.random()` used for tokens or IDs that must be unguessable.
-
-### Critical: error handling
-- Swallowed exceptions: empty catch blocks, or `catch (Exception e) {}` that neither handles nor rethrows.
-- `Optional.get()` without a presence check (`findById(id).get()`); use `orElseThrow`.
-- Exception wrapped without its cause, or `InterruptedException` swallowed without restoring the interrupt flag.
-
-### High
-- Resource leak: stream, connection or executor not closed in try-with-resources.
-- Money held in `double`/`float`, or `BigDecimal` compared with `equals`.
-- Blocking I/O on the common ForkJoin pool (`supplyAsync` without an executor).
-- Mutable collection exposed from an object that is meant to be immutable.
-- `--enable-preview` in a production build; reflective writes to `final` fields.
-
-### Medium
-- Concurrency and state: non-final instance fields in singletons or static mutable state (race condition); unbounded async execution.
-- Idioms: `null` returned from the service layer instead of `Optional`; `Optional` as a field or parameter; JSR 305 nullness annotations in new code.
-- Logging: concatenation in log calls; `System.out`/`printStackTrace()`; log-and-rethrow at every layer.
-- Testing: service tests without `MockitoExtension`; `Thread.sleep()` instead of Awaitility; weak names like `testFindUser`; partial mocks; tests depending on wall-clock time or execution order.
-- State machines and event handlers: idempotency checked after processing; unguarded transitions; compensation that can partially succeed; backoff without jitter; no dead-letter path or alert.
+Every Build and Test rule above is also a review check.
 
 ## Verify
 Prefer the repository's wrapper (`./mvnw`, `./gradlew`) over a global `mvn`/`gradle` — because the wrapper pins the build-tool version the project is tested with.
@@ -135,4 +106,4 @@ Prefer the repository's wrapper (`./mvnw`, `./gradlew`) over a global `mvn`/`gra
 - Before handing off, read `git diff` for leftover `System.out`, commented-out code, stray TODOs and `@Disabled`.
 
 ## References
-- `references/spring-boot.md`: read when the build uses Spring Boot (starter parent, plugin or BOM). It covers controllers, services, `@Transactional`, validation, Spring Security, JPA/Hibernate and Spring Data, slice tests with Testcontainers, the Spring-specific review checklist, and Spring verification steps.
+- `references/spring-boot.md`: read when the build uses Spring Boot (starter parent, plugin or BOM). It covers controllers, services, `@Transactional`, validation, Spring Security, JPA/Hibernate and Spring Data, slice tests with Testcontainers, Spring-specific review checks, and Spring verification steps.

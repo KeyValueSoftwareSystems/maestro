@@ -67,26 +67,7 @@ Covers: FastAPI 0.122+ (`Annotated` dependencies, `lifespan`, Pydantic v2 only),
 - Mock outbound HTTP with `respx` or a fake client injected through a dependency override; no real network.
 
 ## Review
-
-### Critical
-- SQL built by string interpolation, including `text(f"...")`.
-- Passwords, token hashes or internal auth fields exposed in responses (missing or too-wide `response_model`, ORM objects returned directly).
-- Auth dependencies that can be bypassed or do not validate signature, expiry and algorithm; non-public routes without auth; object routes without ownership checks.
-
-### High
-- Blocking DB or HTTP calls (`requests`, sync `Session`, `time.sleep`) inside `async def` routes.
-- DB sessions or engines created inline in handlers instead of dependencies.
-- Test overrides targeting the wrong dependency (alias, wrapper, re-imported copy) or never cleared.
-- `allow_origins=["*"]` combined with credentialed CORS.
-- Write endpoints missing request validation (raw `dict` or `await request.json()`, unbounded strings, server-controlled fields in input schemas).
-- PATCH applying `model_dump()` without `exclude_unset=True`.
-- Lazy-loaded relationships in async code; request-scoped sessions used in background tasks.
-- A session dependency that commits after `yield` without `scope="function"`.
-
-### Medium
-- List endpoints without bounded pagination and deterministic ordering.
-- External HTTP clients without timeouts, or created per request.
-- Pydantic v1 APIs or `pydantic.v1` imports, `@app.on_event`, `ORJSONResponse`/`UJSONResponse`, or `create_all()` at startup.
+Every Build and Test rule above is also a review check.
 
 ## Verify
 

@@ -65,27 +65,8 @@ export default function UserRoute() {
 - Mock HTTP with MSW via `msw/node`. MSW 3 is ESM-only, so Jest must transform it (or stay on MSW 2); in-app mocking uses `@msw/react-native`, not `msw/native`.
 - Device-level flows (navigation stacks, permission prompts, deep links) belong in a device E2E tool such as Detox, not in Jest.
 
-## Review additions
-
-Critical
-- Token or secret in AsyncStorage/MMKV, or a private key hardcoded or in `EXPO_PUBLIC_*`.
-- Deep-link or route params used in a request or navigation without validation.
-- `@react-native-community/cli` below 20, or a script starting Metro on `0.0.0.0`.
-
-High
-- Dynamic list rendered with `ScrollView` + `map`, or a virtualized list nested in a same-direction `ScrollView`.
-- A string, or `0` from `&&`, that can render outside `<Text>`.
-- Server data duplicated into a client store.
-- Subscription or listener without cleanup; permission denial not handled.
-- Native dependency without New Architecture support.
-- Deep import from `react-native/Libraries/*`, a removed RN API, or `@react-navigation/*` imports in an Expo Router app on SDK 56+.
-
-Medium
-- Inline style objects or an unstable `renderItem` in list rows.
-- New `expo-av` usage; new `ImageBackground`.
-- Icon-only pressable without `accessibilityLabel`; font scaling disabled.
-- Per-frame animation on the JS thread where Reanimated or the native driver fits.
-- Core `SafeAreaView` instead of `react-native-safe-area-context`.
+## Review
+Every rule above is also a review check.
 
 ## Verify
 

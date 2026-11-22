@@ -1,6 +1,6 @@
 ---
 name: node
-description: Guides writing, testing and reviewing Node.js and TypeScript code (services, CLIs, libraries and build tooling), covering type design, async and error handling, configuration, security and a severity-ranked review checklist. Applies whenever a change touches .ts/.js/.mts/.cts files, package.json or tsconfig in a Node.js project.
+description: Guides writing, testing and reviewing Node.js and TypeScript code (services, CLIs, libraries and build tooling), covering type design, async and error handling, configuration, security and review checks. Applies whenever a change touches .ts/.js/.mts/.cts files, package.json or tsconfig in a Node.js project.
 ---
 # Node.js + TypeScript
 
@@ -87,61 +87,16 @@ Covers: Node.js 22, 24 and 26 LTS (20 is end-of-life), TypeScript 5.x–7.x, ESM
 - Never make a snapshot the only assertion on a large object; assert the fields that matter.
 
 ## Review
-Severity: **Critical** blocks merge (security, data loss). **High** is fixed before merge unless explicitly accepted. **Medium** is fixed or justified. React/Next.js component checks are out of scope here — review them with React-specific rules.
-
-### Critical — Security
-- `eval` / `new Function` / `vm` reachable by user-controlled input.
+Every Build and Test rule above is also a review check. React/Next.js component checks are out of
+scope here: review them with React-specific rules. Also check for:
 - XSS: unsanitised input into `innerHTML`, `dangerouslySetInnerHTML`, `document.write`, or server-rendered HTML without escaping.
-- SQL/NoSQL injection: concatenation or interpolation into queries; object-valued input reaching a NoSQL filter.
-- Path traversal: user input reaching `fs.*` / `path.join` without `path.resolve` plus a root-prefix check.
 - Hardcoded secrets (keys, tokens, passwords, connection strings) in source, tests, or `VITE_*` / `NEXT_PUBLIC_*` variables.
-- Prototype pollution: untrusted objects merged without schema validation or a null-prototype target.
-- `child_process` with user input: `exec` or `shell: true` with interpolated strings, or arguments not validated against an allowlist.
-- New endpoint without authentication, or authorization that checks role but not ownership of the resource.
-
-### Critical — Supply chain
-- New or changed `allowScripts`/`allowBuilds` entry, `ignore-scripts=false`, or a new lifecycle script in `package.json`, without a stated reason.
-- Lockfile entry resolving from git, a GitHub shorthand or an https tarball; a lockfile change with no matching `package.json` change that the task didn't ask for.
-- Added or changed `.claude/settings.json`, `.vscode/tasks.json`, git hooks or CI workflow files the task did not ask for — worms plant these for persistence.
-- Publishing workflow that uses a stored npm token instead of trusted publishing.
-
-### High — Type safety
-- `any` without a justifying comment — use `unknown` and narrow, or a precise type.
-- `value!` with no preceding guard.
-- `as` casts that bypass checks (`as unknown as T`, casting to unrelated types) — fix the type instead.
-- `tsconfig.json` changes that weaken strictness, or new `@ts-ignore`; call these out explicitly.
-- Optional-field bags or boolean flags where a discriminated union is needed; `switch` over a union with no exhaustiveness check.
-- tsconfig adding an option deprecated in TypeScript 6.0, or `ignoreDeprecations` with no migration note.
-
-### High — Async correctness
-- Floating promise (not awaited, returned or `.catch()`-ed) anywhere, including event handlers and constructors; `array.forEach(async …)`.
-- Async Express 4 handler with no wrapper forwarding rejections to `next`.
-- Sequential `await` in a loop for independent work — `Promise.all` instead; unbounded `Promise.all` over large input — bound it.
-- Outbound HTTP/DB call with no timeout or abort signal.
-
-### High — Error handling
-- Swallowed errors: empty `catch`, or catch that logs and continues as if it succeeded.
-- `JSON.parse` of external data without try/catch.
-- Throwing non-`Error` values (`throw 'msg'`, `throw { code }`); rewrapping without `cause`.
 - Internal error messages or stack traces returned to clients.
-
-### High — Node.js runtime
-- Synchronous fs/crypto/zlib in request handlers or hot paths — it blocks the event loop.
-- External data (body, query, headers, messages, files) used without schema validation at the boundary.
-- `process.env` read without startup validation or fallback.
-- `require()` in ESM; a dynamic-`import()` or bundler workaround for an ESM-only package that Node 22.12+ can `require()` directly.
-- `.pipe()` without error handling; streams not destroyed on failure; `url.parse()` on any input.
-- Module-level mutable shared state; callback-style APIs mixed with `async/await` (use `node:fs/promises`, `util.promisify`).
-
-### Medium — Performance
-- N+1: database or API calls inside loops — batch, or `Promise.all` with a bound.
-- Large files or result sets loaded fully into memory where streaming or pagination is needed.
-
-### Medium — Best practices
-- `console.log` left in production code — use the structured logger.
-- Magic numbers and strings — named constants or literal-union types; `enum` where a union would do.
-- Exported functions without explicit return types.
-- New dependency for something trivial or already built in; `@types/*` or build tools in `dependencies`.
+- `tsconfig.json` changes that weaken strictness, or new `@ts-ignore`: call these out explicitly.
+- Supply chain:
+  - A new or changed `allowScripts`/`allowBuilds` entry, `ignore-scripts=false`, or a new lifecycle script in `package.json`, without a stated reason.
+  - A lockfile entry resolving from git, a GitHub shorthand or an https tarball; a lockfile change with no matching `package.json` change that the task didn't ask for.
+  - Added or changed `.claude/settings.json`, `.vscode/tasks.json`, git hooks or CI workflow files the task did not ask for. Worms plant these for persistence.
 
 ## Verify
 Prefer the repo's own `package.json` scripts (`typecheck`, `lint`, `test`, `build`) and its package manager (the lockfile tells you: npm, pnpm, yarn or bun). Fallbacks:
@@ -156,4 +111,4 @@ npm audit --omit=dev                 # or the pnpm/yarn/bun equivalent
 - Type-check every tsconfig that owns changed files (`tsc -b` in project-reference monorepos). Transpiling runners (Vitest, tsx, SWC-Jest) do not type-check, so a green test run is not a green build.
 
 ## References
-- `references/nestjs.md` — read when the project uses NestJS (`@nestjs/*` in package.json, `@Module` / `@Controller` decorators): modules and DI, DTO validation, guards, exception filters, config, persistence, testing, and NestJS-specific review items.
+- `references/nestjs.md` — read when the project uses NestJS (`@nestjs/*` in package.json, `@Module` / `@Controller` decorators): modules and DI, DTO validation, guards, exception filters, config, persistence and testing.

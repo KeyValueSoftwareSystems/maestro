@@ -98,66 +98,7 @@ Covers: Django 5.2 LTS, 6.0 and 6.1 (6.x needs Python 3.12+), Django REST Framew
 - Mock external services at the module that imports them (the service), not at the view.
 
 ## Review
-
-### Critical — Security
-- Raw SQL, `.extra()` or `RawSQL` with f-strings or `%` formatting — use params or the ORM.
-- Request data splatted into `filter()`/`Q()`/`annotate()` keyword arguments or passed to `order_by()` without an allow-list.
-- `mark_safe`/`|safe` on user input without escaping.
-- `@csrf_exempt` on non-webhook views.
-- `DEBUG = True` reachable in production settings; hardcoded `SECRET_KEY`.
-- DRF view without `permission_classes` where the global default is permissive — verify intent.
-- Object querysets not scoped to the requesting user/tenant (IDOR).
-- File uploads without extension/content-type and size validation (path traversal, oversized files).
-
-### Critical — ORM correctness
-- N+1: related objects accessed in loops or serializers without `select_related`/`prefetch_related`.
-- Multi-step writes without `transaction.atomic()`.
-- `bulk_create` on rows that can collide without conflict handling — IntegrityError or silent data loss.
-- `.get()` without `DoesNotExist` handling.
-- Queryset reused after `.delete()`; read-modify-write without `F()` or `select_for_update()`.
-
-### Critical — Migration safety
-- Model change without a migration (`makemigrations --check` fails).
-- Backward-incompatible column drop or rename in a single deploy.
-- `RunPython` without `reverse_code`, or importing models instead of `apps.get_model()`.
-- `atomic = False` without justification.
-
-### High — DRF
-- `fields = "__all__"` or `exclude` on serializers.
-- List endpoints without pagination.
-- Missing `read_only_fields` for ids, timestamps and ownership fields.
-- User/tenant injected outside `perform_create`/`perform_update`, or taken from the payload.
-- No throttling on auth endpoints.
-- Writable nested serializers without explicit `create()`/`update()`.
-
-### High — Performance
-- Querysets handed to templates that traverse relations (hidden N+1).
-- Filter/order fields without an index.
-- Synchronous external API calls in views — offload to Celery.
-- `len(qs)` instead of `.count()`; `if qs:` instead of `.exists()`.
-
-### High — Code quality
-- Business logic in views or serializers instead of services.
-- Core flow hidden in signals.
-- Mutable model field defaults (`default=[]`, `default={}`).
-- `save()` without `update_fields` on partial updates — clobbers concurrent writes.
-- `DB_CASCADE`/`DB_SET_NULL` on models whose delete signals must fire; `DEFAULT_AUTO_FIELD` left implicit across an upgrade.
-
-### High — Celery
-- Non-idempotent tasks; model instances passed as args.
-- Tasks enqueued inside a transaction without `on_commit`.
-- Unbounded retries, retries on non-transient errors, or final failures dropped silently.
-
-### Medium — Best practices
-- Missing `related_name`.
-- `blank=True` without `null=True` on non-string fields.
-- Signal receivers not connected in `AppConfig.ready()`.
-- Admin exposing sensitive fields, or auto-generated fields editable.
-
-### Medium — Testing gaps
-- No permission-boundary tests (401/403/404 for other users).
-- `force_authenticate` everywhere, so the real auth path is never tested.
-- `Model.objects.create()` chains instead of factories.
+Every Build and Test rule above is also a review check. Also check for a queryset reused after `.delete()`.
 
 ## Verify
 

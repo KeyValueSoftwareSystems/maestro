@@ -67,32 +67,5 @@ Applies to NestJS 11–12 on Express 5 or Fastify 5, validated with class-valida
 - Nest 12 lowered limits (WebSocket `maxPayload` 1 MB, TCP `maxBufferSize`, 1000 multipart parts, empty TCP `host` = localhost). Raising one back needs a comment with the reason.
 - `@nestjs/devtools-integration` stays at 0.2.1+ and `DevtoolsModule` is registered only in local development — older versions let any web page the developer visits run code on their machine.
 
-## Review — NestJS additions
-Apply on top of the main checklist.
-
-### Critical
-- Validation missing `whitelist`, or a body/query typed as `any`, an interface or a type alias (never validated).
-- New route with no auth guard where guards are per-route, or a new `@Public()` on a route that mutates or exposes user data.
-- Role-only authorization where resource ownership must be checked (IDOR).
-- ORM entity with secret fields returned directly, or a plain Prisma object relying on `@Exclude`.
-- TypeORM `synchronize: true` reachable outside local development.
-- `@nestjs/devtools-integration` below 0.2.1, or `DevtoolsModule` registered outside local development.
-
-### High
-- Business logic, repository calls or multi-step writes in a controller.
-- Per-request state stored on a singleton provider.
-- Another module's provider re-declared in `providers` instead of importing its module.
-- `import type` of a constructor-injected class.
-- Nested DTO without `@ValidateNested` and `@Type`; unbounded strings or arrays in a DTO; array body typed `Dto[]` without `ParseArrayPipe` or a wrapper DTO.
-- Unnamed Express 5 wildcard or `?` optional in a route or `forRoutes()`; nested query DTO under the `simple` parser.
-- `@Res()` without `passthrough`.
-- `process.env` read in a provider instead of through `ConfigService`.
-- Exception filter returning the message or stack of non-HTTP errors.
-- Global pipes, filters or guards that the e2e setup does not reproduce.
-- Guard order wrong (roles guard before the auth guard).
-
-### Medium
-- `forwardRef()` without justification; `Scope.REQUEST` where `AsyncLocalStorage` would do.
-- `enableImplicitConversion` relied on for boolean query parameters.
-- ID route params without `ParseUUIDPipe` / `ParseIntPipe`.
-- A Nest 12 default limit raised without a reason.
+## Review
+Every rule above is also a review check, on top of the main skill's.
