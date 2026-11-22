@@ -236,7 +236,7 @@ function editor(view, k) {
       mode === 'agent' || mode === 'exec' ? target('next', 'Fix-only step: after it passes, go back to', 'A step with this set runs only when an on_fail jumps to it.') : null,
       mode === 'agent' ? h('div.row',
         h('label.field', h('span', 'Template'), h('input', { type: 'text', value: s.template || '', placeholder: 'the agent\'s default', onchange: (e) => upd({ template: e.target.value.trim() || undefined }) })),
-        h('label.field', h('span', 'Sub-skills'), h('input', { type: 'text', value: s.skills ? Object.entries(s.skills).map(([a, b]) => `${a}: ${b}`).join(', ') : '', placeholder: 'brainstorm: grill-me, design: system-design',
+        h('label.field', h('span', 'Sub-skills'), h('input', { type: 'text', value: s.skills ? Object.entries(s.skills).map(([a, b]) => `${a}: ${b}`).join(', ') : '', placeholder: 'brainstorm: grill-the-idea, design: system-design',
           onchange: (e) => { const m = Object.fromEntries(e.target.value.split(',').map((x) => x.split(':').map((y) => y.trim())).filter(([a, b]) => a && b)); upd({ skills: Object.keys(m).length ? m : undefined }); } }))) : null,
       h('div', { style: { display: 'flex', gap: '8px', flexWrap: 'wrap' } },
         h('button.btn', { type: 'button', disabled: idx <= 0, onclick: () => move(-1) }, ico('up', 14), 'Earlier'),

@@ -6,7 +6,7 @@ steps:
   - id: plan
     agent: keystone
     run: inline
-    skills: {brainstorm: grill-me, design: system-design}
+    skills: {brainstorm: grill-the-idea, design: system-design}
     instructions: |
       Plan the change in ${run}/requirements.md. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.
       This is a small change: keep the brainstorm to the questions that matter and the plan short,

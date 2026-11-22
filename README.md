@@ -41,7 +41,7 @@ removed. A `.ignore` hides `docs/plans/` from search, so agents read an old plan
 ## Agents
 | Agent | Role |
 |---|---|
-| **Keystone** | Planner. Brainstorms (`grill-me`), designs (`system-design`) and writes `plan.md` |
+| **Keystone** | Planner. Brainstorms (`grill-the-idea`), designs (`system-design`) and writes `plan.md` |
 | **Brew** | Implementer. Writes code and tests, then fixes what the checks and reviews find |
 | **Birbal** | Reviewer. Reviews plans, code and docs in a findings table that tracks each fix |
 | **Litmus** | Tester. Writes tests, or runs them and classifies each failure |

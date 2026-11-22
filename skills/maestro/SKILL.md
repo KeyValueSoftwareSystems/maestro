@@ -88,7 +88,7 @@ Give it this prompt:
 Read .claude/skills/<agent>/SKILL.md first and follow it.       <- leave out for worker
 Task:
 <instructions, with variables filled in>
-Skills: brainstorm=grill-me, design=system-design              <- when the step sets `skills`
+Skills: brainstorm=grill-the-idea, design=system-design              <- when the step sets `skills`
 Template: <path>                                               <- when the step sets `template`
 Stack skills: <stack_skills of the step's repos>               <- brew, birbal, litmus and sherlock only
 Previous attempt failed at <step>: <reason>. Details: <path>   <- on a retry

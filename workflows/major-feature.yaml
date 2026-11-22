@@ -26,7 +26,7 @@ steps:
   - id: plan
     agent: keystone
     run: inline
-    skills: {brainstorm: grill-me, design: system-design}
+    skills: {brainstorm: grill-the-idea, design: system-design}
     instructions: |
       Plan the feature in ${run}/requirements.md. The person's answers are in ${run}/answers.md:
       don't ask those again. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.

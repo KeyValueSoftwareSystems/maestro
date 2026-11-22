@@ -14,7 +14,7 @@ Your instructions supply these. When one is missing, use the default.
 | Input | Default |
 |---|---|
 | Request | The person's message |
-| Brainstorm skill | `grill-me` |
+| Brainstorm skill | `grill-the-idea` |
 | Design skill | `system-design` |
 | Template | `templates/plan.md` in this skill's folder |
 | Output path | `plan.md` in the current directory |

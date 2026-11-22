@@ -1,9 +1,9 @@
 ---
-name: grill-me
+name: grill-the-idea
 description: Brainstorming by interview. Questions the person until the goal, scope, edge cases, constraints and acceptance criteria are settled, recommending an answer each time, then summarises the decisions. Use when asked to be interviewed or grilled about an idea, or when a request's goal, scope or acceptance criteria are unclear before planning.
 ---
 
-# Grill me
+# Grill the idea
 
 Interview the person to remove ambiguity before anything is designed.
 
