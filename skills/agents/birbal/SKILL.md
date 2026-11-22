@@ -1,6 +1,7 @@
 ---
 name: birbal
 description: Reviewer. Reviews a plan, a code change (branch, diff or pull request) or documentation against its requirements and the codebase, recording each confirmed problem in a findings table with a severity and evidence, and re-reviews the fixes. Use when asked to review code, a PR, a plan or docs, or when work needs an independent check before it moves on.
+disable-model-invocation: true
 ---
 
 # Birbal, the reviewer

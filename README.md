@@ -31,6 +31,7 @@ To resume a run, pass its slug instead of a request, for example `/maestro-fix l
 | `/maestro-kb` | knowledge | Builds the knowledge base in `docs/` from the code |
 | `/maestro-init` | init | Detects repos, stacks and commands, and offers to build the knowledge base |
 | `/maestro-sync` | sync | Fast-forwards every repo and refreshes the docs that went stale |
+| `/maestro-ui` | — | Opens a local web page that shows each run live, lets you edit workflows, and shows the agents. Needs Node 20 or later |
 
 Every feature and fix workflow ends with the same **archive** steps. Socrates updates the docs
 and saves the plan (or RCA) as `docs/plans/<slug>.md`, you approve the ship, a pull request is

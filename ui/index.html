@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maestro</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+<script type="module" src="js/main.js"></script>
+</head>
+<body>
+<header class="top">
+  <nav class="crumbs" aria-label="Breadcrumb">
+    <a class="brand" href="#/runs"><svg width="20" height="20" viewBox="0 0 18 18" aria-hidden="true"><path d="M9 1.5 L16.5 9 L9 16.5 L1.5 9 Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="9" cy="9" r="2.2" fill="var(--accent)"/></svg>Maestro</a>
+    <span class="sep" aria-hidden="true">/</span>
+    <span class="project" id="project" title="Project folder where Maestro is installed"></span>
+    <span class="sep" aria-hidden="true">/</span>
+    <label class="picker"><span class="vh">Open</span><select id="picker"></select></label>
+  </nav>
+  <nav class="tabs" aria-label="Main">
+    <a href="#/runs" data-tab="runs">Runs</a>
+    <a href="#/workflows" data-tab="workflows">Workflows</a>
+    <a href="#/agents" data-tab="agents">Agents</a>
+  </nav>
+</header>
+<main id="view" class="view"></main>
+<aside id="drawer" class="drawer" aria-label="Details" hidden></aside>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+</body>
+</html>

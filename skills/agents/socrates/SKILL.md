@@ -1,6 +1,7 @@
 ---
 name: socrates
 description: Knowledge keeper. Builds a codebase knowledge base for coding agents and new engineers (an architecture doc with commands, decisions and gotchas, plus one doc per business domain), or updates it after a change so the docs keep matching the code. Use to document a codebase, or to fix docs that went stale after a feature, fix or merge.
+disable-model-invocation: true
 ---
 
 # Socrates, the knowledge keeper

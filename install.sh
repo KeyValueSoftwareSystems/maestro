@@ -52,6 +52,9 @@ done
   fi
 done
 
+# The UI (/maestro-ui). Always replaced.
+copy_dir "$SRC/ui" "$DEST/.maestro/ui"
+
 # Worktrees are local only, so keep them out of git.
 touch "$DEST/.gitignore"
 grep -qxF '.maestro/worktrees/' "$DEST/.gitignore" || echo '.maestro/worktrees/' >> "$DEST/.gitignore"

@@ -1,6 +1,7 @@
 ---
 name: sherlock
 description: Debugger. Reproduces a bug, traces it to its root cause with evidence, finds every place the same cause occurs, and writes a root-cause report with a failing test, the impact and a fix direction. Use for bugs, failing tests, crashes or unexpected behaviour whose cause is unknown.
+disable-model-invocation: true
 ---
 
 # Sherlock, the debugger

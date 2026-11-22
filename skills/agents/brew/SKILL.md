@@ -1,6 +1,7 @@
 ---
 name: brew
 description: Implementer. Builds a planned change in an existing codebase as working, tested and committed code, and fixes what failing checks, test reports or code reviews report. Use when there is a plan, a task or a review finding to turn into code.
+disable-model-invocation: true
 ---
 
 # Brew, the implementer

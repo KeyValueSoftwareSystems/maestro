@@ -214,3 +214,80 @@ sent to clients, an unrequested `postinstall`, and an unchecked `res.ok`.
 |---|---|---|---|
 | 39 | Full node skill, two runs | Pass | 11 of 11 caught in both runs (14 and 17 rows; $0.79 and $1.08) |
 | 40 | Trimmed node skill, two runs | Pass | 11 of 11 caught in both runs (17 and 14 rows; $0.77 and $1.01). Severity varied as much between runs as between versions: `postinstall` was major or blocker with the full skill and minor or major with the trimmed one |
+
+## Round 10: step timing in state.yaml, for the UI (2026-11-22)
+The UI needs to know which step runs are in progress, per repo, and when each one finished. The
+lead now writes a `running` list when a step starts, adds `repo` and `at` to each history entry,
+and takes every time from `date -u`. Tested with a two-repo bug-fix (api and web) in a fresh
+workspace, w13, across four sessions: the first turn, the hypothesis answer, the gate approval,
+and a resume from state.yaml after a usage limit cut the run off mid-step.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 41 | Timing fields through a two-repo bug-fix | Pass | The lead ran `date -u` (no approval prompt), and every `at` matches the file it describes to the second: `hypothesis.md` 12:45:26, `rca.md` 12:49:48 vs `investigate` 12:50:05, `checks-*.log` 13:14:09/13 vs `checks` 13:14:13. Foreach steps had one `running` entry per repo with the same `since`. `running` was `[]` at the confirm gate and at every `waiting`. The gate was recorded as `approved`. The next attempt is clear from history: `fix` api appears four times (about $4.1 in all) |
+| 42 | Resume after a run was cut off mid-step | Pass | A usage limit stopped the run with two `fix` entries in `running`. `/maestro-fix invoice-id-links` in a new session cleared them, recorded them in history as `interrupted` with the start time in the note, and re-ran `fix` |
+| 43 | Resume rule written down: `interrupted` | Pass | The rule now says to move each `running` entry to history as `interrupted`, and lists the history statuses. A planted run cut off in `hypothesis`, resumed twice in new sessions: both times the stale entry went to history as `interrupted` with the resume time, a fresh `running` entry was added, and the question was asked again ($0.25 and $0.24) |
+
+Notes:
+- The lead writes history and `running` in two writes about 2 s apart, so for that moment a step
+  can appear in both places. The UI should treat a `running` entry that has a later history entry
+  for the same step and repo as finished.
+- Unrelated to this change: Brew (Sonnet) ran `cd <worktree> && git status ...` in 3 of 6 fix
+  runs, despite the lead prompt's `git -C` rule. In `-p` mode that is denied, and the agent
+  gave up on the shell instead of retrying with `git -C`. The build and lint scripts in the e2e
+  seed have a literal newline in a string, so `checks` failed on them; web's fix agent repaired
+  them in a separate commit.
+
+## Round 11: smaller lead skill, agent skills hidden (2026-11-22)
+The lead skill went from 162 lines and 1,648 words to 152 lines and 1,495 words. Cut: the long
+`description`; the worktrees and `.claude/skills` rows of the Files table; the `id`, `agent`,
+`skills`, `template`, `instructions` and `prompt` rows of the step fields; a failure sentence that
+repeated the one before it; and the reason after "fails twice". An inline step now says to read
+`.claude/skills/<agent>/SKILL.md`. The six agent skills set `disable-model-invocation: true`,
+which takes 316 words of descriptions out of every session in a project.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 45 | Bug-fix with a subagent agent (Sherlock) | Pass | Sherlock's subagent read `.claude/skills/sherlock/SKILL.md` and followed it. The planted bug (a trailing slash) doesn't actually reproduce, and Sherlock said so with evidence, failed the step and left the run `waiting` with three options. state.yaml timing was correct ($0.24 + $1.27) |
+| 46 | Minor-feature with an inline agent (Keystone) | Pass | The lead read `keystone/SKILL.md` and its plan template by path, wrote the plan with history and `at`, and stopped at `approve-plan` ($0.57) |
+| 47 | Which skill descriptions a fresh session sees | Pass | It lists `maestro`, `grill-me`, `system-design` and `node`, and none of the six agent skills |
+
+Note: in test 46 Keystone settled its open choices itself ("no one to ask during the run") and did
+not load grill-me. This is `-p` mode; it is not related to this change.
+
+## Round 12: the web UI (2026-11-22)
+`ui/` is plain HTML, CSS and JS modules with no build step, plus `serve.mjs` (Node built-ins only).
+`install.sh` copies it to `.maestro/ui/`, and `/maestro-ui` starts it. Tested against the w13
+workspace and its real runs, in the browser pane.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 48 | Builder saves every built-in workflow unchanged | Pass | All 7 files (6 workflows and archive) round-trip byte for byte, comments included |
+| 49 | Edit and save in the builder | Pass | Changing `test`'s model to opus and saving changed exactly that line on disk. A new workflow saved its YAML and created `/maestro-ui-check` |
+| 50 | Run screen from state.yaml | Pass | invoice-id-links shows per-repo nodes, the failed `fix api` with 4 attempts, the failed checks with their log, the approved gate, and the subworkflow's steps. Horizontal and vertical layouts both work |
+| 51 | Live updates | Pass | Editing a run's state.yaml moved `investigate` from running to done and `confirm` to "Waiting on you" within a second, with no reload |
+| 52 | Server guards | Pass | 403 for `..`, `.env`, `/etc/passwd`, `.maestro/worktrees`, the project root, a foreign Host header, a write with no Origin or a foreign one, a write outside workflow YAML and `maestro-*` commands. 409 for saving a workflow (or any subworkflow) while a run of it is running. `serve.mjs` itself is not served |
+| 53 | `/maestro-ui` in a fresh session | Pass | It ran `node .maestro/ui/serve.mjs`; the UI was already running on 7355 for this project, so it gave that URL instead of starting a second copy ($0.15). For another project it takes a free port |
+| 54 | Every screen, light, dark and phone width | Pass | 10 routes with no script errors; at 375 px wide the page doesn't scroll sideways |
+
+## Round 13: code review of the UI (2026-11-22)
+An independent review of `ui/` found 16 real problems; all are fixed and re-tested.
+- **Server:** a malformed URL (`/%`, `//`) from any web page crashed it; upper-case `Worktrees`
+  got past the worktree block on macOS; symlinks inside allowed folders could read or write
+  outside them; a failed write crashed it. Now the handler can't throw, rules match any case, the
+  real path (from the nearest existing folder) is checked against the same rules, and write errors
+  return 500. Re-tested: 400 for `/%` and `//` with the server still up; 403 for both case tricks,
+  both symlink tricks and the worktree list; 500 for a write onto a folder.
+- **Script injection:** a YAML map in a workflow or state.yaml (`id: {html: ...}`) reached
+  `innerHTML`. Now only markup the UI builds itself can become HTML, and `on*` attributes take
+  only functions. Re-tested with a planted workflow and run: no injected element, no error.
+- **Builder:** saving could overwrite an existing command (a workflow named `fix` would replace
+  `/maestro-fix`); the command's description wasn't quoted; files in another style showed as
+  unsaved on open. The YAML writer now states the indent for text whose first line is indented,
+  quotes commas and brackets inside `[ ]` and `{ }`, writes nested values as JSON, writes
+  `steps: []` for no steps, quotes more number-like strings, and keeps per-step comments when a
+  list sits above `steps:`. The 7 workflows still round-trip byte for byte.
+- **Run screen:** a gate waiting with a `running` entry showed "Working…"; a state.yaml without
+  `status` failed to render; unquoted times sorted wrong; a step restarted in the same second
+  showed its old status; a slow redraw of one run could replace another; two fix-only steps
+  returning to the same step overlapped; a 0 count rendered empty.

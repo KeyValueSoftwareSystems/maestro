@@ -1,6 +1,6 @@
 ---
 name: maestro
-description: Lead coordinator for Maestro workflows. Runs a workflow file step by step, creating the run folder, keeping state.yaml, handing each step to its agent, running commands and human gates, and looping on failure within a step budget. Use when asked to run, resume or check a Maestro workflow (feature, minor feature, bug fix, knowledge base, init, sync).
+description: Runs a Maestro workflow from .maestro/workflows/ step by step, keeping the run's state on disk. Use to start, resume or check a Maestro run.
 ---
 
 # Maestro, the lead coordinator
@@ -15,8 +15,6 @@ step says `run: inline`.
 | `.maestro/workflows/<name>.yaml` | Workflows. `subworkflows/` holds pieces that several workflows share. |
 | `.maestro/workspace.yaml` | The repos, each with its path, stack skills and commands. Written by the init workflow. |
 | `.maestro/runs/<slug>/` | One folder per run: `requirements.md`, `state.yaml`, what the steps write, and `logs/`. |
-| `.maestro/worktrees/<slug>/<repo>` | The run's git worktrees. |
-| `.claude/skills/<name>/SKILL.md` | Agent, sub-skill and stack skills. |
 
 ## Start or resume
 1. If the argument names an existing run (`.maestro/runs/<arg>/state.yaml` exists), resume it.
@@ -34,32 +32,36 @@ step says `run: inline`.
 workflow: bug-fix
 slug: login-timeout
 status: running        # running | waiting | done | failed | stopped
-current: fix           # the next step to run
+current: fix           # the step running now, or the next one to run
 steps_used: 4
 max_steps: 30          # from the workflow (default 30)
 vars:                  # values the steps recorded; a per-repo value is a map keyed by repo
-  repos: [api]
-  worktree: {api: /home/me/shop/.maestro/worktrees/login-timeout/api}
-  branch: {api: fix/login-timeout}
-history:               # one line per step run, newest last
-  - {step: investigate, status: pass, note: root cause is in the session refresh}
+  repos: [api, web]
+  worktree: {api: /home/me/shop/.maestro/worktrees/login-timeout/api, web: ...}
+  branch: {api: fix/login-timeout, web: fix/login-timeout}
+running:               # step runs started and not finished; [] between steps
+  - {step: fix, repo: api, since: 2026-11-22T10:14:05Z}
+  - {step: fix, repo: web, since: 2026-11-22T10:14:05Z}
+history:               # one line per finished step run (per repo in a foreach), newest last;
+                       # status: pass | fail | approved | rejected | interrupted
+  - {step: investigate, status: pass, at: 2026-11-22T10:09:51Z, note: root cause is in the session refresh}
+  - {step: confirm, status: approved, at: 2026-11-22T10:11:02Z}
 ```
-Update state.yaml after every step, before you start the next one. After context compaction or
-on resume, read state.yaml and the workflow file again before you act.
+Write state.yaml when a step starts and when it ends. When it starts, add a `running` entry for
+each repo it runs in (no `repo` outside a foreach). When it ends, replace those with `history`
+entries. A gate goes in history once the person answers: `approved`, or `rejected` with their
+feedback as the note. Take every time from `date -u +%FT%TZ`; never guess one.
+After context compaction or on resume, read state.yaml and the workflow file again before you
+act. On resume, first move each `running` entry to history as `interrupted`: that run never
+finished, so run the step again.
 
 ## Step fields
 | Field | Meaning |
 |---|---|
-| `id` | A unique name, used as the target of `on_fail`, `on_reject` and `next`. |
 | `mode` | `agent` (the default), `exec`, `gate` or `workflow`. |
-| `agent` | `keystone`, `brew`, `birbal`, `litmus`, `sherlock`, `socrates` or `worker`. |
 | `run` | `subagent` (the default) or `inline`. Inline means you do the step in this conversation, which is needed when the agent must talk to the person. |
 | `model` | A model alias for the subagent, such as `opus`, `sonnet` or `haiku`. Ignored for inline steps. |
-| `skills` | Named sub-skills for the agent, e.g. `{brainstorm: grill-me, design: system-design}`. |
-| `template` | A template path that replaces the agent's default template. |
-| `instructions` | The task. Fill in its variables before you pass it on. |
 | `command` | For exec: a shell string, or a list of workspace command names such as `[lint, test]`. |
-| `prompt` | For a gate: what to ask the person. |
 | `workflow` | For workflow mode: a file to run, relative to `.maestro/workflows/`. |
 | `foreach: repo` | Run the step once per repo. Agent runs happen in parallel. |
 | `on_fail` | The step to go to when this step fails. |
@@ -101,7 +103,7 @@ STATUS: pass | fail - <one line why>
 ```
 Start the steps in a `parallel` list, and the repos of a `foreach`, together in one message.
 
-**Agent, inline.** Load the agent's skill (a worker has none) and do the task yourself with the
+**Agent, inline.** Read `.claude/skills/<agent>/SKILL.md` (a worker has none) and do the task yourself with the
 same inputs, talking to the person when the skill says to. When the step ends, that skill's rules stop applying and
 you are the coordinator again.
 
@@ -130,10 +132,9 @@ them per repo.
 - When a step fails with no `on_fail`, or the budget is used up, set `status: waiting`. Tell the
   person what failed and where the details are, and ask whether to retry, jump to a step, or stop.
 - A subagent reply without a STATUS line counts as a failure, and so does a pass when a file the
-  task says to write doesn't exist. Never mark a step passed when its agent or command reported
-  a failure.
+  task says to write doesn't exist.
 - When the same step fails twice in a row for the same reason, don't loop again. Set
-  `status: waiting` and ask the person, because a third attempt rarely differs.
+  `status: waiting` and ask the person.
 
 ## Finishing
 When no step is left to run, set `status: done`. Give the person a short summary: what changed,

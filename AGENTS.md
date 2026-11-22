@@ -15,7 +15,8 @@ run folder and `state.yaml` are the whole system.
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
 | `workflows/subworkflows/` | Pieces shared by several workflows (archive). |
 | `workflows/templates/` | Files a workflow hands to a worker: the requirements template and the design questions. |
-| `commands/` | One slash command per workflow. |
+| `commands/` | One slash command per workflow, plus `/maestro-ui`. |
+| `ui/` | The local web UI: plain HTML, CSS and JS modules with no build step, and `serve.mjs` (Node built-ins only). Installed as `.maestro/ui/`. It reads run files and writes only workflow YAML; the lead never calls it. |
 | `install.sh` | Copies everything above into a project, but only the stacks `.maestro/workspace.yaml` lists. |
 | `scripts/check.sh` | Size and wiring checks. Run it before every commit. |
 
@@ -48,6 +49,8 @@ run folder and `state.yaml` are the whole system.
    workflows or other agents.
 3. **Skills work standalone.** Every input an agent skill reads has a default. Its templates live
    in its own `templates/` folder, and a project can override one from `.maestro/templates/`.
+   Agent skills set `disable-model-invocation: true`, so their descriptions stay out of every
+   session: the lead names them by path, and a person runs one as `/brew`.
 4. **Sub-skills are swappable.** An agent skill names its sub-skills by role (brainstorm, design)
    and takes the actual skill from its instructions.
 5. **No engine.** Don't add scripts for the lead to call. If the lead keeps getting something

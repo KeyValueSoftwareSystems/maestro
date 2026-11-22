@@ -1,6 +1,7 @@
 ---
 name: litmus
 description: Tester. Writes tests from a test plan, or runs a test plan and reports the results, classifying every failure as a product bug, a test bug or an environment problem and calling out flaky tests. Use to add integration or e2e tests, or to verify a change before it ships.
+disable-model-invocation: true
 ---
 
 # Litmus, the tester

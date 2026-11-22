@@ -53,6 +53,20 @@ for wf in workflows/*.yaml; do
   grep -q "workflows/$(basename "$wf")" commands/*.md || err "$wf: no command in commands/ runs it"
 done
 
+# Every file the UI loads exists: page links, CSS url()s, JS imports and agent avatars.
+for ref in $(grep -ohE '(href|src)="[^"#:]+"' ui/index.html | sed -E 's/.*="([^"]+)"/\1/'); do
+  [ -f "ui/$ref" ] || err "ui/index.html: missing $ref"
+done
+for ref in $(grep -ohE 'url\([^):]+\)' ui/app.css | sed -E 's/url\(([^)]+)\)/\1/'); do
+  [ -f "ui/$ref" ] || err "ui/app.css: missing $ref"
+done
+for f in ui/js/*.js; do
+  for ref in $(grep -ohE "from '\./[^']+'|from '\.\./[^']+'" "$f" | sed -E "s/from '([^']+)'/\1/"); do
+    [ -f "ui/js/$ref" ] || err "$f: missing import $ref"
+  done
+done
+for a in $(ls skills/agents) worker; do [ -f "ui/assets/agents/$a.svg" ] || err "ui/assets/agents/$a.svg missing"; done
+
 # YAML parses, when PyYAML is available.
 if python3 -c 'import yaml' 2>/dev/null; then
   for wf in $(find workflows -name '*.yaml'); do

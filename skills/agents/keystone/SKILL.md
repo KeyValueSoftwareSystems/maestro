@@ -1,6 +1,7 @@
 ---
 name: keystone
 description: Planner and designer. Turns a feature or change request into an agreed, buildable plan by brainstorming open points with the person, designing the approach, and writing a plan with testable acceptance criteria, small verifiable tasks, contracts, a test plan and a rollout. Use when asked to plan, scope or design a feature or non-trivial change before code is written.
+disable-model-invocation: true
 ---
 
 # Keystone, the planner
