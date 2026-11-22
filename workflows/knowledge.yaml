@@ -16,6 +16,6 @@ steps:
     model: opus
     instructions: |
       Review the docs in docs/ (architecture.md and domains/) against the code of the repos listed
-      in .maestro/workspace.yaml. Every claim must match the code it cites, and every major part of
-      the code must be covered. Write the review to ${run}/review.md.
+      in .maestro/workspace.yaml. Every major part of the code must be covered.
+      Write the review to ${run}/review.md.
     on_fail: build

@@ -18,7 +18,7 @@ steps:
       Investigate the bug described in ${run}/requirements.md. Read docs/ (skip docs/plans/) for context.
       Test the person's guess in ${run}/hypothesis.md first, without assuming it is right. Say in
       rca.md whether it held, with the evidence.
-      Write the root-cause report to ${run}/rca.md. Do not fix the bug.
+      Write the root-cause report to ${run}/rca.md.
       To bisect, debug or write the failing test, use a git worktree at the absolute path of
       .maestro/worktrees/${slug}/<repo> on a new branch fix/${slug}, from origin's latest default branch.
       Record the repos the fix touches as `repos` (names from .maestro/workspace.yaml).

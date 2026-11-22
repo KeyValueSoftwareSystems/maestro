@@ -188,3 +188,14 @@ bug: the TP2 test fed `0.124` but expected the plan's `0.125 → $0.13`.
 | # | Scenario | Result | Evidence |
 |---|---|---|---|
 | 37 | Test bug fixed and committed in verify | Pass | Classified as a test bug; input changed back to `0.125`, expected value untouched; committed as `bd3e44a`; worktree clean; verify passed and the run went on to the quiz ($0.82) |
+
+## Round 8: duplicate workflow lines removed (2026-11-22)
+A review found workflow lines that only repeat an agent skill's default. Round 7's premise was
+wrong: Litmus's default already says "Commit: Yes for every test you write or fix". Removed: the
+commit lines in `verify`, `test`, `fix-review` and `fix-tests`; "Do not fix the bug" in
+`investigate`; the repo/area and parallel-files line in major `plan`; "Never paste secrets or raw
+logs" in `pr`; and "Every claim must match the code it cites" in knowledge `review`.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 38 | Round 7 re-run without the commit line | Pass | Classified as a test bug; input put back to `0.125`; committed as `38ebed3`; worktree clean; verify passed and the run went on to the quiz ($0.87) |

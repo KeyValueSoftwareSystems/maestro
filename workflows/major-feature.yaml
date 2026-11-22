@@ -32,8 +32,7 @@ steps:
       don't ask those again. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.
       For each real choice, show the options with their pros and cons and agree one with the person.
       Write the plan to ${run}/plan.md. Its Test plan has at least one e2e row per acceptance
-      criterion. Give every task a repo and an area (fe, be, db, ...), and keep tasks that can run
-      in parallel on separate files.
+      criterion.
       Record the repos the plan touches as `repos`.
 
   - id: approve-plan
@@ -97,7 +96,7 @@ steps:
     model: sonnet
     instructions: |
       Run mode. Run the whole Test plan of ${run}/plan.md in ${worktree}.
-      Write the report to ${run}/test-report.md. Commit any test you fix on ${branch}.
+      Write the report to ${run}/test-report.md.
     on_fail: fix-tests
 
   - id: quiz-write
@@ -129,7 +128,7 @@ steps:
     next: code-review
     instructions: |
       Fix the review findings in ${run}/review.md, in the worktrees ${worktree}, and update each
-      row's Status and Note in that file. Commit on ${branch}.
+      row's Status and Note in that file.
 
   - id: fix-tests
     agent: brew
@@ -137,4 +136,3 @@ steps:
     next: verify
     instructions: |
       Fix the failing tests in ${run}/test-report.md, in the worktrees ${worktree}.
-      Commit on ${branch}.

@@ -47,8 +47,8 @@ steps:
     model: sonnet
     instructions: |
       Write mode, then run mode. Add any test in the Test plan of ${run}/plan.md that is still
-      missing, and commit it on ${branch}. Then run the whole Test plan in ${worktree}.
-      Write the report to ${run}/test-report.md. Commit any test you fix on ${branch}.
+      missing. Then run the whole Test plan in ${worktree}.
+      Write the report to ${run}/test-report.md.
     on_fail: build
 
   - id: review
