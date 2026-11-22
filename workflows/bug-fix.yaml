@@ -1,13 +1,23 @@
-# Find a bug's root cause, fix it with a regression test, review the fix and ship it.
+# Ask the person's guess at the cause, find the root cause, fix it with a regression test,
+# review the fix and ship it.
 name: bug-fix
 description: Root-cause a bug, fix it with a regression test, review it, and open a PR.
 max_steps: 30
 steps:
+  - id: hypothesis
+    agent: worker
+    run: inline
+    instructions: |
+      Ask the person for one sentence on what they think causes the bug. "No idea" is a fine
+      answer. Don't suggest causes. Write their answer, word for word, to ${run}/hypothesis.md.
+
   - id: investigate
     agent: sherlock
     model: opus
     instructions: |
-      Investigate the bug described in ${run}/request.md. Read docs/ for context.
+      Investigate the bug described in ${run}/requirements.md. Read docs/ (skip docs/plans/) for context.
+      Test the person's guess in ${run}/hypothesis.md first, without assuming it is right. Say in
+      rca.md whether it held, with the evidence.
       Write the root-cause report to ${run}/rca.md. Do not fix the bug.
       To bisect, debug or write the failing test, use a git worktree at the absolute path of
       .maestro/worktrees/${slug}/<repo> on a new branch fix/${slug}, from origin's latest default branch.

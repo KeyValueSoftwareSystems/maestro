@@ -14,7 +14,7 @@ step says `run: inline`.
 |---|---|
 | `.maestro/workflows/<name>.yaml` | Workflows. `subworkflows/` holds pieces that several workflows share. |
 | `.maestro/workspace.yaml` | The repos, each with its path, stack skills and commands. Written by the init workflow. |
-| `.maestro/runs/<slug>/` | One folder per run: `request.md`, `state.yaml`, what the steps write, and `logs/`. |
+| `.maestro/runs/<slug>/` | One folder per run: `requirements.md`, `state.yaml`, what the steps write, and `logs/`. |
 | `.maestro/worktrees/<slug>/<repo>` | The run's git worktrees. |
 | `.claude/skills/<name>/SKILL.md` | Agent, sub-skill and stack skills. |
 
@@ -24,8 +24,8 @@ step says `run: inline`.
 2. Otherwise the argument is a new request. Every workflow except `init` needs
    `.maestro/workspace.yaml`. If it is missing, ask the person to run `/maestro-init` first and stop.
 3. Make a slug of 2–5 lowercase words joined by `-`, taken from the request and unique under
-   `.maestro/runs/` and `.maestro/worktrees/`. Create the run folder with an empty `logs/` folder,
-   and write the request word for word to `request.md`.
+   `.maestro/runs/`, `.maestro/worktrees/` and `docs/plans/`. Create the run folder with an empty
+   `logs/` folder, and write the request word for word to `requirements.md`.
    Write state.yaml with `status: running` and `current` set to the first step.
 4. Read the workflow file in full once before the first step.
 
@@ -50,7 +50,7 @@ on resume, read state.yaml and the workflow file again before you act.
 ## Step fields
 | Field | Meaning |
 |---|---|
-| `id` | A unique name, used as the target of `on_fail` and `on_reject`. |
+| `id` | A unique name, used as the target of `on_fail`, `on_reject` and `next`. |
 | `mode` | `agent` (the default), `exec`, `gate` or `workflow`. |
 | `agent` | `keystone`, `brew`, `birbal`, `litmus`, `sherlock`, `socrates` or `worker`. |
 | `run` | `subagent` (the default) or `inline`. Inline means you do the step in this conversation, which is needed when the agent must talk to the person. |
@@ -62,8 +62,9 @@ on resume, read state.yaml and the workflow file again before you act.
 | `prompt` | For a gate: what to ask the person. |
 | `workflow` | For workflow mode: a file to run, relative to `.maestro/workflows/`. |
 | `foreach: repo` | Run the step once per repo. Agent runs happen in parallel. |
-| `on_fail` | The step to go back to when this step fails. |
+| `on_fail` | The step to go to when this step fails. |
 | `on_reject` | For a gate: the step to go back to when the person rejects. |
+| `next` | The step to go to when this step passes. A step with `next` runs only when an `on_fail` jumps to it; in normal order, skip it. |
 | `parallel` | A list of steps that run at the same time. |
 
 ## Variables
@@ -92,14 +93,16 @@ Previous attempt failed at <step>: <reason>. Details: <path>   <- on a retry
 Person's feedback: <their words>                               <- after a rejected gate
 Rules: <the four Safety rules below>
 <run folder> is in no repo: never link or cite its files in code, docs, commits or PRs.
+Run git in another folder as `git -C <path> ...`, never `cd <path> && git ...` (that needs approval).
+Run other commands there, such as gh or npm, as `cd <path> && <command>`.
 Finish your reply with these lines:
 STATUS: pass | fail - <one line why>
 <name>: <value>      (one line per value the task asks you to record)
 ```
 Start the steps in a `parallel` list, and the repos of a `foreach`, together in one message.
 
-**Agent, inline.** Load the agent's skill and do the task yourself with the same inputs, talking
-to the person when the skill says to. When the step ends, that skill's rules stop applying and
+**Agent, inline.** Load the agent's skill (a worker has none) and do the task yourself with the
+same inputs, talking to the person when the skill says to. When the step ends, that skill's rules stop applying and
 you are the coordinator again.
 
 **Exec.** Run the command. Inside `foreach`, run it in the repo's worktree if it has one,
@@ -133,7 +136,7 @@ them per repo.
   `status: waiting` and ask the person, because a third attempt rarely differs.
 
 ## Finishing
-When the last step passes, set `status: done`. Give the person a short summary: what changed,
+When no step is left to run, set `status: done`. Give the person a short summary: what changed,
 the PR links, and where the reports are.
 
 ## Safety (add these to every agent prompt)

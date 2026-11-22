@@ -23,8 +23,11 @@ name doesn't say what it does.>
 | Entity or table | Written by | Defined in |
 |---|---|---|
 
-## Rules and invariants
-- <business rule or constraint that must hold> (`path` `symbol`)
+## Rules
+<Only rules the code can't show on its own, that a future change must keep, and that something
+enforces. One rule per bullet. IDs never change, and a removed rule's ID is not reused.>
+- <DOM>-R1: <the rule, in one sentence>
+  Enforced: `path` `symbol`. Test: `test path` "<test name>", or none.
 
 ## Gotchas
 - <what misleads or breaks, and why> (`path` `symbol`, learned <YYYY-MM-DD>)

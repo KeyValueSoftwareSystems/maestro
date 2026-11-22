@@ -14,6 +14,7 @@ run folder and `state.yaml` are the whole system.
 | `stacks/<stack>/` | Stack skills (react, node, python, java). `/maestro-init` picks them per repo; `install.sh` installs only those. |
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
 | `workflows/subworkflows/` | Pieces shared by several workflows (archive). |
+| `workflows/templates/` | Files a workflow hands to a worker: the requirements template and the design questions. |
 | `commands/` | One slash command per workflow. |
 | `install.sh` | Copies everything above into a project, but only the stacks `.maestro/workspace.yaml` lists. |
 | `scripts/check.sh` | Size and wiring checks. Run it before every commit. |
@@ -31,14 +32,17 @@ run folder and `state.yaml` are the whole system.
 
 ## How a run works
 1. The person types `/maestro-fix <bug>`, and the lead loads `.maestro/workflows/bug-fix.yaml`.
-2. The lead creates `.maestro/runs/<slug>/` with `request.md` and `state.yaml`.
+2. The lead creates `.maestro/runs/<slug>/` with `requirements.md` and `state.yaml`.
 3. For each step, the lead fills in `${slug}`, `${run}`, `${repo}` and the other variables. It then
    starts the agent with the step's instructions, runs the command, or asks the person (gate).
-4. When a step fails, the lead jumps to its `on_fail` step, up to the workflow's `max_steps`.
+4. When a step fails, the lead jumps to its `on_fail` step, up to the workflow's `max_steps`. A
+   fix step with `next` sends the run back to the step that failed.
+5. The archive steps save the plan (or RCA) as `docs/plans/<slug>.md`, which merges with the
+   change. A `.ignore` hides `docs/plans/` from search, so agents read a plan only when named.
 
 ## Rules for this repo
 1. **Size limits.** This file stays under 100 lines (150 at most). Every `SKILL.md`, reference
-   and template is 200 lines at most. Aim to keep each workflow under 100 lines.
+   and template is 200 lines at most. Keep workflows short; there is no line limit.
 2. **The workflow owns the what; the skill owns the how.** Paths, file names, order and which
    sub-skills to use belong in the workflow. A skill never mentions Maestro, run folders,
    workflows or other agents.
@@ -69,5 +73,5 @@ run folder and `state.yaml` are the whole system.
 ## Checks
 Run `bash scripts/check.sh` before committing. It checks the size limits, that agent skills don't
 mention Maestro, that skill names match their folders and don't clash, that init lists every
-stack, that every agent and workflow a workflow names exists and has a command, and that the
-YAML parses.
+stack, that every agent and workflow a workflow names exists and has a command, that every
+`on_fail`, `on_reject` and `next` names a real step, and that the YAML parses.

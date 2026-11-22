@@ -25,16 +25,17 @@ To resume a run, pass its slug instead of a request, for example `/maestro-fix l
 ## Commands
 | Command | Workflow | What it does |
 |---|---|---|
-| `/maestro-feature` | major-feature | Brainstorms and designs a plan, has it reviewed and approved, builds in parallel, then tests, reviews and ships |
+| `/maestro-feature` | major-feature | Turns the request into requirements, asks the design questions, plans with you, builds and writes tests in parallel, loops on review and on the tests until both pass, offers a short quiz on the change (skippable), then ships |
 | `/maestro-minor` | minor-feature | Writes a short plan, then builds, tests, reviews and ships |
-| `/maestro-fix` | bug-fix | Finds the root cause, adds a regression test and fixes the bug, then reviews and ships |
+| `/maestro-fix` | bug-fix | Asks your guess at the cause, finds the root cause, adds a regression test and fixes the bug, then reviews and ships |
 | `/maestro-kb` | knowledge | Builds the knowledge base in `docs/` from the code |
 | `/maestro-init` | init | Detects repos, stacks and commands, and offers to build the knowledge base |
 | `/maestro-sync` | sync | Fast-forwards every repo and refreshes the docs that went stale |
 
-Every feature and fix workflow ends with the same **archive** steps. Socrates updates the docs,
-you approve the ship, a pull request is opened for each repo (and one for the docs in a
-multi-repo workspace), and the worktrees are removed.
+Every feature and fix workflow ends with the same **archive** steps. Socrates updates the docs
+and saves the plan (or RCA) as `docs/plans/<slug>.md`, you approve the ship, a pull request is
+opened for each repo (and one for the docs in a multi-repo workspace), and the worktrees are
+removed. A `.ignore` hides `docs/plans/` from search, so agents read an old plan only when named.
 
 ## Agents
 | Agent | Role |
@@ -59,7 +60,7 @@ steps:
   - id: investigate
     agent: sherlock               # keystone | brew | birbal | litmus | sherlock | socrates | worker
     model: opus
-    instructions: Investigate ${run}/request.md. Write the root cause to ${run}/rca.md.
+    instructions: Investigate ${run}/requirements.md. Write the root cause to ${run}/rca.md.
   - id: confirm
     mode: gate                    # ask the person
     prompt: Root cause is in ${run}/rca.md. Approve?
@@ -71,7 +72,8 @@ steps:
     on_fail: fix                  # loop back; the lead passes the failure along
 ```
 Steps can also be `run: inline` (the agent talks to you in the main conversation), grouped under
-`parallel:`, or another workflow (`mode: workflow`). All the step fields are described in
+`parallel:`, or another workflow (`mode: workflow`). A fix step with `next:` is reached only
+through `on_fail`, and sends the run back to the step that failed. All the step fields are described in
 [skills/maestro/SKILL.md](skills/maestro/SKILL.md).
 
 Edit the installed copies in `.maestro/workflows/` freely; upgrades keep them. To change an

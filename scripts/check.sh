@@ -14,7 +14,7 @@ elif [ "$n" -gt 100 ]; then echo "WARN: AGENTS.md has $n lines (target 100)"; fi
 while read -r f; do
   n=$(wc -l < "$f")
   [ "$n" -le 200 ] || err "$f has $n lines (max 200)"
-done < <(find skills stacks -name '*.md')
+done < <(find skills stacks workflows -name '*.md')
 
 # Only the lead skill may know about Maestro.
 while read -r f; do
@@ -40,6 +40,13 @@ while read -r wf; do
   done
   for w in $(sed -n 's/^[ -]*workflow: *\([^ ]*\).*/\1/p' "$wf"); do
     [ -f "workflows/$w" ] || err "$wf: workflow file '$w' not found"
+  done
+done < <(find workflows -name '*.yaml')
+# Every on_fail, on_reject and next names a step in the same file.
+while read -r wf; do
+  ids=" $(sed -n 's/^[ -]*id: *\([a-z0-9-]*\).*/\1/p' "$wf" | tr '\n' ' ') "
+  for t in $(sed -En 's/^ *(on_fail|on_reject|next): *([a-z0-9-]*).*/\2/p' "$wf"); do
+    case "$ids" in *" $t "*) ;; *) err "$wf: no step '$t'" ;; esac
   done
 done < <(find workflows -name '*.yaml')
 for wf in workflows/*.yaml; do

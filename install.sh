@@ -2,7 +2,7 @@
 # Install Maestro into a project, for Claude Code.
 #   bash /path/to/maestro/install.sh [project-dir] [--force-workflows]
 # Run it again after /maestro-init to add the stack skills, and to upgrade. Skills and commands
-# are replaced. Your workflows are kept unless you pass --force-workflows.
+# are replaced. Your workflows and templates are kept unless you pass --force-workflows.
 # .maestro/workspace.yaml and your runs are never touched.
 set -euo pipefail
 
@@ -41,8 +41,8 @@ for name in $stacks; do
   else echo "skipped unknown stack skill '$name' in workspace.yaml" >&2; fi
 done
 
-# Workflows are yours to edit, so existing files are kept unless --force-workflows.
-(cd "$SRC/workflows" && find . -name '*.yaml') | while read -r f; do
+# Workflows and their templates are yours to edit, so existing files are kept unless --force-workflows.
+(cd "$SRC/workflows" && find . -name '*.yaml' -o -name '*.md') | while read -r f; do
   target="$DEST/.maestro/workflows/${f#./}"
   if [ "$FORCE" = 1 ] || [ ! -e "$target" ]; then
     mkdir -p "$(dirname "$target")"
@@ -55,6 +55,10 @@ done
 # Worktrees are local only, so keep them out of git.
 touch "$DEST/.gitignore"
 grep -qxF '.maestro/worktrees/' "$DEST/.gitignore" || echo '.maestro/worktrees/' >> "$DEST/.gitignore"
+
+# Archived plans are history: hide them from search unless someone names one.
+touch "$DEST/.ignore"
+grep -qxF 'docs/plans/' "$DEST/.ignore" || echo 'docs/plans/' >> "$DEST/.ignore"
 
 echo "Maestro installed in $DEST"
 if [ -f "$WS" ]; then echo "Stack skills:${installed:- none}"

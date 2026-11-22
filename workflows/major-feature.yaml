@@ -1,31 +1,45 @@
-# A large feature: brainstorm and design, a reviewed and approved plan, parallel build and
-# test writing, checks, code review, verification, then ship.
+# A large feature: turn the request into requirements, ask the person the design questions,
+# plan with them, build and write tests in parallel, then loop on review and on verification
+# until both pass, quiz the person on the change, then ship.
 name: major-feature
-description: Design, plan, build in parallel, test, review and ship a large feature.
+description: Requirements, questions, plan, parallel build and tests, review and verify loops, a quiz, then ship.
 max_steps: 60
 steps:
+  - id: intake
+    agent: worker
+    model: sonnet
+    template: .maestro/workflows/templates/requirements.md
+    instructions: |
+      Rewrite ${run}/requirements.md in place, following the template. It holds the request as it
+      was given: a ticket, a link or free text. Put that original text under Source, word for word.
+      Keep the requester's words and add no requirement of your own. Put what is unclear under
+      Open questions.
+
+  - id: questions
+    agent: worker
+    run: inline
+    instructions: |
+      Ask the person the questions in .maestro/workflows/templates/questions.md, as that file
+      says. Skip a question that ${run}/requirements.md already answers. Write each question with
+      the person's answer, word for word, to ${run}/answers.md.
+
   - id: plan
     agent: keystone
     run: inline
     skills: {brainstorm: grill-me, design: system-design}
     instructions: |
-      Plan the feature in ${run}/request.md. Read docs/ and .maestro/workspace.yaml first.
-      Write the plan to ${run}/plan.md. Give every task a repo and an area (fe, be, db, ...), and
-      keep tasks that can run in parallel on separate files.
+      Plan the feature in ${run}/requirements.md. The person's answers are in ${run}/answers.md:
+      don't ask those again. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.
+      For each real choice, show the options with their pros and cons and agree one with the person.
+      Write the plan to ${run}/plan.md. Its Test plan has at least one e2e row per acceptance
+      criterion. Give every task a repo and an area (fe, be, db, ...), and keep tasks that can run
+      in parallel on separate files.
       Record the repos the plan touches as `repos`.
-
-  - id: plan-review
-    agent: birbal
-    model: opus
-    instructions: |
-      Review the plan ${run}/plan.md against the request ${run}/request.md and the code it will
-      change. Write the review to ${run}/plan-review.md.
-    on_fail: plan
 
   - id: approve-plan
     mode: gate
     prompt: |
-      The plan for ${slug} is in ${run}/plan.md, and the reviewer's notes are in ${run}/plan-review.md.
+      The design and the test plan for ${slug} are in ${run}/plan.md.
       Approve, or tell me what to change.
     on_reject: plan
 
@@ -76,16 +90,51 @@ steps:
     instructions: |
       Review the changes on branch ${branch} in ${worktree} against ${run}/plan.md.
       Write the review to ${run}/review.md.
-    on_fail: build
+    on_fail: fix-review
 
   - id: verify
     agent: litmus
     model: sonnet
     instructions: |
       Run mode. Run the whole Test plan of ${run}/plan.md in ${worktree}.
-      Write the report to ${run}/test-report.md.
-    on_fail: build
+      Write the report to ${run}/test-report.md. Commit any test you fix on ${branch}.
+    on_fail: fix-tests
+
+  - id: quiz-write
+    agent: worker
+    model: sonnet
+    instructions: |
+      Read ${run}/plan.md and the changes on branch ${branch} in ${worktree}. Write 5 questions
+      to ${run}/quiz.md, each followed by its answer:
+      - 2 on the feature: what it does and why a design choice in the plan was made;
+      - 3 that ask where something is done in the code, answered with file, function and line.
+      Ask about this change's core logic, not trivia.
+
+  - id: quiz
+    agent: worker
+    run: inline
+    instructions: |
+      Offer the person the quiz in ${run}/quiz.md and let them skip it. If they take it, ask
+      the questions one at a time, and show each answer only after they reply. The quiz never
+      fails the run.
 
   - id: archive
     mode: workflow
     workflow: subworkflows/archive.yaml
+
+  # Reached only through on_fail. Each goes back to the step that sent it here.
+  - id: fix-review
+    agent: brew
+    model: sonnet
+    next: code-review
+    instructions: |
+      Fix the review findings in ${run}/review.md, in the worktrees ${worktree}, and update each
+      row's Status and Note in that file. Commit on ${branch}.
+
+  - id: fix-tests
+    agent: brew
+    model: sonnet
+    next: verify
+    instructions: |
+      Fix the failing tests in ${run}/test-report.md, in the worktrees ${worktree}.
+      Commit on ${branch}.

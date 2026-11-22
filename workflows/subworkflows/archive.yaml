@@ -6,9 +6,12 @@ steps:
     agent: socrates
     model: opus
     instructions: |
-      Update mode. The change is described in ${run}/ (request.md, plan.md or rca.md, review.md).
+      Update mode. The change is described in ${run}/ (requirements.md, plan.md or rca.md, review.md).
       Its code is on branch ${branch} in ${worktree}.
       Update the docs in docs/ that this change makes wrong or incomplete, and commit them.
+      Leave docs/plans/ alone: it is history.
+      Copy ${run}/plan.md (or ${run}/rca.md for a fix) to docs/plans/${slug}.md in the same place
+      as the docs, and commit it.
       If a repo in this change has path "." in .maestro/workspace.yaml, the docs belong to that
       repo: edit them in its worktree, on its branch. Otherwise they belong to the workspace root:
       edit them in a git worktree of it at the absolute path of .maestro/worktrees/${slug}/workspace,

@@ -66,9 +66,8 @@ Every finding was checked against the files.
 - **Revisit** only for quick on_fail retries (checks → build), where the cache may still be warm. Not measured.
 
 ## Later (user's plan)
-- **Archive the plan as history.** At the archive step, keep only the plan (or RCA), commit it so it merges with the change,
-  and delete the rest of the run folder. When this lands, reword the lead's "`<run folder>` is in no repo" line
-  (`maestro/SKILL.md:94`), because the archived plan will be in a repo.
+- **Archive the plan as history.** Done 2026-11-22: learn saves the plan (or RCA) as `docs/plans/<slug>.md`
+  with the change; `install.sh` writes a `.ignore` for `docs/plans/`. The run folder stays local.
 - **Litmus/Brew split (A13).** Litmus only writes and runs tests, and Brew does all the fixing.
 
 ## C. Skipped, with reasons

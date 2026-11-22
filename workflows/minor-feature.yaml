@@ -8,7 +8,7 @@ steps:
     run: inline
     skills: {brainstorm: grill-me, design: system-design}
     instructions: |
-      Plan the change in ${run}/request.md. Read docs/ and .maestro/workspace.yaml first.
+      Plan the change in ${run}/requirements.md. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.
       This is a small change: keep the brainstorm to the questions that matter and the plan short,
       and leave out Design unless the change needs one. Write the plan to ${run}/plan.md.
       Record the repos the plan touches as `repos`.
@@ -48,7 +48,7 @@ steps:
     instructions: |
       Write mode, then run mode. Add any test in the Test plan of ${run}/plan.md that is still
       missing, and commit it on ${branch}. Then run the whole Test plan in ${worktree}.
-      Write the report to ${run}/test-report.md.
+      Write the report to ${run}/test-report.md. Commit any test you fix on ${branch}.
     on_fail: build
 
   - id: review

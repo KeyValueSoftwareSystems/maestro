@@ -108,3 +108,83 @@ Scratch, under this session's scratchpad `e2e/` folder:
 - `w1/`, `w2/`, `w3/` (with `.maestro/runs/` for every run), and `origins/` holding the pushed branches;
 - `logs/` (session JSON, `gh.log`, `gh-prs.txt`);
 - `run.sh`.
+
+## Round 2: the new major-feature flow (2026-11-22)
+Flow under test: intake → questions → plan (with the e2e test plan) → approve → worktree →
+build ‖ write-tests → commit → checks → code-review ⇄ fix-review → verify ⇄ fix-tests → archive.
+Same harness as above (`claude -p` 2.1.319, allowlist, fake `gh`, local bare origins).
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 20 | `next` loops, deterministic (exec steps that fail until a Haiku worker fixes them) | Pass | 8 steps: review → fix-review → review → verify → fix-tests → verify → finish; fix steps skipped in normal order; `done` |
+| 21 | Full `/maestro-feature` from a Jira-style ticket | Pass | intake kept the ticket word for word under Source and listed 8 open questions; 5 questions asked one at a time into `answers.md`; Keystone asked none of them again and raised one real trade-off; PR opened, worktree removed, `done` in 18 steps ($4.68 for the main session) |
+| 22 | Code-review loop with real agents (a test hook planted a fake live key in the first commit) | Pass | Birbal blocked it → Brew removed it → Birbal blocked again because the key was still in branch history → the lead stopped and asked rather than loop → reset → passed in round 3 |
+| 23 | Verify loop with real agents (a discount bug only the e2e test catches) | Pass | Litmus failed TP1 as a product bug → Brew fixed and committed → Litmus passed; `done` in 4 steps |
+| 24 | Resume from a new session with `/maestro-feature <slug>` after a failed parallel step | Pass | Retried build and write-tests and carried on |
+
+Fixed during round 2:
+1. **Subagents could not run `cd <worktree> && git …`.** Claude Code asks for approval for that pattern, which a headless or parallel subagent can't get, so build and write-tests both failed and stopped using Bash. `git -C <worktree> …` and `cd <worktree> && npm …` are allowed. Fix: one line in the lead's agent prompt.
+2. **The questions step suggested answers** to every question, which skips the person's own thinking. Fix: one line in `questions.md`. Re-tested: no suggestions.
+3. **check.sh's new step-target check matched nothing on macOS** (BSD `sed` has no `\|`). Fixed with `sed -E`, and checked that a misspelled `next` now fails.
+
+## Round 3: archive the plan as `docs/plans/<slug>.md` (2026-11-22)
+Same harness. w9 is a single repo seeded with three old "euro" plans under `docs/plans/`; w10 is a
+multi-repo workspace (api, web, umbrella). Both ran `/maestro-minor` to `done`.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 25 | Plan saved with the change, single repo | Pass | `docs/plans/invoice-format-amount.md` committed on `feat/invoice-format-amount` and in the code PR; `done` in 11 steps |
+| 26 | Plan saved with the change, multi-repo | Pass | `docs/plans/health-endpoint.md` committed on the umbrella's `docs/health-endpoint`; api PR and docs PR opened; worktrees removed; `done` in 12 steps |
+| 27 | Slug check sees `docs/plans/` | Pass | `format-amount`, `amount-formatter` and `currency-formatter` were taken, so the lead chose `invoice-format-amount` |
+| 28 | Old plans stay out of the way | Pass | Keystone never opened them and planned USD, not the old plans' euros. Socrates peeked at one with `head` and left it unchanged. Claude Code's Grep and the CLI `rg` both skip `docs/plans/` through `.ignore`; Glob and `ls` still list it |
+
+Fixed during round 3:
+1. **The PR agent ran `gh pr create` from the workspace root** in the multi-repo run, so it aimed at the
+   wrong repo. Cause: the lead's "run git as `git -C`" line made the agent avoid `cd` for every
+   command. Fix: one more lead line, "Run other commands there, such as gh or npm, as
+   `cd <path> && <command>`." Re-tested: both PRs were created from their worktrees.
+2. Harness only: the fake `gh` now honours `-R`, and the api seed's broken build and lint scripts
+   were fixed on the run's branch.
+
+## Round 4: the quiz (T7, 2026-11-22)
+`quiz-write` (Sonnet worker) writes 5 questions with answers to `quiz.md`; `quiz` (inline worker)
+offers it, asks one at a time, and never fails the run. Tested by resuming a w9 run at `quiz-write`.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 29 | Quiz written from the plan and the diff | Pass | 2 feature questions and 3 "where in the code" questions; every file, function and line in the answers matched the code ($0.48 for the step) |
+| 30 | Taking the quiz | Pass | Offered with a skip option; one question at a time; a half-right answer got what was right plus the correction, shown only after the reply |
+| 31 | Skipping midway | Pass | "Skip the rest" passed the step (history: "took 2 of 5 then skipped") and the run went on to archive |
+
+## Round 5: rule IDs with tests in domain docs (A8, 2026-11-22)
+The domain template's Rules section now keeps only rules the code can't show, that a future change
+must keep and that something enforces, one per bullet: `<DOM>-R<n>`, where it is enforced, and its
+test. Tested with `/maestro-kb` on w11, a docs-free copy of w2 ($2.08, review passed).
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 32 | Rules written in the new shape | Pass | 9 rules, INV-R1 to INV-R9, each with Enforced and Test; partial coverage noted ("POST only"). The old doc packed the same facts into 5 multi-rule bullets with no tests |
+| 33 | Filter drops code restatements | Pass | "web renders id, customer and total only" is gone |
+| 34 | Test links are checkable | Pass | All 6 sampled test names exist verbatim; Birbal checked every one, and flagged INV-R8, whose test covers `searchInvoices` but not `fetchInvoices` |
+
+Not as hoped: the domain doc grew from 76 to 88 lines, because each rule now takes two lines.
+
+## Round 6: the person's hypothesis in bug-fix (T4, 2026-11-22)
+`hypothesis` (inline worker) asks for a one-sentence guess, without suggesting causes, and saves it
+word for word; `investigate` tests it first without assuming it. Tested on w9's real divide-by-10
+discount bug with a deliberately wrong guess, stopped at the confirm gate ($1.19).
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 35 | Asking for the guess | Pass | One question, "No idea" offered, no causes suggested; `hypothesis.md` holds the answer word for word |
+| 36 | A wrong guess doesn't anchor Sherlock | Pass | rca.md lists the guess as hypothesis 1, **ruled out** with evidence (subtotal is exactly 100; `lineTotal` has no rounding), and confirms the real cause (`applyDiscount` divides by 10) by toggling the one-character fix |
+
+## Round 7: Litmus commits the test bugs it fixes (N1, 2026-11-22)
+Litmus already fixes failures it classifies as test bugs in run mode, but nothing told it to
+commit, so the fix would miss the PR and block cleanup. `verify` (major) and `test` (minor) now say
+"Commit any test you fix on ${branch}." Tested by resuming a w9 run at `verify` with a planted test
+bug: the TP2 test fed `0.124` but expected the plan's `0.125 → $0.13`.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 37 | Test bug fixed and committed in verify | Pass | Classified as a test bug; input changed back to `0.125`, expected value untouched; committed as `bd3e44a`; worktree clean; verify passed and the run went on to the quiz ($0.82) |
