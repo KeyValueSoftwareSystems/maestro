@@ -1,4 +1,4 @@
-<p align="center"><img src="assets/maestro.svg" alt="Maestro: you conduct, AI agents play. An open AI-SDLC practice with you at the centre of specialist agents." width="100%"></p>
+<p align="center"><img src="assets/maestro.svg" alt="Maestro: orchestrate AI, own the outcome. An open AI-SDLC practice with you at the centre of specialist agents." width="100%"></p>
 
 # Maestro
 
