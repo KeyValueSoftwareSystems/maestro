@@ -35,8 +35,8 @@ run folder and `state.yaml` are the whole system.
 2. The lead creates `.maestro/runs/<slug>/` with `requirements.md` and `state.yaml`.
 3. For each step, the lead fills in `${slug}`, `${run}`, `${repo}` and the other variables. It then
    starts the agent with the step's instructions, runs the command, or asks the person (gate).
-4. When a step fails, the lead jumps to its `on_fail` step, up to the workflow's `max_steps`. A
-   fix step with `next` sends the run back to that step once the fix passes.
+4. When a step fails, the lead jumps to its `on_fail` step, up to the workflow's `max_steps`.
+   The fix step's `next` names the step to go back to, usually the one that failed.
 5. The archive steps save the plan (or RCA) as `docs/plans/<slug>.md`, which merges with the
    change. A `.ignore` hides `docs/plans/` from search, so agents read a plan only when named.
 
