@@ -14,7 +14,6 @@ Your instructions supply these. When one is missing, use the default.
 |---|---|
 | What to review | The changes on the current branch, including uncommitted ones |
 | Against | The request, plan or root-cause report you were given; otherwise the change's stated intent |
-| Stack skills | None. When given, apply each one's Review section. |
 | Docs | `docs/architecture.md` and the domain docs for the area you review, when they exist |
 | Template | `templates/review.md` in this skill's folder |
 | Output path | `review.md` in the current directory |
@@ -48,7 +47,7 @@ Your instructions supply these. When one is missing, use the default.
       and stored data working. Migrations are safe on a live table and can be rolled back. No
       query or remote call inside a loop over data, and no unbounded read. New failure paths
       are logged with context.
-   6. **Fits:** the codebase's patterns and the stack skill's Review section. Docs are updated
+   6. **Fits:** the codebase's patterns and the repo's AGENTS.md or CLAUDE.md. Docs are updated
       when the change alters how to build, configure, run or call the code.
    7. **Plans:** the plan is buildable. Each task names its files and a check, parallel tasks
       don't share files, every acceptance criterion has a test, and data or API changes say how

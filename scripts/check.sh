@@ -14,23 +14,21 @@ elif [ "$n" -gt 100 ]; then echo "WARN: AGENTS.md has $n lines (target 100)"; fi
 while read -r f; do
   n=$(wc -l < "$f")
   [ "$n" -le 200 ] || err "$f has $n lines (max 200)"
-done < <(find skills stacks workflows -name '*.md')
+done < <(find skills workflows -name '*.md')
 
 # Only the lead skill may know about Maestro.
 while read -r f; do
   grep -qi 'maestro' "$f" && err "$f mentions Maestro (only skills/maestro may)"
-done < <(find skills stacks -name '*.md' ! -path 'skills/maestro/*')
+done < <(find skills -name '*.md' ! -path 'skills/maestro/*')
 
 # Every skill has a name in its frontmatter that matches its folder.
-for d in skills/*/ skills/agents/*/ stacks/*/; do
+for d in skills/*/ skills/agents/*/; do
   [ "$d" = skills/agents/ ] && continue
   name="$(basename "$d")"
   head -5 "$d/SKILL.md" 2>/dev/null | grep -qx "name: $name" || err "$d/SKILL.md: missing or wrong 'name: $name'"
 done
 # Agents install next to the other skills, so their names must not clash.
 for d in skills/agents/*/; do [ ! -d "skills/$(basename "$d")" ] || err "$d: also in skills/"; done
-# init names the stack skills it can choose, so that list must match stacks/.
-for d in stacks/*/; do grep "stack skills from:" workflows/init.yaml | grep -qw "$(basename "$d")" || err "workflows/init.yaml doesn't list stack $d"; done
 
 # Every agent and workflow file that a workflow names exists, and every workflow has a command.
 agents=" worker $(ls skills/agents | tr '\n' ' ') "

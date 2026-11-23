@@ -11,13 +11,12 @@ run folder and `state.yaml` are the whole system.
 | `skills/maestro/` | The lead coordinator. It is the only skill that knows about Maestro, and it defines the step format. |
 | `skills/agents/<agent>/` | One skill per agent, with its default `templates/`. Installed flat, as `.claude/skills/<agent>/`. |
 | `skills/grill-the-idea/`, `skills/system-design/` | Sub-skills that agents load when a workflow names them. |
-| `stacks/<stack>/` | Stack skills (react, node, python, java). `/maestro-init` picks them per repo; `install.sh` installs only those. |
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
 | `workflows/subworkflows/` | Pieces shared by several workflows (archive). |
 | `workflows/templates/` | Files a workflow hands to a worker: the requirements template and the design questions. |
 | `commands/` | One slash command per workflow, plus `/maestro-ui`. |
 | `ui/` | The local web UI: plain HTML, CSS and JS modules with no build step, and `serve.mjs` (Node built-ins only). Installed as `.maestro/ui/`. It reads run files and writes only workflow YAML; the lead never calls it. |
-| `install.sh` | Copies everything above into a project, but only the stacks `.maestro/workspace.yaml` lists. |
+| `install.sh` | Copies everything above into a project. |
 | `scripts/check.sh` | Size and wiring checks. Run it before every commit. |
 
 ## Agents
@@ -57,15 +56,8 @@ run folder and `state.yaml` are the whole system.
    wrong, fix the wording first, and discuss before adding code.
 6. **Subworkflows only after discussion**, and only for steps that several workflows share.
 7. Write plainly: short sentences, rules rather than explanations.
-
-## Writing stack skills
-- Write one skill per stack: a `SKILL.md` with Build, Test, Review and Verify sections. Use
-  `references/` only for sub-frameworks such as Django or Next.js.
-- Include only what a strong model gets wrong or what the team decided. No textbook material.
-- Write rules, not tutorials: "do X / never Y, because Z". Add code only when a rule is unclear
-  without it.
-- Make every rule checkable from a diff, and name the versions the skill covers.
-- Repo-specific conventions belong in that repo's own AGENTS.md, not in a stack skill.
+8. **No language or framework rules.** They belong in each project's own AGENTS.md, CLAUDE.md or
+   skills, not in Maestro.
 
 ## Safety (the lead adds these to every agent prompt)
 - Never force-push, rewrite shared history, or run `rm -rf`, `DROP` or `TRUNCATE` on real data.
@@ -75,6 +67,6 @@ run folder and `state.yaml` are the whole system.
 
 ## Checks
 Run `bash scripts/check.sh` before committing. It checks the size limits, that agent skills don't
-mention Maestro, that skill names match their folders and don't clash, that init lists every
-stack, that every agent and workflow a workflow names exists and has a command, that every
-`on_fail`, `on_reject` and `next` names a real step, and that the YAML parses.
+mention Maestro, that skill names match their folders and don't clash, that every agent and
+workflow a workflow names exists and has a command, that every `on_fail`, `on_reject` and `next`
+names a real step, and that the YAML parses.

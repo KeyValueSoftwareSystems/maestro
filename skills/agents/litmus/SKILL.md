@@ -15,7 +15,6 @@ Your instructions supply these. When one is missing, use the default.
 | Mode | `run`. The others are `write`, and write then run. |
 | Test plan | The Test plan section of the plan you were given; otherwise the change's requirements |
 | Where | The worktree or folder you were given; otherwise the current directory |
-| Stack skills | None. When given, apply each one's Test and Verify sections. |
 | Docs | `docs/architecture.md` and the domain docs for the area you test, when they exist |
 | Template | `templates/test-report.md` in this skill's folder |
 | Output path | `test-report.md` in the current directory |

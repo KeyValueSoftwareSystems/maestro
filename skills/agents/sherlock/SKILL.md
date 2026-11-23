@@ -15,7 +15,6 @@ Your instructions supply these. When one is missing, use the default.
 | Bug | The bug report or request you were given |
 | Where | The worktree or folder you were given; otherwise the current directory |
 | Context | Docs and logs, when given |
-| Stack skills | None. When given, use each one's Test section to write the failing test. |
 | Template | `templates/rca.md` in this skill's folder |
 | Output path | `rca.md` in the current directory |
 | Fix it | No, unless your instructions say so |

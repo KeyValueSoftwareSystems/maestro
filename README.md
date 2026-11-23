@@ -14,12 +14,11 @@ bash ../maestro/install.sh
 ```
 Then, in Claude Code from your project folder:
 ```
-/maestro-init                         # find repos, stacks and commands; offer the knowledge base
+/maestro-init                         # find repos and commands; offer the knowledge base
 /maestro-fix  Login times out after 5 minutes
 /maestro-minor Add a CSV export to the orders page
 /maestro-feature Multi-currency pricing
 ```
-After `/maestro-init`, run `install.sh` again to add the stack skills it picked.
 To resume a run, pass its slug instead of a request, for example `/maestro-fix login-timeout`.
 
 ## Commands
@@ -29,7 +28,7 @@ To resume a run, pass its slug instead of a request, for example `/maestro-fix l
 | `/maestro-minor` | minor-feature | Writes a short plan, then builds, tests, reviews and ships |
 | `/maestro-fix` | bug-fix | Asks your guess at the cause, finds the root cause, adds a regression test and fixes the bug, then reviews and ships |
 | `/maestro-kb` | knowledge | Builds the knowledge base in `docs/` from the code |
-| `/maestro-init` | init | Detects repos, stacks and commands, and offers to build the knowledge base |
+| `/maestro-init` | init | Detects repos and commands, and offers to build the knowledge base |
 | `/maestro-sync` | sync | Fast-forwards every repo and refreshes the docs that went stale |
 | `/maestro-ui` | — | Opens a local web page that shows each run live, lets you edit workflows, and shows the agents. Needs Node 20 or later |
 
@@ -83,15 +82,10 @@ agent's output format, put your own template in `.maestro/templates/` and pass i
 
 ## Multi-repo workspaces
 Run Maestro from an umbrella folder with each service repo cloned under `codebase/`.
-`/maestro-init` lists them in `.maestro/workspace.yaml` with their stack skills and commands.
+`/maestro-init` lists them in `.maestro/workspace.yaml` with their commands.
 Steps marked `foreach: repo` then run once per repo the plan touches, each in its own worktree
 under `.maestro/worktrees/<slug>/<repo>`. The umbrella folder must itself be a git repo: it holds
 `docs/`, and doc updates ship from it as their own pull request.
-
-## Stack skills
-React (with Next.js and React Native), Node.js + TypeScript (with NestJS), Python (with Django
-and FastAPI) and Java (with Spring Boot). `/maestro-init` records the stacks your repos use, and
-`install.sh` installs only those into `.claude/skills/`.
 
 ## Contributing
 Read [AGENTS.md](AGENTS.md) first. Keep every skill within 200 lines, and run

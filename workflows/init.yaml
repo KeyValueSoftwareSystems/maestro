@@ -1,7 +1,7 @@
-# Set up a workspace: find its repos, stacks and commands, then offer to build the knowledge base.
+# Set up a workspace: find its repos and commands, then offer to build the knowledge base.
 # Re-run it after adding a repo; it only adds new ones.
 name: init
-description: Detect the workspace's repos, stacks and commands, and offer to build the knowledge base.
+description: Detect the workspace's repos and commands, and offer to build the knowledge base.
 max_steps: 15
 steps:
   - id: detect
@@ -9,17 +9,15 @@ steps:
     instructions: |
       Find the repositories in this workspace: the current folder if it is a git repository with
       code, and each git repository under codebase/ (an umbrella workspace).
-      For each one, find its stack and its commands: setup (the locked dependency install, such as
-      `npm ci` or `uv sync --locked`), build, lint and test. Look in its manifests
-      (package.json, pyproject.toml, pom.xml, build.gradle, Makefile), CI config, README and AGENTS.md.
-      Choose its stack skills from: react, node, python, java. Each also covers its frameworks.
+      For each one, find its commands: setup (the locked dependency install, such as `npm ci` or
+      `uv sync --locked`), build, lint and test. Look in its manifests (package.json,
+      pyproject.toml, pom.xml, build.gradle, Makefile), CI config, README and AGENTS.md.
       Write .maestro/workspace.yaml in this format. Keep existing entries unchanged unless the
       person's feedback says otherwise, and only add repos that are new:
 
         repos:
           <name>:
             path: <path from the workspace root; "." for the current folder>
-            stack_skills: [<names from the list above>]
             commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
       Then run the build, lint and test commands of each repo you added, once. A command that
@@ -31,10 +29,10 @@ steps:
   - id: confirm
     mode: gate
     prompt: |
-      Check .maestro/workspace.yaml: the repos, their stack skills and their commands.
+      Check .maestro/workspace.yaml: the repos and their commands.
       Commands that already fail: ${failing}. Every run checks its changes with these commands,
       so fix or narrow a failing one now (for example, lint only the changed files).
-      Approve, or tell me what to fix. Once approved, run install.sh again to add the stack skills.
+      Approve, or tell me what to fix.
     on_reject: detect
 
   - id: offer-knowledge

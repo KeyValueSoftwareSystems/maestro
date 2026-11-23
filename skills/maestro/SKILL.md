@@ -13,7 +13,7 @@ step says `run: inline`.
 | Path | What it holds |
 |---|---|
 | `.maestro/workflows/<name>.yaml` | Workflows. `subworkflows/` holds pieces that several workflows share. |
-| `.maestro/workspace.yaml` | The repos, each with its path, stack skills and commands. Written by the init workflow. |
+| `.maestro/workspace.yaml` | The repos, each with its path and commands. Written by the init workflow. |
 | `.maestro/runs/<slug>/` | One folder per run: `requirements.md`, `state.yaml`, what the steps write, and `logs/`. |
 
 ## Start or resume
@@ -90,7 +90,6 @@ Task:
 <instructions, with variables filled in>
 Skills: brainstorm=grill-the-idea, design=system-design              <- when the step sets `skills`
 Template: <path>                                               <- when the step sets `template`
-Stack skills: <stack_skills of the step's repos>               <- brew, birbal, litmus and sherlock only
 Previous attempt failed at <step>: <reason>. Details: <path>   <- on a retry
 Person's feedback: <their words>                               <- after a rejected gate
 Rules: <the four Safety rules below>

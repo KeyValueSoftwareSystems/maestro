@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Install Maestro into a project, for Claude Code.
 #   bash /path/to/maestro/install.sh [project-dir] [--force-workflows]
-# Run it again after /maestro-init to add the stack skills, and to upgrade. Skills and commands
-# are replaced. Your workflows and templates are kept unless you pass --force-workflows.
+# Run it again to upgrade. Skills and commands are replaced. Your workflows and templates are
+# kept unless you pass --force-workflows.
 # .maestro/workspace.yaml and your runs are never touched.
 set -euo pipefail
 
@@ -32,15 +32,6 @@ done
 mkdir -p "$DEST/.claude/commands"
 cp "$SRC"/commands/*.md "$DEST/.claude/commands/"
 
-# Only the stack skills .maestro/workspace.yaml lists (written by /maestro-init).
-WS="$DEST/.maestro/workspace.yaml"
-stacks="" installed=""
-[ -f "$WS" ] && stacks="$(sed -n 's/.*stack_skills: *\[\(.*\)\].*/\1/p' "$WS" | tr ', ' '\n\n' | sort -u)"
-for name in $stacks; do
-  if [ -d "$SRC/stacks/$name" ]; then copy_dir "$SRC/stacks/$name" "$DEST/.claude/skills/$name"; installed="$installed $name"
-  else echo "skipped unknown stack skill '$name' in workspace.yaml" >&2; fi
-done
-
 # Workflows and their templates are yours to edit, so existing files are kept unless --force-workflows.
 (cd "$SRC/workflows" && find . -name '*.yaml' -o -name '*.md') | while read -r f; do
   target="$DEST/.maestro/workflows/${f#./}"
@@ -64,5 +55,4 @@ touch "$DEST/.ignore"
 grep -qxF 'docs/plans/' "$DEST/.ignore" || echo 'docs/plans/' >> "$DEST/.ignore"
 
 echo "Maestro installed in $DEST"
-if [ -f "$WS" ]; then echo "Stack skills:${installed:- none}"
-else echo "Next, in Claude Code: /maestro-init. Then run this script again to add the stack skills."; fi
+[ -f "$DEST/.maestro/workspace.yaml" ] || echo "Next, in Claude Code: /maestro-init."

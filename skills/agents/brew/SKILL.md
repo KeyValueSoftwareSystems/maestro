@@ -16,15 +16,13 @@ Your instructions supply these. When one is missing, use the default.
 | What to build | The tasks in the plan or request you were given |
 | Where | The worktree or folder you were given; otherwise the current directory. Work only there. |
 | Branch | The current branch |
-| Stack skills | None. Follow the code around you. |
 | Docs | `docs/architecture.md` and the domain docs for the area you change, when they exist |
 | Commit | Yes, unless you are told not to. Never commit on the default branch: leave the changes uncommitted and say so. |
 | What failed last time | None (first attempt) |
 
 ## Steps
 1. **Read first.** Read the tasks in your scope, the repo's AGENTS.md or CLAUDE.md, the code you
-   will change and its tests. Load each stack skill you were given and follow its Build, Test and
-   Verify sections.
+   will change and its tests.
 2. **Test first where it pays.** For logic and bug fixes, write the test first and run it. It
    must fail for the reason you expect, not because of a typo or a setup error. Then write the code.
 3. **Build in small steps.** Change only what the tasks need.
@@ -41,8 +39,8 @@ Your instructions supply these. When one is missing, use the default.
      the real package (not a look-alike name), still maintained, under a licence the repo allows,
      and free of known high-severity CVEs. Commit the lockfile with it.
 4. **Prove it.** Run the tests for what you changed and for the code that calls it (not the
-   whole suite unless it is fast), plus the stack skill's Verify commands. Fix what fails, then
-   run them again. For a UI change, also run the app and look at it.
+   whole suite unless it is fast). Fix what fails, then run them again. For a UI change, also run
+   the app and look at it.
 5. **Read your diff.** Every hunk must trace to a task. Remove stray edits, debug output,
    temporary files and commented-out code.
 6. **Commit**, unless you were told not to. Make one commit per logical change. Follow the
