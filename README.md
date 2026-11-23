@@ -74,7 +74,7 @@ steps:
 ```
 Steps can also be `run: inline` (the agent talks to you in the main conversation), grouped under
 `parallel:`, or another workflow (`mode: workflow`). A fix step with `next:` is reached only
-through `on_fail`, and sends the run back to the step that failed. All the step fields are described in
+through `on_fail`, and sends the run back to the step it names once the fix passes. All the step fields are described in
 [skills/maestro/SKILL.md](skills/maestro/SKILL.md).
 
 Edit the installed copies in `.maestro/workflows/` freely; upgrades keep them. To change an

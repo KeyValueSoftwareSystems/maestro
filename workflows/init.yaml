@@ -1,7 +1,7 @@
 # Set up a workspace: find its repos, stacks and commands, then offer to build the knowledge base.
 # Re-run it after adding a repo; it only adds new ones.
 name: init
-description: Detect the workspace's repos, stacks and commands, and build the knowledge base.
+description: Detect the workspace's repos, stacks and commands, and offer to build the knowledge base.
 max_steps: 15
 steps:
   - id: detect
@@ -22,12 +22,18 @@ steps:
             stack_skills: [<names from the list above>]
             commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
-      Record the repo names you added as `repos`.
+      Then run the build, lint and test commands of each repo you added, once. A command that
+      fails doesn't fail this step.
+      Record the repo names you added as `repos`, and the commands that failed as `failing`, each
+      with its repo and a short reason (such as "invoice-svc lint: 60 errors in src/legacy.js"),
+      or `none`.
 
   - id: confirm
     mode: gate
     prompt: |
       Check .maestro/workspace.yaml: the repos, their stack skills and their commands.
+      Commands that already fail: ${failing}. Every run checks its changes with these commands,
+      so fix or narrow a failing one now (for example, lint only the changed files).
       Approve, or tell me what to fix. Once approved, run install.sh again to add the stack skills.
     on_reject: detect
 

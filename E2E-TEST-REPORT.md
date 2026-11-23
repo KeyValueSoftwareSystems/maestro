@@ -291,3 +291,32 @@ An independent review of `ui/` found 16 real problems; all are fixed and re-test
   `status` failed to render; unquoted times sorted wrong; a step restarted in the same second
   showed its old status; a slow redraw of one run could replace another; two fix-only steps
   returning to the same step overlapped; a 0 count rendered empty.
+
+## Round 14: fixes go back through commit, and init flags failing commands (2026-11-23)
+Two gaps from the v1/v2 review. Runs paused part-way through were resumed headless (Opus lead) in
+single-repo copies of `invoice-svc`. The repo still has the planted `/10` discount bug.
+
+**Changes.**
+- major-feature: `fix-review` and `fix-tests` now have `next: commit`, not `next: code-review` and
+  `next: verify`. A fix is committed, then runs checks, code review and verify again. Before, a
+  `fix-tests` change shipped without lint or review.
+- init `detect` runs each new repo's build, lint and test once and records the ones that fail as
+  `failing`. The confirm gate shows them and asks the person to fix or narrow them.
+
+| # | Scenario | Result | Evidence |
+|---|---|---|---|
+| 55 | Old routing: verify fails on an e2e row | Found a gap | fix-tests → checks → code-review round 2 → verify. The route worked, but the lead told Brew "Do not commit" (copied from `build`) and no later step committed, so the fix would have missed the PR. That is why the fix steps now go to `commit` ($1.70) |
+| 56 | `next: commit`, verify fails | Pass | verify fail → fix-tests → commit `1e5030c` → checks → code-review round 2 (logs the fix as R2, closed) → verify 11/11 → quiz-write. Nothing left uncommitted ($1.90) |
+| 57 | `next: commit`, review finds a blocker (missing RangeError) | Pass | review fail → fix-review → commit → checks → review fail (new blocker R8) → fix-review → commit → checks → review pass → verify 10/10. Two loops; nothing left uncommitted ($4.08; one Opus re-review took 26 min) |
+| 58 | Before the init change: lint already fails on main (60 errors in a legacy file) | Pass, but costly | Brew stayed in scope and fixed nothing outside the plan. The lead stopped at `waiting` with skip, fix or stop. Cost: a wasted build retry, and a stop on every run in that repo ($1.00) |
+| 59 | `/maestro-init` on that repo | Pass | The gate named `invoice-svc lint: 60 errors in src/legacy-export.js` and offered to narrow lint, exclude the file or fix it first. The first try had detect reply `fail` (the lead overrode it); "A command that fails doesn't fail this step" fixed that ($0.55, $0.48) |
+| 60 | Reject the gate: "narrow lint to the files a change touches" | Pass | detect rewrote lint to check only changed files. `failing: none`. It was honest that the toy linter can't take file arguments, so it copied the rule inline ($1.17) |
+| 61 | Exec of a 150 s test, then one hidden in a script (~340 s) | Pass, no line needed | The lead set `timeout` 300000 and 400000 unprompted and wrote output to the log, not its context ($0.27, $0.28) |
+| 62 | Exec of an 11-minute test (over Bash's 10-minute maximum) | Pass, no line needed | The lead ran it in the background unprompted, waited, and recorded the pass ($0.31) |
+
+**Not added:** a per-run baseline check (run a failing check again on the default branch). Test 58
+showed agents already spot and report failures that already exist, and init now catches the
+chronic case once. A main branch that breaks later still stops the run and asks, which is the
+right outcome. Also not added: a timeout line, per tests 61-62.
+
+**Cost:** $14.60 across 11 sessions.
