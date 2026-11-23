@@ -99,6 +99,15 @@ steps:
       Write the report to ${run}/test-report.md.
     on_fail: fix-tests
 
+  - id: commit-pending-changes
+    agent: worker
+    model: haiku
+    foreach: repo
+    instructions: |
+      In ${worktree}, commit all pending changes on branch ${branch} (the review and test fixes)
+      with a one-line message in the repo's commit convention (otherwise Conventional Commits).
+      If nothing changed, pass without committing.
+
   - id: quiz-write
     agent: worker
     model: sonnet
@@ -121,12 +130,11 @@ steps:
     mode: workflow
     workflow: subworkflows/archive.yaml
 
-  # Reached only through on_fail. Each goes back to commit, so every fix is committed, checked,
-  # reviewed and verified again.
+  # Reached only through on_fail.
   - id: fix-review
     agent: brew
     model: sonnet
-    next: commit
+    next: code-review
     instructions: |
       Fix the review findings in ${run}/review.md, in the worktrees ${worktree}, and update each
       row's Status and Note in that file.
@@ -134,6 +142,6 @@ steps:
   - id: fix-tests
     agent: brew
     model: sonnet
-    next: commit
+    next: verify
     instructions: |
       Fix the failing tests in ${run}/test-report.md, in the worktrees ${worktree}.
