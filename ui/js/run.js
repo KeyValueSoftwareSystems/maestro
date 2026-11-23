@@ -114,9 +114,9 @@ export async function showRun(view, slug, keepOpen) {
   const graph = () => renderGraph({ columns, extras, jumps }, {
     layout,
     seqClass: (i) => (columns[i].nodes.some((n) => n.S.s === 'running') ? 'e-run' : columns[i].nodes.some((n) => n.S.s !== 'pending') ? 'e-done' : 'e-todo'),
-    renderNode: (n) => h('button.node.' + cls(n.S.s), { type: 'button', 'data-key': n.key, class: 'node ' + cls(n.S.s) + (drawer.key === n.key ? ' sel' : ''),
+    renderNode: (n) => h('button.node.' + cls(n.S.s), { type: 'button', 'data-key': n.key, class: 'node ' + cls(n.S.s) + (n.repo === '…' ? ' stack' : '') + (drawer.key === n.key ? ' sel' : ''),
       'aria-label': `${n.step.id}${n.repo ? ' ' + n.repo : ''}, ${label(n.step, n.S).replace(/…$/, '')}. Show details`, onclick: () => open(n) },
-    face(n.step), h('span', h('b', n.step.id), n.repo ? [' ', h('span.repo', n.repo)] : null, h('br'),
+    face(n.step), h('span', h('b', n.step.id), n.repo && n.repo !== '…' ? [' ', h('span.repo', n.repo)] : null, h('br'),
       h('span.st', n.S.s === 'running' ? h('span.spin') : null, n.S.s === 'done' ? ico('check', 14) : n.S.s === 'failed' ? ico('x', 14) : null, label(n.step, n.S)))),
   });
   let graphEl = h('div.graph-wrap', graph());

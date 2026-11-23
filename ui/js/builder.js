@@ -125,8 +125,9 @@ function render(view) {
     renderNode: (n) => {
       const s = n.step, mode = s.mode || 'agent';
       const cap = mode === 'agent' ? (s.agent === 'worker' ? 'Worker' : (AGENTS[s.agent] || { role: 'Agent' }).role) : MODES[mode];
-      return h('button.node.s-edit' + (S.sel === s.__k ? '.sel' : ''), { type: 'button', 'aria-label': `${s.id || 'new step'}: edit`, onclick: () => select(view, s.__k) },
-        face(s), h('span', h('b', s.id || '…'), n.repo ? [' ', h('span.repo', 'per repo')] : null, h('br'), h('span.cap', cap)));
+      const per = n.repo ? ', runs once per repo' : '';
+      return h('button.node.s-edit' + (n.repo ? '.stack' : '') + (S.sel === s.__k ? '.sel' : ''), { type: 'button', title: per ? 'Runs once per repo' : null, 'aria-label': `${s.id || 'new step'}${per}: edit`, onclick: () => select(view, s.__k) },
+        face(s), h('span', h('b', s.id || '…'), h('br'), h('span.cap', cap, mode === 'agent' ? ` · ${s.run === 'inline' ? 'in chat' : s.model || 'default'}` : '')));
     },
   });
 
@@ -155,7 +156,8 @@ function render(view) {
           h('button.btn', { type: 'button', id: 'discard', disabled: !dirty || S.isNew, onclick: () => discard(view) }, 'Discard'),
           h('button.btn.primary', { type: 'button', id: 'save', disabled: !dirty || probs.length > 0, onclick: () => save(view) }, 'Save'))),
       S.tab === 'graph'
-        ? (all().length ? h('div.graph-wrap', graph) : h('div.empty', 'No steps yet. Use Add step.'))
+        ? (all().length ? [h('div.graph-wrap', graph), h('div.graph-key', [['', 'Next step'], ['fail', 'On fail'], ['reject', 'If rejected'], ['next', 'Then back'], ['stack', 'Runs once per repo']]
+          .map(([c, t]) => h('span', h('i' + (c ? '.' + c : ''), { 'aria-hidden': 'true' }), t)))] : h('div.empty', 'No steps yet. Use Add step.'))
         : h('div.yaml', h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' } },
           h('span.mono', { style: { fontSize: '12.5px', color: 'var(--muted)' } }, S.path),
           h('button.link', { type: 'button', onclick: () => navigator.clipboard.writeText(dumpWorkflow(S.wf, S.header)).then(() => toast('Copied')) }, 'Copy')),

@@ -122,9 +122,18 @@ h3 { margin: 0; font-size: 13px; font-weight: 700; }
 .node.s-waiting { background: var(--warn-soft); border-color: var(--warn); } .node.s-waiting .st { color: var(--warn-ink); }
 .node.s-pending { background: var(--surface); border: 1.5px dashed var(--line2); box-shadow: none; color: var(--muted); }
 .node.s-pending .av { filter: grayscale(1); opacity: .6; }
-.node.s-edit { background: var(--surface); }
+.node.s-edit { background: var(--surface); border: 1.5px solid var(--line); }
 .node.sel { outline: 3px solid var(--accent); outline-offset: 4px; }
-.node .cap { font-size: 12px; color: var(--muted); }
+.node .cap { font-size: 13px; color: var(--ink2); }
+/* A per-repo step: a second card behind, offset down and right. */
+.node.stack, .node.stack.s-pending { box-shadow: 7px 7px 0 -1.5px var(--surface), 7px 7px 0 0 var(--line2), var(--shadow-sm); }
+/* The key under the builder graph. */
+.graph-key { display: flex; gap: 20px; flex-wrap: wrap; padding: 14px 24px; border-top: 1px solid var(--line); font-size: 13px; color: var(--ink2); }
+.graph-key span { display: inline-flex; align-items: center; gap: 8px; }
+.graph-key i { width: 22px; border-top: 2px solid var(--line2); }
+.graph-key i.fail { border-top: 2px dashed var(--bad); } .graph-key i.reject { border-top: 2px dashed var(--warn); } .graph-key i.next { border-top: 2px dashed var(--accent); }
+.graph-key i.stack { width: 16px; height: 12px; border: 1.5px solid var(--line); border-radius: 4px; box-shadow: 3px 3px 0 -1px var(--surface), 3px 3px 0 0 var(--line2); }
+
 .node.small { height: 120px; }
 .spin { display: inline-block; width: 9px; height: 9px; border-radius: 50%; border: 1.6px solid var(--accent-mid); border-top-color: var(--accent); animation: spin .9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
