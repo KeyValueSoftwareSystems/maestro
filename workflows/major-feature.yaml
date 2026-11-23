@@ -1,8 +1,8 @@
 # A large feature: turn the request into requirements, ask the person the design questions,
-# plan with them, build and write tests in parallel, then loop on review and on verification
-# until both pass, quiz the person on the change, then ship.
+# plan with them, review the plan, build and write tests in parallel, then loop on review and on
+# verification until both pass, quiz the person on the change, then ship.
 name: major-feature
-description: Requirements, questions, plan, parallel build and tests, review and verify loops, a quiz, then ship.
+description: Requirements, questions, plan and plan review, parallel build and tests, review and verify loops, a quiz, then ship.
 max_steps: 60
 steps:
   - id: intake
@@ -32,13 +32,22 @@ steps:
       don't ask those again. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.
       For each real choice, show the options with their pros and cons and agree one with the person.
       Write the plan to ${run}/plan.md. Its Test plan has at least one e2e row per acceptance
-      criterion.
+      criterion. If ${run}/plan-review.md exists, also fix or dispute each open finding in it.
       Record the repos the plan touches as `repos`.
+
+  - id: plan-review
+    agent: birbal
+    model: opus
+    instructions: |
+      Review the plan ${run}/plan.md against ${run}/requirements.md, the person's answers in
+      ${run}/answers.md, and the code it will change. Write the review to ${run}/plan-review.md.
+    on_fail: approve-plan
 
   - id: approve-plan
     mode: gate
     prompt: |
-      The design and the test plan for ${slug} are in ${run}/plan.md.
+      The design and the test plan for ${slug} are in ${run}/plan.md, and the review of the plan
+      is in ${run}/plan-review.md.
       Approve, or tell me what to change.
     on_reject: plan
 
