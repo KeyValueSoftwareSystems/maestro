@@ -19,11 +19,9 @@ steps:
       Test the person's guess in ${run}/hypothesis.md first, without assuming it is right. Say in
       rca.md whether it held, with the evidence.
       Write the root-cause report to ${run}/rca.md.
-      To bisect, debug or write the failing test, use a worktree on a new branch fix/${slug} from
-      origin's latest default branch. If .maestro/workspace.yaml has `worktrees`, create them with
-      its `create` command ({slug} filled in), use each repo's `path`, and rename each one's branch
-      to fix/${slug}. Otherwise use a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/<repo>.
+      To bisect, debug or write the failing test, work in a worktree on a new branch fix/${slug}
+      from origin's latest default branch: from the `worktrees` tool in .maestro/workspace.yaml if
+      it has one, otherwise a git worktree at .maestro/worktrees/${slug}/<repo>.
       Record the repos the fix touches as `repos` (names from .maestro/workspace.yaml).
 
   - id: confirm
@@ -37,18 +35,14 @@ steps:
     agent: worker
     model: haiku
     instructions: |
-      Create a worktree for each repo in ${repos}, on a new branch fix/${slug} from origin's
-      latest default branch. Reuse any that already exist.
-      - If .maestro/workspace.yaml has `worktrees`, run its `create` command once from the
-        workspace root, with {slug} filled in, unless every repo's `path` already exists. Each
-        repo's worktree is at its `path`. If one is on another branch, rename that branch to
-        fix/${slug} (`git -C <path> branch -m fix/${slug}`), or check out fix/${slug} there if it
-        already exists.
-      - Otherwise, in each repo (path in .maestro/workspace.yaml), create a git worktree at the
-        absolute path of .maestro/worktrees/${slug}/<repo>.
+      Create a worktree for each repo in ${repos} on a new branch fix/${slug} from origin's
+      latest default branch, reusing any that exist.
+      - If .maestro/workspace.yaml has `worktrees`, run its `create` command from the workspace
+        root unless every repo's `path` exists. Rename each worktree's branch to fix/${slug}, or
+        check out fix/${slug} if it exists.
+      - Otherwise create a git worktree in each repo at .maestro/worktrees/${slug}/<repo>.
       Then run each repo's `setup` command in its worktree, if it has one.
-      Record `worktree` (absolute paths) and `branch` as maps keyed by repo, such as
-      `worktree: {api: /abs/path/api, web: /abs/path/web}`.
+      Record `worktree` (absolute paths) and `branch` as maps keyed by repo.
 
   - id: fix
     agent: brew

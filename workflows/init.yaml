@@ -20,22 +20,19 @@ steps:
             path: <path from the workspace root; "." for the current folder>
             commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
-      Then look at the workspace root for its own tools (read their usage, don't run them):
-      one that creates a worktree of every repo, such as a sandbox script, and
-      one that starts the whole stack, such as a compose, Tilt or infra script. Add these optional
-      sections only for tools that exist. Add `environment` only when the stack it starts runs
-      the code in the run's worktrees (with `worktrees`, from their `path`).
+      Then look for the workspace's own tools at its root (read their usage, don't run them): one
+      that creates a worktree of every repo, such as a sandbox script, and one that starts the
+      whole stack from those worktrees. Add these sections only for tools that exist:
 
-        worktrees:     # the run's worktrees, used instead of .maestro/worktrees/
-          create: <run once from the workspace root; makes every repo's worktree from origin's
-                   latest default branch, with {slug}>
+        # Run from the workspace root, with {slug} as the run's slug and {repo} as a repo name.
+        worktrees:
+          create: <makes every repo's worktree from origin's latest default branch>
           path: <each repo's worktree from the workspace root, with {slug} and {repo}>
-          remove: <removes them, with {slug}. Runs rename their branches to feat/ or fix/<slug>
-                   first, so a tool that deletes only the branches it named keeps them>
-        environment:   # the running stack for integration and e2e tests
-          start: <starts it in the background, with {slug}>
+          remove: <removes them>
+        environment:
+          start: <starts the stack in the background>
           urls: <prints its URLs or ports>
-          stop: <stops it, with {slug}>
+          stop: <stops it>
 
       If `create` names the repos, add the new ones to it.
       Then run the build, lint and test commands of each repo you added, once. A command that

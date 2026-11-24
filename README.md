@@ -89,10 +89,8 @@ under `.maestro/worktrees/<slug>/<repo>`. The umbrella folder must itself be a g
 `docs/`, and doc updates ship from it as their own pull request.
 
 If the workspace has its own tools, `/maestro-init` records them in `workspace.yaml` and runs use
-them. Under `worktrees`, they create, find and remove the run's worktrees, such as a sandbox
-script. Under `environment`, they start and stop the stack from those worktrees, such as an infra
-script. A run renames each worktree's branch to its own `feat/<slug>` or `fix/<slug>`. Litmus then starts the stack itself for integration and e2e tests, and stops it when it
-is done:
+them: `worktrees` to create and remove the run's worktrees, and `environment` to start and stop
+the stack for integration and e2e tests:
 ```yaml
 worktrees:
   create: ./scripts/sandbox create {slug} --from api=main --from web=main
