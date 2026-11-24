@@ -2,20 +2,20 @@
 
 Maestro runs software delivery workflows inside a coding agent (Claude Code for now). A **lead**
 skill reads a short YAML workflow and handles each step: it hands the step to an **agent** (a
-skill), runs a command, or asks a person. There is no engine and no CLI. The workflow file, the
-run folder and `state.yaml` are the whole system.
+skill), runs a command, or asks a person. There is no engine: the lead drives the run, and one
+small script keeps its state. The workflow file, the run folder and `state.yaml` are the whole system.
 
 ## Layout
 | Path | What it holds |
 |---|---|
-| `skills/maestro/` | The lead coordinator. It is the only skill that knows about Maestro, and it defines the step format. |
+| `skills/maestro/` | The lead coordinator. It is the only skill that knows about Maestro. `scripts/run.mjs` keeps a run's state, and `references/step-format.md` defines the step format. |
 | `skills/agents/<agent>/` | One skill per agent, with its default `templates/`. Installed flat, as `.claude/skills/<agent>/`. |
 | `skills/grill-the-idea/`, `skills/system-design/` | Sub-skills that agents load when a workflow names them. |
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
 | `workflows/subworkflows/` | Pieces shared by several workflows (archive). |
 | `workflows/templates/` | Files a workflow hands to a worker: the requirements template and the design questions. |
 | `commands/` | One slash command per workflow, plus `/maestro-ui`. |
-| `ui/` | The local web UI: plain HTML, CSS and JS modules with no build step, and `serve.mjs` (Node built-ins only). Installed as `.maestro/ui/`. It reads run files and writes only workflow YAML; the lead never calls it. |
+| `ui/` | The local web UI: plain HTML, CSS and JS modules with no build step, and `serve.mjs` (Node built-ins only). Installed as `.maestro/ui/`. It reads run files and writes only workflow YAML; the lead never calls it. `run.mjs` borrows its YAML parser, `vendor/js-yaml.mjs`. |
 | `install.sh` | Copies everything above into a project. |
 | `scripts/check.sh` | Size and wiring checks. Run it before every commit. |
 
@@ -32,10 +32,12 @@ run folder and `state.yaml` are the whole system.
 
 ## How a run works
 1. The person types `/maestro-fix <bug>`, and the lead loads `.maestro/workflows/bug-fix.yaml`.
-2. The lead creates `.maestro/runs/<slug>/` with `requirements.md` and `state.yaml`.
-3. For each step, the lead fills in `${slug}`, `${run}`, `${repo}` and the other variables. It then
-   starts the agent with the step's instructions, runs the command, or asks the person (gate).
-4. When a step fails, the lead jumps to its `on_fail` step, up to the workflow's `max_steps`.
+2. The lead calls `run.mjs start`, which creates `.maestro/runs/<slug>/` and `state.yaml`, and
+   writes the request to `requirements.md`.
+3. For each step, `run.mjs next` prints the step with `${slug}`, `${run}`, `${repo}` and the other
+   variables filled in. The lead starts the agent, runs the command, or asks the person (gate),
+   then records the result with `run.mjs end`.
+4. When a step fails, `run.mjs` sends the run to its `on_fail` step, up to the workflow's `max_steps`.
    The fix step's `next` names the step to go back to, usually the one that failed.
 5. The archive steps save the plan (or RCA) as `docs/plans/<slug>.md`, which merges with the
    change. A `.ignore` hides `docs/plans/` from search, so agents read a plan only when named.
@@ -52,7 +54,8 @@ run folder and `state.yaml` are the whole system.
    session: the lead names them by path, and a person runs one as `/brew`.
 4. **Sub-skills are swappable.** An agent skill names its sub-skills by role (brainstorm, design)
    and takes the actual skill from its instructions.
-5. **No engine.** Don't add scripts for the lead to call. If the lead keeps getting something
+5. **No engine.** The lead drives the run; `run.mjs` only keeps its state and never calls a
+   model. Don't add other scripts for the lead to call. If the lead keeps getting something
    wrong, fix the wording first, and discuss before adding code.
 6. **Subworkflows only after discussion**, and only for steps that several workflows share.
 7. Write plainly: short sentences, rules rather than explanations.
@@ -69,4 +72,5 @@ run folder and `state.yaml` are the whole system.
 Run `bash scripts/check.sh` before committing. It checks the size limits, that agent skills don't
 mention Maestro, that skill names match their folders and don't clash, that every agent and
 workflow a workflow names exists and has a command, that every `on_fail`, `on_reject` and `next`
-names a real step, and that the YAML parses.
+names a real step, and that the YAML parses. With Node, it also runs `scripts/test-run.mjs`, which
+drives `run.mjs` through the real workflows and checks that step ids are unique.

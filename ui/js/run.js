@@ -133,7 +133,7 @@ export async function showRun(view, slug, keepOpen) {
   let banner = null;
   if (waitingGate) banner = h('div.banner.warn', ico('pause'), h('span.msg', `Waiting for you at ${waitingGate.step.id}. Answer in the Claude Code conversation.`), h('button.link', { type: 'button', onclick: () => open(waitingGate) }, 'Open'));
   else if (failed) banner = h('div.banner.bad', ico('alert'), h('span.msg', `${failed.step.id}${failed.repo ? ' failed on ' + failed.repo : ' failed'}: ${(failed.S.last && failed.S.last.note) || 'see details'}`), h('button.link', { type: 'button', onclick: () => open(failed) }, failed.step.mode === 'exec' ? 'View log' : 'Details'));
-  else if (st.status === 'waiting') banner = h('div.banner.warn', ico('pause'), h('span.msg', `Paused at ${st.current}${last && last.note ? ': ' + last.note : ''}. Answer in Claude Code.`));
+  else if (st.status === 'waiting') banner = h('div.banner.warn', ico('pause'), h('span.msg', `Paused at ${st.current}${st.reason ? ': ' + st.reason : last && last.note ? ': ' + last.note : ''}. Answer in Claude Code.`));
   else if (st.status === 'done') banner = h('div.banner', ico('check'), h('span.msg', 'This run is finished.'));
 
   const lastAt = [...(st.history || []).map((e) => e.at), ...(st.running || []).map((e) => e.since)].filter(Boolean).sort().pop();
