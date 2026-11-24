@@ -51,8 +51,17 @@ Your instructions supply these. When one is missing, use the default.
    has no test, or a new test fails for a setup error.
 
 ## Run mode
-1. Run the repo's test commands and the tests the plan lists. For integration and e2e tests,
-   start the services they need as the repo's docs describe.
+1. Run the repo's test commands and the tests the plan lists. Integration and e2e tests need the
+   stack running from the worktrees you were given:
+   - If the task gives commands to start and stop the stack, use them. If it is already running,
+     stop it and start it again, so it runs the latest commit. Find its URLs with the command the
+     task gives, and wait until each service answers, with a timeout.
+   - Otherwise start the services the tests need as the repo's docs describe, from the worktrees.
+
+   Stop everything you started before you reply, whether the tests passed or not, and say in the
+   report what you started and that it stopped. Never edit infra files (compose, Tiltfile, env
+   templates) to get a stack up: a stack that won't start, or that runs other code than the
+   worktrees, is an environment failure.
 2. Find each planned test by name in the runner output. A test that wasn't collected, was
    filtered out or was skipped counts as "not run". A command that ran zero tests failed.
 3. A test that fails and then passes on a rerun is flaky, not passing. Rerun it up to 5 times,

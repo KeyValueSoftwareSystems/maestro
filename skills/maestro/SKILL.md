@@ -13,7 +13,7 @@ step says `run: inline`.
 | Path | What it holds |
 |---|---|
 | `.maestro/workflows/<name>.yaml` | Workflows. `subworkflows/` holds pieces that several workflows share. |
-| `.maestro/workspace.yaml` | The repos, each with its path and commands. Written by the init workflow. |
+| `.maestro/workspace.yaml` | The repos, each with its path and commands, and optionally the workspace's own `worktrees` and `environment` tools. Written by the init workflow. |
 | `.maestro/runs/<slug>/` | One folder per run: `requirements.md`, `state.yaml`, what the steps write, and `logs/`. |
 
 ## Start or resume
@@ -22,7 +22,8 @@ step says `run: inline`.
 2. Otherwise the argument is a new request. Every workflow except `init` needs
    `.maestro/workspace.yaml`. If it is missing, ask the person to run `/maestro-init` first and stop.
 3. Make a slug of 2–5 lowercase words joined by `-`, taken from the request and unique under
-   `.maestro/runs/`, `.maestro/worktrees/` and `docs/plans/`. Create the run folder with an empty
+   `.maestro/runs/`, `.maestro/worktrees/` and `docs/plans/` (and the `worktrees.path` folder in
+   workspace.yaml, if it has one). Create the run folder with an empty
    `logs/` folder, and write the request word for word to `requirements.md`.
    Write state.yaml with `status: running` and `current` set to the first step.
 4. Read the workflow file in full once before the first step.
@@ -120,7 +121,7 @@ workspace.yaml; skip names the repo doesn't define. Save the output to
 **Workflow.** Run that file's steps in place. They share this run's slug, vars and step budget.
 
 After each agent step, record its `<name>: <value>` lines in `vars`. Inside `foreach`, record
-them per repo.
+them per repo. A value given as a map keyed by repo is a per-repo value too.
 
 ## Failures and the step budget
 - Each step run adds 1 to `steps_used`. A `foreach` or a `parallel` list counts as one run, and a

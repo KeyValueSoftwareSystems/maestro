@@ -19,8 +19,10 @@ steps:
       Test the person's guess in ${run}/hypothesis.md first, without assuming it is right. Say in
       rca.md whether it held, with the evidence.
       Write the root-cause report to ${run}/rca.md.
-      To bisect, debug or write the failing test, use a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/<repo> on a new branch fix/${slug}, from origin's latest default branch.
+      To bisect, debug or write the failing test, use a worktree on a new branch fix/${slug} from
+      origin's latest default branch. If .maestro/workspace.yaml has `worktrees`, create them with
+      its `create` command ({slug} and {branch} filled in) and use each repo's `path`. Otherwise
+      use a git worktree at the absolute path of .maestro/worktrees/${slug}/<repo>.
       Record the repos the fix touches as `repos` (names from .maestro/workspace.yaml).
 
   - id: confirm
@@ -33,13 +35,17 @@ steps:
   - id: worktree
     agent: worker
     model: haiku
-    foreach: repo
     instructions: |
-      In repo ${repo} (path in .maestro/workspace.yaml), create a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/${repo} on a new branch fix/${slug}, starting from origin's latest
-      default branch. If that worktree already exists, reuse it.
-      Then run the repo's `setup` command in the worktree, if it has one.
-      Record the worktree path as `worktree` and the branch name as `branch`.
+      Create a worktree for each repo in ${repos}, on a new branch fix/${slug} from origin's
+      latest default branch. Reuse any that already exist.
+      - If .maestro/workspace.yaml has `worktrees`, run its `create` command once from the
+        workspace root, with {slug} and {branch} filled in, unless every repo's `path` already
+        exists. Each repo's worktree is at its `path`.
+      - Otherwise, in each repo (path in .maestro/workspace.yaml), create a git worktree at the
+        absolute path of .maestro/worktrees/${slug}/<repo>.
+      Then run each repo's `setup` command in its worktree, if it has one.
+      Record `worktree` (absolute paths) and `branch` as maps keyed by repo, such as
+      `worktree: {api: /abs/path/api, web: /abs/path/web}`.
 
   - id: fix
     agent: brew

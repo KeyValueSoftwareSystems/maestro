@@ -88,6 +88,22 @@ Steps marked `foreach: repo` then run once per repo the plan touches, each in it
 under `.maestro/worktrees/<slug>/<repo>`. The umbrella folder must itself be a git repo: it holds
 `docs/`, and doc updates ship from it as their own pull request.
 
+If the workspace has its own tools, `/maestro-init` records them in `workspace.yaml` and runs use
+them. Under `worktrees`, they create, find and remove the run's worktrees, such as a sandbox
+script. Under `environment`, they start and stop the stack from those worktrees, such as an infra
+script. Litmus then starts the stack itself for integration and e2e tests, and stops it when it
+is done:
+```yaml
+worktrees:
+  create: ./scripts/sandbox create {slug} --branch {branch} --from api=main --from web=main
+  path: sandbox/{slug}/codebase/{repo}
+  remove: ./scripts/sandbox rm {slug} -y --keep-branches
+environment:
+  start: ./scripts/infra up {slug}
+  urls: ./scripts/infra ls
+  stop: ./scripts/infra down {slug}
+```
+
 ## Contributing
 Read [AGENTS.md](AGENTS.md) first. Keep every skill within 200 lines, and run
 `bash scripts/check.sh` before committing.
