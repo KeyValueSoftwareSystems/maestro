@@ -77,7 +77,9 @@ steps:
         model: sonnet
         instructions: |
           Write mode. Write the integration and e2e tests in the Test plan of ${run}/plan.md,
-          in the worktrees ${worktree}. Touch only test files. Do not commit: a later step commits.
+          in the worktrees ${worktree}. Touch only test files. Do not run the new tests: the code
+          is being built at the same time, and a later step runs them.
+          Do not commit: a later step commits.
 
   - id: commit
     agent: worker

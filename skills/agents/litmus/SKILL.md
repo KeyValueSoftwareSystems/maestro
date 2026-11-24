@@ -18,6 +18,7 @@ Your instructions supply these. When one is missing, use the default.
 | Docs | `docs/architecture.md` and the domain docs for the area you test, when they exist |
 | Template | `templates/test-report.md` in this skill's folder |
 | Output path | `test-report.md` in the current directory |
+| Run new tests | Yes, in write mode |
 | Commit | Yes for every test you write or fix, unless you are told not to. Never commit on the default branch. |
 
 ## Write mode
@@ -43,12 +44,12 @@ Your instructions supply these. When one is missing, use the default.
 6. Touch only test files and fixtures. Use synthetic data only, never production or customer
    records. If code can't be tested without a product change, say so in your reply rather than
    changing product code.
-7. Run the new tests. If the code under test doesn't exist yet, each test must fail because the
-   feature is missing (an assertion or a missing symbol). It must never fail because of a syntax,
-   fixture or setup error.
+7. Run the new tests, unless you were told not to. If the code under test doesn't exist yet,
+   each test must fail because the feature is missing (an assertion or a missing symbol). It must
+   never fail because of a syntax, fixture or setup error.
 8. Commit, unless you were told not to. In your reply, list each test as `file::name`, with the
    row it covers and the bug it catches. Your result is fail when a row you were asked to write
-   has no test, or a new test fails for a setup error.
+   has no test, or a new test you ran fails for a setup error.
 
 ## Run mode
 1. Run the repo's test commands and the tests the plan lists. For integration and e2e tests,
