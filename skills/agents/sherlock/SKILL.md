@@ -14,7 +14,7 @@ Your instructions supply these. When one is missing, use the default.
 |---|---|
 | Bug | The bug report or request you were given |
 | Where | The worktree or folder you were given; otherwise the current directory |
-| Context | Docs and logs, when given |
+| Context | Docs and logs, when given, plus any log, trace or error-tracking tools you have |
 | Template | `templates/rca.md` in this skill's folder |
 | Output path | `rca.md` in the current directory |
 | Fix it | No, unless your instructions say so |
@@ -27,6 +27,10 @@ Your instructions supply these. When one is missing, use the default.
      bug.
    - First confirm you are running the code you are reading: the branch and commit, a fresh
      build, no stale cache or old process.
+   - When the bug comes from a deployed environment (production, staging or another stage) and
+     you have tools for its logs, traces, metrics or error tracker, use them. Find the failing
+     request or trace, note its time, version and inputs, and follow it across services. Query
+     only; never change alerts, config or data there.
    - If it fails only sometimes, find the uncontrolled condition (timing, order, data or
      environment) and record the rate, such as 3 of 20 runs.
    - If you can't reproduce it, write down what you tried and what information is missing, then
@@ -78,6 +82,8 @@ Your instructions supply these. When one is missing, use the default.
 - Leave the code as you found it. Remove temporary logging and scratch files unless you were
   told to fix the bug.
 - Never change real data or external systems to reproduce a bug.
+- When you quote logs or traces, give the trace or request ID and time, and leave out personal
+  data, tokens and secrets.
 - Describe decisions and conditions, not people. No names or blame, including from git blame.
 - Your result is fail when you can't reproduce the bug. In your reply, give the root cause in
   one line, whether it is confirmed, the repos or areas the fix touches, and the report path.
