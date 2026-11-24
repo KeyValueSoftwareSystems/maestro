@@ -111,8 +111,9 @@ otherwise in the repo's path. A command name means that repo's `commands.<name>`
 workspace.yaml; skip names the repo doesn't define. Save the output to
 `${run}/logs/<id>-<repo>.log`. The step passes when the exit code is 0.
 
-**Gate.** Show the prompt, the paths it names, and a summary of each file in three lines or fewer
-(for a plan: goal, decisions, open questions). Then ask (see Asking the person).
+**Gate.** Before the popup, show the prompt and, for each file it names, a link to the file as
+`[<file name>](<path>)` with a summary in three lines or fewer (for a plan: goal, decisions,
+open questions). Then ask (see Asking the person).
 - If they approve, go to the next step.
 - If they reject, go to `on_reject` and pass their feedback. With no `on_reject`, set
   `status: waiting` and ask whether to go back to a step or stop.
