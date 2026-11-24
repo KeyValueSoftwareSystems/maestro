@@ -91,13 +91,13 @@ under `.maestro/worktrees/<slug>/<repo>`. The umbrella folder must itself be a g
 If the workspace has its own tools, `/maestro-init` records them in `workspace.yaml` and runs use
 them. Under `worktrees`, they create, find and remove the run's worktrees, such as a sandbox
 script. Under `environment`, they start and stop the stack from those worktrees, such as an infra
-script. Litmus then starts the stack itself for integration and e2e tests, and stops it when it
+script. A run renames each worktree's branch to its own `feat/<slug>` or `fix/<slug>`. Litmus then starts the stack itself for integration and e2e tests, and stops it when it
 is done:
 ```yaml
 worktrees:
-  create: ./scripts/sandbox create {slug} --branch {branch} --from api=main --from web=main
+  create: ./scripts/sandbox create {slug} --from api=main --from web=main
   path: sandbox/{slug}/codebase/{repo}
-  remove: ./scripts/sandbox rm {slug} -y --keep-branches
+  remove: ./scripts/sandbox rm {slug} -y
 environment:
   start: ./scripts/infra up {slug}
   urls: ./scripts/infra ls

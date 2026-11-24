@@ -58,8 +58,10 @@ steps:
       Create a worktree for each repo in ${repos}, on a new branch feat/${slug} from origin's
       latest default branch. Reuse any that already exist.
       - If .maestro/workspace.yaml has `worktrees`, run its `create` command once from the
-        workspace root, with {slug} and {branch} filled in, unless every repo's `path` already
-        exists. Each repo's worktree is at its `path`.
+        workspace root, with {slug} filled in, unless every repo's `path` already exists. Each
+        repo's worktree is at its `path`. If one is on another branch, rename that branch to
+        feat/${slug} (`git -C <path> branch -m feat/${slug}`), or check out feat/${slug} there if it
+        already exists.
       - Otherwise, in each repo (path in .maestro/workspace.yaml), create a git worktree at the
         absolute path of .maestro/worktrees/${slug}/<repo>.
       Then run each repo's `setup` command in its worktree, if it has one.

@@ -21,16 +21,17 @@ steps:
             commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
       Then look at the workspace root for its own tools (read their usage, don't run them):
-      one that creates a worktree of every repo on a named branch, such as a sandbox script, and
+      one that creates a worktree of every repo, such as a sandbox script, and
       one that starts the whole stack, such as a compose, Tilt or infra script. Add these optional
       sections only for tools that exist. Add `environment` only when the stack it starts runs
       the code in the run's worktrees (with `worktrees`, from their `path`).
 
         worktrees:     # the run's worktrees, used instead of .maestro/worktrees/
-          create: <run once from the workspace root; makes every repo's worktree on {branch},
-                   from origin's latest default branch; uses {slug} and {branch}>
+          create: <run once from the workspace root; makes every repo's worktree from origin's
+                   latest default branch, with {slug}>
           path: <each repo's worktree from the workspace root, with {slug} and {repo}>
-          remove: <removes them and keeps the branches, with {slug}>
+          remove: <removes them, with {slug}. Runs rename their branches to feat/ or fix/<slug>
+                   first, so a tool that deletes only the branches it named keeps them>
         environment:   # the running stack for integration and e2e tests
           start: <starts it in the background, with {slug}>
           urls: <prints its URLs or ports>
