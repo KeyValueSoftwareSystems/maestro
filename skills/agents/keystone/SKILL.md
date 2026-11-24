@@ -40,8 +40,11 @@ Your instructions supply these. When one is missing, use the default.
    call each new entry point.
 5. **Write.** Fill in every section of the template and write it to the output path. Delete a
    section the template marks optional when it doesn't apply. Write down everything the
-   conversation settled.
-6. **Check.** Fix the plan until all of these hold:
+   conversation settled. When the template you were given has no section for something the
+   change needs (a contract, a schema change, a rollout), add that section from
+   `templates/plan.md` in this skill's folder and say so in your reply.
+6. **Check.** Fix the plan until all of these hold. Skip a check only for a section your
+   template leaves out and the change doesn't need:
    - Each acceptance criterion is a given/when/then example with real values. Each new path has
      at least one failure case: bad input, no permission, or a dependency down.
    - Each criterion maps to at least one task and one test-plan row.

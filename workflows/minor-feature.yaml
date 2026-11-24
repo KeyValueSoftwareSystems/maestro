@@ -7,11 +7,12 @@ steps:
     agent: keystone
     run: inline
     skills: {brainstorm: grill-the-idea, design: system-design}
+    template: .claude/skills/keystone/templates/plan-minor.md
     instructions: |
       Plan the change in ${run}/requirements.md. Read docs/ (skip docs/plans/) and .maestro/workspace.yaml first.
       This is a small change: keep the brainstorm to the questions that matter and the plan short,
-      and leave out Design unless the change needs one. Write the plan to ${run}/plan.md.
-      Record the repos the plan touches as `repos`.
+      and skip the design skill unless the change needs a design.
+      Write the plan to ${run}/plan.md. Record the repos the plan touches as `repos`.
 
   - id: approve-plan
     mode: gate

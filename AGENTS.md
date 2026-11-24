@@ -22,7 +22,7 @@ run folder and `state.yaml` are the whole system.
 ## Agents
 | Agent | Role | Default templates |
 |---|---|---|
-| Keystone | Planner and designer: brainstorms, designs, writes the plan | `plan.md` |
+| Keystone | Planner and designer: brainstorms, designs, writes the plan | `plan.md`, `plan-minor.md` |
 | Brew | Implementer: code and tests, then fixes from checks and reviews | none |
 | Birbal | Reviewer of plans, code and docs; keeps a findings table | `review.md` |
 | Litmus | Tester: writes tests, or runs them and reports | `test-report.md` |
