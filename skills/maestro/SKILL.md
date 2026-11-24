@@ -112,7 +112,7 @@ workspace.yaml; skip names the repo doesn't define. Save the output to
 `${run}/logs/<id>-<repo>.log`. The step passes when the exit code is 0.
 
 **Gate.** Show the prompt, the paths it names, and a summary of each file in three lines or fewer
-(for a plan: goal, decisions, open questions). Then wait for the person.
+(for a plan: goal, decisions, open questions). Then ask (see Asking the person).
 - If they approve, go to the next step.
 - If they reject, go to `on_reject` and pass their feedback. With no `on_reject`, set
   `status: waiting` and ask whether to go back to a step or stop.
@@ -121,6 +121,14 @@ workspace.yaml; skip names the repo doesn't define. Save the output to
 
 After each agent step, record its `<name>: <value>` lines in `vars`. Inside `foreach`, record
 them per repo.
+
+## Asking the person
+When the person picks between choices (a gate, a `waiting` status, or options an inline step's
+skill offers), ask with AskUserQuestion: your recommendation first, marked (Recommended), and at
+most 4 options. A gate offers Approve and Change something; take their feedback from the Other
+box or the note, and ask once in chat if it is empty. Print summaries and sketches in chat
+before the popup. Ask open questions, where options would steer the answer, in chat.
+Without the tool, list numbered options in chat and wait.
 
 ## Failures and the step budget
 - Each step run adds 1 to `steps_used`. A `foreach` or a `parallel` list counts as one run, and a
