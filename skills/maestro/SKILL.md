@@ -61,7 +61,8 @@ After context compaction, run `run status <slug>` and carry on with the loop.
 
 ## Asking the person
 Ask the person to pick (at a gate, at `waiting`, or from an inline skill's options) with
-AskUserQuestion, or in chat without it. At a gate, recommend no option. Never answer for them.
+AskUserQuestion, or as numbered options in chat without it. At a gate, recommend no option.
+Never answer for them.
 
 ## Doing an item
 **`kind: agent`, `run: subagent`.** Start one general-purpose subagent, with the item's `model`

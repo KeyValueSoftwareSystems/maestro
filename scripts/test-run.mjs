@@ -69,6 +69,8 @@ ok('first item is the inline hypothesis', r.n.todo[0].run === 'inline' && r.n.to
 step('login-bug', 'pass', {}, { investigate: { '--var': 'repos=[api, web]' } });
 ok('repos recorded as a list', JSON.stringify(state('login-bug').vars.repos) === '["api","web"]');
 ok('a gate refuses pass', run('next', 'login-bug') && run('end', 'login-bug', 'confirm', 'pass').error?.includes('is a gate'));
+ok('a rejection with no feedback is refused', run('end', 'login-bug', 'confirm', 'rejected', '--note', ' ').error?.includes('ask the person what to change')
+  && state('login-bug').running.length === 1);
 run('end', 'login-bug', 'confirm', 'rejected', '--note', 'look at the cache');
 ok('gate not counted', state('login-bug').steps_used === 2);
 ok('rejected gate goes back with feedback', state('login-bug').current === 'investigate' && run('next', 'login-bug').todo[0].feedback === 'look at the cache');

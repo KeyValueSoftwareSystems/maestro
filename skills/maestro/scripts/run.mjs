@@ -162,10 +162,13 @@ function end(slug, stepId, result, opt) {
   const s = load(slug);
   s.running ??= []; s.results ??= []; s.vars ??= {};
   const { list } = units(s.workflow);
-  const isGate = find(list, stepId).step.mode === 'gate';
+  const step = find(list, stepId).step;
+  const isGate = step.mode === 'gate';
   if (isGate && !['approved', 'rejected'].includes(result)) die(`'${stepId}' is a gate: record approved or rejected`);
   if (!isGate && !['pass', 'fail'].includes(result)) die(`'${stepId}' is a step: record pass or fail`);
   if (result === 'fail' && !opt.note) die('a fail needs --note "<one line on why>"');
+  if (result === 'rejected' && step.on_reject && !opt.note?.trim())
+    die(`ask the person what to change, then record it with --note "<their words>"`);
   const i = s.running.findIndex((r) => r.step === stepId && (r.repo ?? '') === (opt.repo ?? ''));
   if (i < 0) die(`'${stepId}'${opt.repo ? ` for repo ${opt.repo}` : ''} is not running. Running: ${s.running.map((r) => r.step + (r.repo ? `/${r.repo}` : '')).join(', ') || 'nothing'}`);
   s.running.splice(i, 1);
