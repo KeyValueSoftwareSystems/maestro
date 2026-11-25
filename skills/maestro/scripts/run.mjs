@@ -215,7 +215,9 @@ function start(workflow, slug) {
   const name = wfName(workflow ?? '');
   if (name !== 'init' && !fs.existsSync(path.join(M, 'workspace.yaml'))) die('.maestro/workspace.yaml is missing. Ask the person to run /maestro-init first.');
   if (fs.existsSync(statePath(slug))) die(`run '${slug}' already exists. To resume it, run status ${slug}, then next ${slug}.`);
-  for (const taken of [runDir(slug), path.join(M, 'worktrees', slug), path.join(ROOT, 'docs/plans', `${slug}.md`)])
+  const wtPath = workspace().worktrees?.path; // the workspace's own worktree tool, if it has one
+  const wtDir = wtPath ? [path.join(ROOT, wtPath.replaceAll('{slug}', slug).split('{repo}')[0])] : [];
+  for (const taken of [runDir(slug), path.join(M, 'worktrees', slug), path.join(ROOT, 'docs/plans', `${slug}.md`), ...wtDir])
     if (fs.existsSync(taken)) die(`slug '${slug}' is taken (${path.relative(ROOT, taken)}). Choose another.`);
   const { list, max } = units(name);
   fs.mkdirSync(path.join(runDir(slug), 'logs'), { recursive: true });

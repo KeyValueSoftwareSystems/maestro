@@ -45,7 +45,8 @@ steps:
   - id: cleanup
     agent: worker
     model: haiku
-    foreach: repo
     instructions: |
-      Remove the worktree ${worktree} with `git worktree remove`, keeping the branch.
-      If it has uncommitted changes, don't remove it: fail and list them.
+      Remove the run's worktrees ${worktree}. If one has uncommitted changes, remove nothing:
+      fail and list them.
+      Use the `worktrees` `remove` command in .maestro/workspace.yaml if it has one, otherwise
+      `git worktree remove`.

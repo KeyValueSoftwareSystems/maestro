@@ -20,6 +20,20 @@ steps:
             path: <path from the workspace root; "." for the current folder>
             commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
+      Then look for the workspace's own tools at its root (read their usage, don't run them): one
+      that creates a worktree of every repo on a branch you name, and one that starts the whole stack from those
+      worktrees. Add these sections only for tools that exist:
+
+        # Run from the workspace root, with {slug} as the run's slug, {branch} as its branch
+        # and {repo} as a repo name.
+        worktrees:
+          create: <makes every repo's worktree on {branch} from origin's latest default branch>
+          path: <each repo's worktree from the workspace root, with {slug} and {repo}>
+          remove: <removes them>
+        environment:
+          start: <starts the stack in the background>
+          stop: <stops it>
+
       Then run the build, lint and test commands of each repo you added, once. A command that
       fails doesn't fail this step.
       Record the repo names you added as `repos`, and the commands that failed as `failing`, each

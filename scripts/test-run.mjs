@@ -37,7 +37,7 @@ const step = (slug, result, per = {}, extra = {}) => {
     const args = ['end', slug, t.step, r];
     if (t.repo) args.push('--repo', t.repo);
     if (r === 'fail' && !(extra[key] ?? extra[t.step])?.['--note']) args.push('--note', 'it failed');
-    for (const [k, v] of Object.entries(extra[key] ?? extra[t.step] ?? {})) args.push(k, v);
+    for (const [k, v] of Object.entries(extra[key] ?? extra[t.step] ?? {})) for (const x of [v].flat()) args.push(k, x);
     last = run(...args);
   }
   return { n, last };
@@ -74,9 +74,8 @@ ok('gate not counted', state('login-bug').steps_used === 2);
 ok('rejected gate goes back with feedback', state('login-bug').current === 'investigate' && run('next', 'login-bug').todo[0].feedback === 'look at the cache');
 run('end', 'login-bug', 'investigate', 'pass');
 step('login-bug');
-r = step('login-bug', 'pass', {}, { 'worktree/api': { '--var': 'worktree=/wt/api' }, 'worktree/web': { '--var': 'worktree=/wt/web' } });
-ok('worktree runs once per repo', ids(r.n) === 'worktree/api,worktree/web');
-edit('login-bug', (s) => { s.vars.branch = { api: 'fix/login-bug', web: 'fix/login-bug' }; });
+r = step('login-bug', 'pass', {}, { worktree: { '--var': ['worktree={api: /wt/api, web: /wt/web}', 'branch={api: fix/login-bug, web: fix/login-bug}'] } });
+ok('worktree runs once for all repos', ids(r.n) === 'worktree');
 r = step('login-bug');
 ok('fix fills per-repo values', r.n.todo[0].instructions.includes('/wt/api') && r.n.todo[1].instructions.includes('/wt/web'));
 r = run('next', 'login-bug');
@@ -110,8 +109,7 @@ step('tax-feature', 'pass', {}, { plan: { '--var': 'repos=[api]' } });
 step('tax-feature', 'fail', {}, { 'plan-review': { '--note': '2 blockers' } });
 ok('plan-review fail goes to the gate', state('tax-feature').current === 'approve-plan');
 step('tax-feature');
-step('tax-feature', 'pass', {}, { 'worktree/api': { '--var': 'worktree=/wt/api' } });
-edit('tax-feature', (s) => { s.vars.branch = { api: 'feat/tax-feature' }; });
+step('tax-feature', 'pass', {}, { worktree: { '--var': ['worktree={api: /wt/api}', 'branch={api: feat/tax-feature}'] } });
 r = step('tax-feature');
 ok('parallel list runs together, counted once', ids(r.n) === 'build/api,write-tests' && state('tax-feature').steps_used === 6);
 step('tax-feature');
@@ -137,23 +135,24 @@ ok('fix steps skipped at the end: done', state('tax-feature').status === 'done',
 // Interrupted: only the unfinished items run again, recorded ones and their values are kept.
 begin('major-feature', 'cut-off');
 for (let i = 0; i < 5; i++) step('cut-off', undefined, {}, { plan: { '--var': 'repos=[api, web]' } });
-edit('cut-off', (s) => { s.current = 'worktree'; });
+edit('cut-off', (s) => { s.current = 'commit'; s.vars.worktree = { api: '/wt/api', web: '/wt/web' }; s.vars.branch = { api: 'feat/cut-off', web: 'feat/cut-off' }; });
 run('next', 'cut-off');
-run('end', 'cut-off', 'worktree', 'pass', '--repo', 'api', '--var', 'worktree=/wt/api');
+run('end', 'cut-off', 'commit', 'pass', '--repo', 'api', '--var', 'sha=a1');
 const used = state('cut-off').steps_used;
 r = run('next', 'cut-off');
-ok('interrupted: only the unfinished item', r.interrupted === true && ids(r) === 'worktree/web' && state('cut-off').steps_used === used);
-run('end', 'cut-off', 'worktree', 'pass', '--repo', 'web', '--var', 'worktree=/wt/web');
-ok('interrupted: values kept, run moves on', state('cut-off').vars.worktree.api === '/wt/api' && state('cut-off').current === 'build');
+ok('interrupted: only the unfinished item', r.interrupted === true && ids(r) === 'commit/web' && state('cut-off').steps_used === used);
+run('end', 'cut-off', 'commit', 'pass', '--repo', 'web', '--var', 'sha=b2');
+ok('interrupted: values kept, run moves on', state('cut-off').vars.sha.api === 'a1' && state('cut-off').current === 'checks');
 ok('end for an item not running is refused', run('end', 'cut-off', 'fix-review', 'pass').error?.includes('not running'));
 
 // Values: a single repo, an empty list, a list of "name: reason" items, a bad list.
 begin('bug-fix', 'one-repo'); step('one-repo');
 step('one-repo', 'pass', {}, { investigate: { '--var': 'repos=api' } }); step('one-repo');
-ok('a single repo works as a list', ids(run('next', 'one-repo')) === 'worktree/api');
+step('one-repo', 'pass', {}, { worktree: { '--var': ['worktree={api: /wt/api}', 'branch={api: fix/one-repo}'] } });
+ok('a single repo works as a list', ids(run('next', 'one-repo')) === 'fix/api');
 begin('bug-fix', 'no-repos'); step('no-repos');
-step('no-repos', 'pass', {}, { investigate: { '--var': 'repos=[]' } }); step('no-repos');
-ok('no repos: waiting, budget kept', run('next', 'no-repos').reason?.includes('no repos') && state('no-repos').steps_used === 2);
+step('no-repos', 'pass', {}, { investigate: { '--var': 'repos=[]' } }); step('no-repos'); step('no-repos');
+ok('no repos: waiting, budget kept', run('next', 'no-repos').reason?.includes('no repos') && state('no-repos').steps_used === 3);
 begin('init', 'set-up-workspace');
 step('set-up-workspace', 'pass', {}, { detect: { '--var': 'failing=[invoice-svc lint: 60 errors, web test: 2 fail]' } });
 ok('a list of "name: reason" reads as text', run('next', 'set-up-workspace').todo[0].prompt.includes('invoice-svc lint: 60 errors, web test: 2 fail'));
@@ -162,7 +161,7 @@ ok('a bad list is refused with a hint', run('end', 'set-up-workspace', 'confirm'
 // A missing value stops the run, and goto can supply it.
 fs.writeFileSync(path.join(P, '.maestro/workspace.yaml'), 'repos:\n  api:\n    path: .\n');
 begin('bug-fix', 'no-worktree');
-step('no-worktree'); step('no-worktree'); step('no-worktree'); step('no-worktree');
+step('no-worktree'); step('no-worktree', 'pass', {}, { investigate: { '--var': 'repos=[api]' } }); step('no-worktree'); step('no-worktree');
 r = run('next', 'no-worktree');
 ok('missing value: waiting, says how to give it', r.action === 'waiting' && r.reason.includes('${worktree}') && r.reason.includes('goto'));
 run('goto', 'no-worktree', 'fix', '--var', 'worktree={api: /wt/api}', '--var', 'branch={api: fix/no-worktree}');
@@ -174,16 +173,22 @@ edit('budget-run', (s) => { s.steps_used = 30; });
 ok('budget used up: waiting', run('next', 'budget-run').reason?.includes('budget'));
 ok('goto gives 10 more steps', run('goto', 'budget-run', 'hypothesis').note?.includes('10 more') && run('next', 'budget-run').todo?.length === 1);
 
+// A slug is taken when the workspace's own worktree tool already has its folder.
+fs.writeFileSync(path.join(P, '.maestro/workspace.yaml'), 'repos:\n  api:\n    path: .\nworktrees:\n  path: sandbox/{slug}/codebase/{repo}\n');
+fs.mkdirSync(path.join(P, 'sandbox/old-sandbox/codebase'), { recursive: true });
+ok('worktrees.path folder takes the slug', run('start', 'bug-fix', 'old-sandbox').error?.includes('is taken (sandbox/old-sandbox/codebase'));
+
 // Two `end` calls at once both land.
 fs.writeFileSync(path.join(P, '.maestro/workspace.yaml'), WS2);
 let lost = 0;
 for (let i = 0; i < 5; i++) {
   const slug = `race-run-${'abcde'[i]}`;
   begin('bug-fix', slug); step(slug); step(slug, 'pass', {}, { investigate: { '--var': 'repos=[api, web]' } }); step(slug);
+  step(slug, 'pass', {}, { worktree: { '--var': ['worktree={api: /wt/api, web: /wt/web}', 'branch={api: b, web: b}'] } });
   run('next', slug);
-  spawnSync('bash', ['-c', `node ${RUN} end ${slug} worktree pass --repo api --var worktree=/wt/api & node ${RUN} end ${slug} worktree pass --repo web --var worktree=/wt/web & wait`], { cwd: P });
+  spawnSync('bash', ['-c', `node ${RUN} end ${slug} fix pass --repo api --var sha=a & node ${RUN} end ${slug} fix pass --repo web --var sha=b & wait`], { cwd: P });
   const s = state(slug);
-  if (s.running.length || !s.vars.worktree?.api || !s.vars.worktree?.web) lost++;
+  if (s.running.length || !s.vars.sha?.api || !s.vars.sha?.web) lost++;
 }
 ok('two ends at once: nothing lost', lost === 0, `${lost} of 5 lost`);
 

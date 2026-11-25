@@ -24,13 +24,13 @@ steps:
   - id: worktree
     agent: worker
     model: haiku
-    foreach: repo
     instructions: |
-      In repo ${repo} (path in .maestro/workspace.yaml), create a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/${repo} on a new branch feat/${slug}, starting from origin's latest
-      default branch. If that worktree already exists, reuse it.
-      Then run the repo's `setup` command in the worktree, if it has one.
-      Record the worktree path as `worktree` and the branch name as `branch`.
+      Create a worktree for each repo in ${repos} on a new branch feat/${slug} from origin's
+      latest default branch, reusing any that exist. If .maestro/workspace.yaml has `worktrees`,
+      use its `create` command. Otherwise create a git worktree in each repo at
+      .maestro/worktrees/${slug}/<repo>.
+      Then run each repo's `setup` command in its worktree, if it has one.
+      Record `worktree` (absolute paths) and `branch` as maps keyed by repo.
 
   - id: build
     agent: brew
@@ -51,6 +51,7 @@ steps:
     instructions: |
       Write mode, then run mode. Add any test in the Test plan of ${run}/plan.md that is still
       missing. Then run the whole Test plan in ${worktree}.
+      Use the `environment` commands in .maestro/workspace.yaml, if it has them, for the stack.
       Write the report to ${run}/test-report.md.
     on_fail: build
 

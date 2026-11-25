@@ -40,7 +40,7 @@ Repeat until `run next` prints `done`, `stopped` or `waiting`:
    - `--note "<one line>"` for the reason of a fail, or the person's words on a rejected gate
    - `--details <path>` for the report or log of a fail
    - `--var "<name>=<value>"` once for each value the task was asked to record, quoted; write a
-     list as `--var "repos=[a, b]"`
+     list as `--var "repos=[a, b]"` and a per-repo map as `--var "branch={api: x, web: y}"`
    - `--repeat` when a step fails with the same cause as its last failure
 
 What `run next` can also say:

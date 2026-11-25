@@ -20,8 +20,9 @@ steps:
       Test the person's guess in ${run}/hypothesis.md first, without assuming it is right. Say in
       rca.md whether it held, with the evidence.
       Write the root-cause report to ${run}/rca.md.
-      To bisect, debug or write the failing test, use a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/<repo> on a new branch fix/${slug}, from origin's latest default branch.
+      To bisect, debug or write the failing test, work in a worktree on a new branch fix/${slug}
+      from origin's latest default branch: from the `worktrees` tool in .maestro/workspace.yaml if
+      it has one, otherwise a git worktree at .maestro/worktrees/${slug}/<repo>.
       Record the repos the fix touches as `repos` (names from .maestro/workspace.yaml).
 
   - id: confirm
@@ -34,13 +35,13 @@ steps:
   - id: worktree
     agent: worker
     model: haiku
-    foreach: repo
     instructions: |
-      In repo ${repo} (path in .maestro/workspace.yaml), create a git worktree at the absolute path of
-      .maestro/worktrees/${slug}/${repo} on a new branch fix/${slug}, starting from origin's latest
-      default branch. If that worktree already exists, reuse it.
-      Then run the repo's `setup` command in the worktree, if it has one.
-      Record the worktree path as `worktree` and the branch name as `branch`.
+      Create a worktree for each repo in ${repos} on a new branch fix/${slug} from origin's
+      latest default branch, reusing any that exist. If .maestro/workspace.yaml has `worktrees`,
+      use its `create` command. Otherwise create a git worktree in each repo at
+      .maestro/worktrees/${slug}/<repo>.
+      Then run each repo's `setup` command in its worktree, if it has one.
+      Record `worktree` (absolute paths) and `branch` as maps keyed by repo.
 
   - id: fix
     agent: brew
