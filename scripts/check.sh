@@ -16,10 +16,10 @@ while read -r f; do
   [ "$n" -le 200 ] || err "$f has $n lines (max 200)"
 done < <(find skills workflows -name '*.md')
 
-# Only the lead skill may know about Maestro.
+# Only the lead and the workflow builder may know about Maestro.
 while read -r f; do
-  grep -qi 'maestro' "$f" && err "$f mentions Maestro (only skills/maestro may)"
-done < <(find skills -name '*.md' ! -path 'skills/maestro/*')
+  grep -qi 'maestro' "$f" && err "$f mentions Maestro (only skills/maestro and skills/maestro-workflow may)"
+done < <(find skills -name '*.md' ! -path 'skills/maestro/*' ! -path 'skills/maestro-workflow/*')
 
 # Every skill has a name in its frontmatter that matches its folder.
 for d in skills/*/ skills/agents/*/; do
