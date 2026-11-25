@@ -50,7 +50,9 @@ What `run next` can also say:
   (`run stop <slug>`).
 - **`done`**: give the person a short summary: what changed, the PR links, and where the reports are.
 
-After context compaction, run `run status <slug>` and carry on with the loop.
+After context compaction, run `run status <slug>`. If an inline item is open, re-read its
+SKILL.md. Then carry on with the loop.
+<!-- REVIEW: maestro G3: after compaction during an inline step, the lead lost the agent skill it was following. -->
 
 ## Talking to the person
 - After each step, say in one line what finished and what starts next.
@@ -68,6 +70,9 @@ popup. Ask open questions, where options would steer the answer, in chat. Withou
 numbered options in chat and wait.
 
 ## Doing an item
+An item's `kind` is its step's `mode`.
+<!-- REVIEW: maestro C6: one idea had two names (mode in workflows, kind in todo items). -->
+
 **`kind: agent`, `run: subagent`.** Start one general-purpose subagent, with the item's `model`
 when it has one. Give it this prompt, leaving out each line whose field the item doesn't have:
 ```

@@ -12,13 +12,15 @@ You prove whether the change works.
 Your instructions supply these. When one is missing, use the default.
 | Input | Default |
 |---|---|
-| Mode | `run`. The others are `write`, and write then run. |
+| Mode | `write` when asked to add tests, otherwise `run`. The third is write then run. |
 | Test plan | The Test plan section of the plan you were given; otherwise the change's requirements |
 | Where | The worktree or folder you were given; otherwise the current directory |
 | Docs | `docs/architecture.md` and the domain docs for the area you test, when they exist |
 | Template | `templates/test-report.md` in this skill's folder |
 | Output path | `test-report.md` in the current directory |
 | Commit | Yes for every test you write or fix, unless you are told not to. Never commit on the default branch. |
+
+<!-- REVIEW: litmus L3: the default was `run`, though the description opens with "Use to add tests". -->
 
 ## Write mode
 1. Read the test plan, the requirements and the existing tests: the framework, helpers,
@@ -52,8 +54,10 @@ Your instructions supply these. When one is missing, use the default.
 
 ## Run mode
 1. Run the repo's test commands and the tests the plan lists. For integration and e2e tests,
-   start the stack with the commands you were given, or as the repo's docs describe. Restart it
-   if it is already running. Stop what you started before you reply, pass or fail.
+   start the stack with the commands you were given, or as the repo's docs describe. If it is
+   already running, restart it only if you started it or it runs from your worktree. Stop what
+   you started before you reply, pass or fail.
+   <!-- REVIEW: litmus H5: in major-feature Brew and Litmus run in parallel; restarting a stack Litmus didn't start could break Brew's tests. -->
 2. Find each planned test by name in the runner output. A test that wasn't collected, was
    filtered out or was skipped counts as "not run". A command that ran zero tests failed.
 3. A test that fails and then passes on a rerun is flaky, not passing. Rerun it up to 5 times,

@@ -72,8 +72,10 @@ ancestor of HEAD, check the doc against the current code instead of a diff.
   endpoint, field, class or file; point to the file that defines them.
 - Cite code as a path plus a symbol (`src/billing/invoice.ts` `createInvoice`), never a line
   number, which goes stale on the next edit.
-- Back every statement with its source. Write `(inferred)` after anything you didn't confirm in
+- Back every statement with its source. Before you mark something `(inferred)`, look for the
+  code that settles it. Write `(inferred)` only after anything you still couldn't confirm in
   code, config or a doc.
+  <!-- REVIEW: socrates K1: build mode lost the eval by leaving as a guess a point the code settles. -->
 - Describe what is, not what should be. No plans and no TODOs.
 - `architecture.md` is the entry point: its summary says which domain doc to open for which kind
   of change. Keep every doc under 150 lines, with the most useful content first. Use tables and
