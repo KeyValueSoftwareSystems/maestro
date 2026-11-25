@@ -74,5 +74,13 @@ else
   echo "SKIP: YAML parse (PyYAML not installed)"
 fi
 
+# The lead's state script parses, and drives every workflow correctly.
+if command -v node >/dev/null; then
+  node --check skills/maestro/scripts/run.mjs || err "skills/maestro/scripts/run.mjs: syntax error"
+  node scripts/test-run.mjs >/dev/null || err "scripts/test-run.mjs failed: run it to see which check"
+else
+  echo "SKIP: run.mjs checks (Node not installed)"
+fi
+
 [ "$fail" = 0 ] && echo "All checks passed."
 exit "$fail"

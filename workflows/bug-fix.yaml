@@ -15,7 +15,8 @@ steps:
     agent: sherlock
     model: opus
     instructions: |
-      Investigate the bug described in ${run}/requirements.md. Read docs/ (skip docs/plans/) for context.
+      Investigate the bug described in ${run}/requirements.md. For context, read
+      docs/architecture.md, then only the domain docs it points to for this bug.
       Test the person's guess in ${run}/hypothesis.md first, without assuming it is right. Say in
       rca.md whether it held, with the evidence.
       Write the root-cause report to ${run}/rca.md.
