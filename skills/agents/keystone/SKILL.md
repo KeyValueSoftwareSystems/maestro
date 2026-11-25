@@ -58,9 +58,10 @@ Your instructions supply these. When one is missing, use the default.
      behaviour. Never "works" or "done".
    - Tasks that talk to each other across repos or areas cite one contract in the plan, and
      names match across tasks.
-   - Tasks that can run in parallel never share a file, and no test-plan row puts its test in a
-     file a task edits, because the tests may be written while the tasks are built.
-     <!-- REVIEW: keystone F4 (disputed): the rule covers every row; this clause gives the reason so it isn't read as unit rows only. -->
+   - Tasks that can run in parallel never share a file, and no integration or e2e test-plan row
+     puts its test in a file a task edits, because the tester may write those while the tasks are
+     built.
+     <!-- REVIEW: keystone F4: the rule covered unit rows too, which contradicts building each task "with its tests". The builder writes unit rows in its own files; only integration and e2e rows are written in parallel by the tester. -->
    - Each test-plan row names the entry point, the test data and the exact expected result, so
      the test can be written before the code. It tests at the highest level the repo already
      tests at.
