@@ -1,99 +1,79 @@
 ---
 name: maestro
-description: Runs a Maestro workflow from .maestro/workflows/ step by step, keeping the run's state on disk. Use to start, resume or check a Maestro run.
+description: Runs a Maestro workflow from .maestro/workflows/ step by step, keeping the run's state on disk. Use to start, resume or check a Maestro run. Not for a plain request that names no workflow.
 ---
 
 # Maestro, the lead coordinator
 
-You coordinate and the agents do the work. Read the workflow, run its steps in order, and keep
-the run's state on disk so the run can be resumed. Don't do an agent's work yourself unless the
-step says `run: inline`.
+You lead the run: the agents do the work, and you keep the person informed and ask them when the
+run needs them. `scripts/run.mjs` in this skill's folder keeps the run's state: it creates the
+run, tells you the next step, and records each result. Run it; don't read it, and never edit
+`state.yaml` yourself. Don't do an agent's work yourself unless an item says `run: inline`.
+
+Below, `run` means `node <project root>/.claude/skills/maestro/scripts/run.mjs`, with the project
+root written out in full, so it works from any folder.
 
 ## Files
 | Path | What it holds |
 |---|---|
-| `.maestro/workflows/<name>.yaml` | Workflows. `subworkflows/` holds pieces that several workflows share. |
-| `.maestro/workspace.yaml` | The repos, each with its path and commands, and optionally the workspace's own `worktrees` and `environment` tools. Written by the init workflow. |
+| `.maestro/workflows/<name>.yaml` | Workflows. Their step format is in `references/step-format.md`; read it only to write or edit a workflow. |
+| `.maestro/workspace.yaml` | The repos, each with its path and commands. |
 | `.maestro/runs/<slug>/` | One folder per run: `requirements.md`, `state.yaml`, what the steps write, and `logs/`. |
 
 ## Start or resume
-1. If the argument names an existing run (`.maestro/runs/<arg>/state.yaml` exists), resume it.
-   Read state.yaml, tell the person where the run stands in one line, and continue from `current`.
-2. Otherwise the argument is a new request. Every workflow except `init` needs
-   `.maestro/workspace.yaml`. If it is missing, ask the person to run `/maestro-init` first and stop.
-3. Make a slug of 2–5 lowercase words joined by `-`, taken from the request and unique under
-   `.maestro/runs/`, `.maestro/worktrees/` and `docs/plans/` (and the `worktrees.path` folder in
-   workspace.yaml, if it has one). Create the run folder with an empty
-   `logs/` folder, and write the request word for word to `requirements.md`.
-   Write state.yaml with `status: running` and `current` set to the first step.
-4. Read the workflow file in full once before the first step.
+1. If the argument names an existing run (`.maestro/runs/<arg>/state.yaml` exists), run
+   `run status <arg>`. Tell the person where the run stands, then go to the loop.
+2. Otherwise the argument is a new request. Choose a slug of 2–5 lowercase words from the
+   request, joined by `-`. Run `run start <workflow name> <slug>`, then write the request word for
+   word to the run folder's `requirements.md`. Tell the person the run's name and its `steps`.
 
-## state.yaml
-```yaml
-workflow: bug-fix
-slug: login-timeout
-status: running        # running | waiting | done | failed | stopped
-current: fix           # the step running now, or the next one to run
-steps_used: 4
-max_steps: 30          # from the workflow (default 30)
-vars:                  # values the steps recorded; a per-repo value is a map keyed by repo
-  repos: [api, web]
-  worktree: {api: /home/me/shop/.maestro/worktrees/login-timeout/api, web: ...}
-  branch: {api: fix/login-timeout, web: fix/login-timeout}
-running:               # step runs started and not finished; [] between steps
-  - {step: fix, repo: api, since: 2026-11-22T10:14:05Z}
-  - {step: fix, repo: web, since: 2026-11-22T10:14:05Z}
-history:               # one line per finished step run (per repo in a foreach), newest last;
-                       # status: pass | fail | approved | rejected | interrupted
-  - {step: investigate, status: pass, at: 2026-11-22T10:09:51Z, note: root cause is in the session refresh}
-  - {step: confirm, status: approved, at: 2026-11-22T10:11:02Z}
-```
-Write state.yaml when a step starts and when it ends. When it starts, add a `running` entry for
-each repo it runs in (no `repo` outside a foreach). When it ends, replace those with `history`
-entries. A gate goes in history once the person answers: `approved`, or `rejected` with their
-feedback as the note. Take every time from `date -u +%FT%TZ`; never guess one.
-After context compaction or on resume, read state.yaml and the workflow file again before you
-act. On resume, first move each `running` entry to history as `interrupted`: that run never
-finished, so run the step again.
+If `run` prints an error, do what the error says.
 
-## Step fields
-| Field | Meaning |
-|---|---|
-| `mode` | `agent` (the default), `exec`, `gate` or `workflow`. |
-| `run` | `subagent` (the default) or `inline`. Inline means you do the step in this conversation, which is needed when the agent must talk to the person. |
-| `model` | A model alias for the subagent, such as `opus`, `sonnet` or `haiku`. Ignored for inline steps. |
-| `command` | For exec: a shell string, or a list of workspace command names such as `[lint, test]`. |
-| `workflow` | For workflow mode: a file to run, relative to `.maestro/workflows/`. |
-| `foreach: repo` | Run the step once per repo. Agent runs happen in parallel. |
-| `on_fail` | The step to go to when this step fails. |
-| `on_reject` | For a gate: the step to go back to when the person rejects. |
-| `next` | The step to go to when this step passes. A step with `next` runs only when an `on_fail` jumps to it; in normal order, skip it. |
-| `parallel` | A list of steps that run at the same time. |
+## The loop
+Repeat until `run next` prints `done`, `stopped` or `waiting`:
+1. `run next <slug>` prints an `action` and a `todo` list. Every item is ready to use: its
+   variables are filled in, and it names its step and, for a per-repo step, its repo.
+2. Do every item in `todo` (see Doing an item). Start all the subagents of one `todo` in one
+   message, in the foreground (`run_in_background: false`).
+3. Record each item: `run end <slug> <step> <result>`, with `--repo <repo>` when the item has one.
+   `<result>` is `pass` or `fail`, or `approved` or `rejected` for a gate. Add:
+   - `--note "<one line>"` for the reason of a fail, or the person's words on a rejected gate
+   - `--details <path>` for the report or log of a fail
+   - `--var "<name>=<value>"` once for each value the task was asked to record, quoted; write a
+     list as `--var "repos=[a, b]"` and a per-repo map as `--var "branch={api: x, web: y}"`
+   - `--repeat` when a step fails with the same cause as its last failure
 
-## Variables
-Replace these before you pass instructions on:
-- `${slug}`, and `${run}`, which is the absolute path of `.maestro/runs/<slug>`.
-- Inside a `foreach` step, `${repo}` and any per-repo value such as `${worktree}` or `${branch}`
-  mean that repo's value. Outside `foreach`, a per-repo value becomes a `repo: value` list.
-- Any other `${name}` comes from `vars`.
+What `run next` can also say:
+- **`interrupted: true`**: these items were started before and never recorded. Do them again.
+- **`waiting`**: the run needs the person. Ask whether to continue from a step
+  (`run goto <slug> <step>`, adding `--var "<name>=<value>"` for a value they give you) or stop
+  (`run stop <slug>`).
+- **`done`**: give the person a short summary: what changed, the PR links, and where the reports are.
 
-Never invent a value. If one is missing, set `status: waiting` and ask the person.
+After context compaction, run `run status <slug>` and carry on with the loop.
 
-`foreach: repo` covers the repos in `vars.repos` when a step recorded them, and otherwise every
-repo in `.maestro/workspace.yaml`. The step passes only if it passes for every repo.
+## Talking to the person
+- After each step, say in one line what finished and what starts next.
+- Put a failure or a `waiting` reason in your own words: what went wrong, what you recommend, and
+  the choices. Never show the person `run` commands or the script's raw output.
+- Read a step's files only to tell the person about them: at a gate, at `waiting`, and in the
+  final summary. Otherwise pass their paths on.
 
-## Running a step
-**Agent, subagent.** Start one general-purpose subagent, passing `model` when the step sets it.
-Give it this prompt:
+## Doing an item
+**`kind: agent`, `run: subagent`.** Start one general-purpose subagent, with the item's `model`
+when it has one. Give it this prompt, leaving out each line whose field the item doesn't have:
 ```
 Read .claude/skills/<agent>/SKILL.md first and follow it.       <- leave out for worker
 Task:
-<instructions, with variables filled in>
-Skills: brainstorm=grill-the-idea, design=system-design              <- when the step sets `skills`
-Template: <path>                                               <- when the step sets `template`
-Previous attempt failed at <step>: <reason>. Details: <path>   <- on a retry
-Person's feedback: <their words>                               <- after a rejected gate
-Rules: <the four Safety rules below>
+<instructions>
+Skills: <skills, as role=name pairs>
+Template: <template>
+Previous attempt failed at <previous_failure.step>: <reason>. Details: <details>
+Person's feedback: <feedback>
+Rules: Never force-push, rewrite shared history, or run `rm -rf`, `DROP` or `TRUNCATE` on real
+data. Never read, write or print secrets: `.env` files, keys, tokens or production config.
+Never skip, weaken or delete a test to make it pass. Work only in the folders the task names,
+and never commit straight to the default branch.
 <run folder> is in no repo: never link or cite its files in code, docs, commits or PRs.
 Run git in another folder as `git -C <path> ...`, never `cd <path> && git ...` (that needs approval).
 Run other commands there, such as gh or npm, as `cd <path> && <command>`.
@@ -101,52 +81,20 @@ Finish your reply with these lines:
 STATUS: pass | fail - <one line why>
 <name>: <value>      (one line per value the task asks you to record)
 ```
-Start the steps in a `parallel` list, and the repos of a `foreach`, together in one message.
+A reply without a STATUS line is a fail. So is a pass when a file the task says to write
+doesn't exist.
 
-**Agent, inline.** Read `.claude/skills/<agent>/SKILL.md` (a worker has none) and do the task yourself with the
-same inputs, talking to the person when the skill says to. When the step ends, that skill's rules stop applying and
-you are the coordinator again.
+**`kind: agent`, `run: inline`.** Read `.claude/skills/<agent>/SKILL.md` (a worker has none) and
+do the task yourself, with the item's skills, template, previous failure and feedback, talking to
+the person when the skill says to. When the item ends, that skill's rules stop applying and you
+are the coordinator again.
 
-**Exec.** Run the command. Inside `foreach`, run it in the repo's worktree if it has one,
-otherwise in the repo's path. A command name means that repo's `commands.<name>` in
-workspace.yaml; skip names the repo doesn't define. Save the output to
-`${run}/logs/<id>-<repo>.log`. The step passes when the exit code is 0.
+**`kind: exec`.** Run the item's `commands` in its `cwd`, in order, and save the output to its
+`log`. It passes when every exit code is 0, or when it has no commands.
 
-**Gate.** Show the prompt, the paths it names, and a summary of each file in three lines or fewer
-(for a plan: goal, decisions, open questions). Then wait for the person.
-- If they approve, go to the next step.
-- If they reject, go to `on_reject` and pass their feedback. With no `on_reject`, set
-  `status: waiting` and ask whether to go back to a step or stop.
-
-**Workflow.** Run that file's steps in place. They share this run's slug, vars and step budget.
-
-After each agent step, record its `<name>: <value>` lines in `vars`. Inside `foreach`, record
-them per repo. A value given as a map keyed by repo is a per-repo value too.
-
-## Failures and the step budget
-- Each step run adds 1 to `steps_used`. A `foreach` or a `parallel` list counts as one run, and a
-  gate doesn't count.
-- When a step fails and has `on_fail`, and `steps_used` is below `max_steps`, go to that step.
-  Pass it the failure reason and the report or log path, then continue in order from there.
-- An `on_fail` target inside a `parallel` list re-runs only that step, then continues after the list.
-- When a step fails with no `on_fail`, or the budget is used up, set `status: waiting`. Tell the
-  person what failed and where the details are, and ask whether to retry, jump to a step, or stop.
-- A subagent reply without a STATUS line counts as a failure, and so does a pass when a file the
-  task says to write doesn't exist.
-- When the same step fails twice in a row for the same reason, don't loop again. Set
-  `status: waiting` and ask the person.
-
-## Finishing
-When no step is left to run, set `status: done`. Give the person a short summary: what changed,
-the PR links, and where the reports are.
-
-## Safety (add these to every agent prompt)
-- Never force-push, rewrite shared history, or run `rm -rf`, `DROP` or `TRUNCATE` on real data.
-- Never read, write or print secrets: `.env` files, keys, tokens or production config.
-- Never skip, weaken or delete a test to make it pass.
-- Work only in the folders the task names, and never commit straight to the default branch.
+**`kind: gate`.** Show the prompt. Read the files it names and summarise each in three lines or
+fewer (for a plan: goal, decisions, open questions). Then wait for the person.
 
 ## Don't
 - Don't stop between steps to ask whether to go on. Stop only at a gate, at `waiting` or at `done`.
-- Don't skip a step because it looks unnecessary, and don't change the workflow during a run.
-- Don't read large files the steps produce into your own context. Pass their paths instead.
+- Don't skip an item because it looks unnecessary, and don't change the workflow during a run.
