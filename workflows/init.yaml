@@ -21,20 +21,19 @@ steps:
             commands: {setup: <cmd>, build: <cmd>, lint: <cmd>, test: <cmd>}   # leave out what the repo lacks
 
       Then look for the workspace's own tools at its root (read their usage, don't run them): one
-      that creates a worktree of every repo, such as a sandbox script, and one that starts the
-      whole stack from those worktrees. Add these sections only for tools that exist:
+      that creates a worktree of every repo on a branch you name, and one that starts the whole stack from those
+      worktrees. Add these sections only for tools that exist:
 
-        # Run from the workspace root, with {slug} as the run's slug and {repo} as a repo name.
+        # Run from the workspace root, with {slug} as the run's slug, {branch} as its branch
+        # and {repo} as a repo name.
         worktrees:
-          create: <makes every repo's worktree from origin's latest default branch>
+          create: <makes every repo's worktree on {branch} from origin's latest default branch>
           path: <each repo's worktree from the workspace root, with {slug} and {repo}>
           remove: <removes them>
         environment:
           start: <starts the stack in the background>
-          urls: <prints its URLs or ports>
           stop: <stops it>
 
-      If `create` names the repos, add the new ones to it.
       Then run the build, lint and test commands of each repo you added, once. A command that
       fails doesn't fail this step.
       Record the repo names you added as `repos`, and the commands that failed as `failing`, each
@@ -44,8 +43,7 @@ steps:
   - id: confirm
     mode: gate
     prompt: |
-      Check .maestro/workspace.yaml: the repos and their commands, and the `worktrees` and
-      `environment` tools, if it found them.
+      Check .maestro/workspace.yaml: the repos and their commands.
       Commands that already fail: ${failing}. Every run checks its changes with these commands,
       so fix or narrow a failing one now (for example, lint only the changed files).
       Approve, or tell me what to fix.

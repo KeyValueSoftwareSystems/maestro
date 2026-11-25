@@ -46,7 +46,7 @@ steps:
     agent: worker
     model: haiku
     instructions: |
-      Remove the run's worktrees ${worktree}, keeping their branches. If one has uncommitted
-      changes, remove nothing: fail and list them.
+      Remove the run's worktrees ${worktree}. If one has uncommitted changes, remove nothing:
+      fail and list them.
       Use the `worktrees` `remove` command in .maestro/workspace.yaml if it has one, otherwise
       `git worktree remove`.

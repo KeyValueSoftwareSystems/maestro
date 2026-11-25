@@ -26,11 +26,9 @@ steps:
     model: haiku
     instructions: |
       Create a worktree for each repo in ${repos} on a new branch feat/${slug} from origin's
-      latest default branch, reusing any that exist.
-      - If .maestro/workspace.yaml has `worktrees`, run its `create` command from the workspace
-        root unless every repo's `path` exists. Rename each worktree's branch to feat/${slug}, or
-        check out feat/${slug} if it exists.
-      - Otherwise create a git worktree in each repo at .maestro/worktrees/${slug}/<repo>.
+      latest default branch, reusing any that exist. If .maestro/workspace.yaml has `worktrees`,
+      use its `create` command. Otherwise create a git worktree in each repo at
+      .maestro/worktrees/${slug}/<repo>.
       Then run each repo's `setup` command in its worktree, if it has one.
       Record `worktree` (absolute paths) and `branch` as maps keyed by repo.
 

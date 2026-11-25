@@ -93,12 +93,11 @@ them: `worktrees` to create and remove the run's worktrees, and `environment` to
 the stack for integration and e2e tests:
 ```yaml
 worktrees:
-  create: ./scripts/sandbox create {slug} --from api=main --from web=main
+  create: ./scripts/sandbox create {slug} --from main --branch {branch}
   path: sandbox/{slug}/codebase/{repo}
   remove: ./scripts/sandbox rm {slug} -y
 environment:
   start: ./scripts/infra up {slug}
-  urls: ./scripts/infra ls
   stop: ./scripts/infra down {slug}
 ```
 

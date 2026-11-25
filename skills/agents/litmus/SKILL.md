@@ -53,9 +53,7 @@ Your instructions supply these. When one is missing, use the default.
 ## Run mode
 1. Run the repo's test commands and the tests the plan lists. For integration and e2e tests,
    start the stack with the commands you were given, or as the repo's docs describe. Restart it
-   if it is already running, and wait until each service answers, with a timeout. Stop what you
-   started before you reply, pass or fail. Never edit infra files to get the stack up: a stack
-   that won't start, or runs other code than the code under test, is an environment failure.
+   if it is already running. Stop what you started before you reply, pass or fail.
 2. Find each planned test by name in the runner output. A test that wasn't collected, was
    filtered out or was skipped counts as "not run". A command that ran zero tests failed.
 3. A test that fails and then passes on a rerun is flaky, not passing. Rerun it up to 5 times,
