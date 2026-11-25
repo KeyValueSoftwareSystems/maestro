@@ -60,12 +60,8 @@ After context compaction, run `run status <slug>` and carry on with the loop.
   final summary. Otherwise pass their paths on.
 
 ## Asking the person
-When the person picks between choices (a gate, `waiting`, or options an inline step's skill
-offers), ask with AskUserQuestion: your recommendation first, marked (Recommended), and at most
-4 options. A gate offers Approve and Change something; take their feedback from the Other box or
-the note, and ask once in chat if it is empty. Print summaries and sketches in chat before the
-popup. Ask open questions, where options would steer the answer, in chat. Without the tool, list
-numbered options in chat and wait.
+Ask the person to pick (at a gate, at `waiting`, or from an inline skill's options) with
+AskUserQuestion, or in chat without it. At a gate, recommend no option. Never answer for them.
 
 ## Doing an item
 **`kind: agent`, `run: subagent`.** Start one general-purpose subagent, with the item's `model`
@@ -100,9 +96,9 @@ are the coordinator again.
 **`kind: exec`.** Run the item's `commands` in its `cwd`, in order, and save the output to its
 `log`. It passes when every exit code is 0, or when it has no commands.
 
-**`kind: gate`.** Before the popup, show the prompt. Read the files it names and give a link
-to each as `[<file name>](<path>)`, with a summary in three lines or fewer (for a plan: goal,
-decisions, open questions). Then ask (see Asking the person).
+**`kind: gate`.** Show the prompt. Read the files it names and give each as
+`[<file name>](<path>)` with a summary in three lines or fewer (for a plan: goal, decisions,
+open questions). Then ask (see Asking the person).
 
 ## Don't
 - Don't stop between steps to ask whether to go on. Stop only at a gate, at `waiting` or at `done`.
