@@ -108,7 +108,7 @@ steps:
       Write the report to ${run}/test-report.md. Do not commit: a later step commits.
     on_fail: fix-code
 
-  - id: commit-pending-changes
+  - id: commit-pending
     agent: worker
     model: haiku
     foreach: repo
