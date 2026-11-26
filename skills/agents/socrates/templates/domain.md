@@ -3,35 +3,37 @@ source_commit: {<repo>: <sha>}
 ---
 # <Domain>
 
-<What this domain does for the business, in two or three sentences, and the repos and folders
+<What this domain does for the business, in one or two sentences, and the repos and folders
 that hold it.>
 
-## Terms
-| Term | Meaning | Name in code |
-|---|---|---|
+## Glossary
+| ID | Term | Meaning | Name in code |
+|---|---|---|---|
+| <DOM>-GL-001 | <business word> | <one line> | <`symbol` or table, when it differs> |
 
 ## Key flows
-<Only flows that cross modules or repos.>
-### <Flow name>
-1. <step> (`path` `symbol`)
+<Only flows that cross modules or repos. One row per flow: three to five steps that name modules
+or apps, not functions. No branches or error paths.>
+| ID | Flow | Trigger | What happens | Code |
+|---|---|---|---|---|
+| <DOM>-KF-001 | <name> | <what starts it> | <step → step → step> | <`path` `symbol` of the entry point> |
 
-## Interfaces
-<The files that define this domain's routes, events and schemas. List an entry only when its
-name doesn't say what it does.>
-
-## Data
-| Entity or table | Written by | Defined in |
-|---|---|---|
-
-## Rules
-<Only rules the code can't show on its own, that a future change must keep, and that something
-enforces. One rule per bullet. IDs never change, and a removed rule's ID is not reused.>
-- <DOM>-R1: <the rule, in one sentence>
+## Business rules
+<What the system does or allows, that the code can't show on its own, that a future change must
+keep, and that something enforces. One rule per bullet.>
+- <DOM>-BR-001: <the rule, in one sentence>
   Enforced: `path` `symbol`. Test: `test path` "<test name>", or none.
 
-## Gotchas
-- <what misleads or breaks, and why> (`path` `symbol`, learned <YYYY-MM-DD>)
+## Invariants
+<Facts about stored data that must hold after every write, on every path. One per bullet.>
+- <DOM>-INV-001: <the fact, in one sentence>
+  Enforced: `path` `symbol`. Test: `test path` "<test name>", or none.
 
-## Where to change things
-| To change... | Look at | Also update |
-|---|---|---|
+## Cross-module impacts
+<What a change in this domain does to another module, repo or app.>
+- <DOM>-CS-001: <when X changes here, Y there must ...>
+  Affects: `repo/path`. Test: `test path` "<test name>", or none.
+
+## Gotchas
+<What misleads or breaks a change in this domain, and why. One per bullet.>
+- <DOM>-GT-001: <the trap, in one sentence> (`path` `symbol`, learned <YYYY-MM-DD>)

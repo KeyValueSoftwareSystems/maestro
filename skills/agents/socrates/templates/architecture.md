@@ -7,25 +7,15 @@ source_commit: {<repo>: <sha>}
 doc to open for which kind of change.>
 
 ## Repositories
-| Repo | Purpose | Stack (with versions) | Entry points | Agent guide |
-|---|---|---|---|---|
-| <name> | <one line> | <e.g. Node 24, NestJS 11> | <`path`> | <AGENTS.md or CLAUDE.md path, or none> |
-
-## Commands
-| Repo | Install | Run locally | All tests | One test file | Lint and typecheck |
+| Repo | Purpose | Stack (with versions) | Entry points | Schema or migrations | Agent guide |
 |---|---|---|---|---|---|
-
-Tests need: <env var names and services; never values>
+| <name> | <one line> | <e.g. Node 24, NestJS 11, Postgres 16> | <`path`> | <`path`, or none> | <AGENTS.md or CLAUDE.md path, or none> |
 
 ## How the parts talk
 | From | To | How (HTTP, queue, DB, ...) | What for | Contract (file) |
 |---|---|---|---|---|
 
 <Optional: a mermaid diagram of this table only.>
-
-## Data
-| Store | Written by | Main entities | Schema or migrations |
-|---|---|---|---|
 
 ## Domains
 | Domain | Doc | Summary |
@@ -46,4 +36,5 @@ Tests need: <env var names and services; never values>
 | D1 | | | | <ADR, PR, commit or file> | <active / superseded by D<n>> |
 
 ## Gotchas
-- <what misleads or breaks, and why> (`path` `symbol`, learned <YYYY-MM-DD>)
+<Only traps that cross domains. A trap in one domain goes in that domain's doc.>
+- ARCH-GT-001: <the trap, in one sentence> (`path` `symbol`, learned <YYYY-MM-DD>)
