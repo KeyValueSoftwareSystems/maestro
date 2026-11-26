@@ -62,7 +62,8 @@ After context compaction, run `run status <slug>` and carry on with the loop.
 ## Asking the person
 Ask the person to pick (at a gate, at `waiting`, or from an inline skill's options) with
 AskUserQuestion, or as numbered options in chat without it. At a gate, recommend no option.
-Never answer for them.
+Never answer for them. The popup's question is one short line, such as "Approve the plan for
+<slug>?". Summaries, paths and lists go in the chat message before it, never in the popup.
 
 ## Doing an item
 **`kind: agent`, `run: subagent`.** Start one general-purpose subagent, with the item's `model`
@@ -97,9 +98,9 @@ are the coordinator again.
 **`kind: exec`.** Run the item's `commands` in its `cwd`, in order, and save the output to its
 `log`. It passes when every exit code is 0, or when it has no commands.
 
-**`kind: gate`.** Show the prompt. Read the files it names and give each as
-`[<file name>](<path>)` with a summary in three lines or fewer (for a plan: goal, decisions,
-open questions). Then ask (see Asking the person).
+**`kind: gate`.** In a chat message, show the prompt. Read the files it names and give each as
+`[<file name>](<path>)`, followed by a bullet list of three lines or fewer (for a plan: goal,
+decisions, open questions). Then ask (see Asking the person).
 
 ## Don't
 - Don't stop between steps to ask whether to go on. Stop only at a gate, at `waiting` or at `done`.
