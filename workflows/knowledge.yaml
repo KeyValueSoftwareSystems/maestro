@@ -1,6 +1,7 @@
-# Build (or rebuild) the knowledge base in docs/ from the code, then check it against the code.
+# Build (or rebuild) the knowledge base in docs/ from the code, check it against the code, and
+# fix only what the review finds.
 name: knowledge
-description: Build the knowledge base in docs/ from the code, and review it against the code.
+description: Build the knowledge base in docs/ from the code, review it, and fix what the review finds.
 max_steps: 10
 steps:
   - id: build
@@ -18,4 +19,16 @@ steps:
       Review the docs in docs/ (architecture.md and domains/) against the code of the repos listed
       in .maestro/workspace.yaml. Every major part of the code must be covered.
       Write the review to ${run}/review.md.
-    on_fail: build
+      If ${run}/review.md exists, re-review only its open, fixed and disputed rows and the doc
+      sections those fixes edited.
+    on_fail: fix-docs
+
+  # Reached only through on_fail.
+  - id: fix-docs
+    agent: socrates
+    model: opus
+    next: review
+    instructions: |
+      Fix the review findings in ${run}/review.md, in docs/. Edit only what each
+      finding names; don't rebuild or rewrite other sections. Update each row's Status and
+      Note in that file.
