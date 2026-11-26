@@ -1,6 +1,6 @@
-# A small change: a short plan, then build, test, review and ship.
+# A small change: a short plan, then build, review, test and ship.
 name: minor-feature
-description: Plan, build, test and review a small change, and open a PR.
+description: Plan, build, review and test a small change, and open a PR.
 max_steps: 30
 steps:
   - id: plan
@@ -44,6 +44,13 @@ steps:
     command: [build, lint, test]
     on_fail: build
 
+  - id: review
+    agent: birbal
+    instructions: |
+      Review the changes on branch ${branch} in ${worktree} against ${run}/plan.md.
+      Write the review to ${run}/review.md.
+    on_fail: build
+
   - id: test
     agent: litmus
     model: sonnet
@@ -52,13 +59,6 @@ steps:
       missing. Then run the whole Test plan in ${worktree}.
       Use the `environment` commands in .maestro/workspace.yaml, if it has them, for the stack.
       Write the report to ${run}/test-report.md.
-    on_fail: build
-
-  - id: review
-    agent: birbal
-    instructions: |
-      Review the changes on branch ${branch} in ${worktree} against ${run}/plan.md.
-      Write the review to ${run}/review.md.
     on_fail: build
 
   - id: archive

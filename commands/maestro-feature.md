@@ -1,6 +1,6 @@
 ---
 disable-model-invocation: true
-description: Design, plan, build, test, review and ship a large feature (major-feature workflow)
+description: Design, plan, build, review, test and ship a large feature (major-feature workflow)
 argument-hint: <ticket or feature request, or a run slug to resume>
 ---
 
