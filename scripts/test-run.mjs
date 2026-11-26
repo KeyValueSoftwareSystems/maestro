@@ -104,7 +104,7 @@ run('end', 'login-bug', 'docs-pr', 'pass');
 r = step('login-bug');
 ok('done after cleanup', r.last.action === 'done' && run('next', 'login-bug').action === 'done');
 
-// Major feature: parallel list, on_fail into it, fix steps with next, skipped in order.
+// Major feature: fix steps with next, skipped in order.
 begin('major-feature', 'tax-feature');
 step('tax-feature'); step('tax-feature');
 step('tax-feature', 'pass', {}, { plan: { '--var': 'repos=[api]' } });
@@ -113,21 +113,23 @@ ok('plan-review fail goes to the gate', state('tax-feature').current === 'approv
 step('tax-feature');
 step('tax-feature', 'pass', {}, { worktree: { '--var': ['worktree={api: /wt/api}', 'branch={api: feat/tax-feature}'] } });
 r = step('tax-feature');
-ok('parallel list runs together, counted once', ids(r.n) === 'build/api,write-tests' && state('tax-feature').steps_used === 6);
+ok('build runs alone', ids(r.n) === 'build/api' && state('tax-feature').steps_used === 6);
 step('tax-feature');
 step('tax-feature', 'fail', {}, { 'checks/api': { '--note': 'lint' } });
-ok('checks on_fail re-runs only build of the list', ids(run('next', 'tax-feature')) === 'build/api');
+ok('checks on_fail goes back to build', ids(run('next', 'tax-feature')) === 'build/api');
 run('end', 'tax-feature', 'build', 'pass', '--repo', 'api');
-ok('then continues after the list', state('tax-feature').current === 'commit');
+ok('then continues after build', state('tax-feature').current === 'commit');
 step('tax-feature'); step('tax-feature');
 step('tax-feature', 'fail', {}, { 'code-review': { '--note': 'R1 blocker' } });
 step('tax-feature');
 ok('fix-review returns to code-review', state('tax-feature').current === 'code-review');
 step('tax-feature');
-step('tax-feature', 'fail', {}, { verify: { '--note': 'e2e 3 fails' } });
+ok('test comes after code review', state('tax-feature').current === 'test');
+step('tax-feature', 'fail', {}, { test: { '--note': 'e2e 3 fails' } });
 step('tax-feature');
-ok('fix-tests returns to verify', state('tax-feature').current === 'verify');
-for (let i = 0; i < 4; i++) step('tax-feature');
+ok('fix-code returns to test', state('tax-feature').current === 'test');
+step('tax-feature');
+for (let i = 0; i < 3; i++) step('tax-feature');
 ok('after quiz comes archive', state('tax-feature').current === 'learn');
 step('tax-feature'); step('tax-feature');
 step('tax-feature', 'pass', {}, { 'pr/api': { '--var': 'pr=https://x/api/pull/3' } });

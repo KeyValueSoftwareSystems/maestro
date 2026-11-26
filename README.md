@@ -24,7 +24,7 @@ To resume a run, pass its slug instead of a request, for example `/maestro-fix l
 ## Commands
 | Command | Workflow | What it does |
 |---|---|---|
-| `/maestro-feature` | major-feature | Turns the request into requirements, asks the design questions, plans with you, reviews the plan, builds and writes tests in parallel, loops on review and on the tests until both pass, offers a short quiz on the change (skippable), then ships |
+| `/maestro-feature` | major-feature | Turns the request into requirements, asks the design questions, plans with you, reviews the plan, builds, loops on code review until it passes, writes and runs the tests and fixes the code they catch, offers a short quiz on the change (skippable), then ships |
 | `/maestro-minor` | minor-feature | Writes a short plan, then builds, tests, reviews and ships |
 | `/maestro-fix` | bug-fix | Asks your guess at the cause, finds the root cause, adds a regression test and fixes the bug, then reviews and ships |
 | `/maestro-kb` | knowledge | Builds the knowledge base in `docs/` from the code |

@@ -1,8 +1,8 @@
 # A large feature: turn the request into requirements, ask the person the design questions,
-# plan with them, review the plan, build and write tests in parallel, then loop on review and on
-# verification until both pass, quiz the person on the change, then ship.
+# plan with them, review the plan, build, loop on code review, then write and run the tests and
+# fix the code they catch, quiz the person on the change, then ship.
 name: major-feature
-description: Requirements, questions, plan and plan review, parallel build and tests, review and verify loops, a quiz, then ship.
+description: Requirements, questions, plan and plan review, build, a review loop, tests with code fixes, a quiz, then ship.
 max_steps: 60
 steps:
   - id: intake
@@ -63,23 +63,14 @@ steps:
       Then run each repo's `setup` command in its worktree, if it has one.
       Record `worktree` (absolute paths) and `branch` as maps keyed by repo.
 
-  - parallel:
-      - id: build
-        agent: brew
-        model: sonnet
-        foreach: repo
-        instructions: |
-          Build the ${repo} tasks in ${run}/plan.md in ${worktree}, with their unit tests.
-          Leave the integration and e2e tests in the Test plan to the tester.
-          Do not commit: a later step commits.
-      - id: write-tests
-        agent: litmus
-        model: sonnet
-        instructions: |
-          Write mode. Write the integration and e2e tests in the Test plan of ${run}/plan.md,
-          in the worktrees ${worktree}. Touch only test files. Do not run the new tests: the code
-          is being built at the same time, and a later step runs them.
-          Do not commit: a later step commits.
+  - id: build
+    agent: brew
+    model: sonnet
+    foreach: repo
+    instructions: |
+      Build the ${repo} tasks in ${run}/plan.md in ${worktree}, with their unit tests.
+      Leave the integration and e2e tests in the Test plan to the tester.
+      Do not commit: a later step commits.
 
   - id: commit
     agent: worker
@@ -103,14 +94,19 @@ steps:
       Write the review to ${run}/review.md.
     on_fail: fix-review
 
-  - id: verify
+  - id: test
     agent: litmus
     model: sonnet
     instructions: |
-      Run mode. Run the whole Test plan of ${run}/plan.md in ${worktree}.
+      Write then run. Write the integration and e2e tests in the Test plan of ${run}/plan.md in
+      ${worktree}, then run the whole Test plan. Fix a test that is wrong; report a code bug.
+      If ${run}/test-report.md exists, the tests are already written: run mode only. Keep its
+      Failures rows. Mark a `fixed` row `closed` if its test passes, otherwise `open` with a note.
+      For a `disputed` row, fix the test and mark it `closed` if the dispute is right, otherwise
+      keep it `open` and say why in Note. Add rows for new failures.
       Use the `environment` commands in .maestro/workspace.yaml, if it has them, for the stack.
-      Write the report to ${run}/test-report.md.
-    on_fail: fix-tests
+      Write the report to ${run}/test-report.md. Do not commit: a later step commits.
+    on_fail: fix-code
 
   - id: commit-pending-changes
     agent: worker
@@ -150,11 +146,15 @@ steps:
     next: code-review
     instructions: |
       Fix the review findings in ${run}/review.md, in the worktrees ${worktree}, and update each
-      row's Status and Note in that file.
+      row's Status and Note in that file. Then run each repo's build, lint and test commands from
+      .maestro/workspace.yaml in its worktree, and fix what fails.
 
-  - id: fix-tests
+  - id: fix-code
     agent: brew
     model: sonnet
-    next: verify
+    next: test
     instructions: |
-      Fix the failing tests in ${run}/test-report.md, in the worktrees ${worktree}.
+      Fix the `open` product failures in ${run}/test-report.md, in the worktrees ${worktree}.
+      Leave the integration and e2e tests as they are. Set each row's Status to `fixed`, or to
+      `disputed` with the reason in Note if you think the test is wrong. Then run each repo's
+      build, lint and test commands from .maestro/workspace.yaml in its worktree, and fix what fails.

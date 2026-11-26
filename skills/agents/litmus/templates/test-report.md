@@ -11,8 +11,9 @@ Doubles: <third-party services replaced in integration or e2e tests, or "None">
 | <row ID> | <path::test> | <pass / fail / flaky (k of n failed) / not run> | <why, if not pass> |
 
 ## Failures
-| Test | Class (product / test / environment) | Cause | Evidence (log or file:line) | Rerun command |
-|---|---|---|---|---|
+| Test | Class (product / test / environment) | Cause | Evidence (log or file:line) | Rerun command | Status | Note |
+|---|---|---|---|---|---|---|
+<Status starts as `open`. Whoever fixes a row sets it to `fixed`, or `disputed` with the reason.>
 
 ## Tests changed
 | Test | Change | Why (requirement or plan row) |
