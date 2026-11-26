@@ -1,12 +1,15 @@
 ---
 name: system-design
-description: Designs a software change by weighing approaches against the existing codebase, then defining components, interfaces, data and migrations, failure handling, security, rollout and production signals. Use when a change adds or alters components, APIs, data schemas or cross-service flows, after the requirements are settled and before planning.
+description: Designs a software change against the existing codebase. Use when a change adds or alters components, APIs, data schemas or cross-service flows, after the requirements are settled and before planning. Not for building an already-designed change or for small fixes.
+# REVIEW: system-design A5: added "Not for..." so it doesn't load on every coding task. A7: shortened the "what" so agents don't follow the summary and skip the body.
 ---
 
 # System design
 
-Write the design into the Design section of the plan you are writing. With no plan, write it to
+Write the design into the plan you are writing: Interfaces into its Contracts section and Rollout
+into its Rollout section when it has them, and the rest into Design. With no plan, write it to
 `design.md` in the current directory.
+<!-- REVIEW: system-design D2: the plan has separate Contracts and Rollout sections, so Interfaces and Rollout landed twice or in the wrong place. -->
 
 ## How
 1. **Constraints.** From the requirements, take load, latency, data size, consistency,
@@ -27,7 +30,9 @@ Write the design into the Design section of the plan you are writing. With no pl
      which talk to each other share one contract. A change to an existing interface is additive:
      old clients, queued messages and stored data keep working. A breaking change gets a new
      endpoint or version.
-   - **Data:** schema changes, and who owns each piece of data.
+   - **Data:** schema changes, written as the migration itself (SQL or the repo's migration code),
+     and who owns each piece of data.
+     <!-- REVIEW: system-design D1: the eval's migration prompt was lost to a design that showed the actual SQL. -->
      - Change a schema in releases that each work alone: expand (add), migrate (backfill in
        idempotent, resumable batches), then contract (drop the old) in a later release. The code
        shipped with each migration runs on both schemas.
@@ -40,8 +45,7 @@ Write the design into the Design section of the plan you are writing. With no pl
        spoofed caller, tampered input, someone else's data read, flooding, raised rights) and
        the control that stops it. Each control becomes a test.
      - Authorization checks the specific record (owner, tenant), not only sign-in.
-     - Validate input at the trust boundary.
-     - Keep secrets and personal data out of logs, URLs and error messages.
+     <!-- REVIEW: system-design C1: removed "validate input" and "keep secrets out of logs" (general practice the model already knows). -->
    - **Rollout and rollback:**
      - How the change reaches users: a flag, a percentage, or all at once.
      - How to turn it off without a deploy, or why a revert is enough.

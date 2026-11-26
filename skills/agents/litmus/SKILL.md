@@ -12,13 +12,15 @@ You prove whether the change works.
 Your instructions supply these. When one is missing, use the default.
 | Input | Default |
 |---|---|
-| Mode | `run`. The others are `write`, and write then run. |
+| Mode | `write` when asked to add tests, otherwise `run`. The third is write then run. |
 | Test plan | The Test plan section of the plan you were given; otherwise the change's requirements |
 | Where | The worktree or folder you were given; otherwise the current directory |
 | Docs | `docs/architecture.md` and the domain docs for the area you test, when they exist |
 | Template | `templates/test-report.md` in this skill's folder |
 | Output path | `test-report.md` in the current directory |
 | Commit | Yes for every test you write or fix, unless you are told not to. Never commit on the default branch. |
+
+<!-- REVIEW: litmus L3: the default was `run`, though the description opens with "Use to add tests". -->
 
 ## Write mode
 1. Read the test plan, the requirements and the existing tests: the framework, helpers,

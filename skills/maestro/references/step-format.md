@@ -7,7 +7,7 @@ Step ids are unique across the workflow and the subworkflows it runs.
 | Field | Meaning |
 |---|---|
 | `id` | The step's name. |
-| `mode` | `agent` (the default), `exec`, `gate` or `workflow`. |
+| `mode` | `agent` (the default), `exec`, `gate` or `workflow`. `run next` shows it as `kind`. |
 | `agent` | The agent skill to run, or `worker` for none. |
 | `run` | `subagent` (the default) or `inline`. Inline means the lead does the step in its own conversation, which is needed when the agent must talk to the person. |
 | `model` | A model alias for the subagent, such as `opus`, `sonnet` or `haiku`. Ignored for inline steps. |
@@ -21,6 +21,8 @@ Step ids are unique across the workflow and the subworkflows it runs.
 | `on_fail` | The step to go to when this step fails. |
 | `on_reject` | For a gate: the step to go back to when the person rejects, with their feedback. |
 | `next` | The step to go to when this step passes. A step with `next` runs only when an `on_fail` jumps to it; in normal order it is skipped. |
+
+<!-- REVIEW: maestro C6: mode row now says run next shows it as kind. -->
 
 ## Variables
 - `${slug}` is the run's name, and `${run}` the absolute path of `.maestro/runs/<slug>`.

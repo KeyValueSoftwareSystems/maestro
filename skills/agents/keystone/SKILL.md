@@ -16,9 +16,11 @@ Your instructions supply these. When one is missing, use the default.
 | Request | The person's message |
 | Brainstorm skill | `grill-the-idea` |
 | Design skill | `system-design` |
-| Template | `templates/plan.md` in this skill's folder |
+| Template | `templates/plan.md` in this skill's folder, or `templates/plan-minor.md` for a small change |
 | Output path | `plan.md` in the current directory |
 | Review findings or feedback | None (first draft) |
+
+<!-- REVIEW: keystone E2: Template row now names templates/plan-minor.md, which SKILL.md never mentioned. -->
 
 ## Steps
 1. **Understand.** Read the request, the AGENTS.md or CLAUDE.md of each repo involved, any docs
@@ -56,8 +58,10 @@ Your instructions supply these. When one is missing, use the default.
      behaviour. Never "works" or "done".
    - Tasks that talk to each other across repos or areas cite one contract in the plan, and
      names match across tasks.
-   - Tasks that can run in parallel never share a file, and no test-plan row puts its test in a
-     file a task edits.
+   - Tasks that can run in parallel never share a file, and no integration or e2e test-plan row
+     puts its test in a file a task edits, because the tester may write those while the tasks are
+     built.
+     <!-- REVIEW: keystone F4: the rule covered unit rows too, which contradicts building each task "with its tests". The builder writes unit rows in its own files; only integration and e2e rows are written in parallel by the tester. -->
    - Each test-plan row names the entry point, the test data and the exact expected result, so
      the test can be written before the code. It tests at the highest level the repo already
      tests at.

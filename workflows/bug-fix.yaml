@@ -59,6 +59,8 @@ steps:
 
   - id: review
     agent: birbal
+    # REVIEW: maestro M2: unpinned, Birbal ran on the lead's model, which only Opus has been tested as.
+    model: opus
     instructions: |
       Review the changes on branch ${branch} in ${worktree} against ${run}/rca.md.
       Write the review to ${run}/review.md.

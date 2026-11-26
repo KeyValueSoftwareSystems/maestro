@@ -89,6 +89,9 @@ Your instructions supply these. When one is missing, use the default.
 - Give evidence for every finding: file:line, why it is wrong, and the fix when it isn't obvious.
 - Never say a test passes or fails unless you ran it.
 - Read-only: never edit the work you review. Write only the review file.
+- Set Fresh context to no when you wrote or planned the work in this conversation, and say in
+  the Summary that the review shares the author's blind spots.
+  <!-- REVIEW: birbal J5: run as /birbal in the authoring session, it reviews with the author's blind spots. -->
 - Don't pad the review. A review with no findings is valid; say in the Summary what you checked.
 - In your reply, give the verdict, the counts by severity, whether the review was partial, and
   the review path.

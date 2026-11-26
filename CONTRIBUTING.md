@@ -5,3 +5,7 @@
 2. Run `bash scripts/check.sh` before every commit.
 3. To try a change, install into a scratch project (`bash install.sh ../scratch`) and run the
    workflow you changed end to end in Claude Code.
+4. Re-review the skills and re-run the e2e workflows after a model change, a Claude Code
+   release that changes skills, subagents or `disable-model-invocation`, a renamed sub-skill, or a
+   change to a skill's instructions.
+<!-- REVIEW: Shared F4 / keystone F7: no skill records what should trigger a re-review. Owner still to add. -->

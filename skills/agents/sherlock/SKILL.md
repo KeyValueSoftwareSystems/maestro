@@ -41,7 +41,8 @@ Your instructions supply these. When one is missing, use the default.
      environment) and list the differences.
    - Shrink the reproduction until removing anything more makes it pass.
    - When it used to work, use `git bisect run` with a check script kept outside the repo that
-     exits 125 on commits that don't build.
+     exits 125 on commits that don't build, then `git bisect reset`.
+     <!-- REVIEW: sherlock F1: a bisect left open leaves the worktree on an old commit. -->
    - Before each experiment, write the hypothesis and the result it predicts. Change one thing
      at a time, and undo it before the next.
 3. **Root cause.** Trace the bad value or state backward, caller by caller, to where it first

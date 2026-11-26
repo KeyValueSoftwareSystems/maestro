@@ -15,7 +15,8 @@
 |---|---|---|---|---|
 | <open point> | <choice> | <other options> | <reason; downside> | person / planner |
 
-## Contracts (required when tasks in different repos or areas talk to each other)
+## Contracts (optional: only when tasks in different repos or areas talk to each other)
+<!-- REVIEW: keystone F3: Keystone deletes only sections marked optional, so a single-repo plan had no rule for Contracts. -->
 <Each endpoint or event once: method and path or topic, request, response, errors. Tasks cite
 these by name.>
 
