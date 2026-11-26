@@ -59,11 +59,6 @@ After context compaction, run `run status <slug>` and carry on with the loop.
 - Read a step's files only to tell the person about them: at a gate, at `waiting`, and in the
   final summary. Otherwise pass their paths on.
 
-## Asking the person
-Ask the person to pick (at a gate, at `waiting`, or from an inline skill's options) with
-AskUserQuestion, or as numbered options in chat without it. At a gate, recommend no option.
-Never answer for them.
-
 ## Doing an item
 **`kind: agent`, `run: subagent`.** Start one general-purpose subagent, with the item's `model`
 when it has one. Give it this prompt, leaving out each line whose field the item doesn't have:
@@ -97,9 +92,8 @@ are the coordinator again.
 **`kind: exec`.** Run the item's `commands` in its `cwd`, in order, and save the output to its
 `log`. It passes when every exit code is 0, or when it has no commands.
 
-**`kind: gate`.** Show the prompt. Read the files it names and give each as
-`[<file name>](<path>)` with a summary in three lines or fewer (for a plan: goal, decisions,
-open questions). Then ask (see Asking the person).
+**`kind: gate`.** Show the prompt. Read the files it names and summarise each in three lines or
+fewer (for a plan: goal, decisions, open questions). Then wait for the person.
 
 ## Don't
 - Don't stop between steps to ask whether to go on. Stop only at a gate, at `waiting` or at `done`.
