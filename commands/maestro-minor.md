@@ -1,6 +1,6 @@
 ---
 disable-model-invocation: true
-description: Plan, build, test, review and ship a small change (minor-feature workflow)
+description: Plan, build, review, test and ship a small change (minor-feature workflow)
 argument-hint: <change request, or a run slug to resume>
 ---
 
