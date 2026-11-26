@@ -35,9 +35,8 @@ steps:
   - id: build
     agent: brew
     model: sonnet
-    foreach: repo
     instructions: |
-      Build the ${repo} tasks in ${run}/plan.md in ${worktree} on branch ${branch}, with their tests.
+      Build the tasks in ${run}/plan.md in ${worktree} on branch ${branch}, with their tests.
 
   - id: checks
     mode: exec
