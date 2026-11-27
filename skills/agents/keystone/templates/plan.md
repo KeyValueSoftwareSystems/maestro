@@ -19,9 +19,24 @@
 <Each endpoint or event once: method and path or topic, request, response, errors. Tasks cite
 these by name.>
 
-## Design (optional for small changes)
-<Components touched or added, data flow, data changes, failure handling, and who may call each
-new entry point. Add a mermaid diagram only when it helps.>
+## Design
+
+### Components
+<Components touched or added, and what each one does in this change.>
+
+### Data flow
+<How a request moves through the components, step by step. Add a mermaid diagram only when it
+helps.>
+
+### Data changes
+<New or changed tables, columns, indexes and stored fields, with the expected volume. "None" when
+nothing stored changes.>
+
+### Failure handling
+<Each way it can fail and what happens: bad input, a dependency down, two users at once.>
+
+### Access
+<Who may call each new entry point, and what a caller who may not gets.>
 
 ## Tasks
 | ID | Repo / area | Change | Criteria | Files | Depends on | Verify |

@@ -31,6 +31,8 @@ Your instructions supply these. When one is missing, use the default.
    safe option and record it as your call. If the change is bigger than your instructions assume
    (it needs a migration or another repo, or it is really several features), say so and
    propose a split.
+   When the brainstorm is done, ask the person: "Anything you want to ask before I do the full
+   design?" Answer each question. When an answer changes the design, put it in the plan.
 3. **Settle unknowns.** Read the code, the library source or its docs. When an unknown can't be
    settled that way (an external API's behaviour, a performance limit), make it the first task,
    and say what to do if it fails.

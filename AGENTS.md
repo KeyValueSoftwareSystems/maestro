@@ -13,7 +13,7 @@ small script keeps its state. The workflow file, the run folder and `state.yaml`
 | `skills/grill-the-idea/`, `skills/system-design/` | Sub-skills that agents load when a workflow names them. |
 | `workflows/` | major-feature, minor-feature, bug-fix, knowledge, init, sync. |
 | `workflows/subworkflows/` | Pieces shared by several workflows (archive). |
-| `workflows/templates/` | Files a workflow hands to a worker: the requirements template and the design questions. |
+| `workflows/templates/` | Files a workflow hands to a worker: the requirements template. |
 | `commands/` | One slash command per workflow, plus `/maestro-ui`. |
 | `ui/` | The local web UI: plain HTML, CSS and JS modules with no build step, and `serve.mjs` (Node built-ins only). Installed as `.maestro/ui/`. It reads run files and writes only workflow YAML; the lead never calls it. `run.mjs` borrows its YAML parser, `vendor/js-yaml.mjs`. |
 | `install.sh` | Copies everything above into a project. |

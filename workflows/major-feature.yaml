@@ -1,8 +1,8 @@
-# A large feature: turn the request into requirements, ask the person the design questions,
-# plan with them, review the plan, build, loop on code review, then write and run the tests and
-# fix the code they catch, quiz the person on the change, then ship.
+# A large feature: turn the request into requirements, ask the person for a rough plan and up to
+# 4 questions on it, plan with them, review the plan, build, loop on code review, then write and
+# run the tests and fix the code they catch, quiz the person on the change, then ship.
 name: major-feature
-description: Requirements, questions, plan and plan review, build, a review loop, tests with code fixes, a quiz, then ship.
+description: Requirements, a sketch with questions, plan and plan review, build, a review loop, tests with code fixes, a quiz, then ship.
 max_steps: 60
 steps:
   - id: intake
@@ -19,17 +19,26 @@ steps:
     agent: worker
     run: inline
     instructions: |
-      Ask the person the questions in .maestro/workflows/templates/questions.md, as that file
-      says. Skip a question that ${run}/requirements.md already answers. Write each question with
-      the person's answer, word for word, to ${run}/answers.md.
+      Ask the person for a rough plan of ${run}/requirements.md in their own words: the parts,
+      the data, the flow. Any form works: notes, a list, a text or Mermaid diagram, or the path
+      to an image. Don't suggest anything. Save it word for word as the first section of
+      ${run}/answers.md, Sketch. Copy an image into ${run}/ and link it from Sketch.
+      Then read docs/architecture.md and compare the sketch with the requirements. Ask up to 4
+      questions, one at a time, on what the sketch leaves out or leaves vague. Pick from: the
+      data flow, the data schema, the volume, failure cases, who may use it. Ask only about a
+      topic this change touches: no schema question when nothing new is stored, no volume
+      question when the data stays small. Use the names from the sketch and the code. Skip
+      anything already answered, and don't suggest answers.
+      Add each question with the person's answer, word for word, to ${run}/answers.md.
 
   - id: plan
     agent: keystone
     run: inline
     skills: {brainstorm: grill-the-idea, design: system-design}
     instructions: |
-      Plan the feature in ${run}/requirements.md. The person's answers are in ${run}/answers.md:
-      don't ask those again. Read .maestro/workspace.yaml and docs/architecture.md first, then
+      Plan the feature in ${run}/requirements.md. The person's sketch and answers are in
+      ${run}/answers.md: don't ask those again, and where your design differs from the sketch,
+      say so and why. Read .maestro/workspace.yaml and docs/architecture.md first, then
       only the domain docs for the domains this change touches or that read what it changes.
       For each real choice, show the options with their pros and cons and agree one with the person.
       Write the plan to ${run}/plan.md. Its Test plan has at least one e2e row per acceptance
