@@ -10,7 +10,8 @@ Interview the person to remove ambiguity before anything is designed.
 ## How
 1. Read what you already have: the request, the related code and any docs. Note what the code
    already answers, so you don't ask it. Then play the request back in two or three lines, with
-   what the code says about it, and ask what is wrong or missing.
+   what the code says about it, and invite the person to correct it, add context and raise their
+   doubts. Discuss until they are done.
 2. List the open points:
    - the goal, who it is for, and why now
    - scope, non-goals, and what would make it a failure even if it works
