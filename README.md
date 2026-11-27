@@ -13,7 +13,7 @@ Help me set up Maestro in this project.
 
 Clone https://github.com/KeyValueSoftwareSystems/maestro.git into ../maestro, then run
 `bash ../maestro/install.sh .` from this project's root. Then use the maestro skill to run the
-workflow .maestro/workflows/init.yaml.
+setup .maestro/workflows/init.yaml.
 ```
 It installs Maestro, finds your repos and their commands, and offers to build the knowledge base.
 
