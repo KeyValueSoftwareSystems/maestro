@@ -7,14 +7,26 @@ work to specialist agents, runs your checks, and stops for your approval where i
 no engine and no CLI: just skills, YAML workflows and a run folder.
 
 ## Quick start
+Open Claude Code in your project folder and paste:
+```
+Help me set up Maestro in this project.
+
+Clone https://github.com/KeyValueSoftwareSystems/maestro.git into ../maestro, then run
+`bash ../maestro/install.sh .` from this project's root. Then use the maestro skill to run the
+workflow .maestro/workflows/init.yaml.
+```
+It installs Maestro, finds your repos and their commands, and offers to build the knowledge base.
+
+To set up by hand instead, run this in a terminal:
 ```bash
 git clone https://github.com/KeyValueSoftwareSystems/maestro.git
 cd your-project
 bash ../maestro/install.sh
 ```
-Then, in Claude Code from your project folder:
+Then type `/maestro-init` in Claude Code from your project folder.
+
+Once set up, start a run:
 ```
-/maestro-init                         # find repos and commands; offer the knowledge base
 /maestro-fix  Login times out after 5 minutes
 /maestro-minor Add a CSV export to the orders page
 /maestro-feature Multi-currency pricing
